@@ -1,0 +1,18 @@
+{
+  "name": "openerp-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "End-to-end suite. Kept separate from frontend/ so specs under tests/e2e can resolve Playwright.",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "test:e2e:ui": "playwright test --config tests/e2e/playwright.config.ts --ui",
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "typecheck:e2e": "tsc -p tests/e2e/tsconfig.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1",
+    "@types/node": "^22.13.1",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * The admin panel and the POS share a palette but not a scale: POS controls are
+ * sized for fingers on a touch screen, admin controls for a mouse.  Both scales
+ * live here so a component never hard-codes a magic size.
+ */
+@theme {
+  --color-brand-50: oklch(0.97 0.02 250);
+  --color-brand-100: oklch(0.93 0.05 250);
+  --color-brand-500: oklch(0.58 0.16 250);
+  --color-brand-600: oklch(0.51 0.16 250);
+  --color-brand-700: oklch(0.44 0.14 250);
+
+  /* Minimum touch target for POS controls (WCAG 2.2 target size is 24px; a
+     supermarket till wants far more). */
+  --spacing-touch: 4rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+  }
+
+  /* The POS is operated by touch: suppress the double-tap zoom and the blue
+     tap highlight that make a till feel unresponsive. */
+  .pos-surface {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+}

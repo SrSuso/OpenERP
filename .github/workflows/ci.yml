@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: '22'
+
+jobs:
+  backend:
+    name: Backend (lint, types, migrations, tests)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: openerp
+          POSTGRES_PASSWORD: openerp
+          POSTGRES_DB: openerp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U openerp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      OPENERP_ENVIRONMENT: ci
+      OPENERP_DATABASE_URL: postgresql://openerp:openerp@127.0.0.1:5432/openerp
+      # pytest creates throwaway databases on this server rather than starting
+      # a Testcontainer, which would be a container inside a container here.
+      OPENERP_TEST_DATABASE_URL: postgresql://openerp:openerp@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --locked --python ${{ env.PYTHON_VERSION }}
+
+      - name: Ruff (lint)
+        working-directory: backend
+        run: uv run ruff check --output-format=github .
+
+      - name: Ruff (format)
+        working-directory: backend
+        run: uv run ruff format --check .
+
+      - name: mypy
+        working-directory: backend
+        run: uv run mypy app scripts tests
+
+      - name: Migrations apply to an empty database
+        working-directory: backend
+        run: uv run alembic upgrade head
+
+      - name: Migrations are reversible
+        working-directory: backend
+        run: |
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
+      - name: Models and migrations are in sync
+        working-directory: backend
+        run: uv run alembic check
+
+      - name: Tests (integration, real PostgreSQL)
+        working-directory: backend
+        run: uv run coverage run -m pytest -q
+
+      - name: Coverage report
+        working-directory: backend
+        run: uv run coverage report
+
+  frontend:
+    name: Frontend (lint, types, tests, build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: ESLint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Prettier
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: TypeScript
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm run test
+
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: openerp
+          POSTGRES_PASSWORD: openerp
+          POSTGRES_DB: openerp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U openerp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ['1025:1025', '8025:8025']
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 1
+          MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+    env:
+      OPENERP_ENVIRONMENT: ci
+      OPENERP_DATABASE_URL: postgresql://openerp:openerp@127.0.0.1:5432/openerp
+      OPENERP_CORS_ORIGINS: http://127.0.0.1:5173
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked --python ${{ env.PYTHON_VERSION }}
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      - name: Typecheck the E2E suite
+        run: npm run typecheck:e2e
+
+      - name: Migrate the database
+        working-directory: backend
+        run: uv run alembic upgrade head
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: tests/e2e/.artifacts
+          retention-days: 7

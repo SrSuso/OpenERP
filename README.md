@@ -1,1 +1,155 @@
 # OpenERP
+
+ERP web para tienda minorista: panel de administración (`/admin`) y punto de venta
+táctil (`/pos`), construido como **monolito modular**.
+
+| Capa | Tecnología |
+| --- | --- |
+| Backend | Python 3.13+, FastAPI, SQLAlchemy 2.x (async), Alembic, Pydantic v2, psycopg 3 |
+| Base de datos | PostgreSQL 17 |
+| Frontend | React 19, TypeScript, Vite, React Router 7, TanStack Query, React Hook Form + Zod, Tailwind CSS 4, Apache ECharts |
+| Worker | Proceso Python separado, cola sobre PostgreSQL (*transactional outbox*) |
+| Tests | pytest + pytest-asyncio (PostgreSQL real), Vitest + React Testing Library, Playwright |
+| Desarrollo | Docker Compose (PostgreSQL + Mailpit) o scripts *rootless* equivalentes |
+
+---
+
+## Estado
+
+**Fase 0 (bootstrap) completada.** Las fases siguientes se implementan en orden
+estricto y ninguna avanza con la anterior rota. Ver [`docs/PHASES.md`](docs/PHASES.md).
+
+---
+
+## Puesta en marcha
+
+### Requisitos
+
+- Python 3.13+ y [uv](https://docs.astral.sh/uv/)
+- Node.js 20.19+ (recomendado 22)
+- Docker con Compose **o**, si no hay Docker, los scripts *rootless* de `scripts/`
+
+### 1. Infraestructura
+
+Con Docker:
+
+```bash
+docker compose -f docker/compose.yml up -d --wait
+# PostgreSQL  127.0.0.1:5432
+# Mailpit     SMTP 127.0.0.1:1025 · UI http://127.0.0.1:8025
+```
+
+Sin Docker (sin permisos de administrador; descarga los binarios en `~/.local`):
+
+```bash
+./scripts/dev-postgres.sh start   # PostgreSQL 17 en 127.0.0.1:55432
+./scripts/dev-mailpit.sh start    # Mailpit en 1025 / 8025
+source scripts/env.sh             # PATH + OPENERP_DATABASE_URL
+```
+
+### 2. Dependencias y base de datos
+
+```bash
+cp .env.example .env              # ajusta OPENERP_DATABASE_URL al puerto que uses
+
+cd backend  && uv sync     && cd ..   # dependencias del backend
+cd frontend && npm install && cd ..   # dependencias del frontend
+npm install                           # suite E2E (Playwright)
+
+cd backend && uv run alembic upgrade head && cd ..
+```
+
+### 3. Arrancar
+
+```bash
+# terminal 1
+cd backend && uv run uvicorn app.main:app --reload --port 8000
+
+# terminal 2
+cd frontend && npm run dev
+```
+
+- Panel: <http://127.0.0.1:5173/admin>
+- TPV: <http://127.0.0.1:5173/pos>
+- OpenAPI: <http://127.0.0.1:8000/api/docs>
+
+El `Makefile` de la raíz agrupa todo lo anterior (`make help`).
+
+---
+
+## Tests
+
+```bash
+cd backend  && uv run pytest     # pytest sobre PostgreSQL real
+cd frontend && npm run test      # Vitest + React Testing Library
+npm run test:e2e                 # Playwright, desde la raíz (levanta API + frontend)
+```
+
+La primera vez, instala el navegador:
+
+```bash
+npx playwright install --with-deps chromium
+# sin permisos de administrador:
+npx playwright install chromium && ./scripts/dev-browsers.sh install && source scripts/env.sh
+```
+
+El backend **nunca** usa SQLite. `pytest` resuelve el servidor así:
+
+1. `OPENERP_TEST_DATABASE_URL` si está definida (Compose, CI o script *rootless*).
+2. Testcontainers, si hay un demonio Docker operativo.
+3. En otro caso falla con instrucciones. No degrada silenciosamente.
+
+Cada sesión crea una base de datos desechable y la migra con el `alembic upgrade
+head` real, de modo que la cadena de migraciones se ejercita en cada ejecución.
+
+---
+
+## Estructura
+
+```
+backend/
+  app/
+    api/            # routers HTTP, middleware
+    core/           # settings, logging estructurado, errores, contexto de petición
+    db/             # Base declarativa, tipos NUMERIC(18,6), sesiones async
+    auth/ users/ rbac/ catalog/ pricing/ suppliers/ purchasing/
+    inventory/ lots/ sales/ returns/ dashboards/ notifications/
+    tickets/ audit/ jobs/
+    main.py
+  migrations/       # Alembic
+  scripts/          # utilidades de desarrollo (devdb)
+  tests/
+frontend/
+  src/              # features/, pages/admin, pages/pos, lib/
+  tests/
+tests/e2e/          # Playwright: config + specs (proyecto npm de la raíz)
+docker/compose.yml  # PostgreSQL + Mailpit
+scripts/            # alternativas rootless a Docker
+```
+
+Hay tres proyectos npm: `frontend/` (la aplicación), la raíz (sólo la suite E2E,
+separada para que las specs de `tests/e2e/` resuelvan Playwright y para que una
+actualización de Playwright no toque el árbol de dependencias de la app) y
+ninguno más.
+
+---
+
+## Reglas de arquitectura
+
+Invariantes que no se rompen; cada fase añade tests que las protegen.
+
+1. `stock_movements` es el origen histórico del inventario.
+2. `stock_balance` es sólo una proyección optimizada, reconstruible.
+3. Todo el stock se almacena en la unidad base del producto.
+4. Las presentaciones (cajas) se convierten mediante un factor.
+5. Venta, pagos y movimientos de inventario son atómicos.
+6. Ventas y compras guardan *snapshots* históricos de precios e impuestos.
+7. Cambiar precios actuales nunca modifica ventas anteriores.
+8. Dinero y cantidades usan `Decimal`/`NUMERIC(18,6)`, nunca `float`.
+9. Devolución económica y devolución física son conceptos independientes.
+10. SMTP nunca bloquea una venta.
+11. Los permisos siempre se comprueban en el backend.
+12. Las fórmulas de precio nunca usan `eval()`.
+13. Los dashboards nunca ejecutan SQL arbitrario.
+14. Productos, proveedores y usuarios con histórico se desactivan, no se borran.
+15. Cada fase queda funcionando y probada antes de continuar.
