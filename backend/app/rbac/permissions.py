@@ -155,6 +155,26 @@ PHASE_7_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
+# --- phase 8: lotes y caducidad -----------------------------------------------
+LOT_READ = "lot.read"
+LOT_MANAGE = "lot.manage"
+
+PHASE_8_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(LOT_READ, "Look up lots, their balances and FEFO plans."),
+    PermissionDef(LOT_MANAGE, "Create lots and record FEFO-ordered stock reductions."),
+)
+
+#: Frozen grants for the phase 8 migration only. CASHIER gets read access —
+#: the POS (phase 12) will show expiration info — never manage.
+PHASE_8_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (LOT_READ, LOT_MANAGE),
+    "MANAGER": (LOT_READ, LOT_MANAGE),
+    "CASHIER": (LOT_READ,),
+}
+
+#: Every permission key known to the backend so far — for runtime use
+#: (e.g. validating a key exists) only. Never import this from a migration;
+#: see the module docstring.
 ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     PHASE_1_PERMISSIONS
     + PHASE_2_PERMISSIONS
@@ -163,4 +183,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_5_PERMISSIONS
     + PHASE_6_PERMISSIONS
     + PHASE_7_PERMISSIONS
+    + PHASE_8_PERMISSIONS
 )

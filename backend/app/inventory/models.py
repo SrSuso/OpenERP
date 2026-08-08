@@ -7,10 +7,14 @@ as the movement that changed it (rule 5), and always fully reconstructible
 by summing ``stock_movements`` (enforced by
 :func:`app.inventory.service.rebuild_stock_balance` and its test).
 
-``lot_id`` is deliberately absent from ``stock_movements`` here — phase 8
-adds it once ``lots`` exists to be a foreign key target; adding the column
-before that would either have no table to reference or force phase 8 to
-retrofit one that phase 7 got wrong.
+``lot_id`` (added by phase 8, once ``lots`` exists as a foreign key target)
+is nullable — not every product tracks lots. A plain multi-column unique
+constraint can't safely arbitrate upserts on a nullable column: Postgres
+never considers two ``NULL``s equal, so two movements for the same
+non-lot-tracked product/warehouse/location would each look "new" and
+``stock_balance`` would grow a duplicate row per movement instead of one
+kept in sync. ``StockBalance`` therefore carries *two* partial unique
+indexes instead of one plain one — see the class docstring.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
@@ -82,6 +86,10 @@ class StockMovement(IntPrimaryKeyMixin, Base):
     #: Nullable: a system-driven movement (or one from before a user
     #: existed) has no acting user.
     user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
+    #: Phase 8: which lot this quantity belongs to, for lot-tracked products.
+    lot_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("lots.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -89,19 +97,41 @@ class StockMovement(IntPrimaryKeyMixin, Base):
 
 class StockBalance(IntPrimaryKeyMixin, TimestampMixin, Base):
     """The only non-append-only table in this module — a projection,
-    rebuildable at any time from ``stock_movements`` (rule 2)."""
+    rebuildable at any time from ``stock_movements`` (rule 2).
+
+    Two partial unique indexes stand in for the one conceptual key
+    (product, warehouse, location, lot) because ``lot_id`` is nullable —
+    see the module docstring. Exactly one of them applies to any given row;
+    ``app.inventory.service._upsert_balance`` picks the matching one as the
+    ``ON CONFLICT`` arbiter depending on whether ``lot_id`` is given.
+    """
 
     __tablename__ = "stock_balance"
-    __table_args__ = (
-        UniqueConstraint(
-            "product_id",
-            "warehouse_id",
-            "location_id",
-            name="uq_stock_balance_product_warehouse_location",
-        ),
-    )
 
     product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id"), index=True)
     warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"), index=True)
     location_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("locations.id"), index=True)
+    lot_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("lots.id"), nullable=True, index=True
+    )
     quantity: Mapped[Quantity]
+
+    __table_args__ = (
+        Index(
+            "uq_stock_balance_no_lot",
+            "product_id",
+            "warehouse_id",
+            "location_id",
+            unique=True,
+            postgresql_where=text("lot_id IS NULL"),
+        ),
+        Index(
+            "uq_stock_balance_with_lot",
+            "product_id",
+            "warehouse_id",
+            "location_id",
+            lot_id,
+            unique=True,
+            postgresql_where=text("lot_id IS NOT NULL"),
+        ),
+    )

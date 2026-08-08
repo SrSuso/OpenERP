@@ -91,24 +91,51 @@ async def create_location(session: AsyncSession, warehouse_id: int, name: str) -
 
 
 async def _upsert_balance(
-    session: AsyncSession, product_id: int, warehouse_id: int, location_id: int, quantity: Decimal
+    session: AsyncSession,
+    product_id: int,
+    warehouse_id: int,
+    location_id: int,
+    lot_id: int | None,
+    quantity: Decimal,
 ) -> None:
     """Atomically create-or-increment the balance row for this key. Safe
     under concurrency for both an existing row (Postgres locks it for the
-    statement's duration) and a not-yet-existing one (the unique constraint
+    statement's duration) and a not-yet-existing one (the unique index
     itself arbitrates which concurrent inserter wins the row; the other
-    falls through to the ``DO UPDATE`` and increments it)."""
+    falls through to the ``DO UPDATE`` and increments it).
+
+    ``lot_id`` picks which of ``stock_balance``'s two partial unique
+    indexes is the conflict arbiter — see the model's docstring for why a
+    single nullable-column index can't do this safely.
+    """
     stmt = pg_insert(StockBalance).values(
-        product_id=product_id, warehouse_id=warehouse_id, location_id=location_id, quantity=quantity
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        lot_id=lot_id,
+        quantity=quantity,
     )
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[
-            StockBalance.product_id,
-            StockBalance.warehouse_id,
-            StockBalance.location_id,
-        ],
-        set_={"quantity": StockBalance.quantity + stmt.excluded.quantity},
-    )
+    if lot_id is None:
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                StockBalance.product_id,
+                StockBalance.warehouse_id,
+                StockBalance.location_id,
+            ],
+            index_where=StockBalance.lot_id.is_(None),
+            set_={"quantity": StockBalance.quantity + stmt.excluded.quantity},
+        )
+    else:
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                StockBalance.product_id,
+                StockBalance.warehouse_id,
+                StockBalance.location_id,
+                StockBalance.lot_id,
+            ],
+            index_where=StockBalance.lot_id.is_not(None),
+            set_={"quantity": StockBalance.quantity + stmt.excluded.quantity},
+        )
     await session.execute(stmt)
 
 
@@ -121,12 +148,14 @@ async def record_movement(
     quantity: Decimal,
     movement_type: str,
     unit_cost: Decimal,
+    lot_id: int | None = None,
     reference_type: str | None = None,
     reference_id: int | None = None,
 ) -> StockMovement:
     """Write one ledger entry and fold it into ``stock_balance``, atomically
     (rule 5). ``quantity`` is signed: positive increases stock, negative
-    decreases it."""
+    decreases it. ``lot_id`` (phase 8): omit for products that don't track
+    lots."""
     movement = StockMovement(
         product_id=product_id,
         warehouse_id=warehouse_id,
@@ -136,11 +165,12 @@ async def record_movement(
         reference_type=reference_type,
         reference_id=reference_id,
         unit_cost=unit_cost,
+        lot_id=lot_id,
         user_id=get_user_id(),
     )
     session.add(movement)
 
-    await _upsert_balance(session, product_id, warehouse_id, location_id, quantity)
+    await _upsert_balance(session, product_id, warehouse_id, location_id, lot_id, quantity)
 
     await session.flush()
     # Same class of bug as app.catalog.service: without a refresh, `quantity`
@@ -160,6 +190,7 @@ async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) ->
         quantity=payload.quantity,
         movement_type=payload.movement_type,
         unit_cost=payload.unit_cost,
+        lot_id=payload.lot_id,
     )
     await audit.record(
         session,
@@ -170,6 +201,7 @@ async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) ->
             "quantity": str(payload.quantity),
             "warehouse_id": payload.warehouse_id,
             "location_id": payload.location_id,
+            "lot_id": payload.lot_id,
             "reason": payload.reason,
         },
     )
@@ -193,6 +225,7 @@ async def record_transfer(
         quantity=-payload.quantity,
         movement_type="TRANSFER_OUT",
         unit_cost=payload.unit_cost,
+        lot_id=payload.lot_id,
         reference_type="transfer",
     )
     in_movement = await record_movement(
@@ -203,6 +236,7 @@ async def record_transfer(
         quantity=payload.quantity,
         movement_type="TRANSFER_IN",
         unit_cost=payload.unit_cost,
+        lot_id=payload.lot_id,
         reference_type="transfer",
         reference_id=out_movement.id,
     )
@@ -213,6 +247,7 @@ async def record_transfer(
         entity_id=payload.product_id,
         after={
             "quantity": str(payload.quantity),
+            "lot_id": payload.lot_id,
             "from": [payload.from_warehouse_id, payload.from_location_id],
             "to": [payload.to_warehouse_id, payload.to_location_id],
         },
@@ -226,6 +261,7 @@ async def list_movements(
     product_id: int | None = None,
     warehouse_id: int | None = None,
     location_id: int | None = None,
+    lot_id: int | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[StockMovement]:
@@ -236,18 +272,26 @@ async def list_movements(
         stmt = stmt.where(StockMovement.warehouse_id == warehouse_id)
     if location_id is not None:
         stmt = stmt.where(StockMovement.location_id == location_id)
+    if lot_id is not None:
+        stmt = stmt.where(StockMovement.lot_id == lot_id)
     stmt = stmt.limit(limit).offset(offset)
     return list((await session.execute(stmt)).scalars())
 
 
 async def list_balances(
-    session: AsyncSession, *, product_id: int | None = None, warehouse_id: int | None = None
+    session: AsyncSession,
+    *,
+    product_id: int | None = None,
+    warehouse_id: int | None = None,
+    lot_id: int | None = None,
 ) -> list[StockBalance]:
     stmt = select(StockBalance).order_by(StockBalance.product_id)
     if product_id is not None:
         stmt = stmt.where(StockBalance.product_id == product_id)
     if warehouse_id is not None:
         stmt = stmt.where(StockBalance.warehouse_id == warehouse_id)
+    if lot_id is not None:
+        stmt = stmt.where(StockBalance.lot_id == lot_id)
     return list((await session.execute(stmt)).scalars())
 
 
@@ -262,16 +306,23 @@ async def rebuild_stock_balance(session: AsyncSession) -> int:
         StockMovement.product_id,
         StockMovement.warehouse_id,
         StockMovement.location_id,
+        StockMovement.lot_id,
         func.sum(StockMovement.quantity).label("total"),
-    ).group_by(StockMovement.product_id, StockMovement.warehouse_id, StockMovement.location_id)
+    ).group_by(
+        StockMovement.product_id,
+        StockMovement.warehouse_id,
+        StockMovement.location_id,
+        StockMovement.lot_id,
+    )
     rows = (await session.execute(totals_stmt)).all()
 
-    for product_id, warehouse_id, location_id, total in rows:
+    for product_id, warehouse_id, location_id, lot_id, total in rows:
         session.add(
             StockBalance(
                 product_id=product_id,
                 warehouse_id=warehouse_id,
                 location_id=location_id,
+                lot_id=lot_id,
                 quantity=total,
             )
         )

@@ -12,6 +12,7 @@ from app.audit.router import router as audit_router
 from app.auth.router import router as auth_router
 from app.catalog.router import router as catalog_router
 from app.inventory.router import router as inventory_router
+from app.lots.router import router as lots_router
 from app.pricing.router import router as pricing_router
 from app.purchasing.router import router as purchasing_router
 from app.rbac.router import router as rbac_router
@@ -29,6 +30,7 @@ api_router.include_router(pricing_router)
 api_router.include_router(suppliers_router)
 api_router.include_router(purchasing_router)
 api_router.include_router(inventory_router)
+api_router.include_router(lots_router)
 
-# Phase 8: api_router.include_router(lots.router)
+# Phase 9: api_router.include_router(receiving.router)
 # ... one line per module as its phase lands.

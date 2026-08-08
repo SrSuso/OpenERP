@@ -15,7 +15,7 @@ y commit.
 | 5 | Proveedores | ✅ completada |
 | 6 | Compras | ✅ completada |
 | 7 | Inventory ledger | ✅ completada |
-| 8 | Lotes y caducidad | pendiente |
+| 8 | Lotes y caducidad | ✅ completada |
 | 9 | Recepciones | pendiente |
 | 10 | Categorías POS | pendiente |
 | 11 | Ventas | pendiente |
@@ -620,3 +620,77 @@ Deuda técnica conocida:
   1–6).
 - `lot_id` llega en la fase 8; hasta entonces todo movimiento es a nivel de
   producto/almacén/ubicación, sin lote.
+
+## Fase 8 — Lotes y caducidad
+
+**Objetivo:** lotes con fecha de caducidad y FEFO (*First Expired, First
+Out*) — una venta debe poder consumir varios lotes automáticamente,
+empezando siempre por el que caduca antes.
+
+Entregado:
+
+- **`lots`**: `product_id`, `lot_number` (único por producto),
+  `manufacturing_date`, `expiration_date` (nullable — no todo lote
+  caduca), `supplier_id`/`purchase_order_id` (nullable, trazabilidad hacia
+  la fase 6). Dónde *está* el stock de un lote sigue viviendo en
+  `stock_balance`/`stock_movements` (fase 7); esta tabla es sólo la
+  identidad y las fechas del lote.
+- **`app.inventory` (fase 7) ampliado con `lot_id`**, tal y como anunciaba
+  su propio *docstring*: `stock_movements.lot_id` (nullable, FK a `lots`) y
+  `stock_balance.lot_id`. Como `lot_id` es *nullable* (no todo producto
+  lleva lote), una única restricción única de 4 columnas no basta —
+  Postgres nunca considera iguales dos `NULL`, así que dos movimientos del
+  mismo producto sin lote generarían cada uno su propia fila en vez de
+  compartir una. Solución: **dos índices únicos parciales**
+  (`... WHERE lot_id IS NULL` / `... WHERE lot_id IS NOT NULL`), y
+  `_upsert_balance` elige cuál usar como árbitro del `ON CONFLICT` según si
+  se pasa `lot_id` o no. Verificado con un test dedicado
+  (`test_non_lot_tracked_movements_are_unaffected`) que confirma que los
+  productos sin lote se comportan exactamente igual que en la fase 7.
+- **`plan_fefo`**: algoritmo puro (no toca la base de datos) que decide de
+  qué lotes tomar una cantidad, ordenando por caducidad ascendente (los
+  lotes sin fecha se consumen los últimos). **`execute_fefo_consumption`**:
+  planifica y ejecuta de verdad, un movimiento de `stock_movements` por
+  lote consumido, todo en la misma transacción (regla 5) — el mecanismo
+  exacto que la fase 11 conectará al cobro de una venta
+  (`movement_type="SALE"`); ya alcanzable ahora para ajustes/mermas
+  manuales que también deben respetar FEFO.
+- Caso de aceptación #12 del enunciado verificado literalmente
+  (`test_fefo_consume_matches_the_spec_example_end_to_end`): lote A con 2
+  unidades (caduca antes) + lote B con 10; vender 5 dispersa el consumo
+  automáticamente por varios lotes — A queda en 0, B en 7.
+- **Permisos**: `lot.read` (incluido `CASHIER`) / `lot.manage`
+  (`ADMIN`/`MANAGER`).
+
+Archivos añadidos/tocados: `backend/app/lots/*` (nuevo),
+`backend/app/inventory/{models,service,schemas,router}.py` (`lot_id`),
+`backend/app/rbac/permissions.py` (`PHASE_8_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_8_lots.py`,
+`backend/tests/test_lots.py`.
+
+Endpoints nuevos: `GET|POST /lots`, `GET /lots/{id}` ·
+`GET /products/{id}/lot-balances`,
+`POST /products/{id}/fefo-plan` (sólo planifica),
+`POST /products/{id}/fefo-consume` (planifica y ejecuta) · `stock-movements`/
+`stock-balance` (fase 7) ahora aceptan/devuelven `lot_id`.
+
+Migración: `70fc407a2e6d_phase_8_lots` — crea `lots`; añade `lot_id` a
+`stock_movements`/`stock_balance` con sus FKs; sustituye la restricción
+única simple de `stock_balance` por los dos índices únicos parciales;
+siembra `lot.read`/`lot.manage`. `downgrade()` deshace todo, incluida la
+restricción única original; verificado con *round-trip* completo y
+`alembic check`.
+
+Tests: 11 nuevos (173 en total), incluido el caso de aceptación FEFO
+literal del enunciado. `ruff`, `ruff format --check` y `mypy` limpios;
+`pytest -q` → 173/173 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de lotes en `/admin` todavía (mismo criterio que fases
+  1–7).
+- `execute_fefo_consumption` es genérico (`movement_type` libre a nivel de
+  servicio); el endpoint HTTP sólo expone `ADJUSTMENT`/`WASTE` a propósito
+  — `SALE` queda reservado para que la fase 11 lo dispare desde el propio
+  flujo de cobro, nunca desde este endpoint manual.

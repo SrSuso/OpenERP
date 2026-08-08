@@ -36,6 +36,7 @@ class StockMovementRead(BaseModel):
     product_sku: str
     warehouse_id: int
     location_id: int
+    lot_id: int | None
     quantity: Decimal
     movement_type: str
     reference_type: str | None
@@ -50,6 +51,7 @@ class StockBalanceRead(BaseModel):
     product_sku: str
     warehouse_id: int
     location_id: int
+    lot_id: int | None
     quantity: Decimal
 
 
@@ -62,6 +64,7 @@ class AdjustmentCreate(BaseModel):
     #: either sign — it is normalised to negative.
     quantity: Decimal
     unit_cost: Decimal = Field(ge=0)
+    lot_id: int | None = None
     reason: str = Field(default="", max_length=500)
 
     @model_validator(mode="after")
@@ -81,6 +84,7 @@ class TransferCreate(BaseModel):
     to_location_id: int
     quantity: Decimal = Field(gt=0)
     unit_cost: Decimal = Field(ge=0)
+    lot_id: int | None = None
 
 
 class TransferResult(BaseModel):

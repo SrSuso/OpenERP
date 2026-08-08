@@ -54,6 +54,7 @@ async def _movement_to_read(session: AsyncSession, movement: StockMovement) -> S
         product_sku=product.sku,
         warehouse_id=movement.warehouse_id,
         location_id=movement.location_id,
+        lot_id=movement.lot_id,
         quantity=movement.quantity,
         movement_type=movement.movement_type,
         reference_type=movement.reference_type,
@@ -70,6 +71,7 @@ def _balance_to_read(balance: StockBalance, product_sku: str) -> StockBalanceRea
         product_sku=product_sku,
         warehouse_id=balance.warehouse_id,
         location_id=balance.location_id,
+        lot_id=balance.lot_id,
         quantity=balance.quantity,
     )
 
@@ -119,6 +121,7 @@ async def list_movements(
     product_id: Annotated[int | None, Query()] = None,
     warehouse_id: Annotated[int | None, Query()] = None,
     location_id: Annotated[int | None, Query()] = None,
+    lot_id: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[StockMovementRead]:
@@ -127,6 +130,7 @@ async def list_movements(
         product_id=product_id,
         warehouse_id=warehouse_id,
         location_id=location_id,
+        lot_id=lot_id,
         limit=limit,
         offset=offset,
     )
@@ -138,9 +142,10 @@ async def list_balances(
     session: SessionDep,
     product_id: Annotated[int | None, Query()] = None,
     warehouse_id: Annotated[int | None, Query()] = None,
+    lot_id: Annotated[int | None, Query()] = None,
 ) -> list[StockBalanceRead]:
     balances = await service.list_balances(
-        session, product_id=product_id, warehouse_id=warehouse_id
+        session, product_id=product_id, warehouse_id=warehouse_id, lot_id=lot_id
     )
     results = []
     for balance in balances:
