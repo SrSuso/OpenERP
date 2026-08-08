@@ -32,7 +32,7 @@ export function LoginPage() {
     setFormError(null);
     try {
       await login(values.email, values.password);
-      navigate(from, { replace: true });
+      void navigate(from, { replace: true });
     } catch (error) {
       setFormError(
         error instanceof ApiError && error.isUnauthenticated

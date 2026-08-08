@@ -195,6 +195,10 @@ jobs:
         working-directory: backend
         run: uv run alembic upgrade head
 
+      - name: Seed E2E users (admin/cashier the specs log in as)
+        working-directory: backend
+        run: uv run python -m scripts.seed_e2e_users
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 

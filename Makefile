@@ -78,6 +78,10 @@ db-reset:  ## Drop, recreate and migrate the database
 bootstrap-admin:  ## Create the first admin user (interactive)
 	cd $(BACKEND) && uv run python -m app.auth.bootstrap
 
+.PHONY: seed-e2e
+seed-e2e:  ## Seed the fixed admin/cashier accounts the Playwright suite logs in as
+	cd $(BACKEND) && uv run python -m scripts.seed_e2e_users
+
 # --- run -------------------------------------------------------------------
 
 .PHONY: dev-api

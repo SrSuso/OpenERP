@@ -193,9 +193,29 @@ curl -b cookies.txt -X POST http://127.0.0.1:8000/api/v1/users/me/password \
 ```bash
 make test-backend     # pytest sobre PostgreSQL real (backend/tests)
 make test-frontend     # Vitest + React Testing Library
-make test-e2e          # Playwright (levanta API + frontend)
 make lint               # ruff + mypy + ESLint + Prettier + tsc
 ```
+
+Playwright necesita, además, que existan los usuarios fijos con los que
+inician sesión las specs (`tests/e2e/specs/*.spec.ts`) — no hay
+auto-registro, así que hace falta sembrarlos una vez por base de datos:
+
+```bash
+make db-upgrade                                            # aplica la migración de fase 1 si falta
+OPENERP_DATABASE_URL=postgresql://openerp:openerp@127.0.0.1:5432/openerp_e2e \
+  make seed-e2e                                             # crea admin/cajero de prueba, idempotente
+OPENERP_DATABASE_URL=postgresql://openerp:openerp@127.0.0.1:5432/openerp_e2e \
+  make test-e2e                                             # Playwright (levanta API + frontend)
+```
+
+Usa una base de datos separada de la de desarrollo (aquí `openerp_e2e`) para
+no mezclar usuarios de prueba con los tuyos; créala con
+`uv run python -m scripts.devdb create --database openerp_e2e` desde
+`backend/` antes del primer `make db-upgrade`. Las credenciales por defecto
+son `e2e-admin@example.com` / `e2e-cashier@example.com` (contraseñas en
+`backend/scripts/seed_e2e_users.py`), o las que fijes en
+`E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`/`E2E_CASHIER_EMAIL`/`E2E_CASHIER_PASSWORD`.
+El job de CI hace exactamente esto (ver `.github/workflows/ci.yml`).
 
 o los comandos equivalentes por partes, como en el README.
 

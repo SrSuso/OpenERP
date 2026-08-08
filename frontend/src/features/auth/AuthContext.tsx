@@ -1,11 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
-import { login as loginRequest, logout as logoutRequest, meQuery, type Me } from '@/features/auth/api';
+import {
+  login as loginRequest,
+  logout as logoutRequest,
+  meQuery,
+  type Me,
+} from '@/features/auth/api';
 
 interface AuthContextValue {
-  /** `null` once the initial `/auth/me` call has resolved and the visitor
-   * is signed out; `undefined` while that first call is still in flight. */
+  /** `undefined` while the initial `/auth/me` call is in flight; `null`
+   * once it has resolved to "signed out"; the user otherwise. */
   user: Me | null | undefined;
   isLoading: boolean;
   hasPermission: (key: string) => boolean;
@@ -23,16 +28,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const { data: user, isPending } = useQuery({
-    ...meQuery,
-    retry: false,
-    // A 401 here just means "signed out", never surface it as a UI error.
-    throwOnError: false,
-  });
+  const { data: user, isPending } = useQuery({ ...meQuery, retry: false });
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      user: user ?? null,
+      user,
       isLoading: isPending,
       hasPermission: (key: string) => user?.permissions.includes(key) ?? false,
       login: async (email: string, password: string) => {
@@ -42,6 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       logout: async () => {
         await logoutRequest();
+        // Deterministic: meQuery resolves an unauthenticated /auth/me to
+        // `null` (see its queryFn), so this is a real, type-safe value —
+        // not a hope that some later background refetch clears stale data.
         queryClient.setQueryData(meQuery.queryKey, null);
       },
     }),

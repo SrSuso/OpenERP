@@ -25,8 +25,8 @@ export function RequireAuth() {
 
 /**
  * Nested under `RequireAuth`: also requires `permission`. The visitor *is*
- * signed in, just not allowed here, so this bounces to `/` (which resolves
- * onward by role) instead of back to the login screen.
+ * signed in, just not allowed here, so this bounces to `/` — resolved by
+ * `HomeRedirect` below — instead of back to the login screen.
  */
 export function RequirePermission({ permission }: { permission: string }) {
   const { hasPermission } = useAuth();
@@ -35,4 +35,32 @@ export function RequirePermission({ permission }: { permission: string }) {
     return <Navigate to="/" replace />;
   }
   return <Outlet />;
+}
+
+/**
+ * The `/` index route: sends the visitor to whichever surface their
+ * permissions actually grant, in order of precedence.
+ *
+ * Must not hardcode a target (e.g. always `/admin`) — `RequirePermission`
+ * bounces here on a denied route, and a fixed target would loop the two
+ * against each other forever for a cashier hitting `/admin`.
+ */
+export function HomeRedirect() {
+  const { isLoading, hasPermission, user } = useAuth();
+
+  if (isLoading) {
+    return null;
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  if (hasPermission('admin.access')) {
+    return <Navigate to="/admin" replace />;
+  }
+  if (hasPermission('pos.access')) {
+    return <Navigate to="/pos" replace />;
+  }
+  // Signed in, but their role grants neither surface — nothing to send them
+  // to yet. Falls back to the login screen rather than looping.
+  return <Navigate to="/login" replace />;
 }

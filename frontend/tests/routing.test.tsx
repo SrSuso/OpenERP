@@ -1,9 +1,81 @@
+// @vitest-environment happy-dom
+//
+// jsdom's own AbortController/AbortSignal shadow Node's native ones, and
+// React Router's data-router navigation (createMemoryRouter → any redirect,
+// including our RequireAuth/RequirePermission guards) constructs an
+// internal Request carrying an AbortSignal — which Node's built-in
+// fetch/undici then rejects as "not an instance of AbortSignal". Confirmed
+// upstream bug, fixed in vitest 4 (currently beta):
+// https://github.com/vitest-dev/vitest/issues/8374
+// happy-dom doesn't shadow those globals, so this file alone opts out of
+// jsdom (the project default, used everywhere else) until vitest 4 ships.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
+import { AuthProvider } from '@/features/auth/AuthContext';
 import { routes } from '@/routes';
+
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  });
+}
+
+const HEALTH_OK = { status: 'ok', app: 'OpenERP', environment: 'test' };
+
+const HEALTH_DOWN_ENVELOPE = {
+  error: { code: 'service_unavailable', message: 'Database is not reachable.' },
+  request_id: 'req-1',
+};
+
+const UNAUTHENTICATED_ENVELOPE = {
+  error: { code: 'unauthenticated', message: 'Not authenticated.' },
+  request_id: 'req-me',
+};
+
+function meBody(role: 'ADMIN' | 'CASHIER'): unknown {
+  return {
+    id: 1,
+    email: 'test@example.com',
+    full_name: 'Test User',
+    role,
+    permissions: role === 'ADMIN' ? ['admin.access', 'pos.access'] : ['pos.access'],
+  };
+}
+
+/**
+ * Every request goes through here so each test states, up front, exactly
+ * what the signed-in user (if any) and the health check look like — routes
+ * now depend on `/auth/me` (phase 1), not just `/health/live` (phase 0).
+ */
+function stubFetch(options: { me: 'admin' | 'cashier' | 'signed-out'; health?: 'ok' | 'down' }) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+      if (url.includes('/auth/me')) {
+        if (options.me === 'signed-out') {
+          return Promise.resolve(jsonResponse(UNAUTHENTICATED_ENVELOPE, { status: 401 }));
+        }
+        return Promise.resolve(jsonResponse(meBody(options.me === 'admin' ? 'ADMIN' : 'CASHIER')));
+      }
+
+      if (url.includes('/health/live')) {
+        return Promise.resolve(
+          options.health === 'down'
+            ? jsonResponse(HEALTH_DOWN_ENVELOPE, { status: 503 })
+            : jsonResponse(HEALTH_OK),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch to ${url} in test`));
+    }),
+  );
+}
 
 function renderAt(path: string) {
   const queryClient = new QueryClient({
@@ -12,23 +84,16 @@ function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   return render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
     </QueryClientProvider>,
   );
 }
 
 describe('routing', () => {
-  it('renders the admin panel at /admin', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ status: 'ok', app: 'OpenERP', environment: 'test' }), {
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      ),
-    );
+  it('renders the admin panel at /admin for a signed-in admin', async () => {
+    stubFetch({ me: 'admin', health: 'ok' });
 
     renderAt('/admin');
 
@@ -40,30 +105,41 @@ describe('routing', () => {
     );
   });
 
-  it('renders the POS at /pos', async () => {
+  it('redirects to /login when signed out', async () => {
+    stubFetch({ me: 'signed-out' });
+
+    renderAt('/admin');
+
+    expect(await screen.findByLabelText(/^email$/i)).toBeInTheDocument();
+  });
+
+  it('sends a cashier trying /admin to their own home instead of /login', async () => {
+    stubFetch({ me: 'cashier' });
+
+    renderAt('/admin');
+
+    expect(await screen.findByRole('heading', { name: /punto de venta/i })).toBeInTheDocument();
+  });
+
+  it('renders the POS at /pos for a signed-in cashier', async () => {
+    stubFetch({ me: 'cashier' });
+
     renderAt('/pos');
 
     expect(await screen.findByRole('heading', { name: /punto de venta/i })).toBeInTheDocument();
   });
 
   it('does not render the admin shell inside the POS', async () => {
+    stubFetch({ me: 'cashier' });
+
     renderAt('/pos');
 
     await screen.findByRole('heading', { name: /punto de venta/i });
     expect(screen.queryByRole('link', { name: /inicio/i })).not.toBeInTheDocument();
   });
 
-  it('redirects the root path to the admin panel', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ status: 'ok', app: 'OpenERP', environment: 'test' }), {
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      ),
-    );
+  it('redirects the root path to the admin panel for a signed-in admin', async () => {
+    stubFetch({ me: 'admin', health: 'ok' });
 
     renderAt('/');
 
@@ -73,6 +149,8 @@ describe('routing', () => {
   });
 
   it('shows a not-found page for an unknown route', async () => {
+    stubFetch({ me: 'signed-out' });
+
     renderAt('/nope');
 
     expect(
@@ -81,20 +159,7 @@ describe('routing', () => {
   });
 
   it('surfaces an API failure instead of hanging on the loading state', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              error: { code: 'service_unavailable', message: 'Database is not reachable.' },
-              request_id: 'req-1',
-            }),
-            { status: 503, headers: { 'Content-Type': 'application/json' } },
-          ),
-        ),
-      ),
-    );
+    stubFetch({ me: 'admin', health: 'down' });
 
     renderAt('/admin');
 

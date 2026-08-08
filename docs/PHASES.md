@@ -135,17 +135,46 @@ Archivos añadidos/tocados: `backend/app/{auth,users,rbac}/*`,
 
 Comandos ejecutados y resultado real: ver [`docs/USAGE.md`](USAGE.md) para
 cómo arrancar el entorno, y el informe de cierre de fase en el historial de
-la conversación para la salida exacta de `pytest`/`ruff`/`mypy` (69 tests,
-0 fallos).
+la conversación para la salida exacta de cada comando.
+
+**Backend**: `ruff check`/`ruff format --check`/`mypy` limpios, `pytest -q`
+→ 69 tests, 0 fallos, contra PostgreSQL real.
+
+**Frontend** (Node.js 22.22.1 instalado tras la primera entrega, que se hizo
+sin Node disponible): `tsc --build`, `eslint` (0 errores, 1 aviso aceptado:
+co-ubicar `AuthProvider` y `useAuth` en un archivo — patrón habitual),
+`prettier --check` y `vite build` limpios; `vitest` → 13/13. Verificar con
+Node real, no sólo revisar el código, encontró y corrigió dos fallos reales
+que la revisión estática no vio:
+  1. `queryClient.setQueryData(meQuery.queryKey, null)` no compilaba: la
+     `queryKey` de `meQuery` va tipada por `Me` vía `queryOptions`, y `null`
+     no encajaba. Arreglado tratando "sin sesión" como dato legítimo — el
+     propio `queryFn` de `meQuery` resuelve un 401 a `null` en vez de
+     lanzarlo, así que la caché puede representarlo sin pelearse con el
+     sistema de tipos.
+  2. Bucle infinito de redirección: un cajero sin `admin.access` en
+     `/admin` rebotaba a `/`, y `/` redirigía siempre a `/admin` sin mirar
+     permisos → bucle. Arreglado con `HomeRedirect`
+     (`frontend/src/features/auth/guards.tsx`), que resuelve `/` según los
+     permisos reales del usuario.
+  3. (Detectado sólo en E2E, no en Vitest) el botón «Salir» no redirigía a
+     `/login`: `removeQueries` tras logout confía en que un refetch en
+     segundo plano limpie el usuario, pero TanStack Query conserva los
+     últimos datos correctos mientras ese refetch está en curso — la UI se
+     quedaba pegada en `/admin`. Mismo arreglo que el punto 1
+     (`setQueryData(key, null)` es determinista, no depende de un refetch).
+
+**E2E** (Playwright + Chromium, instalado con `sudo apt-get install nodejs
+npm` y `playwright install --with-deps chromium`): specs de fase 0
+reescritas para iniciar sesión de verdad (antes entraban a `/admin`/`/pos`
+sin autenticar, que ya no es válido); nuevo
+`backend/scripts/seed_e2e_users.py` (idempotente) siembra el admin/cajero
+fijos contra los que loguean, enganchado en `.github/workflows/ci.yml` y
+`make seed-e2e`. 9/9 specs en verde, incluida la que detectó el bug del
+logout.
 
 Deuda técnica conocida:
 
-- El frontend (`AuthProvider`, `LoginPage`, guards) no se ha podido verificar
-  con `npm run typecheck` / `vitest` / Playwright en este entorno porque no
-  hay Node.js instalado — sí se han seguido al detalle los patrones ya
-  probados en `frontend/src/features/health` y `frontend/src/lib/api.ts`.
-  Ejecutar `make install-frontend && make lint-frontend && make test-frontend`
-  antes de dar la fase por cerrada en un entorno con Node.
 - No hay pantallas de administración de usuarios/roles en `/admin` todavía
   (la API está completa y documentada en `/api/docs`); se añaden cuando una
   fase posterior las necesite, para no construir UI sin caso de uso ni test
@@ -153,3 +182,9 @@ Deuda técnica conocida:
 - `auth_sessions` no tiene todavía un job de limpieza de filas expiradas
   (no afecta a la corrección, sólo crecimiento de tabla); candidato natural
   para `app/jobs` cuando esa fase llegue.
+- `frontend/tests/routing.test.tsx` corre bajo `happy-dom` en vez de
+  `jsdom` (el resto del frontend sigue en `jsdom`): un bug conocido de
+  Vitest 3.x ([vitest-dev/vitest#8374](https://github.com/vitest-dev/vitest/issues/8374))
+  hace que jsdom pise el `AbortController` nativo de Node y rompa las
+  navegaciones internas de React Router 7 bajo test. Corregido en Vitest 4
+  (aún beta); revisar si se puede volver a `jsdom` al actualizar.

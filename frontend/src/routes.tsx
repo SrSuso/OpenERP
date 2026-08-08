@@ -1,6 +1,6 @@
-import { Navigate, type RouteObject } from 'react-router';
+import { type RouteObject } from 'react-router';
 
-import { RequireAuth, RequirePermission } from '@/features/auth/guards';
+import { HomeRedirect, RequireAuth, RequirePermission } from '@/features/auth/guards';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
@@ -10,13 +10,15 @@ import { PosLayout } from '@/pages/pos/PosLayout';
 
 /**
  * Two independent surfaces under one SPA: `/admin` and `/pos`, each gated by
- * a permission (`admin.access` / `pos.access`) behind `RequireAuth`.
+ * a permission (`admin.access` / `pos.access`) behind `RequireAuth`. `/`
+ * resolves onward by permission (`HomeRedirect`) rather than a fixed
+ * target, since `RequirePermission` bounces a denied route back to `/`.
  *
  * Route access is a convenience for the user — the backend re-checks every
  * one of these permissions regardless (rule 11).
  */
 export const routes: RouteObject[] = [
-  { index: true, element: <Navigate to="/admin" replace /> },
+  { index: true, element: <HomeRedirect /> },
   { path: '/login', element: <LoginPage /> },
   {
     element: <RequireAuth />,
