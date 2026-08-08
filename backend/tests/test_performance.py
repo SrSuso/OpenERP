@@ -60,7 +60,7 @@ async def _new_supplier(session: AsyncSession) -> int:
 
 
 async def test_sales_pagination_covers_every_row_without_overlap(
-    client: AsyncClient, login: LoginFn, committing_sessionmaker: async_sessionmaker
+    client: AsyncClient, login: LoginFn, committing_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     await login(role_name="ADMIN")
     total = 25
@@ -109,7 +109,7 @@ async def test_sales_limit_is_capped_at_500(client: AsyncClient, login: LoginFn)
 
 
 async def test_the_phase_20_status_indexes_exist(
-    committing_sessionmaker: async_sessionmaker,
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
     async with committing_sessionmaker() as session:
         rows = (
@@ -136,7 +136,7 @@ async def test_the_phase_20_status_indexes_exist(
 
 
 async def test_the_outbox_status_index_is_actually_used_by_the_planner(
-    committing_sessionmaker: async_sessionmaker,
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
     """The worker's claim query filters on ``status = 'PENDING'`` against a
     table that, in production, accumulates mostly ``SENT`` history — seed
@@ -171,7 +171,7 @@ async def test_the_outbox_status_index_is_actually_used_by_the_planner(
 
 
 async def test_purchase_orders_pagination(
-    client: AsyncClient, login: LoginFn, committing_sessionmaker: async_sessionmaker
+    client: AsyncClient, login: LoginFn, committing_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     await login(role_name="ADMIN")
     total = 12
@@ -205,7 +205,7 @@ async def test_purchase_orders_pagination(
 
 
 async def test_listing_many_sales_stays_fast(
-    client: AsyncClient, login: LoginFn, committing_sessionmaker: async_sessionmaker
+    client: AsyncClient, login: LoginFn, committing_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     """Not a real load-testing tool (see phase 20's own docs entry for that
     boundary) — a coarse smoke check that a paginated, indexed list query

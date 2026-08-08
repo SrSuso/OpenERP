@@ -28,7 +28,7 @@ y commit.
 | 18 | SMTP / outbox | ✅ completada |
 | 19 | Seguridad | ✅ completada |
 | 20 | Rendimiento | ✅ completada |
-| 21 | Backup / restore | pendiente |
+| 21 | Backup / restore | ✅ completada |
 | 22 | Tests completos de aceptación | pendiente |
 
 ---
@@ -1837,3 +1837,89 @@ Deuda técnica conocida:
   ha revisado ni ajustado en esta fase — sigue con los valores por
   defecto; ajustarlo pertenece a un ejercicio de capacidad con tráfico
   real, no a esta auditoría de código.
+
+## Fase 21 — Backup / restore
+
+**Objetivo:** que la base de datos se pueda volcar y recuperar de verdad,
+no sólo que exista un script sin probar — mismo criterio que el resto del
+proyecto con PostgreSQL real: una copia de seguridad que nunca se ha
+restaurado no es una copia de seguridad, es una promesa.
+
+Entregado:
+
+- **`scripts/backup-postgres.sh`**: copia lógica con `pg_dump --format=custom`
+  (comprimida, la única forma que `pg_restore` puede recorrer
+  selectivamente) — consistente como instantánea de una única transacción,
+  portable entre versiones mayores de PostgreSQL y entre hosts, a
+  diferencia de una copia a nivel de fichero/WAL. Lee la conexión de
+  `OPENERP_DATABASE_URL` (la misma variable que ya usa la propia
+  aplicación) o de `OPENERP_BACKUP_SOURCE_URL` si se quiere volcar un
+  origen distinto; escribe en `backups/openerp_<timestamp>.dump` por
+  defecto.
+- **`scripts/restore-postgres.sh`**: `pg_restore --clean --if-exists
+  --no-owner --no-privileges` contra la base de datos destino. Destructivo
+  por diseño (`--clean` elimina todo lo que el volcado conoce antes de
+  recrearlo) y se niega a ejecutar sin `--yes` o una confirmación escrita
+  a mano ("yes" literal) — no hay deshacer una vez borrado.
+  `--no-owner --no-privileges` porque una restauración real casi siempre
+  cae en un host o un rol distinto del que produjo el volcado (ése es
+  justamente el escenario de recuperación ante desastres); sin esos
+  indicadores, `pg_restore` intenta `ALTER ... OWNER TO`/`GRANT` a roles
+  que pueden no existir ahí, y falla por eso en vez de por algo que
+  importe de verdad.
+- **Ambos requieren los clientes de PostgreSQL** (`pg_dump`/`pg_restore`)
+  en el `PATH` — un paquete aparte del servidor
+  (`postgresql-client`/`postgresql-client-common`), no garantizado en todo
+  entorno donde corre esta suite; documentado en la cabecera de cada
+  script, y el propio test de esta fase se salta con un motivo explícito
+  en vez de fallar cuando faltan.
+- **`test_backup_restore.py`**: ejecuta los dos scripts de verdad, como
+  subprocesos, contra dos bases de datos PostgreSQL reales y desechables
+  (`fresh_database`) — vuelca una base migrada y sembrada (con una fila
+  propia, no sólo el *seed* de la migración, para probar que los datos de
+  verdad viajan) y restaura sobre una base vacía y sin migrar, comprobando
+  fila por fila que ambas coinciden al final. Prueba también que
+  restaurar sin `--yes` ni una entrada interactiva se aborta en vez de
+  colgarse o, peor, seguir adelante sin confirmación.
+- **`make db-backup` / `make db-restore f=...`** — mismos scripts, atajo
+  de conveniencia.
+- **CI**: el *job* de backend instala `postgresql-client` explícitamente
+  antes de correr los tests — el mismo criterio que ya llevó a declarar
+  el servicio `mailpit` en la fase 18 en vez de asumir algo implícito
+  sobre la imagen del *runner*.
+
+Archivos añadidos/tocados: `scripts/{backup,restore}-postgres.sh` (nuevos),
+`backend/tests/test_backup_restore.py` (nuevo), `Makefile`
+(`db-backup`/`db-restore`), `.gitignore` (`/backups/`, `*.dump`),
+`.github/workflows/ci.yml` (instala `postgresql-client` en el *job* de
+backend), `README.md`.
+
+Endpoints nuevos: ninguno — esta fase es infraestructura de operación, no
+superficie de la API.
+
+Migración: ninguna.
+
+Tests: 3 nuevos en backend (309 en total) — volcar y restaurar reproduce
+el número de filas y una fila concreta sembrada a propósito; restaurar
+sin `--yes` ni confirmación se aborta; volcar sin una URL de origen se
+aborta. `ruff`, `ruff format --check` y `mypy` limpios; `pytest -q` →
+309/309 contra PostgreSQL real (los tres de esta fase se saltan solos, en
+vez de fallar, en cualquier entorno sin `pg_dump`/`pg_restore`
+instalados).
+
+Deuda técnica conocida:
+
+- Sin programación automática (`cron`/`systemd timer`) del propio volcado
+  — hoy es un script que se ejecuta a mano o desde donde decida
+  invocarlo quien despliegue esto; documentado como el mecanismo, no la
+  política de cuándo correrlo, mismo límite que la fase 18 ya dejó
+  explícito para el *worker*.
+- Sin subida automática a almacenamiento externo (S3 o similar) ni
+  cifrado del fichero de volcado — queda en el sistema de ficheros local;
+  fuera del alcance de esta fase, que es el mecanismo de volcar/restaurar
+  en sí.
+- Copia lógica, no física/WAL — suficiente para recuperación ante
+  desastres de una tienda con un volumen moderado de datos (el propio
+  volcado de desarrollo actual pesa unos cientos de KB), pero no da
+  recuperación punto-en-el-tiempo (PITR); un despliegue que la necesite
+  añadiría `pg_basebackup`/archivado de WAL aparte, sin sustituir esto.

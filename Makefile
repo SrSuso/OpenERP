@@ -72,6 +72,14 @@ db-revision:  ## Autogenerate a migration:  make db-revision m="add products"
 db-reset:  ## Drop, recreate and migrate the database
 	cd $(BACKEND) && uv run python -m scripts.devdb reset && uv run alembic upgrade head
 
+.PHONY: db-backup
+db-backup:  ## Back up the database to backups/ (needs pg_dump on PATH)
+	./scripts/backup-postgres.sh
+
+.PHONY: db-restore
+db-restore:  ## Restore a backup:  make db-restore f=backups/openerp_....dump
+	./scripts/restore-postgres.sh "$(f)"
+
 # --- auth --------------------------------------------------------------
 
 .PHONY: bootstrap-admin

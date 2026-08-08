@@ -27,6 +27,10 @@ test-results/
 .env.local
 *.local
 
+# --- database backups (phase 21) ---
+/backups/
+*.dump
+
 # --- editors / os ---
 .idea/
 .vscode/

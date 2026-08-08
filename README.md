@@ -16,7 +16,7 @@ táctil (`/pos`), construido como **monolito modular**.
 
 ## Estado
 
-**Fases 0–20 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas, POS, pagos, devoluciones, tickets, dashboards, notificaciones, SMTP/outbox, seguridad, rendimiento) completadas.** Las fases siguientes
+**Fases 0–21 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas, POS, pagos, devoluciones, tickets, dashboards, notificaciones, SMTP/outbox, seguridad, rendimiento, backup/restore) completadas.** Las fases siguientes
 se implementan en orden estricto y ninguna avanza con la anterior rota. Ver
 [`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada y
 [`docs/USAGE.md`](docs/USAGE.md) para cómo arrancar el proyecto, crear el
@@ -114,6 +114,23 @@ El backend **nunca** usa SQLite. `pytest` resuelve el servidor así:
 
 Cada sesión crea una base de datos desechable y la migra con el `alembic upgrade
 head` real, de modo que la cadena de migraciones se ejercita en cada ejecución.
+
+---
+
+## Copias de seguridad
+
+```bash
+make db-backup                              # vuelca a backups/openerp_<timestamp>.dump
+make db-restore f=backups/openerp_....dump  # pide confirmación explícita
+```
+
+Copia lógica con `pg_dump -Fc`/`pg_restore` (`scripts/{backup,restore}-postgres.sh`)
+— requiere los clientes de PostgreSQL (`pg_dump`/`pg_restore`; paquete
+`postgresql-client`, no el mismo que el servidor) en el `PATH`. La restauración
+es destructiva (`--clean`) y se niega a ejecutar sin `--yes` o una confirmación
+escrita a mano. `backend/tests/test_backup_restore.py` la comprueba de extremo
+a extremo contra PostgreSQL real, no simulada: vuelca una base sembrada,
+restaura sobre una vacía y verifica fila por fila.
 
 ---
 
