@@ -29,7 +29,7 @@ y commit.
 | 19 | Seguridad | ✅ completada |
 | 20 | Rendimiento | ✅ completada |
 | 21 | Backup / restore | ✅ completada |
-| 22 | Tests completos de aceptación | pendiente |
+| 22 | Tests completos de aceptación | ✅ completada |
 
 ---
 
@@ -1923,3 +1923,84 @@ Deuda técnica conocida:
   volcado de desarrollo actual pesa unos cientos de KB), pero no da
   recuperación punto-en-el-tiempo (PITR); un despliegue que la necesite
   añadiría `pg_basebackup`/archivado de WAL aparte, sin sustituir esto.
+
+## Fase 22 — Tests completos de aceptación
+
+**Objetivo:** cerrar el proyecto con la prueba que ninguna fase individual
+puede dar por sí sola — que los 21 módulos anteriores, cada uno correcto por
+separado, siguen siendo correctos *juntos*, recorridos por la API HTTP real
+de principio a fin en un solo día de negocio, y que las 15 reglas de
+arquitectura del README (la lista que de verdad define "terminado" en este
+proyecto, no un documento de alcance aparte) se sostienen en ese recorrido.
+
+Entregado:
+
+- **`backend/tests/test_acceptance.py`**, dos tests:
+  - `test_full_business_lifecycle_end_to_end`: alta de producto y proveedor
+    (fases 3/5) → pedido de compra con coste distinto al del producto,
+    colocado y recibido en un almacén concreto (fases 6/9, regla 6/7:
+    *snapshot* de coste) → saldo de inventario verificado contra el
+    histórico de movimientos, no una tabla aparte (regla 1/2/3) → plantilla
+    de ticket → venta en el TPV, con sesión de caja distinta de la de
+    administración a propósito, cobrada en efectivo con cambio (regla 8:
+    `Decimal` exacto en cada paso, nunca `float`) → impresión del ticket
+    (fase 15, con el permiso de sólo lectura que ya tiene un cajero) →
+    devolución económica y devolución física de la misma línea, cada una
+    verificada por separado contra el saldo de inventario (regla 9: son
+    independientes, no dos caras de una misma operación) → panel con un
+    widget de `low_stock_count` que refleja el stock bajo real (regla 13:
+    sólo métricas de una lista blanca) → regla de notificación que detecta
+    la misma condición de stock bajo, evaluada dos veces para probar la
+    deduplicación real del índice único parcial de la fase 17 → rastro de
+    auditoría verificado para cada paso mutador anterior (producto, pedido
+    de compra, venta, ambas devoluciones) → desactivación del producto
+    (regla 14) con la venta, el ticket y el propio rastro de auditoría
+    comprobados como legibles exactamente igual después (regla 6/7 otra
+    vez: desactivar nunca reescribe el pasado).
+  - `test_permission_boundaries_hold_across_the_whole_lifecycle`: regla 11
+    muestreada entre módulos de fases distintas en una sola pasada — cada
+    fichero de tests de un módulo ya la cubre exhaustivamente para sí
+    mismo; éste es el chequeo de que cerrar el proyecto no dejó un hueco
+    *entre* módulos. Sin sesión, siete endpoints representativos devuelven
+    401; con sesión de CASHIER, cuatro acciones de supervisión (proveedores,
+    pedidos de compra, dashboards, reglas de notificación) devuelven 403.
+- No se añade infraestructura nueva ni mocks: usa exactamente los mismos
+  *fixtures* (`client`, `login`) que el resto de la suite, contra la misma
+  PostgreSQL real desechable por sesión — el mismo criterio que ya regía
+  desde la fase 0 de "nunca simular la infraestructura real" se aplica
+  también a la prueba de cierre.
+- Suite completa verificada de punta a punta antes de cerrar la fase, no
+  sólo el fichero nuevo: backend, frontend y E2E los tres en verde a la
+  vez, con la base de datos y Mailpit reales de esta máquina.
+
+Archivos añadidos/tocados: `backend/tests/test_acceptance.py` (nuevo),
+`docs/PHASES.md`, `README.md`.
+
+Endpoints nuevos: ninguno — fase de cierre, no de dominio.
+
+Migración: ninguna.
+
+Tests: 2 nuevos en backend (311 en total). Comandos ejecutados y resultado
+real:
+
+- `cd backend && uv run pytest` → 311/311 contra PostgreSQL real.
+- `cd backend && uv run ruff check . && uv run ruff format --check .` →
+  limpio.
+- `cd backend && uv run mypy .` → limpio, 161 ficheros.
+- `cd frontend && npm run lint` → limpio (un aviso preexistente de
+  `react-refresh/only-export-components` en `AuthContext.tsx`, ajeno a
+  esta fase).
+- `cd frontend && npx tsc --noEmit` → limpio.
+- `cd frontend && npm run test -- --run` → 85/85.
+- `npm run test:e2e` (desde la raíz, API + frontend reales) → 21/21.
+
+Deuda técnica conocida:
+
+- Este test recorre un único día de negocio feliz con las reglas más
+  fáciles de romper accidentalmente al tocar varios módulos a la vez; no
+  sustituye a los tests de error/límite de cada fase (ya exhaustivos en
+  sus propios ficheros), ni añade cobertura de concurrencia nueva (fases
+  7/13 ya la tienen con `committing_sessionmaker`).
+- Con esta fase se cierra el plan de las 22 fases. Cualquier trabajo
+  posterior (nuevos módulos de dominio, hardening adicional, capacidad
+  bajo tráfico real) es proyecto nuevo, no una fase pendiente de éste.
