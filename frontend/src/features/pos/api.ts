@@ -128,6 +128,7 @@ export const saleLineSchema = z.object({
   package_name: z.string(),
   quantity_packages: z.string(),
   quantity_base: z.string(),
+  quantity_returned: z.string(),
   unit_price: z.string(),
   tax_rate: z.string(),
   discount_rate: z.string(),

@@ -217,6 +217,23 @@ PHASE_11_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "CASHIER": (SALE_READ, SALE_MANAGE),
 }
 
+# --- phase 14: devoluciones ---------------------------------------------------
+RETURN_READ = "return.read"
+RETURN_MANAGE = "return.manage"
+
+PHASE_14_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(RETURN_READ, "Look up returns and their lines."),
+    PermissionDef(RETURN_MANAGE, "Process a return: refund, restock, or both."),
+)
+
+#: Frozen grants for the phase 14 migration only. Unlike sales, CASHIER
+#: gets neither — reversing money/stock on an already-completed sale is a
+#: supervisory action here, not the cashier's routine job.
+PHASE_14_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (RETURN_READ, RETURN_MANAGE),
+    "MANAGER": (RETURN_READ, RETURN_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -232,4 +249,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_9_PERMISSIONS
     + PHASE_10_PERMISSIONS
     + PHASE_11_PERMISSIONS
+    + PHASE_14_PERMISSIONS
 )

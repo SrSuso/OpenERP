@@ -21,6 +21,7 @@ def sale_line_to_read(line: SaleLine) -> SaleLineRead:
         package_factor=line.package_factor,
         quantity_packages=line.quantity_packages,
         quantity_base=line.quantity_base,
+        quantity_returned=line.quantity_returned,
         unit_price=line.unit_price,
         tax_rate=line.tax_rate,
         discount_rate=line.discount_rate,

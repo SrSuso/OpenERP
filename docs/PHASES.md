@@ -21,7 +21,7 @@ y commit.
 | 11 | Ventas | ✅ completada |
 | 12 | POS | ✅ completada |
 | 13 | Pagos | ✅ completada |
-| 14 | Devoluciones | pendiente |
+| 14 | Devoluciones | ✅ completada |
 | 15 | Tickets | pendiente |
 | 16 | Dashboards | pendiente |
 | 17 | Notificaciones | pendiente |
@@ -1149,3 +1149,90 @@ Deuda técnica conocida:
 - Imprimir un ticket físico es explícitamente la fase 15; `Receipt.tsx` es
   sólo la confirmación en pantalla que el cajero necesita antes de entregar
   el cambio.
+
+## Fase 14 — Devoluciones
+
+**Objetivo:** deshacer una venta ya `COMPLETED`, línea a línea, con el
+reembolso económico y la reposición física de existencias como conceptos
+independientes (regla 9) — un artículo dañado se reembolsa sin volver al
+lineal; un cambio de artículo vuelve al lineal sin reembolso; lo habitual
+es ambos a la vez, pero nunca están acoplados. Vive en `app.returns`, el
+paquete que la fase 0 ya reservaba ("Refunds and physical restocking, kept
+independent").
+
+Entregado:
+
+- **`returns`/`return_lines`**: una devolución cuelga de una venta
+  (`sale_id`) y cada línea cuelga de la línea de venta original
+  (`sale_line_id`), de la que hereda `package_name`/`package_factor` (una
+  devolución nunca reelige presentación) y cuyas tasas snapshotted
+  (`unit_price`/`tax_rate`/`discount_rate`, reglas 6/7) usa para calcular
+  el reembolso — nunca las del producto tal y como está hoy.
+- **`is_economic`/`is_physical`**, independientes por línea (regla 9); al
+  menos una debe ser verdadera (validado por Pydantic, 422 si no). El
+  reembolso (`refund_amount`) se calcula con la misma fórmula que
+  `compute_line_totals` de la fase 11, escalada a la cantidad devuelta, y
+  es 0 si `is_economic` es falso — nunca se guarda si no hay reembolso
+  real. El movimiento de inventario (`movement_type=RETURN`, ya reservado
+  en el enum de la fase 7) sólo se genera si `is_physical` es verdadero;
+  para un producto con lote hace falta indicar a qué lote vuelve
+  (`lot_number`, crea o reutiliza — misma conveniencia que una recepción,
+  fase 9); sin él, 422.
+- **`sale_lines.quantity_returned`** (nueva columna, `default 0`): el
+  mismo patrón que `PurchaseOrderLine.quantity_received` (fases 6/9) —
+  tope acumulado que impide devolver más de lo vendido, ya sea de una vez
+  o a lo largo de varias devoluciones parciales (422 si se excede).
+- Sólo procede contra una venta `COMPLETED` — una `DRAFT`/`CANCELLED`
+  nunca llegó a entregar nada, así que no hay nada que devolver (422). El
+  estado de la propia venta (`SaleStatus`) no cambia por una devolución —
+  su enum ya se cerró en la fase 11 ("definido en su totalidad"); llevar la
+  cuenta vive enteramente en `quantity_returned`.
+- **Permisos nuevos, con un criterio distinto al de ventas**:
+  `return.read`/`return.manage`, sólo `ADMIN`/`MANAGER` — a diferencia de
+  `sale.manage`, `CASHIER` no los recibe: deshacer dinero y stock de una
+  venta ya cerrada es aquí una acción de supervisión, no el trabajo
+  cotidiano del cajero (mismo criterio que `purchase.manage`/
+  `receiving.manage`, no el de `sale.manage`).
+
+Archivos añadidos/tocados: `backend/app/returns/*` (nuevo — `models`,
+`schemas`, `service`, `presenters`, `router`), `backend/app/sales/models.py`
+(`SaleLine.quantity_returned`), `backend/app/sales/{schemas,presenters}.py`
+(lo exponen), `backend/app/rbac/permissions.py` (`PHASE_14_*`),
+`backend/app/db/registry.py`, `backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_14_returns.py`,
+`backend/tests/test_returns.py`, `frontend/src/features/pos/api.ts`
+(`saleLineSchema` gana `quantity_returned`, sin UI de devoluciones todavía
+— ver deuda técnica).
+
+Endpoints nuevos: `POST /sales/{id}/returns`, `GET /sales/{id}/returns`,
+`GET /returns`, `GET /returns/{id}`.
+
+Migración: `2c00d9c49c90_phase_14_returns` — crea `returns`/`return_lines`;
+añade `sale_lines.quantity_returned`; siembra `return.read`/
+`return.manage` para `ADMIN`/`MANAGER`. `downgrade()` deshace también el
+seed de permisos; verificado con *round-trip* completo y `alembic check`.
+
+Tests: 14 nuevos (231 en total) — devolución sólo económica no toca stock,
+devolución sólo física no reembolsa, devolución completa hace ambas cosas,
+exceso sobre lo vendido rechazado (de una vez y acumulado en varias
+devoluciones parciales), línea sin economic ni physical rechazada por
+Pydantic, devolución contra venta `DRAFT` rechazada, línea que no
+pertenece a la venta rechazada, producto con lote sin `lot_number`
+rechazado, producto con lote con `lot_number` crea el lote y el stock
+aparece ahí, `CASHIER` sin acceso (403), `ADMIN`/`MANAGER` sí, listar por
+venta y por query param, y por id. `ruff`, `ruff format --check` y `mypy`
+limpios; `pytest -q` → 231/231 contra PostgreSQL real. Frontend: `tsc -b`,
+`eslint`, `prettier --check`, `vitest run` (57/57, sin tests nuevos propios
+de esta fase) y `vite build` limpios — el único cambio de frontend es el
+esquema Zod, que las suites ya existentes ejercitan. 16/16 specs E2E siguen
+en verde (esta fase no añade ninguna: sin UI que probar).
+
+Deuda técnica conocida:
+
+- Sin pantalla de devoluciones en `/admin` todavía (mismo criterio que
+  fases 1–13: la API está completa y documentada en `/api/docs`).
+- Una devolución no puede repartirse entre varios lotes de origen aunque
+  la venta original sí consumiera varios vía FEFO (fase 8) — se asume que
+  el cliente devuelve una cantidad que encaja en un único lote de destino;
+  suficiente para el caso de uso real (el cliente no suele saber de qué
+  lote salió su unidad), ampliable sin romper el modelo si hiciera falta.

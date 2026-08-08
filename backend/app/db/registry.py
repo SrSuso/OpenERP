@@ -22,6 +22,7 @@ from app.lots import models as lot_models
 from app.pricing import models as pricing_models
 from app.purchasing import models as purchasing_models
 from app.rbac import models as rbac_models
+from app.returns import models as return_models
 from app.sales import models as sales_models
 from app.suppliers import models as supplier_models
 from app.users import models as user_models
@@ -38,6 +39,7 @@ __all__ = [
     "pricing_models",
     "purchasing_models",
     "rbac_models",
+    "return_models",
     "sales_models",
     "supplier_models",
     "user_models",

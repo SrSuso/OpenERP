@@ -68,6 +68,7 @@ function saleWithMilkLine(id: number): Sale {
         package_name: 'Brick',
         quantity_packages: '1.000000',
         quantity_base: '1.000000',
+        quantity_returned: '0.000000',
         unit_price: '1.200000',
         tax_rate: '10.000000',
         discount_rate: '0.000000',

@@ -88,6 +88,11 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: above (rule 3) — what phase 13's checkout actually moves out of the
     #: ledger.
     quantity_base: Mapped[Quantity]
+    #: Running total already given back through ``app.returns`` (phase 14)
+    #: — same pattern as ``PurchaseOrderLine.quantity_received`` (phases
+    #: 6/9). Never exceeds ``quantity_base``; a line can't be returned twice
+    #: over.
+    quantity_returned: Mapped[Quantity] = mapped_column(default=Decimal(0), server_default="0")
 
     #: Price snapshot, per base unit — copied from ``Product.list_price`` at
     #: the moment the line was added, never recomputed from it afterwards

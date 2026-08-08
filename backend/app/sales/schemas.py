@@ -41,6 +41,8 @@ class SaleLineRead(BaseModel):
     package_factor: Decimal
     quantity_packages: Decimal
     quantity_base: Decimal
+    #: Already given back through a return (phase 14) — 0 until one exists.
+    quantity_returned: Decimal
     unit_price: Decimal
     tax_rate: Decimal
     discount_rate: Decimal
