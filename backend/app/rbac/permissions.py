@@ -132,6 +132,26 @@ PHASE_6_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (PURCHASE_READ, PURCHASE_MANAGE),
 }
 
+# --- phase 7: inventory ledger -----------------------------------------------
+INVENTORY_READ = "inventory.read"
+INVENTORY_MANAGE = "inventory.manage"
+
+PHASE_7_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(INVENTORY_READ, "Look up stock movements and current balances."),
+    PermissionDef(
+        INVENTORY_MANAGE,
+        "Record manual adjustments/transfers, manage warehouses, rebuild stock_balance.",
+    ),
+)
+
+#: Frozen grants for the phase 7 migration only. CASHIER gets read access —
+#: the POS (phase 12) needs to show stock — never manage.
+PHASE_7_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (INVENTORY_READ, INVENTORY_MANAGE),
+    "MANAGER": (INVENTORY_READ, INVENTORY_MANAGE),
+    "CASHIER": (INVENTORY_READ,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -142,4 +162,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_4_PERMISSIONS
     + PHASE_5_PERMISSIONS
     + PHASE_6_PERMISSIONS
+    + PHASE_7_PERMISSIONS
 )

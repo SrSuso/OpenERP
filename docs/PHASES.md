@@ -14,7 +14,7 @@ y commit.
 | 4 | Precios | ✅ completada |
 | 5 | Proveedores | ✅ completada |
 | 6 | Compras | ✅ completada |
-| 7 | Inventory ledger | pendiente |
+| 7 | Inventory ledger | ✅ completada |
 | 8 | Lotes y caducidad | pendiente |
 | 9 | Recepciones | pendiente |
 | 10 | Categorías POS | pendiente |
@@ -523,3 +523,100 @@ Deuda técnica conocida:
 - `PARTIALLY_RECEIVED`/`RECEIVED` y el aumento real de inventario son
   explícitamente de la fase 9, no de ésta — ver el *docstring* de
   `app.purchasing`.
+
+## Fase 7 — Inventory ledger
+
+**Objetivo:** el inventario deja de ser un número — pasa a ser la suma de un
+histórico de movimientos (regla 1), con una proyección (`stock_balance`)
+que siempre puede reconstruirse desde cero a partir de él (regla 2), y que
+se actualiza en la misma transacción que cada movimiento (regla 5).
+
+Entregado:
+
+- **`stock_movements`** (*append-only*, sin `updated_at`, sin update/delete
+  en `app.inventory.service`): `product_id`, `warehouse_id`, `location_id`,
+  `quantity` con signo (unidad base, regla 3), `movement_type`
+  (`PURCHASE_RECEIPT`/`SALE`/`RETURN`/`ADJUSTMENT`/`WASTE`/`TRANSFER_IN`/
+  `TRANSFER_OUT`), `reference_type`/`reference_id`, `unit_cost` (*snapshot*,
+  regla 6), `user_id`. **Sin `lot_id` todavía** a propósito — la fase 8
+  crea `lots`, y añadir esa columna antes tendría que referenciar una tabla
+  inexistente.
+- **`warehouses`/`locations`**: el enunciado da por hecho que existen (los
+  usa como clave de `stock_balance`) sin dedicarles una fase propia; se
+  crean aquí porque el *ledger* los necesita. Sembrado un almacén/ubicación
+  por defecto (*"Tienda principal"* / *"Almacén"*) — dato de referencia,
+  como los roles de la fase 1: sin fase de "alta inicial", una tienda no
+  puede mover stock sin que exista al menos uno.
+- **`stock_balance`**: única tabla no *append-only* del módulo — es
+  explícitamente una proyección, reconstruible en cualquier momento.
+- **`record_movement`**, el punto de paso único que usarán las fases 9
+  (recepciones), 11 (ventas) y 14 (devoluciones) para tocar stock: escribe
+  el movimiento y actualiza `stock_balance` en la misma transacción vía
+  `INSERT ... ON CONFLICT DO UPDATE` de Postgres — atómico tanto si la fila
+  de balance ya existe como si es la primera vez que se toca esa
+  combinación producto/almacén/ubicación.
+- Manual ya disponible en esta fase (antes de que existan recepciones/
+  ventas): `POST /stock-movements/adjustments` (`ADJUSTMENT`/`WASTE` — este
+  último siempre se normaliza a negativo aunque se mande en positivo) y
+  `POST /stock-movements/transfers` (`TRANSFER_OUT`+`TRANSFER_IN` pareados,
+  atómicos).
+- **`POST /stock-balance/rebuild`**: borra `stock_balance` entera y la
+  reconstruye sumando `stock_movements` — la capacidad que pide
+  explícitamente el enunciado, con su prueba automática
+  (`test_rebuild_stock_balance_reproduces_identical_balances`): crea
+  movimientos, compara el balance antes/después de reconstruir, deben ser
+  idénticos.
+- **Prueba de concurrencia real** (no simulada): 10 tareas `asyncio`
+  concurrentes, cada una con su propia conexión que hace *commit* de verdad
+  (`committing_sessionmaker`, ya preparado desde la fase 0 para esto),
+  incrementan en 1 el mismo producto/almacén/ubicación; el resultado final
+  debe ser 10, ni menos.
+- **Permisos**: `inventory.read` (incluido `CASHIER`, el POS de la fase 12
+  necesita ver stock) / `inventory.manage` (`ADMIN`/`MANAGER`).
+- **Dos fallos reales encontrados por los tests, no por revisión de
+  código**:
+  1. La primera implementación usaba `SELECT ... FOR UPDATE` y creaba la
+     fila de `stock_balance` si no existía. `FOR UPDATE` sólo bloquea filas
+     que **ya existen** — dos movimientos concurrentes sobre una
+     combinación nueva pueden ver ambos "no hay fila" e intentar
+     insertarla a la vez; el segundo choca con la restricción única
+     (`duplicate key value violates unique constraint`). Sólo lo detectó la
+     prueba de concurrencia real, ejecutándose contra PostgreSQL de verdad
+     — una prueba con mocks nunca lo habría visto. Arreglado con
+     `INSERT ... ON CONFLICT DO UPDATE`, que resuelve alta y actualización
+     concurrente en una sola sentencia que Postgres serializa internamente.
+  2. Mismo patrón de precisión que en fases 3 y 5: `record_movement`
+     devolvía el objeto `StockMovement` con el `Decimal` exacto recién
+     asignado (`"-2"`) en vez del normalizado por Postgres a
+     `NUMERIC(18,6)` (`"-2.000000"`). Arreglado con
+     `session.refresh(movement)` tras el `flush()`.
+
+Archivos añadidos/tocados: `backend/app/inventory/*` (nuevo),
+`backend/app/rbac/permissions.py` (`PHASE_7_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_7_inventory_ledger.py`,
+`backend/tests/test_inventory.py`.
+
+Endpoints nuevos: `GET|POST /warehouses`,
+`GET|POST /warehouses/{id}/locations` · `GET /stock-movements`,
+`GET /stock-balance`, `POST /stock-movements/adjustments`,
+`POST /stock-movements/transfers`, `POST /stock-balance/rebuild`.
+
+Migración: `b10c54df868a_phase_7_inventory_ledger` — crea `warehouses`,
+`locations`, `stock_balance`, `stock_movements`; siembra
+`inventory.read`/`inventory.manage` y el almacén/ubicación por defecto.
+`downgrade()` deshace también el seed de permisos (el almacén por defecto
+desaparece solo al borrarse la tabla); verificado con *round-trip* completo
+y `alembic check`.
+
+Tests: 22 nuevos (162 en total), incluidas la prueba de reconstrucción
+exigida por el enunciado y una prueba de concurrencia real contra
+PostgreSQL. `ruff`, `ruff format --check` y `mypy` limpios; `pytest -q` →
+162/162.
+
+Deuda técnica conocida:
+
+- Sin pantalla de inventario en `/admin` todavía (mismo criterio que fases
+  1–6).
+- `lot_id` llega en la fase 8; hasta entonces todo movimiento es a nivel de
+  producto/almacén/ubicación, sin lote.
