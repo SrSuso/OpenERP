@@ -12,7 +12,7 @@ y commit.
 | 2 | Auditoría | ✅ completada |
 | 3 | Productos | ✅ completada |
 | 4 | Precios | ✅ completada |
-| 5 | Proveedores | pendiente |
+| 5 | Proveedores | ✅ completada |
 | 6 | Compras | pendiente |
 | 7 | Inventory ledger | pendiente |
 | 8 | Lotes y caducidad | pendiente |
@@ -401,3 +401,58 @@ Deuda técnica conocida:
 - `product_price_history` no se enlaza todavía con ventas (fase 11) —
   cuando existan, cada línea de venta guardará su propio *snapshot* de
   precio (regla 6), independiente de esta tabla.
+
+## Fase 5 — Proveedores
+
+**Objetivo:** ficha de proveedor y qué productos vende cada uno (su propio
+SKU y coste), como base para pedidos de compra (fase 6) y recepciones
+(fase 9).
+
+Entregado:
+
+- **`suppliers`**: nombre, CIF/NIF, email, teléfono, dirección, `is_active`
+  (regla 14: nunca se borra — las compras lo referenciarán desde la fase 6).
+- **`product_suppliers`**: enlace producto↔proveedor con el SKU y coste
+  *del proveedor* para ese producto — independiente de `products.cost`
+  (que es lo que pagamos la última vez). Único por `(product_id,
+  supplier_id)`; `PUT` hace *upsert* (crear o actualizar el mismo enlace,
+  nunca duplicarlo). Un enlace marcado `is_preferred` no puede borrarse sin
+  fijar antes otro proveedor preferente (409) — evita que un producto se
+  quede sin proveedor preferente por accidente.
+- **Permisos**: `supplier.read`/`supplier.manage` (`ADMIN`/`MANAGER`;
+  `CASHIER` no necesita ver proveedores).
+- **Corregido durante la propia fase**: mismo bug de precisión que la fase 3
+  (`populate_existing` ausente) — reaparece aquí porque
+  `upsert_product_supplier` hacía `session.refresh(existing,
+  attribute_names=["product", "supplier"])`, que sólo refresca esas dos
+  relaciones y deja `supplier_cost` con el `Decimal` exacto recién asignado
+  en vez del normalizado por Postgres a `NUMERIC(18,6)`. Detectado por los
+  tests (`"0.80" != "0.800000"`), no por revisión de código. Mismo arreglo:
+  releer con `populate_existing=True` en vez de `refresh()` selectivo.
+
+Archivos añadidos/tocados: `backend/app/suppliers/*` (nuevo),
+`backend/app/rbac/permissions.py` (`PHASE_5_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_5_suppliers.py`,
+`backend/tests/test_suppliers.py`.
+
+Endpoints nuevos: `GET|POST /suppliers`, `GET /suppliers/{id}`,
+`PATCH /suppliers/{id}`, `POST /suppliers/{id}/deactivate`,
+`GET /suppliers/{id}/products` · `GET /products/{id}/suppliers`,
+`PUT|DELETE /products/{id}/suppliers/{supplier_id}`.
+
+Migración: `aaec241cb81f_phase_5_suppliers` — crea `suppliers`,
+`product_suppliers`; siembra `supplier.read`/`supplier.manage` para
+`ADMIN`/`MANAGER`. `downgrade()` deshace también el seed; verificado con
+*round-trip* completo y `alembic check`.
+
+Tests: 15 nuevos (137 en total). `ruff`, `ruff format --check` y `mypy`
+limpios; `pytest -q` → 137/137 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de proveedores en `/admin` todavía (mismo criterio que fases
+  1–4).
+- El histórico de compras por producto ("consultar desde la ficha de
+  producto, más reciente primero") es explícitamente de la fase 6
+  (`purchase_orders`), no de ésta.

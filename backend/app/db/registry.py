@@ -19,6 +19,7 @@ from app.catalog import models as catalog_models
 from app.db.base import Base
 from app.pricing import models as pricing_models
 from app.rbac import models as rbac_models
+from app.suppliers import models as supplier_models
 from app.users import models as user_models
 
 # ... one line per module as its phase lands.
@@ -30,5 +31,6 @@ __all__ = [
     "catalog_models",
     "pricing_models",
     "rbac_models",
+    "supplier_models",
     "user_models",
 ]
