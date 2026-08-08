@@ -19,7 +19,7 @@ y commit.
 | 9 | Recepciones | ✅ completada |
 | 10 | Categorías POS | ✅ completada |
 | 11 | Ventas | ✅ completada |
-| 12 | POS | pendiente |
+| 12 | POS | ✅ completada |
 | 13 | Pagos | pendiente |
 | 14 | Devoluciones | pendiente |
 | 15 | Tickets | pendiente |
@@ -918,3 +918,114 @@ Deuda técnica conocida:
   tener algo en el ticket). Añadir más de lo que hay en almacén a un
   `DRAFT` es válido; fallará al intentar cobrarlo si sigue sin stock
   suficiente.
+
+## Fase 12 — POS
+
+**Objetivo:** la rejilla táctil de `/pos` que un cajero usa de verdad para
+construir el ticket — categorías (fase 10), productos (fase 3), carrito
+(fase 11) y código de barras, todo sobre la API que las fases anteriores ya
+dejaron completa. Puramente frontend: no hay endpoints, tablas ni
+migraciones nuevas. Cobrar sigue sin estar aquí a propósito — la fase 13
+añade pagos/checkout sobre esta misma venta `DRAFT`.
+
+Entregado:
+
+- **Resolución de sesión del TPV**: al entrar, `PosHomePage` resuelve el
+  primer almacén activo (`GET /warehouses`) y su primera ubicación activa
+  (`GET /warehouses/{id}/locations`) — hoy sólo existe el almacén sembrado
+  por la fase 7 (*"Tienda principal"* / *"Almacén"*), pero no se asume un id
+  fijo. Con eso resuelto, reanuda la venta `DRAFT` que ese almacén ya
+  tuviera abierta (`GET /sales?status=DRAFT&warehouse_id=`, la más reciente
+  si hubiera más de una) o abre una nueva (`POST /sales`) — recargar la
+  página nunca pierde el ticket en curso.
+- **`ProductGrid`**: rejilla táctil de botones; tocar uno añade una unidad
+  de la presentación base del producto (`POST /sales/{id}/lines`) —
+  escoger otra presentación/cantidad desde la rejilla queda fuera de
+  alcance a propósito, ver deuda técnica.
+- **`CategoryTabs`**: pestañas por categoría POS (fase 10, con su color),
+  más una pestaña *"Todos"* sin filtro — no hay una categoría de backend
+  para "todos", es sólo la ausencia de `pos_category_id` en la query.
+- **Código de barras**: campo de texto que un lector físico también puede
+  rellenar (escribe el código y un `Enter`), que llama a
+  `POST /sales/{id}/lines/by-barcode` (fase 11) sin pasar por la rejilla.
+- **`Cart`**: las líneas de la venta actual, con su total, botón para
+  quitar cada línea (`DELETE /sales/{id}/lines/{line_id}`) y **Cancelar
+  venta** (`POST /sales/{id}/cancel`) — cancelar reabre automáticamente una
+  venta nueva (mismo mecanismo de resolución de sesión de arriba), así que
+  el TPV queda utilizable al instante.
+- **Corregido antes de cerrar la fase** (código ya escrito en una sesión
+  anterior, sin commitear): `ProductGrid` llamaba a `basePackage(product)`
+  sin importarlo de `@/features/pos/api` — no compilaba (`tsc -b`, que a
+  diferencia de `tsc --noEmit` suelto sí construye `tsconfig.app.json` de
+  verdad; el `--noEmit` suelto no había detectado nada al no compilar
+  ningún archivo) — y tenía un ternario sin efecto en el precio mostrado
+  (`factor === '1.000000' ? list_price : list_price`, ambas ramas iguales).
+  Arreglado mostrando directamente `product.list_price`.
+- **Bug real encontrado por los tests, no por revisión de código**: cancelar
+  la venta y que el TPV abriera una nueva sólo funcionaba la primera vez.
+  `PosHomePage` guarda la sesión de venta en estado local, resuelta una vez
+  contra la caché de TanStack Query de `GET /sales?status=DRAFT&...`; esa
+  caché nunca se invalidaba tras cancelar, así que el efecto que "reanuda o
+  abre" resucitaba la venta que se acababa de cancelar en vez de abrir una
+  de verdad. Detectado por `PosHomePage.test.tsx` (mock de backend con
+  estado propio, no sólo respuestas fijas por endpoint), no por revisión.
+  Arreglado sincronizando esa caché explícitamente
+  (`queryClient.setQueryData`) en el `onSuccess` de abrir y de cancelar.
+- **`backend/scripts/seed_e2e_catalog.py`** (nuevo, idempotente, mismo
+  patrón que `seed_e2e_users.py` de la fase 1): siembra una categoría POS y
+  dos productos con código de barras — sin esto la rejilla del TPV estaría
+  siempre vacía en un entorno nuevo. Enganchado en `make seed-e2e-catalog` y
+  en `.github/workflows/ci.yml`, junto al seed de usuarios ya existente.
+
+Archivos añadidos/tocados: `frontend/src/lib/format.ts` (nuevo —
+`formatMoney`/`formatQuantity`, único punto que convierte un
+`NUMERIC(18,6)` en texto), `frontend/src/features/pos/{api,CategoryTabs,
+ProductGrid,Cart}.tsx` (nuevos), `frontend/src/pages/pos/PosHomePage.tsx`
+(sustituye el *placeholder* de la fase 0), `backend/scripts/seed_e2e_catalog.py`
+(nuevo), `Makefile` (`seed-e2e-catalog`), `.github/workflows/ci.yml` (paso
+de seed), `docs/USAGE.md` (§6, nueva), `tests/e2e/specs/pos.sale.spec.ts`
+(nuevo).
+
+Endpoints nuevos: ninguno — fase puramente de frontend sobre la API de las
+fases 3/7/10/11.
+
+Migración: ninguna.
+
+Tests: 26 nuevos en frontend (Vitest + React Testing Library) —
+`lib/format.test.ts` (6, incluye negativos y redondeo a 3 decimales),
+`CategoryTabs.test.tsx` (4), `ProductGrid.test.tsx` (6, estados pendiente/
+error/vacío/deshabilitado incluidos), `Cart.test.tsx` (6), y
+`PosHomePage.test.tsx` (4, con un *fake* de backend con estado propio en vez
+de respuestas fijas, para poder probar reanudar/cancelar/recargar de
+verdad) — este último es el que encontró el bug de caché descrito arriba.
+`tsc -b`, `eslint` y `prettier --check` limpios; `vitest run` → 26/26 (más
+las que ya había: `lib/api.test.ts`). 4 specs E2E nuevas
+(`tests/e2e/specs/pos.sale.spec.ts`, proyecto `pos` con `hasTouch`): tocar
+producto añade línea y quitarla la vacía, código de barras añade línea,
+cancelar vacía el carrito y dejar el TPV listo al instante, recargar
+reanuda la misma venta — 13/13 specs E2E en verde (incluidas las de fases
+0/1 sin tocar), dos pasadas consecutivas sin *flakiness*. Backend sin
+cambios: `pytest -q` sigue en 205/205.
+
+Deuda técnica conocida:
+
+- Un cajero sólo puede vender **una unidad de la presentación base** por
+  toque — elegir una presentación distinta (p. ej. una caja en vez de una
+  unidad), una cantidad distinta de 1, o un descuento por línea, todo ya
+  soportado por `POST /sales/{id}/lines` (fase 11), no tiene UI todavía.
+  Candidato natural para un modal/*long-press* cuando haga falta, sin tocar
+  el backend.
+- **La sesión de venta es por almacén, no por cajero ni por terminal**:
+  `GET /sales?status=DRAFT&warehouse_id=` no filtra por
+  `cashier_user_id`, así que dos cajeros (o dos pestañas) abiertos a la vez
+  contra el mismo almacén reanudarían y mutarían el mismo ticket — correcto
+  para el único TPV que existe hoy (un almacén, una ubicación, sembrados
+  por la fase 7), pero no aguanta varios terminales físicos por tienda. Lo
+  expuso la propia suite E2E (dos tests de `pos.sale.spec.ts` corriendo en
+  paralelo se pisaban el ticket el uno al otro); el spec se dejó en
+  ejecución serial (`test.describe.serial`) como mitigación de test, no
+  como arreglo de producto. Una fase futura que necesite multi-terminal
+  añadiría un identificador de sesión/terminal explícito al filtro.
+- Sin pantalla de ventas en `/admin` todavía (mismo criterio que fases
+  1–11): la API está completa y documentada en `/api/docs`.
+- No hay botón de cobro — a propósito, es la fase 13.

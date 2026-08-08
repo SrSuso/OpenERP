@@ -1,8 +1,10 @@
 # Guía de uso
 
 Cómo poner en marcha OpenERP y usarlo, tal y como está hoy (fases 0 y 1:
-bootstrap + autenticación/RBAC). Cada fase nueva añade su propia sección
-aquí, sin reescribir las anteriores.
+bootstrap + autenticación/RBAC; fase 12: el TPV). Las fases intermedias
+(2–11) son sólo API, documentada en `/api/docs` — no añaden nada que un
+usuario final "use" directamente, así que no tienen sección propia aquí.
+Cada fase que sí la necesite añade la suya, sin reescribir las anteriores.
 
 ---
 
@@ -215,7 +217,10 @@ no mezclar usuarios de prueba con los tuyos; créala con
 son `e2e-admin@example.com` / `e2e-cashier@example.com` (contraseñas en
 `backend/scripts/seed_e2e_users.py`), o las que fijes en
 `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`/`E2E_CASHIER_EMAIL`/`E2E_CASHIER_PASSWORD`.
-El job de CI hace exactamente esto (ver `.github/workflows/ci.yml`).
+Además, desde la fase 12, `make seed-e2e-catalog` siembra una categoría POS y
+un par de productos (idempotente, ver `backend/scripts/seed_e2e_catalog.py`)
+— sin esto el TPV cargaría, pero la rejilla estaría vacía. El job de CI hace
+exactamente esto (ver `.github/workflows/ci.yml`).
 
 o los comandos equivalentes por partes, como en el README.
 
@@ -232,3 +237,32 @@ o los comandos equivalentes por partes, como en el README.
 Son el punto de partida sembrado por la migración, no una lista cerrada:
 cualquier `ADMIN` puede crear roles nuevos o cambiar los permisos de estos
 tres desde `PATCH /roles/{id}/permissions`.
+
+---
+
+## 6. Usar el TPV (fase 12)
+
+`/pos` es una pantalla táctil de pantalla completa, pensada para un cajero
+(rol `CASHIER`, sólo necesita `pos.access`). Cobrar (checkout/pagos) es la
+fase 13 — de momento el TPV sólo construye el ticket.
+
+Para verla con productos de verdad en desarrollo, siembra un catálogo mínimo
+(idempotente, los mismos datos que usa la suite E2E):
+
+```bash
+make seed-e2e-catalog
+```
+
+Al entrar a `/pos`:
+
+- Se reanuda automáticamente la venta `DRAFT` que ya tuviera abierta este
+  almacén (recargar la página no la pierde), o se abre una nueva si no
+  había ninguna.
+- Tocar un producto de la rejilla añade una unidad de su presentación base
+  al ticket; las pestañas de arriba filtran por categoría POS (fase 10).
+- El campo de código de barras (pensado también para un lector físico, que
+  escribe el código y pulsa "Intro") añade la línea correspondiente sin
+  pasar por la rejilla.
+- **Cancelar venta** cancela el ticket actual (irreversible) y abre uno
+  nuevo automáticamente — no hay forma de "vaciar" un ticket salvo quitando
+  línea a línea o cancelándolo entero.

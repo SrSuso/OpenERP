@@ -1,0 +1,107 @@
+"""Seed a minimal, real catalog for the Playwright E2E suite and local dev.
+
+Without this, `/pos` has a warehouse/location (seeded by the phase 7
+migration) but nothing to sell — the grid would always render its empty
+state. Idempotent — safe to run on every CI job / local E2E run; does
+nothing to a POS category or product that already exists (matched by name
+and SKU respectively).
+
+Usage::
+
+    uv run python -m scripts.seed_e2e_catalog
+"""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+from decimal import Decimal
+
+from sqlalchemy import select
+
+from app.catalog import service as catalog
+from app.catalog.models import PosCategory, Product
+from app.catalog.schemas import PosCategoryCreate, ProductCreate
+from app.db import registry as _registry  # noqa: F401 — registers every ORM model
+from app.db.session import session_scope
+
+
+@dataclass(frozen=True)
+class _ProductSpec:
+    sku: str
+    name: str
+    base_unit_name: str
+    base_barcode: str
+    cost: Decimal
+    list_price: Decimal
+    tax_rate: Decimal
+
+
+_POS_CATEGORY_NAME = "Bebidas"
+
+_PRODUCTS = (
+    _ProductSpec(
+        sku="LECHE-1L",
+        name="Leche entera 1L",
+        base_unit_name="Brick",
+        base_barcode="8410000000010",
+        cost=Decimal("0.80"),
+        list_price=Decimal("1.20"),
+        tax_rate=Decimal("10"),
+    ),
+    _ProductSpec(
+        sku="AGUA-1500",
+        name="Agua mineral 1.5L",
+        base_unit_name="Botella",
+        base_barcode="8410000000027",
+        cost=Decimal("0.30"),
+        list_price=Decimal("0.60"),
+        tax_rate=Decimal("10"),
+    ),
+)
+
+
+async def _seed() -> int:
+    async with session_scope() as session:
+        category = (
+            await session.execute(select(PosCategory).where(PosCategory.name == _POS_CATEGORY_NAME))
+        ).scalar_one_or_none()
+        if category is None:
+            category = await catalog.create_pos_category(
+                session, PosCategoryCreate(name=_POS_CATEGORY_NAME, color="#0ea5e9")
+            )
+            print(f"created POS category: {category.name}")
+        else:
+            print(f"already present: POS category {category.name}")
+
+        for spec in _PRODUCTS:
+            existing = (
+                await session.execute(select(Product).where(Product.sku == spec.sku))
+            ).scalar_one_or_none()
+            if existing is not None:
+                print(f"already present: product {spec.sku}")
+                continue
+
+            await catalog.create_product(
+                session,
+                ProductCreate(
+                    sku=spec.sku,
+                    name=spec.name,
+                    pos_category_id=category.id,
+                    base_unit_name=spec.base_unit_name,
+                    base_barcode=spec.base_barcode,
+                    cost=spec.cost,
+                    list_price=spec.list_price,
+                    tax_rate=spec.tax_rate,
+                ),
+            )
+            print(f"created product: {spec.sku}")
+    return 0
+
+
+def main() -> int:
+    return asyncio.run(_seed())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -16,7 +16,7 @@ táctil (`/pos`), construido como **monolito modular**.
 
 ## Estado
 
-**Fases 0–11 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas) completadas.** Las fases siguientes
+**Fases 0–12 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas, POS) completadas.** Las fases siguientes
 se implementan en orden estricto y ninguna avanza con la anterior rota. Ver
 [`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada y
 [`docs/USAGE.md`](docs/USAGE.md) para cómo arrancar el proyecto, crear el
@@ -64,7 +64,8 @@ cd backend && uv run alembic upgrade head && cd ..
 
 No hay registro público: crea el primer administrador con
 `make bootstrap-admin` (interactivo) antes de iniciar sesión — detalle en
-[`docs/USAGE.md`](docs/USAGE.md).
+[`docs/USAGE.md`](docs/USAGE.md). Para ver el TPV (`/pos`) con productos de
+ejemplo en vez de una rejilla vacía: `make seed-e2e-catalog` (idempotente).
 
 ### 3. Arrancar
 

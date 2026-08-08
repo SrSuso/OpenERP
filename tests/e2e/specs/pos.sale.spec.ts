@@ -1,0 +1,85 @@
+import { expect, test, type Page } from '@playwright/test';
+
+// Seeded by `make seed-e2e-catalog` (backend/scripts/seed_e2e_catalog.py) —
+// idempotent, so it is safe to assume this catalog exists whenever this
+// suite runs (CI seeds it explicitly; see docs/USAGE.md for local dev).
+const MILK_NAME = /leche entera 1l/i;
+const WATER_BARCODE = '8410000000027';
+
+const CASHIER_EMAIL = process.env.E2E_CASHIER_EMAIL ?? 'e2e-cashier@example.com';
+const CASHIER_PASSWORD = process.env.E2E_CASHIER_PASSWORD ?? 'e2e-cashier-pass-123';
+
+async function loginAsCashier(page: Page) {
+  await page.goto('/login');
+  await page.getByLabel(/^email$/i).fill(CASHIER_EMAIL);
+  await page.getByLabel(/contraseña/i).fill(CASHIER_PASSWORD);
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await expect(page).toHaveURL(/\/pos$/);
+}
+
+/**
+ * Cancelling always succeeds on an open `DRAFT` sale, empty or not (phase
+ * 11), so this gives every test a known-empty cart to start from — running
+ * this suite twice against the same database must not make the second run
+ * see leftovers from the first.
+ */
+async function resetCart(page: Page) {
+  await page.getByRole('button', { name: /cancelar venta/i }).click();
+  await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
+}
+
+// Every test here shares the one `DRAFT` sale a warehouse can have resumed
+// at a time (phase 11/12 have no per-terminal session, only per-warehouse) —
+// run serially so two of *these* tests never race each other over it. (This
+// spec is the only one that mutates a sale; specs that merely load `/pos`
+// cannot collide with it the same way.)
+test.describe.serial('POS cart (phase 12)', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsCashier(page);
+    await resetCart(page);
+  });
+
+  test('tapping a product on its category tab adds it to the cart, and removing it empties it again', async ({
+    page,
+  }) => {
+    await page.getByRole('tab', { name: 'Bebidas' }).click();
+    await page.getByRole('button', { name: MILK_NAME }).click();
+
+    await expect(page.getByText(/el carrito está vacío/i)).not.toBeVisible();
+    const removeButton = page.getByRole('button', { name: /quitar leche entera 1l/i });
+    await expect(removeButton).toBeVisible();
+
+    await removeButton.click();
+
+    await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
+  });
+
+  test('a barcode can be typed straight in, without touching the grid', async ({ page }) => {
+    await page.getByLabel(/código de barras/i).fill(WATER_BARCODE);
+    await page.getByRole('button', { name: /^añadir$/i }).click();
+
+    await expect(page.getByRole('button', { name: /quitar agua mineral 1\.5l/i })).toBeVisible();
+  });
+
+  test('cancelling the sale clears the cart and the till is immediately usable again', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: MILK_NAME }).click();
+    await expect(page.getByText(/el carrito está vacío/i)).not.toBeVisible();
+
+    await page.getByRole('button', { name: /cancelar venta/i }).click();
+    await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
+
+    await page.getByRole('button', { name: MILK_NAME }).click();
+    await expect(page.getByText(/el carrito está vacío/i)).not.toBeVisible();
+  });
+
+  test('reloading the page resumes the same open sale instead of losing it', async ({ page }) => {
+    await page.getByRole('button', { name: MILK_NAME }).click();
+    await expect(page.getByText(/el carrito está vacío/i)).not.toBeVisible();
+
+    await page.reload();
+
+    await expect(page.getByRole('button', { name: /quitar leche entera 1l/i })).toBeVisible();
+  });
+});

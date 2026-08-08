@@ -82,6 +82,10 @@ bootstrap-admin:  ## Create the first admin user (interactive)
 seed-e2e:  ## Seed the fixed admin/cashier accounts the Playwright suite logs in as
 	cd $(BACKEND) && uv run python -m scripts.seed_e2e_users
 
+.PHONY: seed-e2e-catalog
+seed-e2e-catalog:  ## Seed a minimal POS category/products so /pos has something to sell
+	cd $(BACKEND) && uv run python -m scripts.seed_e2e_catalog
+
 # --- run -------------------------------------------------------------------
 
 .PHONY: dev-api

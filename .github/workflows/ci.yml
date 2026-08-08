@@ -199,6 +199,10 @@ jobs:
         working-directory: backend
         run: uv run python -m scripts.seed_e2e_users
 
+      - name: Seed E2E catalog (POS category/products for the till)
+        working-directory: backend
+        run: uv run python -m scripts.seed_e2e_catalog
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
