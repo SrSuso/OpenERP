@@ -13,6 +13,7 @@ inspects ``Base.metadata``.
 
 from __future__ import annotations
 
+from app.audit import models as audit_models
 from app.auth import models as auth_models
 from app.db.base import Base
 from app.rbac import models as rbac_models
@@ -20,4 +21,4 @@ from app.users import models as user_models
 
 # ... one line per module as its phase lands.
 
-__all__ = ["Base", "auth_models", "rbac_models", "user_models"]
+__all__ = ["Base", "audit_models", "auth_models", "rbac_models", "user_models"]

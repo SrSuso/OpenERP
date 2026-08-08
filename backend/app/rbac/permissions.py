@@ -2,15 +2,23 @@
 
 Every phase appends its own keys here (never renames or removes an existing
 one — a role that already granted it must keep working). This module is the
-single source of truth that:
-
-- :mod:`app.rbac.dependencies` compares requests against.
-- the phase 1 migration seeds into the ``permissions`` table and grants to
-  the built-in roles.
+single source of truth that :mod:`app.rbac.dependencies` compares requests
+against.
 
 Roles beyond ``ADMIN``/``MANAGER``/``CASHIER`` (and custom permission sets)
 are created and edited at runtime through ``POST /roles`` and
 ``PATCH /roles/{id}/permissions`` — this module only fixes the vocabulary.
+
+.. important::
+    A migration must import ``PHASE_N_PERMISSIONS``/``PHASE_N_ROLE_GRANTS``
+    for its own ``N`` — **never** the cumulative ``ALL_PERMISSIONS``. Python
+    imports re-read the module's *current* state, so a migration seeded from
+    a growing aggregate would, on a fresh database, insert permissions from
+    phases that hadn't "happened" yet at that point in history — and the
+    later phase's own migration would then fail inserting the same keys
+    again. Each ``PHASE_N_*`` constant is frozen the moment phase ``N``
+    ships; only ``ALL_PERMISSIONS`` (a read-only aggregate for runtime code,
+    e.g. validating a key exists) grows.
 """
 
 from __future__ import annotations
@@ -37,15 +45,30 @@ PHASE_1_PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(ROLES_MANAGE, "Create roles and assign permissions to them."),
 )
 
-#: Every permission key known to the backend so far. Later phases extend this
-#: tuple with their own ``PHASE_N_PERMISSIONS`` — never mutate the ones above.
-ALL_PERMISSIONS: tuple[PermissionDef, ...] = PHASE_1_PERMISSIONS
-
-#: Permission keys granted to each built-in role, seeded by the phase 1
-#: migration. ``ADMIN`` always gets everything; ``MANAGER``/``CASHIER`` are a
-#: sane starting point an operator can widen or narrow from the roles API.
-ROLE_SEED: dict[str, tuple[str, ...]] = {
-    "ADMIN": tuple(p.key for p in ALL_PERMISSIONS),
+#: Permission keys granted to each built-in role by the phase 1 migration.
+#: Frozen — see the module docstring. Later phases add their own grants via
+#: their own migration, referencing their own ``PHASE_N_ROLE_GRANTS``.
+PHASE_1_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": tuple(p.key for p in PHASE_1_PERMISSIONS),
     "MANAGER": (ADMIN_ACCESS, USERS_MANAGE),
     "CASHIER": (POS_ACCESS,),
 }
+
+# --- phase 2: auditoría ------------------------------------------------------
+AUDIT_READ = "audit.read"
+
+PHASE_2_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(AUDIT_READ, "Read the audit trail."),
+)
+
+#: Frozen grants for the phase 2 migration only — ADMIN gets it, existing
+#: roles are otherwise untouched (an operator can still widen MANAGER/CASHIER
+#: from the roles API if they want to).
+PHASE_2_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (AUDIT_READ,),
+}
+
+#: Every permission key known to the backend so far — for runtime use
+#: (e.g. validating a key exists) only. Never import this from a migration;
+#: see the module docstring.
+ALL_PERMISSIONS: tuple[PermissionDef, ...] = PHASE_1_PERMISSIONS + PHASE_2_PERMISSIONS

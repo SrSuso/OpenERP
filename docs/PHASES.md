@@ -9,7 +9,7 @@ y commit.
 | --- | --- | --- |
 | 0 | Bootstrap del proyecto | ✅ completada |
 | 1 | Auth y RBAC | ✅ completada |
-| 2 | Auditoría | pendiente |
+| 2 | Auditoría | ✅ completada |
 | 3 | Productos | pendiente |
 | 4 | Precios | pendiente |
 | 5 | Proveedores | pendiente |
@@ -188,3 +188,76 @@ Deuda técnica conocida:
   hace que jsdom pise el `AbortController` nativo de Node y rompa las
   navegaciones internas de React Router 7 bajo test. Corregido en Vitest 4
   (aún beta); revisar si se puede volver a `jsdom` al actualizar.
+
+## Fase 2 — Auditoría
+
+**Objetivo:** rastro de auditoría *append-only* que registra quién hizo qué,
+sobre qué entidad, con qué datos antes/después — sin que la aplicación
+pueda nunca modificarlo o borrarlo una vez escrito.
+
+Entregado:
+
+- **`audit_log`**: `user_id` (nullable — acciones de sistema como el
+  bootstrap del primer admin no tienen sesión), `action`, `entity_type`,
+  `entity_id`, `before_data`/`after_data` (`JSONB`), `request_id`, `ip`,
+  `created_at`. Sin `updated_at` a propósito: una fila que pudiera
+  actualizarse no sería un rastro de auditoría.
+- **`app.audit.service`** expone únicamente `record()` (insertar) y
+  `list_entries()` (leer, con filtros por entidad/usuario) — no existe
+  ninguna función de actualización o borrado; la regla "append-only desde
+  la aplicación" está impuesta por la ausencia de esa función, no sólo
+  documentada. `record()` toma `user_id`/`request_id`/`ip` de los
+  *contextvars* de la fase 0 (`app.core.context`) y corre en la misma
+  transacción que la mutación que audita — o se comitan juntos o hacen
+  rollback juntos, nunca puede haber una mutación sin su fila de auditoría.
+- **Enganchado en la fase 1**: alta/edición/desactivación de usuario, cambio
+  de contraseña (auditado sin exponer nunca antes/después de la contraseña),
+  alta de rol y cambio de permisos de un rol. `app.rbac.router` se separó en
+  `app.rbac.service` (antes tenía la lógica inline) para poder llamar a
+  auditoría igual que ya hacía `app.users.service`. El bootstrap del primer
+  admin también audita su propia creación (`action="bootstrap_created"`).
+- **`GET /audit-log`** (filtros `entity_type`/`entity_id`/`user_id`,
+  paginado), protegido por el nuevo permiso `audit.read`, concedido a
+  `ADMIN` por la migración de esta fase.
+- **Corregido un fallo real que dejó la fase 1**: la migración de fase 1
+  sembraba `ALL_PERMISSIONS`/`ROLE_SEED` — nombres que iban a *crecer* en
+  cada fase futura. Al re-ejecutar `alembic upgrade head` desde cero, la
+  migración de fase 1 habría sembrado también los permisos de fase 2 (que en
+  ese punto de la historia "no existían todavía"), y la migración de fase 2
+  habría fallado al intentar insertar la misma clave otra vez
+  (`duplicate key value violates unique constraint`). Arreglado
+  congelando cada fase a su propia constante inmutable
+  (`PHASE_1_PERMISSIONS`/`PHASE_1_ROLE_GRANTS`,
+  `PHASE_2_PERMISSIONS`/`PHASE_2_ROLE_GRANTS`, …) — documentado en el
+  docstring de `app.rbac.permissions` para que no se repita en fases
+  futuras. Verificado migrando una base de datos nueva desde cero.
+
+Archivos añadidos/tocados: `backend/app/audit/*` (nuevo),
+`backend/app/rbac/service.py` (nuevo), `backend/app/rbac/router.py`
+(simplificado para usar el servicio), `backend/app/rbac/permissions.py`
+(constantes por fase), `backend/app/users/service.py` (llamadas de
+auditoría), `backend/app/auth/bootstrap.py` (audita la creación del primer
+admin), `backend/app/db/registry.py`, `backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_2_audit_log.py`,
+`backend/migrations/versions/…_phase_1_auth_and_rbac.py` (fix de las
+constantes, ver arriba),
+`backend/tests/{test_audit_service,test_audit_router}.py`.
+
+Endpoints nuevos: `GET /audit-log`.
+
+Migración: `c3b32af1d80b_phase_2_audit_log` — crea `audit_log`; siembra el
+permiso `audit.read` y lo concede a `ADMIN`. `downgrade()` deshace también
+el seed (borra el permiso y su concesión, no sólo la tabla) — verificado con
+un *round-trip* completo.
+
+Tests: 12 nuevos (81 en total). `ruff`, `ruff format --check` y `mypy`
+limpios; `pytest -q` → 81/81 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- No hay pantalla de auditoría en `/admin` todavía (mismo criterio que la
+  fase 1: la API está completa y documentada en `/api/docs`, la UI se añade
+  cuando una fase la necesite).
+- Sin frontend nuevo en esta fase (auditoría es puramente backend), no hizo
+  falta re-verificar Vitest/Playwright — sólo se confirmó que la base de
+  datos de E2E sigue migrando limpia con la nueva migración.

@@ -25,6 +25,7 @@ import sys
 
 from sqlalchemy import select
 
+from app.audit import service as audit
 from app.auth.security import hash_password
 from app.core.config import get_settings
 from app.db.session import session_scope
@@ -50,13 +51,20 @@ async def _bootstrap(email: str, password: str, full_name: str) -> int:
             print("role 'ADMIN' not found — run `alembic upgrade head` first.", file=sys.stderr)
             return 1
 
-        session.add(
-            User(
-                email=email,
-                full_name=full_name,
-                password_hash=hash_password(password),
-                role_id=role.id,
-            )
+        user = User(
+            email=email,
+            full_name=full_name,
+            password_hash=hash_password(password),
+            role_id=role.id,
+        )
+        session.add(user)
+        await session.flush()
+        await audit.record(
+            session,
+            action="bootstrap_created",
+            entity_type="user",
+            entity_id=user.id,
+            after={"email": email, "full_name": full_name, "role_name": role.name},
         )
     print(f"created admin: {email}")
     return 0

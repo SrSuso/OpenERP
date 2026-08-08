@@ -12,7 +12,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from app.rbac.permissions import ALL_PERMISSIONS, ROLE_SEED
+from app.rbac.permissions import PHASE_1_PERMISSIONS, PHASE_1_ROLE_GRANTS
 
 revision: str = "506c27b4490f"
 down_revision: str | None = "76c947bf8e56"
@@ -166,18 +166,20 @@ def _seed_permissions_and_roles() -> None:
 
     connection.execute(
         sa.insert(_permissions),
-        [{"key": p.key, "description": p.description} for p in ALL_PERMISSIONS],
+        [{"key": p.key, "description": p.description} for p in PHASE_1_PERMISSIONS],
     )
     permission_ids = dict(
         connection.execute(sa.select(_permissions.c.key, _permissions.c.id)).all()
     )
 
-    connection.execute(sa.insert(_roles), [{"name": name, "description": ""} for name in ROLE_SEED])
+    connection.execute(
+        sa.insert(_roles), [{"name": name, "description": ""} for name in PHASE_1_ROLE_GRANTS]
+    )
     role_ids = dict(connection.execute(sa.select(_roles.c.name, _roles.c.id)).all())
 
     grants = [
         {"role_id": role_ids[role_name], "permission_id": permission_ids[key]}
-        for role_name, keys in ROLE_SEED.items()
+        for role_name, keys in PHASE_1_ROLE_GRANTS.items()
         for key in keys
     ]
     if grants:
