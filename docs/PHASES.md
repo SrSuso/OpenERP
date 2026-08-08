@@ -13,7 +13,7 @@ y commit.
 | 3 | Productos | ✅ completada |
 | 4 | Precios | ✅ completada |
 | 5 | Proveedores | ✅ completada |
-| 6 | Compras | pendiente |
+| 6 | Compras | ✅ completada |
 | 7 | Inventory ledger | pendiente |
 | 8 | Lotes y caducidad | pendiente |
 | 9 | Recepciones | pendiente |
@@ -456,3 +456,70 @@ Deuda técnica conocida:
 - El histórico de compras por producto ("consultar desde la ficha de
   producto, más reciente primero") es explícitamente de la fase 6
   (`purchase_orders`), no de ésta.
+
+## Fase 6 — Compras
+
+**Objetivo:** pedidos de compra con líneas que guardan snapshot económico
+(regla 6), sin todavía tocar inventario — recibir mercancía es la fase 9,
+una vez existan el *ledger* (fase 7) y los lotes (fase 8) sobre los que
+recibir.
+
+Entregado:
+
+- **`purchase_orders`**/**`purchase_order_lines`**: estados `DRAFT →
+  ORDERED → CANCELLED` en esta fase (el enum completo — incluidos
+  `PARTIALLY_RECEIVED`/`RECEIVED` — se define ya, para que la fase 9 no
+  tenga que migrar nada, sólo añadir comportamiento). Cada línea
+  congela `package_name`/`package_factor`/`unit_cost`/`tax_rate`/
+  `discount_rate` en el momento de crearse — cambiar después el coste del
+  producto o el factor de una presentación nunca reescribe un pedido ya
+  hecho. `quantity_received` existe desde ya (arranca en 0), lista para que
+  la fase 9 la use sin migración adicional.
+- Un pedido sólo admite líneas en `DRAFT`; `POST .../place` exige al menos
+  una línea y pasa a `ORDERED` con `ordered_at`; `POST .../cancel` funciona
+  desde `DRAFT` u `ORDERED`, nunca desde un estado que ya implique recepción
+  (eso es fase 9).
+- Los totales de línea/pedido (subtotal, descuento, impuesto, total) se
+  **calculan**, nunca se almacenan — deterministas a partir de los
+  *snapshots* inmutables, así que no hay nada que pueda desincronizarse.
+- **`GET /products/{id}/purchase-history`**: histórico de compras del
+  producto, más reciente primero — fecha, proveedor, cantidad, precio,
+  presentación, tal y como pide el enunciado.
+- **Permisos**: `purchase.read`/`purchase.manage` (`ADMIN`/`MANAGER`).
+- **Corregido durante la propia fase**: los totales computados (p. ej.
+  `subtotal = quantity_packages * unit_cost`) salían con hasta 12 decimales
+  al multiplicar dos `Decimal` de 6 decimales cada uno — aritmética exacta
+  (regla 8 cumplida), pero inconsistente con el resto de la API, que
+  siempre muestra 6 decimales por venir de columnas `NUMERIC(18,6)`.
+  Detectado por los tests (`"20.000000000000" != "20.000000"`). Arreglado
+  cuantizando cada total calculado a la misma escala de 6 decimales
+  (`NUMERIC_EPSILON`, ya definido en `app.db.types` desde la fase 0).
+
+Archivos añadidos/tocados: `backend/app/purchasing/*` (nuevo),
+`backend/app/rbac/permissions.py` (`PHASE_6_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_6_purchasing.py`,
+`backend/tests/test_purchasing.py`.
+
+Endpoints nuevos: `GET|POST /purchase-orders`, `GET /purchase-orders/{id}`,
+`POST /purchase-orders/{id}/lines`,
+`DELETE /purchase-orders/{id}/lines/{line_id}`,
+`POST /purchase-orders/{id}/place`, `POST /purchase-orders/{id}/cancel` ·
+`GET /products/{id}/purchase-history`.
+
+Migración: `586da6716605_phase_6_purchasing` — crea `purchase_orders`,
+`purchase_order_lines`; siembra `purchase.read`/`purchase.manage` para
+`ADMIN`/`MANAGER`. `downgrade()` deshace también el seed; verificado con
+*round-trip* completo y `alembic check`.
+
+Tests: 14 nuevos (151 en total), incluido el caso de aceptación #9 del plan
+(pedido de 100 unidades). `ruff`, `ruff format --check` y `mypy` limpios;
+`pytest -q` → 151/151 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de compras en `/admin` todavía (mismo criterio que fases
+  1–5).
+- `PARTIALLY_RECEIVED`/`RECEIVED` y el aumento real de inventario son
+  explícitamente de la fase 9, no de ésta — ver el *docstring* de
+  `app.purchasing`.

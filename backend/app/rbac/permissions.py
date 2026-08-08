@@ -116,6 +116,22 @@ PHASE_5_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (SUPPLIER_READ, SUPPLIER_MANAGE),
 }
 
+# --- phase 6: compras --------------------------------------------------------
+PURCHASE_READ = "purchase.read"
+PURCHASE_MANAGE = "purchase.manage"
+
+PHASE_6_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(PURCHASE_READ, "Look up purchase orders and a product's purchase history."),
+    PermissionDef(PURCHASE_MANAGE, "Create, edit, place and cancel purchase orders."),
+)
+
+#: Frozen grants for the phase 6 migration only. CASHIER has no reason to
+#: see purchasing data.
+PHASE_6_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (PURCHASE_READ, PURCHASE_MANAGE),
+    "MANAGER": (PURCHASE_READ, PURCHASE_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -125,4 +141,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_3_PERMISSIONS
     + PHASE_4_PERMISSIONS
     + PHASE_5_PERMISSIONS
+    + PHASE_6_PERMISSIONS
 )
