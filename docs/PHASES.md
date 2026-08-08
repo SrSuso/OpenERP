@@ -23,7 +23,7 @@ y commit.
 | 13 | Pagos | ✅ completada |
 | 14 | Devoluciones | ✅ completada |
 | 15 | Tickets | ✅ completada |
-| 16 | Dashboards | pendiente |
+| 16 | Dashboards | ✅ completada |
 | 17 | Notificaciones | pendiente |
 | 18 | SMTP / outbox | pendiente |
 | 19 | Seguridad | pendiente |
@@ -1236,6 +1236,122 @@ Deuda técnica conocida:
   el cliente devuelve una cantidad que encaja en un único lote de destino;
   suficiente para el caso de uso real (el cliente no suele saber de qué
   lote salió su unidad), ampliable sin romper el modelo si hiciera falta.
+
+## Fase 16 — Dashboards
+
+**Objetivo:** paneles configurables de verdad — widgets que un administrador
+añade y quita — sobre un *query builder* de lista blanca (regla 13: nunca
+SQL arbitrario). Vive en `app.dashboards`, el paquete que la fase 0 ya
+reservaba. Primera pantalla real de `/admin` (fases 1–15 sólo tenían
+`/api/docs`): el panel de administración deja de ser un placeholder.
+
+Entregado:
+
+- **La lista blanca en sí** (`app.dashboards.metrics.MetricKey`): cuatro
+  métricas fijas — `sales_over_time`, `top_products`, `stock_value`,
+  `low_stock_count` — cada una con su propio esquema Pydantic de
+  parámetros y su propia consulta SQLAlchemy escrita a mano. No existe
+  ningún camino desde el `params` guardado de un widget hasta una cadena
+  de SQL: `run_metric` sólo puede despachar a una de estas cuatro
+  funciones Python, nunca interpretar nada. Añadir una métrica significa
+  añadir aquí una tripleta clave/parámetros/consulta, en revisión de
+  código — nunca algo que un cuerpo de petición pueda hacer crecer por su
+  cuenta.
+- **`dashboards`/`dashboard_widgets`**: un panel es una colección de
+  widgets; cada widget guarda `metric` + `params` (JSONB, validado contra
+  el esquema de esa métrica en cada escritura) + `chart_type`
+  (presentación pura — nunca cambia qué se consulta). Los datos de un
+  widget (`GET .../data`) se calculan en el momento, siempre — nunca hay
+  caché ni nada que pueda quedar desactualizado en silencio.
+- **Cada métrica, una consulta agregada real** (no traer filas a Python
+  para sumarlas): `sales_over_time` agrupa ventas `COMPLETED` por día;
+  `top_products` ordena por ingresos o unidades, con la misma fórmula de
+  `compute_line_totals` (fase 11) expresada como aritmética SQL en vez de
+  Python; `stock_value` suma `quantity * cost` de `stock_balance`;
+  `low_stock_count` cuenta productos cuyo stock agregado cae por debajo de
+  `min_stock`. Corregido antes de que fuera un bug real: multiplicar dos
+  columnas `NUMERIC(18,6)` en SQL desborda a más decimales
+  (`30.000000000000` en vez de `30.000000`) — mismo patrón que en fases
+  6/9/11/13, cuantizado de vuelta antes de servir la respuesta.
+- **Frontend**: primera pantalla real de `/admin` — `AdminHomePage`
+  auto-crea "Mi panel" la primera vez que no existe ninguno (mismo
+  mecanismo de "abrir si no hay uno" que la fase 12 usó para la venta),
+  renderiza sus widgets con ECharts (`EChart.tsx`, envoltorio imperativo
+  único — el proyecto depende de `echarts` sin *binding* de React) y deja
+  añadir/quitar widgets desde un formulario. Paleta y trazos siguen la
+  skill de *dataviz* del propio proyecto: una sola serie por gráfico usa
+  un color consistente (nunca "arcoíris" por barra, ya que el eje de
+  categoría ya distingue identidad), sin leyenda para una sola serie, y el
+  KPI de stock bajo empareja siempre color de estado con icono + texto,
+  nunca sólo color.
+- **Permisos**: `dashboard.read`/`dashboard.manage`, sólo `ADMIN`/`MANAGER`
+  — mismo criterio que compras/recepciones, no el de ventas.
+
+Archivos añadidos/tocados: `backend/app/dashboards/*` (nuevo — `models`,
+`metrics`, `schemas`, `service`, `presenters`, `router`),
+`backend/app/rbac/permissions.py` (`PHASE_16_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_16_dashboards.py`,
+`backend/tests/test_dashboards.py`,
+`frontend/src/features/dashboards/*` (nuevo — `api`, `EChart`,
+`SalesOverTimeChart`, `TopProductsChart`, `KpiTile`, `Widget`,
+`AddWidgetForm`, más sus tests), `frontend/src/pages/admin/AdminHomePage.tsx`
+(sustituye el *placeholder* de la fase 0), `frontend/tests/setup.ts`
+(`ResizeObserver` — jsdom no lo implementa), `tests/e2e/specs/dashboard.spec.ts`.
+
+Endpoints nuevos: `GET /dashboard-metrics` · `GET|POST /dashboards`,
+`GET /dashboards/{id}`, `POST /dashboards/{id}/widgets`,
+`DELETE /dashboards/{id}/widgets/{widget_id}`,
+`GET /dashboards/{id}/widgets/{widget_id}/data`.
+
+Migración: `d39d8f23fa71_phase_16_dashboards` — crea `dashboards`/
+`dashboard_widgets`; siembra `dashboard.read`/`dashboard.manage` para
+`ADMIN`/`MANAGER`. `downgrade()` deshace también el seed de permisos;
+verificado con *round-trip* completo y `alembic check`.
+
+Tests: 15 nuevos en backend (268 en total) — cada métrica cubierta
+(agregación diaria, orden por ingresos/unidades, valor de inventario,
+conteo bajo mínimo), widget con parámetros que no encajan en la métrica
+rechazado (422), métrica desconocida rechazada, `date_from` posterior a
+`date_to` rechazado, widget inexistente 404, `CASHIER` sin acceso (403),
+`MANAGER` sí, no autenticado 401. Encontrado y corregido durante la propia
+fase: una fuga real de datos entre tests — una prueba de concurrencia real
+de la fase 13 (`committing_sessionmaker`, sin *rollback* automático) deja
+una venta `COMPLETED` de verdad en la base de datos de test; los tests que
+agregan "todo lo visible hoy" tuvieron que aislarse creando su propio
+almacén dedicado en vez de confiar en el compartido "Tienda principal".
+`ruff`, `ruff format --check` y `mypy` limpios; `pytest -q` → 268/268
+contra PostgreSQL real. Frontend: 28 tests nuevos (85 en total) —
+`KpiTile` (3), `AddWidgetForm` (7, campos condicionales por métrica),
+`Widget` (10, incluida la petición jsdom-sin-canvas: los dos componentes
+de gráfico se sustituyen por un doble en el test, mismo criterio que
+`window.print()` en E2E — jsdom no tiene `<canvas>` real), `AdminHomePage`
+(5, auto-creación, añadir/quitar widget). `tsc -b`, `eslint`,
+`prettier --check`, `vitest run` y `vite build` limpios. 4 specs E2E
+nuevas (`dashboard.spec.ts`, serializado por compartir el único panel que
+`AdminHomePage` renderiza, con limpieza de widgets vía API antes de cada
+test — mismo motivo que `resetCart` en la fase 12) — 21/21 specs E2E en
+verde, dos pasadas consecutivas sin *flakiness*, incluida la comprobación
+de que el `<canvas>` de ECharts se pinta de verdad en Chromium.
+
+Deuda técnica conocida:
+
+- Un panel no está limitado a su creador todavía: `GET /dashboards`
+  devuelve todos, y `AdminHomePage` siempre usa el primero — funciona
+  porque hoy sólo existe uno ("Mi panel", auto-creado), pero varios
+  administradores acabarían compartiendo el mismo panel. Añadir
+  `owner_user_id` como filtro (la columna ya existe) es la ampliación
+  natural si hiciera falta un panel por administrador.
+- El formulario de "añadir widget" está escrito a mano por métrica en vez
+  de generarse desde el JSON Schema que `GET /dashboard-metrics` ya
+  expone — con sólo cuatro métricas no compensaba construir un generador
+  de formularios genérico; si el catálogo crece, ese endpoint ya da lo
+  necesario para hacerlo.
+- El bundle de `/admin` crece con ECharts (aviso de Vite al construir,
+  ~935KB sin comprimir) — no se ha aplicado *code-splitting* por ruta
+  todavía; candidato natural para la fase 20 (Rendimiento).
+- Sin edición de un widget existente (sólo añadir/quitar) — cambiar sus
+  parámetros hoy es quitarlo y añadirlo de nuevo.
 
 ## Fase 15 — Tickets
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 from app.audit import models as audit_models
 from app.auth import models as auth_models
 from app.catalog import models as catalog_models
+from app.dashboards import models as dashboard_models
 from app.db.base import Base
 from app.inventory import models as inventory_models
 from app.lots import models as lot_models
@@ -35,6 +36,7 @@ __all__ = [
     "audit_models",
     "auth_models",
     "catalog_models",
+    "dashboard_models",
     "inventory_models",
     "lot_models",
     "pricing_models",

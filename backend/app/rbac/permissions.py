@@ -249,6 +249,21 @@ PHASE_15_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (TICKET_MANAGE,),
 }
 
+# --- phase 16: dashboards ------------------------------------------------------
+DASHBOARD_READ = "dashboard.read"
+DASHBOARD_MANAGE = "dashboard.manage"
+
+PHASE_16_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(DASHBOARD_READ, "View dashboards and their live widget data."),
+    PermissionDef(DASHBOARD_MANAGE, "Create dashboards and add/remove widgets."),
+)
+
+#: Frozen grants for the phase 16 migration only.
+PHASE_16_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (DASHBOARD_READ, DASHBOARD_MANAGE),
+    "MANAGER": (DASHBOARD_READ, DASHBOARD_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -266,4 +281,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_11_PERMISSIONS
     + PHASE_14_PERMISSIONS
     + PHASE_15_PERMISSIONS
+    + PHASE_16_PERMISSIONS
 )

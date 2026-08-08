@@ -2,10 +2,11 @@
 
 Cómo poner en marcha OpenERP y usarlo, tal y como está hoy (fases 0 y 1:
 bootstrap + autenticación/RBAC; fases 12/13/15: el TPV, cobrar en él e
-imprimir el ticket). Las fases intermedias (2–11, 14) son sólo API,
-documentada en `/api/docs` — no añaden nada que un usuario final "use"
-directamente, así que no tienen sección propia aquí. Cada fase que sí la
-necesite añade la suya, sin reescribir las anteriores.
+imprimir el ticket; fase 16: el panel de administración). Las fases
+intermedias (2–11, 14) son sólo API, documentada en `/api/docs` — no
+añaden nada que un usuario final "use" directamente, así que no tienen
+sección propia aquí. Cada fase que sí la necesite añade la suya, sin
+reescribir las anteriores.
 
 ---
 
@@ -280,3 +281,15 @@ Al entrar a `/pos`:
   diálogo de impresión del navegador. Hace falta una plantilla activa
   (`make seed-e2e-catalog` siembra una por defecto) — sin ella, el botón
   falla con un error explícito en vez de imprimir cualquier cosa.
+
+---
+
+## 7. El panel de administración (fase 16)
+
+`/admin` deja de ser un simple chequeo de estado: al entrar, se crea (la
+primera vez) o se muestra "Mi panel" — un panel con los widgets que se
+hayan añadido. **Añadir widget** deja elegir una de cuatro métricas (ventas
+por día, productos más vendidos, valor de inventario, productos bajo
+mínimo), con sus propios filtros (rango de fechas, almacén); cada widget
+consulta sus datos en el momento, nunca una caché. Quitar un widget lo
+retira sin más — no hay edición todavía, sólo añadir/quitar.
