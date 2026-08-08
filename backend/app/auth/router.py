@@ -9,7 +9,7 @@ from app.auth import service
 from app.auth.dependencies import AuthSessionDep, CurrentUser, SessionDep, SettingsDep
 from app.auth.models import AuthSession
 from app.auth.schemas import LoginRequest, MeResponse, SessionRead
-from app.core.errors import NotFoundError
+from app.core.errors import AuthenticationError, NotFoundError
 from app.rbac.dependencies import user_permissions
 from app.users.models import User
 
@@ -34,13 +34,19 @@ async def login(
     session: SessionDep,
     settings: SettingsDep,
 ) -> MeResponse:
-    user = await service.authenticate(session, email=payload.email, password=payload.password)
+    ip = request.client.host if request.client else None
+    # Phase 19: checked before the password is even hashed, so a locked-out
+    # caller never gets to spend that CPU either.
+    service.check_login_rate_limit(settings, ip=ip, email=payload.email)
+    try:
+        user = await service.authenticate(session, email=payload.email, password=payload.password)
+    except AuthenticationError:
+        service.record_login_failure(ip=ip, email=payload.email)
+        raise
+    service.reset_login_rate_limit(ip=ip, email=payload.email)
+
     auth_session, token = await service.create_session(
-        session,
-        user=user,
-        settings=settings,
-        user_agent=request.headers.get("user-agent"),
-        ip=request.client.host if request.client else None,
+        session, user=user, settings=settings, user_agent=request.headers.get("user-agent"), ip=ip
     )
     service.set_session_cookie(response, token, auth_session.expires_at, settings)
     return _me(user)

@@ -97,6 +97,18 @@ class Settings(BaseSettings):
     # through GET /incidents either way.
     notification_recipient_email: str | None = None
 
+    # --- security (phase 19) ------------------------------------------------
+    # POST /auth/login is rate-limited independently by the email being
+    # attempted and by client IP, so neither many IPs hammering one account
+    # nor one IP hammering many accounts gets unlimited tries. The IP limit
+    # is deliberately more generous than the email one: a retail store's
+    # till terminals typically share one public IP, so several cashiers
+    # mistyping their own passwords must not lock the whole shop out.
+    login_rate_limit_max_attempts: int = 5
+    login_rate_limit_window_seconds: float = 300.0
+    login_rate_limit_ip_max_attempts: int = 20
+    login_rate_limit_ip_window_seconds: float = 300.0
+
     @property
     def session_cookie_secure(self) -> bool:
         """``Secure`` requires HTTPS; only enforced outside local dev, where

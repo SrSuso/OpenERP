@@ -26,7 +26,7 @@ y commit.
 | 16 | Dashboards | ✅ completada |
 | 17 | Notificaciones | ✅ completada |
 | 18 | SMTP / outbox | ✅ completada |
-| 19 | Seguridad | pendiente |
+| 19 | Seguridad | ✅ completada |
 | 20 | Rendimiento | pendiente |
 | 21 | Backup / restore | pendiente |
 | 22 | Tests completos de aceptación | pendiente |
@@ -1637,3 +1637,106 @@ Deuda técnica conocida:
   totales y líneas con un diseño fijo) — suficiente para un ticket de
   tienda minorista; una fase futura que necesite logotipos, códigos de
   barra o QR en el propio recibo ampliaría `render_ticket`, no el modelo.
+
+## Fase 19 — Seguridad
+
+**Objetivo:** endurecer la superficie ya construida sin añadir dominio
+nuevo — limitar los intentos de inicio de sesión, mandar cabeceras HTTP de
+higiene básica en toda respuesta, y convertir la regla 11 ("los permisos
+siempre se comprueban en el backend") en una prueba de regresión sobre la
+propia tabla de rutas en vez de dejarla en una convención de las 18 fases
+anteriores.
+
+Entregado:
+
+- **`app.core.rate_limit.SlidingWindowRateLimiter`**: ventana deslizante en
+  memoria, de un único proceso — suficiente para el modelo de despliegue
+  de este monolito (un proceso de API, más `app.jobs.worker` de la fase 18
+  como único otro proceso), documentado como deuda técnica en vez de
+  resuelto a medias; un despliegue con varias réplicas de la API
+  necesitaría un almacén compartido (Redis) en su lugar. Sin *lock*: cada
+  operación es manipulación síncrona de un `dict`, sin ningún `await` en
+  medio, así que el bucle de eventos de asyncio no puede intercalar nada a
+  mitad de una actualización aunque no lo hubiera.
+- **`POST /auth/login` limitado por dos claves independientes**: por email
+  intentado (`login_rate_limit_max_attempts`, 5 cada
+  `login_rate_limit_window_seconds`, 300s) y por IP del cliente
+  (`login_rate_limit_ip_max_attempts`, 20 cada
+  `login_rate_limit_ip_window_seconds`, 300s) — el límite por IP es
+  deliberadamente más generoso que el de email: los TPV de una tienda
+  suelen compartir una única IP pública, así que varios cajeros
+  equivocándose de contraseña no deben bloquear a toda la tienda, pero un
+  origen que prueba muchas cuentas distintas sí queda contenido. Se
+  comprueba *antes* de verificar la contraseña, para que un intento ya
+  bloqueado ni siquiera llegue al hash Argon2id (mismo criterio que
+  comprobar permisos antes de tocar la base de datos). Un `401` de
+  credenciales incorrectas cuenta contra el límite; un `200` de inicio de
+  sesión correcto lo reinicia — un usuario legítimo que se equivoca un par
+  de veces no queda penalizado una vez acierta. Responde `429`
+  (`RateLimitedError`, código `rate_limited`) — el mapeo ya existía desde
+  la fase 0/1 en `_STATUS_CODES`, sin usar hasta ahora.
+- **`SecurityHeadersMiddleware`**: `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`,
+  `Permissions-Policy: geolocation=(), camera=(), microphone=()` en toda
+  respuesta; `Strict-Transport-Security` sólo fuera de `local`/`test`/`ci`
+  (mismo criterio que `Settings.session_cookie_secure` para la cookie de
+  sesión: sólo tiene sentido una vez hay HTTPS de verdad). Deliberadamente
+  sin `Content-Security-Policy`: este mismo backend sirve `/api/docs` y
+  `/api/redoc` (Swagger UI/ReDoc), que cargan su JS desde una CDN — una CSP
+  estricta los rompería, y la superficie real que renderiza contenido no
+  confiable en un navegador es el propio SPA del frontend, fuera del
+  alcance de esta API.
+- **`test_route_security.py`**: en vez de confiar en que cada fase acordó
+  correctamente `require_permission`, recorre el propio grafo de
+  dependencias de FastAPI (`route.dependant`, recursivo, incluidas las
+  sub-dependencias anidadas como el cierre de `require_permission`) sobre
+  las rutas reales de la aplicación — no una lista mantenida a mano. Dos
+  listas explícitas y cortas documentan las excepciones legítimas:
+  `PUBLIC_ROUTES` (sin autenticación — *health checks* y el propio
+  `/auth/login`) y `SELF_SERVICE_ROUTES` (autenticadas pero sin permiso
+  específico porque sólo actúan sobre la cuenta/sesión del propio usuario:
+  `logout`, `me`, listar/revocar las propias sesiones, cambiar la propia
+  contraseña). Una tercera prueba comprueba que esas listas no han quedado
+  obsoletas (una ruta borrada o renombrada que siga en la lista se detecta
+  sola). De las 107 rutas totales bajo `/api/v1`: 3 públicas, 5 de
+  autoservicio, y las ~99 restantes comprueban un permiso concreto.
+
+Archivos añadidos/tocados: `backend/app/core/rate_limit.py` (nuevo),
+`backend/app/core/errors.py` (`RateLimitedError`),
+`backend/app/core/config.py` (los cuatro ajustes de límite de intentos),
+`backend/app/auth/service.py` (`check_login_rate_limit`,
+`record_login_failure`, `reset_login_rate_limit`),
+`backend/app/auth/router.py` (`login` los usa), `backend/app/api/middleware.py`
+(`SecurityHeadersMiddleware`), `backend/app/main.py` (la registra),
+`backend/tests/{test_security,test_route_security}.py` (nuevos),
+`.env.example`.
+
+Endpoints nuevos: ninguno — `POST /auth/login` cambia de comportamiento
+(puede responder `429`), no de forma.
+
+Migración: ninguna — esta fase no añade tablas, columnas ni permisos
+nuevos; sólo comportamiento sobre lo que ya existía.
+
+Tests: 9 nuevos en backend (300 en total) — límite por email alcanzado a
+la quinta respuesta `401` responde `429` con `rate_limited`; bloquear una
+cuenta no bloquea otra distinta; un inicio de sesión correcto reinicia el
+contador (cuatro fallos, un acierto, cuatro fallos más sin bloqueo); el
+límite por IP, más generoso, bloquea aunque cada cuenta individual nunca
+supere su propio límite; cabeceras de seguridad presentes en una respuesta
+normal; `Strict-Transport-Security` ausente fuera de producción (3 tests);
+y `test_route_security.py` (3 tests) sobre las 107 rutas reales de la
+aplicación. `ruff`, `ruff format --check` y `mypy` limpios; `pytest -q` →
+300/300 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- El limitador de intentos es de un único proceso, en memoria (ver arriba)
+  — un despliegue con varias réplicas de la API necesitaría un almacén
+  compartido (Redis); documentado, no resuelto, porque el despliegue actual
+  no lo necesita.
+- Sin `Content-Security-Policy` (razón explicada arriba); si el frontend
+  llegara a servirse desde el mismo origen que esta API, valdría la pena
+  revisar esta decisión.
+- Sin *CAPTCHA* ni verificación en dos pasos — fuera del alcance que el
+  README fija para este proyecto; el límite de intentos es la única
+  mitigación de fuerza bruta contemplada.

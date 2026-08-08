@@ -70,6 +70,14 @@ class ServiceUnavailableError(AppError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
 
+class RateLimitedError(AppError):
+    """Phase 19: too many attempts (``app.core.rate_limit``) — the 429
+    mapping in ``_STATUS_CODES`` below already anticipated this."""
+
+    code = "rate_limited"
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+
 def error_response(
     *, code: str, message: str, status_code: int, details: dict[str, Any] | None = None
 ) -> JSONResponse:

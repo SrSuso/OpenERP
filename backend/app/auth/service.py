@@ -12,9 +12,54 @@ from sqlalchemy.orm import selectinload
 from app.auth.models import AuthSession
 from app.auth.security import generate_session_token, hash_session_token, verify_password
 from app.core.config import Settings
-from app.core.errors import AuthenticationError
+from app.core.errors import AuthenticationError, RateLimitedError
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.rbac.models import Role
 from app.users.models import User
+
+#: Module-level singleton (see app.core.rate_limit's own docstring for why
+#: that's fine for this deployment model) — one shared hit-history for the
+#: whole process, independent of any one request's Settings instance.
+_login_rate_limiter = SlidingWindowRateLimiter()
+
+
+def _rate_limit_keys(*, ip: str | None, email: str) -> tuple[str, str]:
+    return f"ip:{ip or 'unknown'}", f"email:{email.strip().lower()}"
+
+
+def check_login_rate_limit(settings: Settings, *, ip: str | None, email: str) -> None:
+    """Raises before any password check runs, so a locked-out attempt
+    never even reaches the (comparatively expensive) Argon2id hash — same
+    reasoning as checking permissions before touching the database.
+
+    The IP key uses a more generous limit than the email key (see
+    `Settings`'s own docstring on the split): several employees on one
+    store's shared IP mistyping their own passwords must not lock everyone
+    out, while a single account is still protected tightly.
+    """
+    ip_key, email_key = _rate_limit_keys(ip=ip, email=email)
+    if _login_rate_limiter.is_limited(
+        ip_key,
+        max_hits=settings.login_rate_limit_ip_max_attempts,
+        window_seconds=settings.login_rate_limit_ip_window_seconds,
+    ):
+        raise RateLimitedError("Too many login attempts. Try again later.")
+    if _login_rate_limiter.is_limited(
+        email_key,
+        max_hits=settings.login_rate_limit_max_attempts,
+        window_seconds=settings.login_rate_limit_window_seconds,
+    ):
+        raise RateLimitedError("Too many login attempts. Try again later.")
+
+
+def record_login_failure(*, ip: str | None, email: str) -> None:
+    for key in _rate_limit_keys(ip=ip, email=email):
+        _login_rate_limiter.record(key)
+
+
+def reset_login_rate_limit(*, ip: str | None, email: str) -> None:
+    for key in _rate_limit_keys(ip=ip, email=email):
+        _login_rate_limiter.reset(key)
 
 
 async def authenticate(session: AsyncSession, *, email: str, password: str) -> User:
