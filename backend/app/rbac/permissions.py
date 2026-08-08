@@ -68,7 +68,26 @@ PHASE_2_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "ADMIN": (AUDIT_READ,),
 }
 
+# --- phase 3: productos -----------------------------------------------------
+PRODUCT_READ = "product.read"
+PRODUCT_MANAGE = "product.manage"
+
+PHASE_3_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(PRODUCT_READ, "Look up products, categories and packages."),
+    PermissionDef(PRODUCT_MANAGE, "Create and edit products, categories and packages."),
+)
+
+#: Frozen grants for the phase 3 migration only. CASHIER gets read access —
+#: the POS (phase 12) needs to look products up — never manage.
+PHASE_3_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (PRODUCT_READ, PRODUCT_MANAGE),
+    "MANAGER": (PRODUCT_READ, PRODUCT_MANAGE),
+    "CASHIER": (PRODUCT_READ,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
-ALL_PERMISSIONS: tuple[PermissionDef, ...] = PHASE_1_PERMISSIONS + PHASE_2_PERMISSIONS
+ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PHASE_1_PERMISSIONS + PHASE_2_PERMISSIONS + PHASE_3_PERMISSIONS
+)

@@ -10,7 +10,7 @@ y commit.
 | 0 | Bootstrap del proyecto | ✅ completada |
 | 1 | Auth y RBAC | ✅ completada |
 | 2 | Auditoría | ✅ completada |
-| 3 | Productos | pendiente |
+| 3 | Productos | ✅ completada |
 | 4 | Precios | pendiente |
 | 5 | Proveedores | pendiente |
 | 6 | Compras | pendiente |
@@ -261,3 +261,71 @@ Deuda técnica conocida:
 - Sin frontend nuevo en esta fase (auditoría es puramente backend), no hizo
   falta re-verificar Vitest/Playwright — sólo se confirmó que la base de
   datos de E2E sigue migrando limpia con la nueva migración.
+
+## Fase 3 — Productos
+
+**Objetivo:** catálogo de productos con presentaciones (cajas) y códigos de
+barra, con el stock siempre pensado en la unidad base del producto (regla
+3), aunque el *ledger* de inventario en sí llega en la fase 7.
+
+Entregado:
+
+- **`products`**: sku único, nombre, descripción, categoría, unidad base,
+  coste, PVP, tipo de IVA, `price_formula` (columna ya reservada — la fase 4
+  la interpreta), stock mínimo, `track_lots`/`track_expiration`, `is_active`
+  (regla 14: nunca se borra).
+- **`product_categories`**: independientes de las categorías POS de la fase
+  10 (mismo nombre de tabla, otra entidad — el propio módulo lo documenta).
+- **`product_packages`**: presentaciones con `factor` de conversión a la
+  unidad base (regla 4). Cada producto recibe automáticamente su
+  presentación base (`factor=1`, `is_base=True`) al crearse — no es un paso
+  aparte, para que nunca exista un producto sin dónde vivir su stock.
+- **`product_barcodes`**: código de barras único por presentación (una caja
+  y un brick del mismo producto pueden escanearse por separado).
+  `GET /products/barcode/{barcode}` resuelve producto + presentación desde
+  un escaneo — pensado para las fases 9 (recepciones) y 12 (POS).
+- **Permisos**: `product.read` (incluido `CASHIER`, lo necesitará el POS) y
+  `product.manage` (`ADMIN`/`MANAGER`).
+- **Corregido durante la propia fase**: `get_product()` no forzaba
+  `populate_existing`, así que releer un producto justo después de
+  mutarlo (en la misma transacción) devolvía los `Decimal` tal cual los
+  mandó el cliente en vez de los que Postgres normalizó a `NUMERIC(18,6)`
+  — mismo valor numérico, precisión distinta según si la lectura caía en la
+  misma petición o en una posterior. Detectado por los tests de
+  aceptación (5/6: factor exacto de brick/caja), no por revisión de
+  código.
+- Ajustado `test_rbac_permissions.py::test_cashier_can_log_in_but_only_has_pos_access`
+  (renombrado a `..._but_has_no_admin_access`): asumía el conjunto exacto de
+  permisos de `CASHIER`, que crece fase a fase (ahora incluye
+  `product.read`, como anticipa el propio enunciado de la fase 1). El test
+  correcto comprueba lo que nunca debe tener, no una lista cerrada.
+
+Archivos añadidos/tocados: `backend/app/catalog/*` (nuevo),
+`backend/app/rbac/permissions.py` (`PHASE_3_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_3_products.py`,
+`backend/tests/{test_catalog_products,test_catalog_categories}.py`,
+`backend/tests/test_rbac_permissions.py` (fix).
+
+Endpoints nuevos: `GET|POST /product-categories` ·
+`GET|POST /products`, `GET /products/{id}`, `GET /products/barcode/{barcode}`,
+`PATCH /products/{id}`, `POST /products/{id}/deactivate`,
+`POST /products/{id}/packages`,
+`POST /products/{id}/packages/{package_id}/barcodes`.
+
+Migración: `911bc003c81e_phase_3_products` — crea `product_categories`,
+`products`, `product_packages`, `product_barcodes`; siembra
+`product.read`/`product.manage` y los concede a `ADMIN`/`MANAGER` (sólo
+lectura a `CASHIER`). `downgrade()` deshace también el seed; verificado con
+*round-trip* completo.
+
+Tests: 13 nuevos + 1 corregido (94 en total). `ruff`, `ruff format --check`
+y `mypy` limpios; `pytest -q` → 94/94 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantallas de catálogo en `/admin` todavía (mismo criterio que fases 1
+  y 2: la API está completa y documentada en `/api/docs`; la UI llega
+  cuando una fase la consuma — el propio POS en la fase 12, por ejemplo).
+- `price_formula` es sólo una columna de texto por ahora; la fase 4 añade
+  el parser seguro que la interpreta (regla 12: nunca `eval()`).

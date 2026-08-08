@@ -16,7 +16,7 @@ táctil (`/pos`), construido como **monolito modular**.
 
 ## Estado
 
-**Fases 0 (bootstrap), 1 (auth y RBAC) y 2 (auditoría) completadas.** Las fases siguientes
+**Fases 0 (bootstrap), 1 (auth y RBAC), 2 (auditoría) y 3 (productos) completadas.** Las fases siguientes
 se implementan en orden estricto y ninguna avanza con la anterior rota. Ver
 [`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada y
 [`docs/USAGE.md`](docs/USAGE.md) para cómo arrancar el proyecto, crear el

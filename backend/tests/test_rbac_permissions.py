@@ -25,13 +25,17 @@ async def test_admin_can_log_in_and_has_full_permissions(
         assert key in admin["permissions"]
 
 
-async def test_cashier_can_log_in_but_only_has_pos_access(
+async def test_cashier_can_log_in_but_has_no_admin_access(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
+    """CASHIER's permission set grows as later phases grant it more (e.g.
+    product.read in phase 3) — what must never happen is admin.access or
+    users.manage/roles.manage, so assert on those rather than an exact set."""
     cashier = await login(role_name="CASHIER")
 
-    assert cashier["permissions"] == ["pos.access"]
-    assert "admin.access" not in cashier["permissions"]
+    assert "pos.access" in cashier["permissions"]
+    for key in ("admin.access", "users.manage", "roles.manage"):
+        assert key not in cashier["permissions"]
 
 
 async def test_cashier_gets_403_managing_users(
