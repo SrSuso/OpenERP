@@ -16,7 +16,7 @@ y commit.
 | 6 | Compras | ✅ completada |
 | 7 | Inventory ledger | ✅ completada |
 | 8 | Lotes y caducidad | ✅ completada |
-| 9 | Recepciones | pendiente |
+| 9 | Recepciones | ✅ completada |
 | 10 | Categorías POS | pendiente |
 | 11 | Ventas | pendiente |
 | 12 | POS | pendiente |
@@ -694,3 +694,80 @@ Deuda técnica conocida:
   servicio); el endpoint HTTP sólo expone `ADJUSTMENT`/`WASTE` a propósito
   — `SALE` queda reservado para que la fase 11 lo dispare desde el propio
   flujo de cobro, nunca desde este endpoint manual.
+
+## Fase 9 — Recepciones
+
+**Objetivo:** cerrar el ciclo compra→almacén: recibir mercancía contra un
+pedido de compra (fase 6) genera movimiento(s) reales en el ledger de
+inventario (fase 7), opcionalmente etiquetados con lote (fase 8), y hace
+avanzar el estado del pedido según lo que falte por llegar. Vive dentro del
+propio módulo `app.purchasing`, tal y como anunciaba su *docstring* desde la
+fase 6 ("Purchase orders (phase 6) and their goods receipts (phase 9)") — no
+es un paquete nuevo.
+
+Entregado:
+
+- **`goods_receipts`** (cabecera: pedido, almacén, ubicación, notas,
+  fecha, usuario) y **`goods_receipt_lines`** (línea de pedido de origen,
+  cantidad en el envase con el que se pidió, lote opcional, y el
+  `stock_movement_id` real que generó — trazabilidad completa hacia el
+  ledger de la fase 7).
+- `create_goods_receipt`: por cada línea recibida, valida que la cantidad
+  no exceda lo pendiente (`quantity_ordered - quantity_received`, en
+  unidades base), crea/reutiliza el lote si se indica `lot_number`
+  (reutilizando `app.lots.service`), llama a
+  `app.inventory.service.record_movement` con
+  `movement_type="PURCHASE_RECEIPT"` (el único punto de entrada al ledger,
+  regla 1) y actualiza `quantity_received` de la línea del pedido. Todo en
+  una única transacción (regla 5); se audita con antes/después del pedido
+  (`action="goods_received"`).
+- **Transición de estado del pedido**: `ORDERED`/`PARTIALLY_RECEIVED` →
+  `PARTIALLY_RECEIVED` si queda algo pendiente, o `RECEIVED` si todas las
+  líneas quedan completas. Recibir contra un pedido `DRAFT` o `CANCELLED`
+  se rechaza (409). El caso de aceptación del enunciado se verifica
+  literalmente: pedido de 100, recibir 60 → `PARTIALLY_RECEIVED` y stock
+  +60; recibir las 40 restantes → `RECEIVED` y stock total +100
+  (`test_receiving_60_of_100_leaves_the_order_partially_received`,
+  `test_receiving_the_remaining_40_completes_the_order`).
+- El coste unitario del movimiento de inventario se deriva del coste del
+  pedido (`unit_cost / package_factor`, es decir, coste por unidad base),
+  igual que en el resto del sistema (regla 8: siempre `Decimal`).
+- **Permisos**: `receiving.read` / `receiving.manage` (`ADMIN`/`MANAGER`).
+
+Archivos añadidos/tocados: `backend/app/purchasing/models.py`
+(`GoodsReceipt`, `GoodsReceiptLine`),
+`backend/app/purchasing/{schemas,service,router}.py`,
+`backend/app/rbac/permissions.py` (`PHASE_9_*`),
+`backend/migrations/versions/…_phase_9_receiving.py`,
+`backend/tests/test_receiving.py`. No hizo falta tocar
+`app/db/registry.py` ni `app/api/v1/router.py`: los modelos nuevos viven en
+el paquete ya registrado de la fase 6 y los endpoints se añaden al router
+ya montado.
+
+Endpoints nuevos: `POST /purchase-orders/{id}/receipts`,
+`GET /purchase-orders/{id}/receipts`, `GET /goods-receipts/{id}`.
+
+Migración: `77605c60bee5_phase_9_receiving` — crea `goods_receipts`,
+`goods_receipt_lines`; siembra `receiving.read`/`receiving.manage`.
+`downgrade()` deshace también el seed de permisos; verificado con
+*round-trip* completo y `alembic check`.
+
+Tests: 9 nuevos (182 en total), incluido el caso de aceptación 60/40
+literal del enunciado, recepción con envases (caja de 6), recepción con
+lote (crea el lote y su saldo por lote), exceso de recepción (422),
+recepción contra pedido no `ORDERED` (409/422), trazabilidad del
+`stock_movement_id` generado, y permisos (`403`/`401`). `ruff`,
+`ruff format --check` y `mypy` limpios; `pytest -q` → 182/182 contra
+PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de recepciones en `/admin` todavía (mismo criterio que
+  fases 1–8).
+- `create_goods_receipt` recibe el pedido una sola vez y muta sus líneas en
+  memoria; el objeto que devuelve el propio endpoint de creación viene de
+  `get_goods_receipt` (que sí usa `populate_existing=True`), así que la
+  respuesta de creación es correcta, pero una lectura de
+  `GET /purchase-orders/{id}` en la misma transacción lógica de otro
+  cliente no se ve afectada por este detalle (transacciones separadas por
+  petición, regla ya establecida en la fase 0).

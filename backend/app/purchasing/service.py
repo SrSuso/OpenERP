@@ -8,7 +8,7 @@ belong to phase 9.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -17,12 +17,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
-from app.catalog.models import ProductPackage
+from app.catalog.models import Product, ProductPackage
 from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
-from app.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus
-from app.purchasing.schemas import PurchaseOrderCreate, PurchaseOrderLineCreate
+from app.inventory import service as inventory_service
+from app.lots import service as lots_service
+from app.lots.models import Lot
+from app.lots.schemas import LotCreate
+from app.purchasing.models import (
+    GoodsReceipt,
+    GoodsReceiptLine,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseOrderStatus,
+)
+from app.purchasing.schemas import GoodsReceiptCreate, PurchaseOrderCreate, PurchaseOrderLineCreate
 from app.suppliers.models import Supplier
 
 _ORDER_OPTIONS = (
@@ -239,3 +249,174 @@ async def product_purchase_history(
         .order_by(PurchaseOrder.created_at.desc(), PurchaseOrderLine.id.desc())
     )
     return list((await session.execute(stmt)).scalars())
+
+
+# --- goods receipts (phase 9) --------------------------------------------------
+
+_RECEIPT_OPTIONS = (
+    selectinload(GoodsReceipt.lines)
+    .selectinload(GoodsReceiptLine.purchase_order_line)
+    .selectinload(PurchaseOrderLine.product),
+    selectinload(GoodsReceipt.lines).selectinload(GoodsReceiptLine.lot),
+)
+
+
+async def get_goods_receipt(session: AsyncSession, receipt_id: int) -> GoodsReceipt:
+    stmt = (
+        select(GoodsReceipt)
+        .where(GoodsReceipt.id == receipt_id)
+        .options(*_RECEIPT_OPTIONS)
+        .execution_options(populate_existing=True)
+    )
+    receipt = (await session.execute(stmt)).scalar_one_or_none()
+    if receipt is None:
+        raise NotFoundError(f"Goods receipt {receipt_id} not found.")
+    return receipt
+
+
+async def list_goods_receipts(session: AsyncSession, purchase_order_id: int) -> list[GoodsReceipt]:
+    stmt = (
+        select(GoodsReceipt)
+        .where(GoodsReceipt.purchase_order_id == purchase_order_id)
+        .options(*_RECEIPT_OPTIONS)
+        .order_by(GoodsReceipt.received_at.desc())
+    )
+    return list((await session.execute(stmt)).scalars())
+
+
+async def _get_or_create_lot(
+    session: AsyncSession,
+    *,
+    product_id: int,
+    lot_number: str,
+    manufacturing_date: date | None,
+    expiration_date: date | None,
+    supplier_id: int,
+    purchase_order_id: int,
+) -> int:
+    existing = (
+        await session.execute(
+            select(Lot).where(Lot.product_id == product_id, Lot.lot_number == lot_number)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing.id
+
+    lot = await lots_service.create_lot(
+        session,
+        LotCreate(
+            product_id=product_id,
+            lot_number=lot_number,
+            manufacturing_date=manufacturing_date,
+            expiration_date=expiration_date,
+            supplier_id=supplier_id,
+            purchase_order_id=purchase_order_id,
+        ),
+    )
+    return lot.id
+
+
+async def create_goods_receipt(
+    session: AsyncSession, purchase_order_id: int, payload: GoodsReceiptCreate
+) -> GoodsReceipt:
+    """Record a delivery against a purchase order: one ``PURCHASE_RECEIPT``
+    ledger movement per line (rule: a receipt increases inventory), the
+    order's ``quantity_received`` updated, and its status recomputed to
+    ``PARTIALLY_RECEIVED``/``RECEIVED`` — all in one transaction (rule 5).
+    """
+    order = await get_order(session, purchase_order_id)
+    if order.status not in (PurchaseOrderStatus.ORDERED, PurchaseOrderStatus.PARTIALLY_RECEIVED):
+        raise ConflictError(f"Cannot receive against an order that is {order.status}.")
+
+    lines_by_id = {line.id: line for line in order.lines}
+
+    receipt = GoodsReceipt(
+        purchase_order_id=purchase_order_id,
+        warehouse_id=payload.warehouse_id,
+        location_id=payload.location_id,
+        notes=payload.notes,
+        received_at=datetime.now(UTC),
+        created_by_user_id=get_user_id(),
+    )
+    session.add(receipt)
+    await session.flush()
+
+    for line_payload in payload.lines:
+        po_line = lines_by_id.get(line_payload.purchase_order_line_id)
+        if po_line is None:
+            raise ValidationError(
+                f"Line {line_payload.purchase_order_line_id} does not belong "
+                f"to order {purchase_order_id}."
+            )
+
+        remaining_base = po_line.quantity_ordered - po_line.quantity_received
+        received_base = line_payload.quantity_packages * po_line.package_factor
+        if received_base > remaining_base:
+            remaining_packages = remaining_base / po_line.package_factor
+            raise ValidationError(
+                f"Line {po_line.id}: receiving {line_payload.quantity_packages} would exceed "
+                f"the {remaining_packages} still pending."
+            )
+
+        lot_id = None
+        if line_payload.lot_number:
+            product = await session.get(Product, po_line.product_id)
+            assert product is not None
+            lot_id = await _get_or_create_lot(
+                session,
+                product_id=po_line.product_id,
+                lot_number=line_payload.lot_number,
+                manufacturing_date=line_payload.manufacturing_date,
+                expiration_date=line_payload.expiration_date,
+                supplier_id=order.supplier_id,
+                purchase_order_id=purchase_order_id,
+            )
+
+        # Cost per base unit — po_line.unit_cost is per package (rule 6:
+        # snapshotted at order time), never recomputed from current cost.
+        unit_cost_base = po_line.unit_cost / po_line.package_factor
+
+        movement = await inventory_service.record_movement(
+            session,
+            product_id=po_line.product_id,
+            warehouse_id=payload.warehouse_id,
+            location_id=payload.location_id,
+            quantity=received_base,
+            movement_type="PURCHASE_RECEIPT",
+            unit_cost=unit_cost_base,
+            lot_id=lot_id,
+            reference_type="goods_receipt",
+            reference_id=receipt.id,
+        )
+
+        po_line.quantity_received = po_line.quantity_received + received_base
+
+        session.add(
+            GoodsReceiptLine(
+                goods_receipt_id=receipt.id,
+                purchase_order_line_id=po_line.id,
+                quantity_packages=line_payload.quantity_packages,
+                lot_id=lot_id,
+                stock_movement_id=movement.id,
+            )
+        )
+
+    await session.flush()
+
+    if all(line.quantity_received >= line.quantity_ordered for line in order.lines):
+        new_status = PurchaseOrderStatus.RECEIVED
+    else:
+        new_status = PurchaseOrderStatus.PARTIALLY_RECEIVED
+    before = _order_snapshot(order)
+    order.status = new_status
+    await session.flush()
+
+    await audit.record(
+        session,
+        action="goods_received",
+        entity_type="purchase_order",
+        entity_id=purchase_order_id,
+        before=before,
+        after={**_order_snapshot(order), "receipt_id": receipt.id},
+    )
+    return await get_goods_receipt(session, receipt.id)

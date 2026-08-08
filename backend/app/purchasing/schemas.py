@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -66,3 +66,44 @@ class ProductPurchaseHistoryEntry(BaseModel):
     package_name: str
     quantity_packages: Decimal
     unit_cost: Decimal
+
+
+class GoodsReceiptLineCreate(BaseModel):
+    purchase_order_line_id: int
+    #: Physically received, in that line's package — what the delivery note
+    #: says, which may be less than what was ordered.
+    quantity_packages: Decimal = Field(gt=0)
+    #: Only meaningful (and only used) for a lot-tracked product. Reuses an
+    #: existing lot with this number for the product if one exists,
+    #: otherwise creates it.
+    lot_number: str | None = Field(default=None, max_length=100)
+    manufacturing_date: date | None = None
+    expiration_date: date | None = None
+
+
+class GoodsReceiptCreate(BaseModel):
+    warehouse_id: int
+    location_id: int
+    notes: str = Field(default="", max_length=2000)
+    lines: list[GoodsReceiptLineCreate] = Field(min_length=1)
+
+
+class GoodsReceiptLineRead(BaseModel):
+    id: int
+    purchase_order_line_id: int
+    product_id: int
+    product_sku: str
+    quantity_packages: Decimal
+    lot_id: int | None
+    lot_number: str | None
+    stock_movement_id: int | None
+
+
+class GoodsReceiptRead(BaseModel):
+    id: int
+    purchase_order_id: int
+    warehouse_id: int
+    location_id: int
+    notes: str
+    received_at: datetime
+    lines: list[GoodsReceiptLineRead]

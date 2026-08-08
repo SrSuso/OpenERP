@@ -17,6 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.catalog.models import Product, ProductPackage
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
 from app.db.types import Money, Quantity, numeric
+from app.inventory.models import Location, Warehouse
+from app.lots.models import Lot
 from app.suppliers.models import Supplier
 
 
@@ -83,3 +85,56 @@ class PurchaseOrderLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     purchase_order: Mapped[PurchaseOrder] = relationship(back_populates="lines")
     product: Mapped[Product] = relationship()
     package: Mapped[ProductPackage] = relationship()
+
+
+class GoodsReceipt(IntPrimaryKeyMixin, TimestampMixin, Base):
+    """Phase 9: a delivery physically arriving against a purchase order.
+
+    Recording one is what actually moves stock (rule: a receipt increases
+    inventory) — every line writes a real ``PURCHASE_RECEIPT`` movement via
+    ``app.inventory.service.record_movement`` in the same transaction.
+    """
+
+    __tablename__ = "goods_receipts"
+
+    purchase_order_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("purchase_orders.id"), index=True
+    )
+    warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"))
+    location_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("locations.id"))
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=True
+    )
+
+    purchase_order: Mapped[PurchaseOrder] = relationship()
+    warehouse: Mapped[Warehouse] = relationship()
+    location: Mapped[Location] = relationship()
+    lines: Mapped[list[GoodsReceiptLine]] = relationship(
+        back_populates="goods_receipt", cascade="all, delete-orphan", order_by="GoodsReceiptLine.id"
+    )
+
+
+class GoodsReceiptLine(IntPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "goods_receipt_lines"
+
+    goods_receipt_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("goods_receipts.id"), index=True
+    )
+    purchase_order_line_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("purchase_order_lines.id"), index=True
+    )
+    #: Physically received, in the PO line's package — what the delivery
+    #: note says, not necessarily what was ordered.
+    quantity_packages: Mapped[Quantity]
+    #: Nullable: only lot-tracked products (``products.track_lots``) get one.
+    lot_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("lots.id"), nullable=True)
+    #: Traceability to the ledger entry this line produced.
+    stock_movement_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("stock_movements.id"), nullable=True
+    )
+
+    goods_receipt: Mapped[GoodsReceipt] = relationship(back_populates="lines")
+    purchase_order_line: Mapped[PurchaseOrderLine] = relationship()
+    lot: Mapped[Lot | None] = relationship()

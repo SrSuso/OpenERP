@@ -10,8 +10,11 @@ from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import SessionDep
 from app.purchasing import service
-from app.purchasing.models import PurchaseOrder, PurchaseOrderLine
+from app.purchasing.models import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.purchasing.schemas import (
+    GoodsReceiptCreate,
+    GoodsReceiptLineRead,
+    GoodsReceiptRead,
     ProductPurchaseHistoryEntry,
     PurchaseOrderCreate,
     PurchaseOrderLineCreate,
@@ -19,12 +22,19 @@ from app.purchasing.schemas import (
     PurchaseOrderRead,
 )
 from app.rbac.dependencies import require_permission
-from app.rbac.permissions import PURCHASE_MANAGE, PURCHASE_READ
+from app.rbac.permissions import (
+    PURCHASE_MANAGE,
+    PURCHASE_READ,
+    RECEIVING_MANAGE,
+    RECEIVING_READ,
+)
 
 router = APIRouter(tags=["purchasing"])
 
 _require_read = Depends(require_permission(PURCHASE_READ))
 _require_manage = Depends(require_permission(PURCHASE_MANAGE))
+_require_receiving_read = Depends(require_permission(RECEIVING_READ))
+_require_receiving_manage = Depends(require_permission(RECEIVING_MANAGE))
 
 
 def _line_to_read(line: PurchaseOrderLine) -> PurchaseOrderLineRead:
@@ -155,3 +165,59 @@ async def product_purchase_history(
         )
         for line in lines
     ]
+
+
+def _receipt_line_to_read(line: GoodsReceiptLine) -> GoodsReceiptLineRead:
+    return GoodsReceiptLineRead(
+        id=line.id,
+        purchase_order_line_id=line.purchase_order_line_id,
+        product_id=line.purchase_order_line.product_id,
+        product_sku=line.purchase_order_line.product.sku,
+        quantity_packages=line.quantity_packages,
+        lot_id=line.lot_id,
+        lot_number=line.lot.lot_number if line.lot else None,
+        stock_movement_id=line.stock_movement_id,
+    )
+
+
+def _receipt_to_read(receipt: GoodsReceipt) -> GoodsReceiptRead:
+    return GoodsReceiptRead(
+        id=receipt.id,
+        purchase_order_id=receipt.purchase_order_id,
+        warehouse_id=receipt.warehouse_id,
+        location_id=receipt.location_id,
+        notes=receipt.notes,
+        received_at=receipt.received_at,
+        lines=[_receipt_line_to_read(line) for line in receipt.lines],
+    )
+
+
+@router.post(
+    "/purchase-orders/{order_id}/receipts",
+    response_model=GoodsReceiptRead,
+    status_code=201,
+    dependencies=[_require_receiving_manage],
+)
+async def create_goods_receipt(
+    order_id: int, payload: GoodsReceiptCreate, session: SessionDep
+) -> GoodsReceiptRead:
+    return _receipt_to_read(await service.create_goods_receipt(session, order_id, payload))
+
+
+@router.get(
+    "/purchase-orders/{order_id}/receipts",
+    response_model=list[GoodsReceiptRead],
+    dependencies=[_require_receiving_read],
+)
+async def list_goods_receipts(order_id: int, session: SessionDep) -> list[GoodsReceiptRead]:
+    receipts = await service.list_goods_receipts(session, order_id)
+    return [_receipt_to_read(r) for r in receipts]
+
+
+@router.get(
+    "/goods-receipts/{receipt_id}",
+    response_model=GoodsReceiptRead,
+    dependencies=[_require_receiving_read],
+)
+async def get_goods_receipt(receipt_id: int, session: SessionDep) -> GoodsReceiptRead:
+    return _receipt_to_read(await service.get_goods_receipt(session, receipt_id))
