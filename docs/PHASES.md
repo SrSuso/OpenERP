@@ -24,7 +24,7 @@ y commit.
 | 14 | Devoluciones | ✅ completada |
 | 15 | Tickets | ✅ completada |
 | 16 | Dashboards | ✅ completada |
-| 17 | Notificaciones | pendiente |
+| 17 | Notificaciones | ✅ completada |
 | 18 | SMTP / outbox | pendiente |
 | 19 | Seguridad | pendiente |
 | 20 | Rendimiento | pendiente |
@@ -1352,6 +1352,95 @@ Deuda técnica conocida:
   todavía; candidato natural para la fase 20 (Rendimiento).
 - Sin edición de un widget existente (sólo añadir/quitar) — cambiar sus
   parámetros hoy es quitarlo y añadirlo de nuevo.
+
+## Fase 17 — Notificaciones
+
+**Objetivo:** reglas de notificación configurables que detectan
+condiciones reales del negocio (stock bajo mínimo, lotes por caducar),
+abren un incidente por cada una y lo mantienen deduplicado — evaluar dos
+veces la misma condición nunca crea un segundo incidente, y una condición
+que deja de cumplirse se cierra sola. Vive en `app.notifications`, el
+paquete que la fase 0 ya reservaba. Puramente backend: no hay caso de uso
+en el TPV, y `/admin` ya tiene su propio criterio de "sin pantalla todavía"
+(fases 1–14) para lo que no la necesita con urgencia.
+
+Entregado:
+
+- **La lista blanca, otra vez** (`app.notifications.rules.RuleType`): el
+  mismo patrón que `app.dashboards.metrics.MetricKey` de la fase 16 —
+  `LOW_STOCK` y `EXPIRING_LOT`, cada una con su propio esquema Pydantic de
+  parámetros y su propio detector SQLAlchemy escrito a mano. Una regla
+  guardada nunca puede convertirse en SQL arbitrario, sólo en una llamada a
+  una de estas dos funciones.
+- **`notification_rules`/`incidents`**: una regla apunta a un tipo +
+  parámetros; evaluarla (`app.notifications.service.evaluate_rules`)
+  produce cero o más "detecciones" (sujeto + mensaje), y es esa función —
+  no el detector — la que decide qué hacer con cada una: abrir un
+  incidente nuevo, refrescar `last_seen_at` en uno ya abierto, o
+  resolver uno abierto cuyo sujeto ya no aparece entre las detecciones.
+- **La deduplicación la impone la base de datos, no sólo el código**:
+  índice único parcial `(rule_id, subject_type, subject_id) WHERE status =
+  'OPEN'` — el mismo mecanismo que la fase 8 ya usó para el saldo de stock
+  con/sin lote. Como mucho un incidente abierto por regla y sujeto a la
+  vez.
+- **`evaluate_rules` es idempotente**, pensado para que la fase 18 lo
+  dispare desde un *worker* programado sin cambiar nada aquí — hoy se
+  dispara a mano vía `POST /notifications/evaluate`.
+- **Bug real encontrado por los tests, no por revisión de código**:
+  `evaluate_rules` construía/recuperaba objetos `Incident` sin la relación
+  `rule` precargada; el *presenter* lee `incident.rule.name`, y esa carga
+  perezosa fuera del contexto async de la petición hacía saltar
+  `MissingGreenlet`. Arreglado asignando `incident.rule = rule`
+  directamente — la propia función ya tiene la regla en la mano en cada
+  punto donde toca un incidente, así que no hace falta ninguna consulta
+  adicional para precargarla.
+- **Permisos**: `notification.read`/`notification.manage`, sólo
+  `ADMIN`/`MANAGER` — mismo criterio que dashboards/compras/recepciones.
+
+Archivos añadidos/tocados: `backend/app/notifications/*` (nuevo —
+`models`, `rules`, `schemas`, `service`, `presenters`, `router`),
+`backend/app/rbac/permissions.py` (`PHASE_17_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_17_notifications.py`,
+`backend/tests/test_notifications.py`.
+
+Endpoints nuevos: `GET|POST /notification-rules`,
+`PATCH /notification-rules/{id}`, `POST /notifications/evaluate` ·
+`GET /incidents`, `GET /incidents/{id}`, `POST /incidents/{id}/resolve`.
+
+Migración: `c6c84b0f03e1_phase_17_notifications` — crea
+`notification_rules`/`incidents` (con el índice único parcial de
+deduplicación); siembra `notification.read`/`notification.manage` para
+`ADMIN`/`MANAGER`. `downgrade()` deshace también el seed de permisos;
+verificado con *round-trip* completo y `alembic check`.
+
+Tests: 10 nuevos (278 en total) — `LOW_STOCK` detecta un producto bajo
+mínimo y no marca uno por encima, evaluar dos veces no duplica el
+incidente (comprobado también a nivel de listado, no sólo por id),
+resolución automática al reponer stock, `EXPIRING_LOT` detecta un lote
+dentro de la ventana y no uno lejano, parámetros que no encajan
+rechazados (422), desactivar una regla la excluye de la evaluación,
+resolución manual, `CASHIER` sin acceso (403), no autenticado 401. Las
+aserciones de detección comprueban "mi sujeto aparece/no aparece" en vez
+de "la lista completa mide N" — mismo criterio de aislamiento frente a
+datos de otras pruebas que la fase 16 tuvo que aplicar (una prueba de
+concurrencia real, sin *rollback*, puede dejar productos/movimientos de
+verdad en la base de datos de test). `ruff`, `ruff format --check` y
+`mypy` limpios; `pytest -q` → 278/278 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de notificaciones en `/admin` todavía — a diferencia de la
+  fase 16, aquí no había una superficie obvia que la necesitara ya (el
+  panel de administración recién nacido no tiene aún un sitio natural para
+  una bandeja de incidentes); candidato claro para cuando la fase 18 la
+  dispare periódicamente y de verdad haga falta verla sin pedirla a mano.
+- Sólo dos tipos de regla (`LOW_STOCK`, `EXPIRING_LOT`) — el mismo patrón
+  de lista blanca hace trivial añadir más (pedidos de compra atascados,
+  devoluciones pendientes) cuando haga falta, sin tocar el modelo.
+- La evaluación es manual (`POST /notifications/evaluate`) — la fase 18
+  es la que la convierte en periódica de verdad, y la que además dispara
+  el envío por correo de lo que detecte.
 
 ## Fase 15 — Tickets
 

@@ -1,0 +1,329 @@
+"""Notification rules and incidents (phase 17): detect, deduplicate,
+auto-resolve — see app.notifications.models for the contract."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from datetime import date, timedelta
+from typing import Any
+
+from httpx import AsyncClient
+
+
+async def _default_location(client: AsyncClient) -> tuple[int, int]:
+    warehouses = (await client.get("/api/v1/warehouses")).json()
+    warehouse = next(w for w in warehouses if w["name"] == "Tienda principal")
+    locations = (await client.get(f"/api/v1/warehouses/{warehouse['id']}/locations")).json()
+    location = next(loc for loc in locations if loc["name"] == "Almacén")
+    return warehouse["id"], location["id"]
+
+
+async def _create_product(
+    client: AsyncClient, sku: str = "NOTIF-TEST-1", **overrides: Any
+) -> dict[str, Any]:
+    payload = {
+        "sku": sku,
+        "name": "Producto de notificación",
+        "base_unit_name": "UNIDAD",
+        "cost": "1.00",
+        "list_price": "10.00",
+        "tax_rate": "0",
+    }
+    payload.update(overrides)
+    response = await client.post("/api/v1/products", json=payload)
+    assert response.status_code == 201
+    body: dict[str, Any] = response.json()
+    return body
+
+
+async def _stock(
+    client: AsyncClient,
+    *,
+    product_id: int,
+    warehouse_id: int,
+    location_id: int,
+    quantity: str,
+    lot_id: int | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "product_id": product_id,
+        "warehouse_id": warehouse_id,
+        "location_id": location_id,
+        "movement_type": "ADJUSTMENT",
+        "quantity": quantity,
+        "unit_cost": "1.00",
+    }
+    if lot_id is not None:
+        payload["lot_id"] = lot_id
+    response = await client.post("/api/v1/stock-movements/adjustments", json=payload)
+    assert response.status_code == 201
+
+
+async def _create_rule(
+    client: AsyncClient, *, name: str, rule_type: str, params: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    response = await client.post(
+        "/api/v1/notification-rules",
+        json={"name": name, "rule_type": rule_type, "params": params or {}},
+    )
+    assert response.status_code == 201
+    body: dict[str, Any] = response.json()
+    return body
+
+
+async def _evaluate(client: AsyncClient) -> list[dict[str, Any]]:
+    response = await client.post("/api/v1/notifications/evaluate")
+    assert response.status_code == 200
+    result: list[dict[str, Any]] = response.json()
+    return result
+
+
+def _incident_for(
+    incidents: list[dict[str, Any]], subject_type: str, subject_id: int
+) -> dict[str, Any] | None:
+    return next(
+        (
+            i
+            for i in incidents
+            if i["subject_type"] == subject_type and i["subject_id"] == subject_id
+        ),
+        None,
+    )
+
+
+async def test_low_stock_rule_detects_a_product_below_its_minimum(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-LOW", min_stock="10")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="3",
+    )
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+
+    incidents = await _evaluate(client)
+
+    incident = _incident_for(incidents, "product", product["id"])
+    assert incident is not None
+    assert incident["status"] == "OPEN"
+    assert "NOTIF-LOW" in incident["message"]
+
+
+async def test_low_stock_rule_does_not_flag_a_product_above_its_minimum(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-OK", min_stock="5")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="50",
+    )
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+
+    incidents = await _evaluate(client)
+
+    assert _incident_for(incidents, "product", product["id"]) is None
+
+
+async def test_evaluating_twice_does_not_duplicate_the_incident(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-DEDUP", min_stock="10")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="1",
+    )
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+
+    first = _incident_for(await _evaluate(client), "product", product["id"])
+    second = _incident_for(await _evaluate(client), "product", product["id"])
+
+    assert first is not None
+    assert second is not None
+    assert first["id"] == second["id"]
+    assert second["last_seen_at"] >= first["last_seen_at"]
+
+    open_incidents = (await client.get("/api/v1/incidents", params={"status": "OPEN"})).json()
+    matching = [
+        i
+        for i in open_incidents
+        if i["subject_type"] == "product" and i["subject_id"] == product["id"]
+    ]
+    assert len(matching) == 1
+
+
+async def test_incident_auto_resolves_once_the_condition_clears(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-CLEARS", min_stock="10")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="1",
+    )
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+    opened = _incident_for(await _evaluate(client), "product", product["id"])
+    assert opened is not None
+
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="100",
+    )
+    await _evaluate(client)
+
+    resolved = (await client.get(f"/api/v1/incidents/{opened['id']}")).json()
+    assert resolved["status"] == "RESOLVED"
+    assert resolved["resolved_at"] is not None
+
+
+async def test_expiring_lot_rule_detects_a_lot_within_the_window(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json={
+                "sku": "NOTIF-LOT",
+                "name": "Producto con lote",
+                "base_unit_name": "UNIDAD",
+                "cost": "1.00",
+                "list_price": "1.00",
+                "tax_rate": "0",
+                "track_lots": True,
+                "track_expiration": True,
+            },
+        )
+    ).json()
+    warehouse_id, location_id = await _default_location(client)
+    soon = (date.today() + timedelta(days=2)).isoformat()
+    far = (date.today() + timedelta(days=300)).isoformat()
+    lot_soon = (
+        await client.post(
+            "/api/v1/lots",
+            json={"product_id": product["id"], "lot_number": "NOTIF-SOON", "expiration_date": soon},
+        )
+    ).json()
+    lot_far = (
+        await client.post(
+            "/api/v1/lots",
+            json={"product_id": product["id"], "lot_number": "NOTIF-FAR", "expiration_date": far},
+        )
+    ).json()
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="5",
+        lot_id=lot_soon["id"],
+    )
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="5",
+        lot_id=lot_far["id"],
+    )
+    await _create_rule(
+        client, name="Caducidad", rule_type="EXPIRING_LOT", params={"days_before_expiration": 7}
+    )
+
+    incidents = await _evaluate(client)
+
+    assert _incident_for(incidents, "lot", lot_soon["id"]) is not None
+    assert _incident_for(incidents, "lot", lot_far["id"]) is None
+
+
+async def test_creating_a_rule_with_params_that_do_not_fit_is_rejected(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+
+    response = await client.post(
+        "/api/v1/notification-rules",
+        json={"name": "x", "rule_type": "EXPIRING_LOT", "params": {"days_before_expiration": -1}},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_deactivating_a_rule_excludes_it_from_evaluation(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-INACTIVE-RULE", min_stock="10")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="1",
+    )
+    rule = await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+    await client.patch(f"/api/v1/notification-rules/{rule['id']}", json={"is_active": False})
+
+    incidents = await _evaluate(client)
+
+    assert _incident_for(incidents, "product", product["id"]) is None
+
+
+async def test_manually_resolving_an_incident(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-MANUAL-RESOLVE", min_stock="10")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="1",
+    )
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+    incident = _incident_for(await _evaluate(client), "product", product["id"])
+    assert incident is not None
+
+    response = await client.post(f"/api/v1/incidents/{incident['id']}/resolve")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "RESOLVED"
+
+
+async def test_cashier_cannot_manage_or_read_notifications(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="CASHIER")
+
+    assert (await client.get("/api/v1/notification-rules")).status_code == 403
+    assert (await client.post("/api/v1/notifications/evaluate")).status_code == 403
+
+
+async def test_unauthenticated_is_401(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/notification-rules")
+
+    assert response.status_code == 401

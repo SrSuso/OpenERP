@@ -264,6 +264,23 @@ PHASE_16_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (DASHBOARD_READ, DASHBOARD_MANAGE),
 }
 
+# --- phase 17: notificaciones ---------------------------------------------------
+NOTIFICATION_READ = "notification.read"
+NOTIFICATION_MANAGE = "notification.manage"
+
+PHASE_17_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(NOTIFICATION_READ, "View notification rules and incidents."),
+    PermissionDef(
+        NOTIFICATION_MANAGE, "Create/edit notification rules, evaluate them, resolve incidents."
+    ),
+)
+
+#: Frozen grants for the phase 17 migration only.
+PHASE_17_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (NOTIFICATION_READ, NOTIFICATION_MANAGE),
+    "MANAGER": (NOTIFICATION_READ, NOTIFICATION_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -282,4 +299,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_14_PERMISSIONS
     + PHASE_15_PERMISSIONS
     + PHASE_16_PERMISSIONS
+    + PHASE_17_PERMISSIONS
 )
