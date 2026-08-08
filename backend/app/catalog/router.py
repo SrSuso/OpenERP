@@ -13,11 +13,10 @@ from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import SessionDep
 from app.catalog import service
-from app.catalog.models import Product, ProductPackage
+from app.catalog.presenters import product_to_read as _to_read
 from app.catalog.schemas import (
     BarcodeCreate,
     PackageCreate,
-    PackageRead,
     ProductCategoryCreate,
     ProductCategoryRead,
     ProductCreate,
@@ -31,36 +30,6 @@ router = APIRouter(tags=["catalog"])
 
 _require_read = Depends(require_permission(PRODUCT_READ))
 _require_manage = Depends(require_permission(PRODUCT_MANAGE))
-
-
-def _package_to_read(package: ProductPackage) -> PackageRead:
-    return PackageRead(
-        id=package.id,
-        name=package.name,
-        factor=package.factor,
-        is_base=package.is_base,
-        barcodes=[b.barcode for b in package.barcodes],
-    )
-
-
-def _to_read(product: Product) -> ProductRead:
-    return ProductRead(
-        id=product.id,
-        sku=product.sku,
-        name=product.name,
-        description=product.description,
-        category_id=product.category_id,
-        category_name=product.category.name if product.category else None,
-        base_unit_name=product.base_unit_name,
-        cost=product.cost,
-        list_price=product.list_price,
-        tax_rate=product.tax_rate,
-        min_stock=product.min_stock,
-        track_lots=product.track_lots,
-        track_expiration=product.track_expiration,
-        is_active=product.is_active,
-        packages=[_package_to_read(p) for p in product.packages],
-    )
 
 
 @router.get(

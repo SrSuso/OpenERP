@@ -9,11 +9,13 @@ product always has exactly one.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import BigInteger, Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
-from app.db.types import Money, Quantity, Rate
+from app.db.types import Money, Quantity, Rate, numeric
 
 
 class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
@@ -42,11 +44,22 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: unit — see the base :class:`ProductPackage` (``factor == 1``).
     base_unit_name: Mapped[str] = mapped_column(String(20))
 
+    #: Pricing inputs/output. Written at creation time here; every
+    #: subsequent change goes exclusively through ``app.pricing`` (phase 4),
+    #: which is what keeps ``product_price_history`` complete — there is no
+    #: second, unaudited way to change a price.
     cost: Mapped[Money]
     list_price: Mapped[Money]
     tax_rate: Mapped[Rate]
-    #: The pricing formula text (phase 4 parses and evaluates it; phase 3
-    #: only stores it as a product attribute).
+    # server_default (unlike the other Rate/Money columns): these two were
+    # added in phase 4 to an already-shipped table, so existing rows need a
+    # backfill value — the app itself always sends an explicit value on
+    # every write from here on (ProductCreate defaults to 0, and every
+    # later write goes through app.pricing).
+    surcharge_rate: Mapped[Decimal] = mapped_column(numeric(), server_default="0")
+    margin_rate: Mapped[Decimal] = mapped_column(numeric(), server_default="0")
+    #: The pricing formula text; ``app.pricing.formula`` parses and
+    #: evaluates it with a restricted AST walker (rule 12: never eval()).
     price_formula: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     min_stock: Mapped[Quantity]

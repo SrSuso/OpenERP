@@ -138,11 +138,9 @@ async def test_update_product_and_deactivate(
     await login(role_name="ADMIN")
     product_id = (await client.post("/api/v1/products", json=_product_payload())).json()["id"]
 
-    update_response = await client.patch(
-        f"/api/v1/products/{product_id}", json={"list_price": "1.10"}
-    )
+    update_response = await client.patch(f"/api/v1/products/{product_id}", json={"min_stock": "25"})
     assert update_response.status_code == 200
-    assert update_response.json()["list_price"] == "1.100000"
+    assert update_response.json()["min_stock"] == "25.000000"
 
     deactivate_response = await client.post(f"/api/v1/products/{product_id}/deactivate")
     assert deactivate_response.status_code == 200

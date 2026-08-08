@@ -11,7 +11,7 @@ y commit.
 | 1 | Auth y RBAC | ✅ completada |
 | 2 | Auditoría | ✅ completada |
 | 3 | Productos | ✅ completada |
-| 4 | Precios | pendiente |
+| 4 | Precios | ✅ completada |
 | 5 | Proveedores | pendiente |
 | 6 | Compras | pendiente |
 | 7 | Inventory ledger | pendiente |
@@ -329,3 +329,75 @@ Deuda técnica conocida:
   cuando una fase la consuma — el propio POS en la fase 12, por ejemplo).
 - `price_formula` es sólo una columna de texto por ahora; la fase 4 añade
   el parser seguro que la interpreta (regla 12: nunca `eval()`).
+
+## Fase 4 — Precios
+
+**Objetivo:** fórmulas de precio definidas por el usuario, evaluadas sin
+`eval()`/`exec()` (regla 12), con histórico completo de cambios de precio
+(regla 7: cambiar el precio actual nunca reescribe lo que fue en el
+pasado).
+
+Entregado:
+
+- **`app.pricing.formula`**: parser/evaluador seguro. Analiza la fórmula con
+  el módulo `ast` de Python y camina el árbol con un intérprete propio de
+  lista blanca — sólo `+ - * /`, paréntesis (implícitos en el AST),
+  las variables `cost`/`tax_rate`/`surcharge_rate`/`margin_rate` y las
+  funciones `round`/`ceil`/`floor` son alcanzables; cualquier otro nodo
+  (acceso a atributos, subíndices, comparaciones, lambdas, llamadas a
+  cualquier otra cosa) se rechaza **antes** de evaluar nada — el árbol
+  nunca llega al evaluador real de Python. 22 tests unitarios, incluidos
+  varios intentos de escape (`__import__('os')...`, `().__class__...`,
+  `open(...)`, `exec()`/`eval()`, `lambda`, comparaciones...).
+- **`product_price_history`**: *append-only* como `audit_log` (misma
+  filosofía, sin `updated_at`) — una fila por cambio de precio real, nunca
+  modificada ni borrada.
+- **`app.pricing` es la única vía de escritura** de coste/PVP/IVA/recargo/
+  margen/fórmula desde esta fase: `ProductUpdate` (fase 3) perdió esos
+  campos — antes de esta fase existían dos caminos para cambiar un precio
+  (uno auditado con histórico, otro no); ahora sólo hay uno, y por eso el
+  histórico nunca puede quedarse corto. `products.margin_rate` y
+  `surcharge_rate` se añadieron con `server_default='0'` para no romper
+  filas ya existentes.
+- Cambiar `cost`/`tax_rate`/`surcharge_rate`/`margin_rate` en un producto
+  con fórmula activa **recalcula el precio automáticamente**; fijar un
+  precio manual limpia la fórmula (un precio manual siempre gana sobre una
+  fórmula que lo sobrescribiría en el siguiente cambio de coste).
+- **Permiso `pricing.manage`** (`ADMIN`/`MANAGER`) para todo lo que muta
+  precio; previsualizar una fórmula y leer el histórico sólo necesitan
+  `product.read` (ya lo tiene `CASHIER`).
+
+Archivos añadidos/tocados: `backend/app/pricing/*` (nuevo),
+`backend/app/catalog/presenters.py` (nuevo — `Product`→`ProductRead`
+compartido entre `catalog.router` y `pricing.router`, en vez de que uno
+importe el "privado" del otro), `backend/app/catalog/{models,schemas,service}.py`
+(precio sale de `ProductUpdate`; `margin_rate`/`surcharge_rate` en el
+modelo), `backend/app/rbac/permissions.py` (`PHASE_4_*`),
+`backend/app/db/registry.py`, `backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_4_pricing.py`,
+`backend/tests/{test_pricing_formula,test_pricing_router}.py`,
+`backend/tests/test_catalog_products.py` (el PATCH de precio se sustituyó
+por uno de `min_stock`, ya que el precio ya no vive ahí).
+
+Endpoints nuevos: `POST /pricing/preview` ·
+`GET /products/{id}/pricing/history` ·
+`PATCH /products/{id}/pricing` ·
+`PUT|DELETE /products/{id}/pricing/formula` ·
+`PUT /products/{id}/pricing/manual-price`.
+
+Migración: `3c00d4e8913b_phase_4_pricing` — crea `product_price_history`;
+añade `products.surcharge_rate`/`margin_rate` (`server_default='0'`,
+verificado que no rompe con filas existentes); siembra `pricing.manage` y
+lo concede a `ADMIN`/`MANAGER`. `downgrade()` deshace también el seed;
+verificado con *round-trip* completo y `alembic check`.
+
+Tests: 32 nuevos (126 en total). `ruff`, `ruff format --check` y `mypy`
+limpios; `pytest -q` → 126/126 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de precios en `/admin` todavía (mismo criterio que fases
+  1–3): la API está completa y documentada en `/api/docs`.
+- `product_price_history` no se enlaza todavía con ventas (fase 11) —
+  cuando existan, cada línea de venta guardará su propio *snapshot* de
+  precio (regla 6), independiente de esta tabla.

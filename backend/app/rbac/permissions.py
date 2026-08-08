@@ -85,9 +85,24 @@ PHASE_3_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "CASHIER": (PRODUCT_READ,),
 }
 
+# --- phase 4: precios --------------------------------------------------------
+PRICING_MANAGE = "pricing.manage"
+
+PHASE_4_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(PRICING_MANAGE, "Change cost/tax/margin/formula and set prices."),
+)
+
+#: Frozen grants for the phase 4 migration only. Previewing a formula and
+#: reading price history only need product.read (already granted), so
+#: pricing.manage is just the mutating half.
+PHASE_4_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (PRICING_MANAGE,),
+    "MANAGER": (PRICING_MANAGE,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
 ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
-    PHASE_1_PERMISSIONS + PHASE_2_PERMISSIONS + PHASE_3_PERMISSIONS
+    PHASE_1_PERMISSIONS + PHASE_2_PERMISSIONS + PHASE_3_PERMISSIONS + PHASE_4_PERMISSIONS
 )

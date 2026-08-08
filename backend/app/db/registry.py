@@ -17,6 +17,7 @@ from app.audit import models as audit_models
 from app.auth import models as auth_models
 from app.catalog import models as catalog_models
 from app.db.base import Base
+from app.pricing import models as pricing_models
 from app.rbac import models as rbac_models
 from app.users import models as user_models
 
@@ -27,6 +28,7 @@ __all__ = [
     "audit_models",
     "auth_models",
     "catalog_models",
+    "pricing_models",
     "rbac_models",
     "user_models",
 ]

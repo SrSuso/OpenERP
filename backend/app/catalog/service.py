@@ -35,6 +35,9 @@ def _snapshot(product: Product) -> dict[str, Any]:
         "cost": str(product.cost),
         "list_price": str(product.list_price),
         "tax_rate": str(product.tax_rate),
+        "surcharge_rate": str(product.surcharge_rate),
+        "margin_rate": str(product.margin_rate),
+        "price_formula": product.price_formula,
         "min_stock": str(product.min_stock),
         "track_lots": product.track_lots,
         "track_expiration": product.track_expiration,
@@ -163,6 +166,8 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         cost=payload.cost,
         list_price=payload.list_price,
         tax_rate=payload.tax_rate,
+        surcharge_rate=payload.surcharge_rate,
+        margin_rate=payload.margin_rate,
         min_stock=payload.min_stock,
         track_lots=payload.track_lots,
         track_expiration=payload.track_expiration,
@@ -204,12 +209,6 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
     if payload.category_id is not None:
         await _category_or_422(session, payload.category_id)
         product.category_id = payload.category_id
-    if payload.cost is not None:
-        product.cost = payload.cost
-    if payload.list_price is not None:
-        product.list_price = payload.list_price
-    if payload.tax_rate is not None:
-        product.tax_rate = payload.tax_rate
     if payload.min_stock is not None:
         product.min_stock = payload.min_stock
     if payload.track_lots is not None:

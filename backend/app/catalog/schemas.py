@@ -45,18 +45,21 @@ class ProductCreate(BaseModel):
     cost: Decimal = Field(ge=0)
     list_price: Decimal = Field(ge=0)
     tax_rate: Decimal = Field(default=Decimal(0), ge=0)
+    surcharge_rate: Decimal = Field(default=Decimal(0), ge=0)
+    margin_rate: Decimal = Field(default=Decimal(0), ge=0)
     min_stock: Decimal = Field(default=Decimal(0), ge=0)
     track_lots: bool = False
     track_expiration: bool = False
 
 
 class ProductUpdate(BaseModel):
+    """Catalog-only fields. Cost/price/tax/surcharge/margin/formula are
+    ``app.pricing``'s exclusive write path from here on (phase 4) — that is
+    the only way ``product_price_history`` stays complete."""
+
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
     category_id: int | None = None
-    cost: Decimal | None = Field(default=None, ge=0)
-    list_price: Decimal | None = Field(default=None, ge=0)
-    tax_rate: Decimal | None = Field(default=None, ge=0)
     min_stock: Decimal | None = Field(default=None, ge=0)
     track_lots: bool | None = None
     track_expiration: bool | None = None
@@ -73,6 +76,9 @@ class ProductRead(BaseModel):
     cost: Decimal
     list_price: Decimal
     tax_rate: Decimal
+    surcharge_rate: Decimal
+    margin_rate: Decimal
+    price_formula: str | None
     min_stock: Decimal
     track_lots: bool
     track_expiration: bool
