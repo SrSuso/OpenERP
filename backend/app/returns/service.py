@@ -49,8 +49,20 @@ async def get_return(session: AsyncSession, return_id: int) -> Return:
     return ret
 
 
-async def list_returns(session: AsyncSession, *, sale_id: int | None = None) -> list[Return]:
-    stmt = select(Return).options(*_RETURN_OPTIONS).order_by(Return.created_at.desc())
+async def list_returns(
+    session: AsyncSession,
+    *,
+    sale_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[Return]:
+    stmt = (
+        select(Return)
+        .options(*_RETURN_OPTIONS)
+        .order_by(Return.created_at.desc(), Return.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     if sale_id is not None:
         stmt = stmt.where(Return.sale_id == sale_id)
     return list((await session.execute(stmt)).scalars())

@@ -72,11 +72,13 @@ async def list_incidents(
     session: SessionDep,
     status: Annotated[str | None, Query()] = None,
     rule_id: Annotated[int | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[IncidentRead]:
-    return [
-        _incident_to_read(i)
-        for i in await service.list_incidents(session, status=status, rule_id=rule_id)
-    ]
+    incidents = await service.list_incidents(
+        session, status=status, rule_id=rule_id, limit=limit, offset=offset
+    )
+    return [_incident_to_read(i) for i in incidents]
 
 
 @router.get("/incidents/{incident_id}", response_model=IncidentRead, dependencies=[_require_read])

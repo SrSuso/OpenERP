@@ -92,9 +92,20 @@ async def get_order(session: AsyncSession, order_id: int) -> PurchaseOrder:
 
 
 async def list_orders(
-    session: AsyncSession, *, supplier_id: int | None = None, status: str | None = None
+    session: AsyncSession,
+    *,
+    supplier_id: int | None = None,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[PurchaseOrder]:
-    stmt = select(PurchaseOrder).options(*_ORDER_OPTIONS).order_by(PurchaseOrder.created_at.desc())
+    stmt = (
+        select(PurchaseOrder)
+        .options(*_ORDER_OPTIONS)
+        .order_by(PurchaseOrder.created_at.desc(), PurchaseOrder.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     if supplier_id is not None:
         stmt = stmt.where(PurchaseOrder.supplier_id == supplier_id)
     if status is not None:

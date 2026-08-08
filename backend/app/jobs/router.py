@@ -25,9 +25,13 @@ _require_manage = Depends(require_permission(JOB_MANAGE))
 
 @router.get("/outbox", response_model=list[OutboxMessageRead], dependencies=[_require_read])
 async def list_outbox(
-    session: SessionDep, status: Annotated[str | None, Query()] = None
+    session: SessionDep,
+    status: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[OutboxMessageRead]:
-    return [_to_read(m) for m in await service.list_messages(session, status=status)]
+    messages = await service.list_messages(session, status=status, limit=limit, offset=offset)
+    return [_to_read(m) for m in messages]
 
 
 @router.post("/outbox/run", response_model=ProcessOutboxResult, dependencies=[_require_manage])

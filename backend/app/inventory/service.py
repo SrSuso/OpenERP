@@ -316,8 +316,15 @@ async def list_balances(
     product_id: int | None = None,
     warehouse_id: int | None = None,
     lot_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[StockBalance]:
-    stmt = select(StockBalance).order_by(StockBalance.product_id)
+    stmt = (
+        select(StockBalance)
+        .order_by(StockBalance.product_id, StockBalance.id)
+        .limit(limit)
+        .offset(offset)
+    )
     if product_id is not None:
         stmt = stmt.where(StockBalance.product_id == product_id)
     if warehouse_id is not None:

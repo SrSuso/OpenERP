@@ -84,8 +84,19 @@ async def get_lot(session: AsyncSession, lot_id: int) -> Lot:
     return lot
 
 
-async def list_lots(session: AsyncSession, *, product_id: int | None = None) -> list[Lot]:
-    stmt = select(Lot).order_by(Lot.expiration_date.asc().nulls_last(), Lot.id)
+async def list_lots(
+    session: AsyncSession,
+    *,
+    product_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[Lot]:
+    stmt = (
+        select(Lot)
+        .order_by(Lot.expiration_date.asc().nulls_last(), Lot.id)
+        .limit(limit)
+        .offset(offset)
+    )
     if product_id is not None:
         stmt = stmt.where(Lot.product_id == product_id)
     return list((await session.execute(stmt)).scalars())

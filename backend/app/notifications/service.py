@@ -82,9 +82,20 @@ _INCIDENT_OPTIONS = (selectinload(Incident.rule),)
 
 
 async def list_incidents(
-    session: AsyncSession, *, status: str | None = None, rule_id: int | None = None
+    session: AsyncSession,
+    *,
+    status: str | None = None,
+    rule_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[Incident]:
-    stmt = select(Incident).options(*_INCIDENT_OPTIONS).order_by(Incident.last_seen_at.desc())
+    stmt = (
+        select(Incident)
+        .options(*_INCIDENT_OPTIONS)
+        .order_by(Incident.last_seen_at.desc(), Incident.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     if status is not None:
         stmt = stmt.where(Incident.status == status)
     if rule_id is not None:

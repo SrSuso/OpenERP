@@ -27,7 +27,7 @@ y commit.
 | 17 | Notificaciones | ✅ completada |
 | 18 | SMTP / outbox | ✅ completada |
 | 19 | Seguridad | ✅ completada |
-| 20 | Rendimiento | pendiente |
+| 20 | Rendimiento | ✅ completada |
 | 21 | Backup / restore | pendiente |
 | 22 | Tests completos de aceptación | pendiente |
 
@@ -1740,3 +1740,100 @@ Deuda técnica conocida:
 - Sin *CAPTCHA* ni verificación en dos pasos — fuera del alcance que el
   README fija para este proyecto; el límite de intentos es la única
   mitigación de fuerza bruta contemplada.
+
+## Fase 20 — Rendimiento
+
+**Objetivo:** que las listas que crecen sin límite (ventas, compras,
+devoluciones, incidentes, lotes, saldos de stock, la bandeja de salida) no
+degraden con el tiempo — ni por transferir toda la tabla en una sola
+respuesta, ni por una consulta filtrada sin índice detrás. No añade
+dominio nuevo; audita y corrige lo que las 19 fases anteriores ya
+construyeron.
+
+Entregado:
+
+- **Auditoría de índices**: cada clave foránea del esquema ya llevaba
+  `index=True` desde que se introdujo (fases 0–18, comprobado columna por
+  columna), pero tres columnas `status` muy filtradas se habían quedado
+  sin índice propio: `sales.status` (la búsqueda "reanudar o abrir un
+  borrador" del TPV, y todo filtro de panel/informe), `purchase_orders.status`
+  (`GET /purchase-orders?status=`), y `outbox_messages.status` — ésta
+  última la más caliente de las tres: es exactamente la cláusula `WHERE`
+  de `SELECT ... FOR UPDATE SKIP LOCKED` con la que el *worker* de la fase
+  18 sondea la tabla sin parar. Las tres, añadidas.
+- **Auditoría de N+1**: revisados los servicios de listado de cada módulo
+  (`purchasing`, `sales`, `returns`, `notifications`, `lots`, `inventory`)
+  — todos ya cargaban sus relaciones con `selectinload` explícito antes de
+  esta fase (mismo patrón que la fase 17 tuvo que corregir para
+  `incident.rule`); no se encontró ningún N+1 nuevo que corregir. Se deja
+  constancia en vez de "no hacer nada": la ausencia de hallazgos es en sí
+  misma el resultado de la auditoría, no una fase saltada.
+- **Paginación (`limit`/`offset`, límite 500, por defecto 100) añadida a
+  las listas que de verdad no tienen cota natural** — mismo patrón que
+  `GET /audit-log` y `GET /stock-movements` ya usaban desde sus propias
+  fases: `GET /sales`, `GET /returns`, `GET /incidents`,
+  `GET /purchase-orders`, `GET /lots`, `GET /stock-balance`,
+  `GET /outbox` (que ya tenía `limit` a medias — sin `offset` ni límite
+  máximo validado; ahora igualada al resto). Deliberadamente **sin**
+  tocar `GET /products`, `GET /suppliers`, `GET /users` ni los catálogos
+  pequeños (`warehouses`, `roles`, `permissions`, `pos-categories`): su
+  tamaño está acotado por el catálogo de una tienda minorista real
+  (cientos, no millones de filas), y paginarlos sólo añadiría ceremonia
+  al frontend sin resolver un problema real — ver deuda técnica.
+- **`test_performance.py`**: además de comprobar que la paginación cubre
+  cada fila exactamente una vez sin solapes, y que `limit` rechaza más de
+  500, verifica con `EXPLAIN (FORMAT JSON)` sobre datos sembrados con la
+  forma real de producción (miles de `outbox_messages` en `SENT`, un
+  puñado en `PENDING`) que el planificador **de verdad** elige el índice
+  nuevo en vez de un barrido secuencial — no basta con que el índice
+  exista, tiene que usarse. Una comprobación de humo, no una herramienta
+  de carga de verdad (ver deuda técnica), confirma que listar con 500
+  ventas sembradas sigue respondiendo muy por debajo de un segundo.
+
+Archivos añadidos/tocados: `backend/app/sales/{models,service,router}.py`,
+`backend/app/purchasing/{models,service,router}.py`,
+`backend/app/jobs/{models,service,router}.py`,
+`backend/app/returns/{service,router}.py`,
+`backend/app/notifications/{service,router}.py`,
+`backend/app/lots/{service,router}.py`,
+`backend/app/inventory/{service,router}.py`,
+`backend/migrations/versions/…_phase_20_performance_indexes.py`,
+`backend/tests/test_performance.py` (nuevo).
+
+Endpoints nuevos: ninguno — `GET /sales`, `GET /returns`,
+`GET /incidents`, `GET /purchase-orders`, `GET /lots`,
+`GET /stock-balance` y `GET /outbox` ganan `limit`/`offset` opcionales
+(compatibles hacia atrás: omitirlos da el mismo comportamiento de antes,
+las primeras 100 filas).
+
+Migración: `89da0848671d_phase_20_performance_indexes` — sólo tres
+índices (`ix_sales_status`, `ix_purchase_orders_status`,
+`ix_outbox_messages_status`); sin tablas, columnas ni permisos nuevos.
+`downgrade()` los elimina; verificado con *round-trip* completo y
+`alembic check`.
+
+Tests: 6 nuevos en backend (306 en total) — paginar 25 ventas sembradas
+cubre las 25 sin solapes entre páginas; `limit=501` rechazado con 422;
+los tres índices existen en `pg_indexes`; el planificador usa de verdad
+el índice de `outbox_messages.status` sobre datos con la forma de
+producción (miles de `SENT`, unos pocos `PENDING`); paginar
+`purchase_orders` no solapa entre páginas; listar 500 ventas sembradas
+responde en menos de 2 segundos. `ruff`, `ruff format --check` y `mypy`
+limpios; `pytest -q` → 306/306 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin herramienta de carga dedicada (k6, Locust, ...) — la única prueba
+  de rendimiento es el chequeo de humo descrito arriba, con datos
+  sembrados directamente (no a través del flujo de negocio real, que
+  sería demasiado lento para sembrar cientos de filas). Suficiente como
+  regresión ("esto no debe volver a ser un barrido secuencial sin
+  paginar"), no como caracterización real de capacidad bajo concurrencia.
+- `GET /products` y `GET /suppliers` siguen sin paginar — el catálogo de
+  una tienda minorista real es de cientos a pocos miles de SKUs, no una
+  tabla que crece sin límite como ventas o incidentes; si un despliegue
+  concreto lo necesitara, es el mismo patrón ya aplicado aquí siete veces.
+- El *pool* de conexiones (`db_pool_size`/`db_max_overflow`, fase 0) no se
+  ha revisado ni ajustado en esta fase — sigue con los valores por
+  defecto; ajustarlo pertenece a un ejercicio de capacidad con tráfico
+  real, no a esta auditoría de código.

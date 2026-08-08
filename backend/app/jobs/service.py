@@ -44,9 +44,14 @@ async def enqueue_email(
 
 
 async def list_messages(
-    session: AsyncSession, *, status: str | None = None, limit: int = 100
+    session: AsyncSession, *, status: str | None = None, limit: int = 100, offset: int = 0
 ) -> list[OutboxMessage]:
-    stmt = select(OutboxMessage).order_by(OutboxMessage.created_at.desc()).limit(limit)
+    stmt = (
+        select(OutboxMessage)
+        .order_by(OutboxMessage.created_at.desc(), OutboxMessage.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     if status is not None:
         stmt = stmt.where(OutboxMessage.status == status)
     return list((await session.execute(stmt)).scalars())

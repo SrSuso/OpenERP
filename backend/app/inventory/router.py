@@ -143,9 +143,16 @@ async def list_balances(
     product_id: Annotated[int | None, Query()] = None,
     warehouse_id: Annotated[int | None, Query()] = None,
     lot_id: Annotated[int | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[StockBalanceRead]:
     balances = await service.list_balances(
-        session, product_id=product_id, warehouse_id=warehouse_id, lot_id=lot_id
+        session,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        lot_id=lot_id,
+        limit=limit,
+        offset=offset,
     )
     results = []
     for balance in balances:

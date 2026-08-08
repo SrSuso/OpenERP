@@ -51,9 +51,12 @@ async def create_lot(payload: LotCreate, session: SessionDep) -> LotRead:
 
 @router.get("/lots", response_model=list[LotRead], dependencies=[_require_read])
 async def list_lots(
-    session: SessionDep, product_id: Annotated[int | None, Query()] = None
+    session: SessionDep,
+    product_id: Annotated[int | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[LotRead]:
-    lots = await service.list_lots(session, product_id=product_id)
+    lots = await service.list_lots(session, product_id=product_id, limit=limit, offset=offset)
     return [await _lot_to_read(session, lot) for lot in lots]
 
 

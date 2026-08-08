@@ -27,7 +27,12 @@ class OutboxMessage(IntPrimaryKeyMixin, TimestampMixin, Base):
     to_email: Mapped[str] = mapped_column(String(255))
     subject: Mapped[str] = mapped_column(String(255))
     body_text: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(20), default="PENDING", server_default="PENDING")
+    # Indexed (phase 20): the worker's claim query
+    # (`SELECT ... WHERE status = 'PENDING' ... FOR UPDATE SKIP LOCKED`)
+    # polls this column constantly — the single hottest query in the app.
+    status: Mapped[str] = mapped_column(
+        String(20), default="PENDING", server_default="PENDING", index=True
+    )
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_error: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

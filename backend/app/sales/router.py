@@ -33,8 +33,12 @@ async def list_sales(
     session: SessionDep,
     status: Annotated[str | None, Query()] = None,
     warehouse_id: Annotated[int | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[SaleRead]:
-    sales = await service.list_sales(session, status=status, warehouse_id=warehouse_id)
+    sales = await service.list_sales(
+        session, status=status, warehouse_id=warehouse_id, limit=limit, offset=offset
+    )
     return [_to_read(s) for s in sales]
 
 

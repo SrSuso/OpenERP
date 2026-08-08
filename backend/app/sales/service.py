@@ -100,9 +100,20 @@ async def get_sale(session: AsyncSession, sale_id: int) -> Sale:
 
 
 async def list_sales(
-    session: AsyncSession, *, status: str | None = None, warehouse_id: int | None = None
+    session: AsyncSession,
+    *,
+    status: str | None = None,
+    warehouse_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[Sale]:
-    stmt = select(Sale).options(*_SALE_OPTIONS).order_by(Sale.created_at.desc())
+    stmt = (
+        select(Sale)
+        .options(*_SALE_OPTIONS)
+        .order_by(Sale.created_at.desc(), Sale.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     if status is not None:
         stmt = stmt.where(Sale.status == status)
     if warehouse_id is not None:

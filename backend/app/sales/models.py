@@ -49,8 +49,11 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"), index=True)
     location_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("locations.id"))
+    # Indexed (phase 20): the POS "resume or open a draft" lookup and every
+    # dashboard/report metric filter on this column, on a table that only
+    # ever grows.
     status: Mapped[str] = mapped_column(
-        String(20), default=SaleStatus.DRAFT, server_default=SaleStatus.DRAFT
+        String(20), default=SaleStatus.DRAFT, server_default=SaleStatus.DRAFT, index=True
     )
     notes: Mapped[str] = mapped_column(String(2000), default="")
     #: Nullable: the cashier who rang it up may since have been deactivated

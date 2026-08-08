@@ -82,8 +82,12 @@ async def list_orders(
     session: SessionDep,
     supplier_id: Annotated[int | None, Query()] = None,
     status: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[PurchaseOrderRead]:
-    orders = await service.list_orders(session, supplier_id=supplier_id, status=status)
+    orders = await service.list_orders(
+        session, supplier_id=supplier_id, status=status, limit=limit, offset=offset
+    )
     return [_order_to_read(o) for o in orders]
 
 

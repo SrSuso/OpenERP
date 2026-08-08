@@ -42,9 +42,13 @@ async def list_sale_returns(sale_id: int, session: SessionDep) -> list[ReturnRea
 
 @router.get("/returns", response_model=list[ReturnRead], dependencies=[_require_read])
 async def list_returns(
-    session: SessionDep, sale_id: Annotated[int | None, Query()] = None
+    session: SessionDep,
+    sale_id: Annotated[int | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ReturnRead]:
-    return [_to_read(r) for r in await service.list_returns(session, sale_id=sale_id)]
+    returns = await service.list_returns(session, sale_id=sale_id, limit=limit, offset=offset)
+    return [_to_read(r) for r in returns]
 
 
 @router.get("/returns/{return_id}", response_model=ReturnRead, dependencies=[_require_read])

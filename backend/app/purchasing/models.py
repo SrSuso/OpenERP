@@ -34,8 +34,13 @@ class PurchaseOrder(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "purchase_orders"
 
     supplier_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("suppliers.id"), index=True)
+    # Indexed (phase 20): GET /purchase-orders?status=... is the common
+    # filter for a table that only ever grows.
     status: Mapped[str] = mapped_column(
-        String(20), default=PurchaseOrderStatus.DRAFT, server_default=PurchaseOrderStatus.DRAFT
+        String(20),
+        default=PurchaseOrderStatus.DRAFT,
+        server_default=PurchaseOrderStatus.DRAFT,
+        index=True,
     )
     notes: Mapped[str] = mapped_column(String(2000), default="")
     ordered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
