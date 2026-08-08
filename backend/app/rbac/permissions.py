@@ -281,6 +281,21 @@ PHASE_17_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (NOTIFICATION_READ, NOTIFICATION_MANAGE),
 }
 
+# --- phase 18: SMTP / outbox -------------------------------------------------
+JOB_READ = "job.read"
+JOB_MANAGE = "job.manage"
+
+PHASE_18_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(JOB_READ, "View the outbox (queued/sent/failed emails)."),
+    PermissionDef(JOB_MANAGE, "Manually trigger outbox processing."),
+)
+
+#: Frozen grants for the phase 18 migration only.
+PHASE_18_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (JOB_READ, JOB_MANAGE),
+    "MANAGER": (JOB_READ, JOB_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -300,4 +315,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_15_PERMISSIONS
     + PHASE_16_PERMISSIONS
     + PHASE_17_PERMISSIONS
+    + PHASE_18_PERMISSIONS
 )

@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
+from app.core.config import get_settings
 from app.core.errors import NotFoundError
+from app.jobs import service as outbox
 from app.notifications import rules as rule_engine
 from app.notifications.models import Incident, NotificationRule
 from app.notifications.schemas import NotificationRuleCreate, NotificationRuleUpdate
@@ -122,9 +124,16 @@ async def evaluate_rules(session: AsyncSession) -> list[Incident]:
     subject it still finds, and auto-resolve any open incident whose
     subject no longer matches. Idempotent to call repeatedly (this is
     exactly what phase 18's scheduled worker will do) — a subject already
-    open just gets its `last_seen_at` touched, never a duplicate row."""
+    open just gets its `last_seen_at` touched, never a duplicate row.
+
+    A brand-new incident also queues an email (phase 18) to
+    ``settings.notification_recipient_email``, if one is configured — never
+    for an incident that was already open, so a recipient gets exactly one
+    email per incident, not one per evaluation cycle."""
     now = datetime.now(UTC)
     touched: list[Incident] = []
+    new_incidents: list[Incident] = []
+    recipient = get_settings().notification_recipient_email
 
     for rule in await list_rules(session, active_only=True):
         detections = await rule_engine.detect(
@@ -166,8 +175,21 @@ async def evaluate_rules(session: AsyncSession) -> list[Incident]:
                 incident.rule = rule
                 session.add(incident)
                 touched.append(incident)
+                new_incidents.append(incident)
 
-    await session.flush()
+    await session.flush()  # assigns real ids to new_incidents before we reference them below
+
+    if recipient:
+        for incident in new_incidents:
+            await outbox.enqueue_email(
+                session,
+                to_email=recipient,
+                subject=f"[OpenERP] {incident.rule.name}",
+                body_text=incident.message,
+                reference_type="incident",
+                reference_id=incident.id,
+            )
+
     if touched:
         await audit.record(
             session,

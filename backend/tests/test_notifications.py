@@ -7,7 +7,14 @@ from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
 from typing import Any
 
+import httpx
+import pytest
 from httpx import AsyncClient
+
+from app.core.config import Settings
+from app.notifications import service as notifications_service
+
+MAILPIT_API = "http://127.0.0.1:8025/api/v1"
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
@@ -327,3 +334,51 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/notification-rules")
 
     assert response.status_code == 401
+
+
+async def test_a_brand_new_incident_queues_and_delivers_an_email(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The phase 18 wiring: evaluate_rules queues one email per brand-new
+    incident to `notification_recipient_email`, if configured — verified
+    end to end, through a real send via Mailpit, not just "a row exists"."""
+    to_email = "notify-test@example.invalid"
+    async with httpx.AsyncClient() as http:
+        await http.delete(f"{MAILPIT_API}/messages")
+    monkeypatch.setattr(
+        notifications_service,
+        "get_settings",
+        lambda: settings.model_copy(update={"notification_recipient_email": to_email}),
+    )
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-EMAIL", min_stock="10")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="1",
+    )
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+
+    await _evaluate(client)
+    run_response = await client.post("/api/v1/outbox/run")
+    assert run_response.status_code == 200
+
+    async with httpx.AsyncClient() as http:
+        search = await http.get(f"{MAILPIT_API}/search", params={"query": f"to:{to_email}"})
+    delivered = search.json()["messages"]
+    assert len(delivered) == 1
+    assert "Stock bajo" in delivered[0]["Subject"]
+
+    # Evaluating again (condition unchanged) must not queue a second email —
+    # only a brand-new incident does.
+    await _evaluate(client)
+    await client.post("/api/v1/outbox/run")
+    async with httpx.AsyncClient() as http:
+        search_again = await http.get(f"{MAILPIT_API}/search", params={"query": f"to:{to_email}"})
+    assert len(search_again.json()["messages"]) == 1

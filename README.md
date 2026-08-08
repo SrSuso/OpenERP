@@ -16,7 +16,7 @@ táctil (`/pos`), construido como **monolito modular**.
 
 ## Estado
 
-**Fases 0–17 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas, POS, pagos, devoluciones, tickets, dashboards, notificaciones) completadas.** Las fases siguientes
+**Fases 0–18 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas, POS, pagos, devoluciones, tickets, dashboards, notificaciones, SMTP/outbox) completadas.** Las fases siguientes
 se implementan en orden estricto y ninguna avanza con la anterior rota. Ver
 [`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada y
 [`docs/USAGE.md`](docs/USAGE.md) para cómo arrancar el proyecto, crear el
@@ -75,11 +75,16 @@ cd backend && uv run uvicorn app.main:app --reload --port 8000
 
 # terminal 2
 cd frontend && npm run dev
+
+# terminal 3 (opcional): envía los correos que encola la fase 17
+# (incidentes de notificaciones) — sin él, se quedan en PENDING en outbox_messages.
+make dev-worker
 ```
 
 - Panel: <http://127.0.0.1:5173/admin>
 - TPV: <http://127.0.0.1:5173/pos>
 - OpenAPI: <http://127.0.0.1:8000/api/docs>
+- Mailpit (correo de desarrollo): <http://127.0.0.1:8025>
 
 El `Makefile` de la raíz agrupa todo lo anterior (`make help`).
 

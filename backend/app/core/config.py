@@ -79,6 +79,24 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
 
+    # --- SMTP / outbox (phase 18) -------------------------------------------
+    # Rule 10: SMTP never blocks a sale — nothing in the request path talks to
+    # this host directly. Requests only ever write a row to `outbox_messages`
+    # (app.jobs); app.jobs.worker, a separate process, is the only thing that
+    # opens an SMTP connection. Defaults match the Mailpit dev instance
+    # (docker/compose.yml / scripts/dev-mailpit.sh) — a real deployment points
+    # these at a real relay.
+    smtp_host: str = "127.0.0.1"
+    smtp_port: int = 1025
+    smtp_use_tls: bool = False
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str = "no-reply@openerp.local"
+    # Who gets emailed when a notification rule (phase 17) opens a brand-new
+    # incident. Unset means "queue nothing" — notifications still work purely
+    # through GET /incidents either way.
+    notification_recipient_email: str | None = None
+
     @property
     def session_cookie_secure(self) -> bool:
         """``Secure`` requires HTTPS; only enforced outside local dev, where

@@ -25,7 +25,7 @@ y commit.
 | 15 | Tickets | ✅ completada |
 | 16 | Dashboards | ✅ completada |
 | 17 | Notificaciones | ✅ completada |
-| 18 | SMTP / outbox | pendiente |
+| 18 | SMTP / outbox | ✅ completada |
 | 19 | Seguridad | pendiente |
 | 20 | Rendimiento | pendiente |
 | 21 | Backup / restore | pendiente |
@@ -1441,6 +1441,96 @@ Deuda técnica conocida:
 - La evaluación es manual (`POST /notifications/evaluate`) — la fase 18
   es la que la convierte en periódica de verdad, y la que además dispara
   el envío por correo de lo que detecte.
+
+## Fase 18 — SMTP / outbox
+
+**Objetivo:** el envío de correo de verdad, sin que una venta (ni ninguna
+otra petición) dependa jamás de que un servidor SMTP responda (regla 10).
+Vive en `app.jobs`, el paquete que la fase 0 ya reservaba ("Background
+worker: transactional outbox consumers"). Cierra el hilo que la fase 17
+dejó explícitamente abierto: sus incidentes ahora se envían por correo de
+verdad, no sólo se listan.
+
+Entregado:
+
+- **`outbox_messages`**: encolar un correo (`enqueue_email`) es sólo un
+  `INSERT`, en la misma transacción que el evento de negocio que lo
+  produce — la regla 10 queda impuesta por construcción, no por manejo de
+  excepciones: ninguna petición llega a abrir una conexión SMTP.
+- **`app.jobs.worker`** (`uv run python -m app.jobs.worker`, o
+  `make dev-worker`): un proceso separado de verdad, no un hilo dentro de
+  la API — es el único sitio que abre una conexión SMTP. Su bucle reclama
+  un lote con `SELECT ... FOR UPDATE SKIP LOCKED` (mismo mecanismo de cola
+  sobre PostgreSQL que el README ya prometía desde la fase 0), lo que deja
+  correr más de una instancia a la vez sin que dos lleguen a enviar el
+  mismo mensaje. Un mensaje que falla se reintenta hasta `MAX_ATTEMPTS`
+  (5) antes de quedar `FAILED` para revisión manual — nunca se reintenta
+  para siempre ni se descarta en silencio.
+- **La fase 17, conectada de verdad**: `evaluate_rules` encola un correo a
+  `OPENERP_NOTIFICATION_RECIPIENT_EMAIL` (si está configurado) por cada
+  incidente **nuevo** — nunca por uno que ya estaba abierto, así que un
+  destinatario recibe exactamente un correo por incidente, no uno por cada
+  ciclo de evaluación. Sin la variable configurada, no se encola nada; el
+  resto de la fase 17 sigue funcionando igual vía `GET /incidents`.
+- **Probado contra Mailpit de verdad**, no con mocks — mismo criterio que
+  el resto del proyecto con PostgreSQL: `test_outbox.py`/`test_worker.py`
+  envían correos reales y comprueban la entrega a través de la propia API
+  REST de Mailpit (`GET /api/v1/search?query=to:...`). El job de CI del
+  backend gana un servicio `mailpit`, igual que ya tenía el de E2E.
+- **`POST /outbox/run`**: procesa un lote ahora mismo, para depuración —
+  nunca lo llama ningún flujo de venta/cobro; la cadencia real es el
+  *worker* como proceso aparte. `GET /outbox` para observabilidad.
+- **Permisos**: `job.read`/`job.manage`, sólo `ADMIN`/`MANAGER`.
+
+Archivos añadidos/tocados: `backend/app/jobs/*` (nuevo — `models`,
+`mailer`, `service`, `worker`, `schemas`, `presenters`, `router`),
+`backend/app/core/config.py` (ajustes SMTP, `notification_recipient_email`),
+`backend/app/notifications/service.py` (`evaluate_rules` encola correo por
+incidente nuevo), `backend/app/rbac/permissions.py` (`PHASE_18_*`),
+`backend/app/db/registry.py`, `backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_18_outbox.py`,
+`backend/tests/{test_outbox,test_worker}.py`,
+`backend/tests/test_notifications.py` (prueba de extremo a extremo de la
+conexión con la fase 17), `.env.example`, `Makefile` (`dev-worker`),
+`.github/workflows/ci.yml` (servicio `mailpit` en el *job* de backend).
+
+Endpoints nuevos: `GET /outbox`, `POST /outbox/run`.
+
+Migración: `c63102553dd7_phase_18_outbox` — crea `outbox_messages`; siembra
+`job.read`/`job.manage` para `ADMIN`/`MANAGER`. `downgrade()` deshace
+también el seed de permisos; verificado con *round-trip* completo y
+`alembic check`.
+
+Tests: 23 nuevos (291 en total) — encolar inserta `PENDING`; reclamar sólo
+trae `PENDING` y respeta el límite; marcar enviado registra cuándo;
+marcar fallido reintenta hasta el tope y entonces sí queda `FAILED`;
+procesar un lote envía de verdad y se ve en Mailpit; un fallo real de SMTP
+(puerto inalcanzable) deja el mensaje `PENDING` con el error guardado;
+`GET`/`POST /outbox/run` vía API con permisos (`CASHIER` 403, no
+autenticado 401); el *worker* (`run_once`/`run_forever`) probado con
+compromisos reales contra la propia base de datos desechable del test
+(`committing_sessionmaker`, no el `session_scope` global, que apuntaría a
+la base de datos real del proceso) — incluida la prueba de que
+`run_forever(iterations=N)` termina en vez de bloquear el test para
+siempre; y la conexión fase 17 → fase 18 de extremo a extremo: abrir un
+incidente nuevo encola un correo, procesarlo lo entrega de verdad, y
+evaluar otra vez sin cambios no encola un segundo. `ruff`, `ruff format
+--check` y `mypy` limpios; `pytest -q` → 291/291 contra PostgreSQL y
+Mailpit reales.
+
+Deuda técnica conocida:
+
+- Sin plantillas HTML ni internacionalización de los correos — texto plano
+  en español, suficiente para una tienda con un único idioma; el propio
+  `enqueue_email` no impone ningún formato, así que ampliarlo no toca el
+  modelo.
+- El *worker* no tiene todavía supervisión de proceso (systemd/supervisor)
+  documentada — hoy se arranca a mano (`make dev-worker`) o como se decida
+  desplegarlo; fuera del alcance de esta fase, que es sólo el mecanismo.
+- Sin *backoff* entre reintentos (reintenta en el siguiente sondeo del
+  *worker*, no con espera creciente) — con `MAX_ATTEMPTS=5` y un sondeo de
+  unos segundos, un fallo transitorio de red se resuelve solo en poco
+  tiempo; un *backoff* exponencial sería una mejora, no una corrección.
 
 ## Fase 15 — Tickets
 

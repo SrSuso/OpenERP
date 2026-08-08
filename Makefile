@@ -96,6 +96,10 @@ dev-api:  ## Run the API with reload
 dev-web:  ## Run the frontend dev server
 	cd $(FRONTEND) && npm run dev
 
+.PHONY: dev-worker
+dev-worker:  ## Run the outbox worker (phase 18 — polls and sends queued emails)
+	cd $(BACKEND) && uv run python -m app.jobs.worker
+
 # --- quality ---------------------------------------------------------------
 
 .PHONY: lint
