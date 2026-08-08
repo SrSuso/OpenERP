@@ -229,3 +229,24 @@ export async function checkout(saleId: number, payments: Tender[]): Promise<Sale
     body: { payments },
   });
 }
+
+// --- tickets (phase 15) -----------------------------------------------------
+
+export const ticketSchema = z.object({
+  id: z.number(),
+  sale_id: z.number(),
+  template_id: z.number(),
+  width_mm: z.number(),
+  rendered_text: z.string(),
+  created_at: z.string(),
+});
+export type Ticket = z.infer<typeof ticketSchema>;
+
+/** Idempotent: the first call generates and freezes the sale's one and
+ * only ticket; every later call (a reprint) just returns that same text. */
+export async function generateTicket(saleId: number): Promise<Ticket> {
+  return apiFetch(`${API_V1}/sales/${saleId}/tickets`, {
+    method: 'POST',
+    schema: ticketSchema,
+  });
+}

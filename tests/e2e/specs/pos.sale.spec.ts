@@ -98,6 +98,28 @@ test.describe.serial('POS cart & checkout (phases 12/13)', () => {
     await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
   });
 
+  test('printing the ticket shows the rendered receipt text', async ({ page }) => {
+    // window.print() opens real OS/browser chrome Playwright can't drive —
+    // stub it so the test only exercises the app's own logic up to that
+    // call, same as any other E2E suite that has to cross this boundary.
+    await page.addInitScript(() => {
+      window.print = () => {};
+    });
+    await page.goto('/pos');
+    await page.getByRole('button', { name: MILK_NAME }).click();
+    await page.getByRole('button', { name: /^cobrar$/i }).click();
+    await page.getByRole('button', { name: /confirmar cobro/i }).click();
+    await expect(page.getByText(/venta cobrada/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /imprimir ticket/i }).click();
+
+    await expect(page.getByText(/Venta #\d+/)).toBeVisible();
+    await expect(page.getByText(MILK_NAME)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+    await expect(page.getByRole('button', { name: /nueva venta/i })).toBeVisible();
+  });
+
   test('a cash overpayment shows the change due on the receipt', async ({ page }) => {
     await page.getByRole('button', { name: MILK_NAME }).click(); // 1,32 €
     await page.getByRole('button', { name: /^cobrar$/i }).click();

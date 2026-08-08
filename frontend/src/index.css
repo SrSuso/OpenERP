@@ -38,3 +38,23 @@
     user-select: none;
   }
 }
+
+/* Printing a ticket (phase 15): hide everything on the page except the
+ * receipt text itself — the classic "print only this element" trick, so
+ * `window.print()` never needs the rest of the till's chrome (or its dark
+ * background) reproduced on paper. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .ticket-print-root,
+  .ticket-print-root * {
+    visibility: visible;
+  }
+
+  .ticket-print-root {
+    position: fixed;
+    inset: 0;
+  }
+}

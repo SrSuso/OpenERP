@@ -4,12 +4,14 @@ Without this, `/pos` has a warehouse/location (seeded by the phase 7
 migration) but nothing to sell — the grid would always render its empty
 state. Since phase 13, checking out also needs actual stock (checkout
 validates availability before it will complete a sale), so this seeds a
-generous quantity of each product too. Idempotent — safe to run on every CI
-job / local E2E run; does nothing to a POS category or product that already
-exists (matched by name and SKU respectively). Stock is only seeded the
-moment a product is *created*, not topped up on later runs — same
-philosophy as `seed_e2e_users.py` (acts once, doesn't "fix up" state on
-every call); re-seed a depleted local database with
+generous quantity of each product too. Since phase 15, printing a ticket
+needs an active `TicketTemplate` to exist at all, so this seeds a default
+one too. Idempotent — safe to run on every CI job / local E2E run; does
+nothing to a POS category, product or ticket template that already exists
+(matched by name/SKU/"any template already active", respectively). Stock
+is only seeded the moment a product is *created*, not topped up on later
+runs — same philosophy as `seed_e2e_users.py` (acts once, doesn't "fix up"
+state on every call); re-seed a depleted local database with
 `uv run python -m scripts.devdb reset && make db-upgrade && make seed-e2e
 && make seed-e2e-catalog` if a long local testing session runs it dry.
 
@@ -33,6 +35,9 @@ from app.db import registry as _registry  # noqa: F401 — registers every ORM m
 from app.db.session import session_scope
 from app.inventory import service as inventory
 from app.inventory.models import Location, Warehouse
+from app.tickets import service as tickets
+from app.tickets.models import TicketTemplate
+from app.tickets.schemas import TicketTemplateCreate
 
 #: Comfortably more than any E2E run will check out.
 _SEEDED_STOCK = Decimal(1000)
@@ -128,6 +133,23 @@ async def _seed() -> int:
                 unit_cost=spec.cost,
             )
             print(f"created product: {spec.sku} (stocked {_SEEDED_STOCK})")
+
+        has_active_template = (
+            await session.execute(select(TicketTemplate).where(TicketTemplate.is_active.is_(True)))
+        ).scalar_one_or_none()
+        if has_active_template is None:
+            await tickets.create_template(
+                session,
+                TicketTemplateCreate(
+                    name="Estándar",
+                    width_mm=58,
+                    header_text="OpenERP\nTienda de ejemplo",
+                    footer_text="Gracias por su compra",
+                ),
+            )
+            print("created ticket template: Estándar")
+        else:
+            print(f"already present: active ticket template {has_active_template.name}")
     return 0
 
 

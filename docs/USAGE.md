@@ -1,11 +1,11 @@
 # Guía de uso
 
 Cómo poner en marcha OpenERP y usarlo, tal y como está hoy (fases 0 y 1:
-bootstrap + autenticación/RBAC; fases 12/13: el TPV y cobrar en él). Las
-fases intermedias (2–11) son sólo API, documentada en `/api/docs` — no
-añaden nada que un usuario final "use" directamente, así que no tienen
-sección propia aquí. Cada fase que sí la necesite añade la suya, sin
-reescribir las anteriores.
+bootstrap + autenticación/RBAC; fases 12/13/15: el TPV, cobrar en él e
+imprimir el ticket). Las fases intermedias (2–11, 14) son sólo API,
+documentada en `/api/docs` — no añaden nada que un usuario final "use"
+directamente, así que no tienen sección propia aquí. Cada fase que sí la
+necesite añade la suya, sin reescribir las anteriores.
 
 ---
 
@@ -218,9 +218,11 @@ no mezclar usuarios de prueba con los tuyos; créala con
 son `e2e-admin@example.com` / `e2e-cashier@example.com` (contraseñas en
 `backend/scripts/seed_e2e_users.py`), o las que fijes en
 `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`/`E2E_CASHIER_EMAIL`/`E2E_CASHIER_PASSWORD`.
-Además, desde la fase 12, `make seed-e2e-catalog` siembra una categoría POS y
-un par de productos (idempotente, ver `backend/scripts/seed_e2e_catalog.py`)
-— sin esto el TPV cargaría, pero la rejilla estaría vacía. El job de CI hace
+Además, desde la fase 12, `make seed-e2e-catalog` siembra una categoría POS,
+un par de productos con su stock y (desde la fase 15) una plantilla de
+ticket activa (idempotente, ver `backend/scripts/seed_e2e_catalog.py`) —
+sin esto el TPV cargaría, pero la rejilla estaría vacía y cobrar/imprimir
+fallaría. El job de CI hace
 exactamente esto (ver `.github/workflows/ci.yml`).
 
 o los comandos equivalentes por partes, como en el README.
@@ -241,7 +243,7 @@ tres desde `PATCH /roles/{id}/permissions`.
 
 ---
 
-## 6. Usar el TPV (fases 12/13)
+## 6. Usar el TPV (fases 12/13/15)
 
 `/pos` es una pantalla táctil de pantalla completa, pensada para un cajero
 (rol `CASHIER`, sólo necesita `pos.access`).
@@ -273,3 +275,8 @@ Al entrar a `/pos`:
   abre automáticamente un ticket nuevo. Si no hay stock suficiente, o el
   importe no cubre el total, se rechaza y el ticket sigue abierto tal cual
   estaba — nada queda a medias.
+- **Imprimir ticket** (fase 15), desde la propia confirmación de cobro,
+  genera (o recupera, si ya se generó) el recibo de 58/80mm y abre el
+  diálogo de impresión del navegador. Hace falta una plantilla activa
+  (`make seed-e2e-catalog` siembra una por defecto) — sin ella, el botón
+  falla con un error explícito en vez de imprimir cualquier cosa.

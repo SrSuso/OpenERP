@@ -234,6 +234,21 @@ PHASE_14_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (RETURN_READ, RETURN_MANAGE),
 }
 
+# --- phase 15: tickets ---------------------------------------------------------
+TICKET_MANAGE = "ticket.manage"
+
+PHASE_15_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(TICKET_MANAGE, "Create and revise receipt (ticket) templates."),
+)
+
+#: Frozen grants for the phase 15 migration only. Generating/reading a
+#: sale's own ticket reuses sale.read (phase 11) — only managing the
+#: templates themselves is its own permission.
+PHASE_15_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (TICKET_MANAGE,),
+    "MANAGER": (TICKET_MANAGE,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -250,4 +265,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_10_PERMISSIONS
     + PHASE_11_PERMISSIONS
     + PHASE_14_PERMISSIONS
+    + PHASE_15_PERMISSIONS
 )

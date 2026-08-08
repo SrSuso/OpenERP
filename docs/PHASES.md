@@ -22,7 +22,7 @@ y commit.
 | 12 | POS | ✅ completada |
 | 13 | Pagos | ✅ completada |
 | 14 | Devoluciones | ✅ completada |
-| 15 | Tickets | pendiente |
+| 15 | Tickets | ✅ completada |
 | 16 | Dashboards | pendiente |
 | 17 | Notificaciones | pendiente |
 | 18 | SMTP / outbox | pendiente |
@@ -1236,3 +1236,109 @@ Deuda técnica conocida:
   el cliente devuelve una cantidad que encaja en un único lote de destino;
   suficiente para el caso de uso real (el cliente no suele saber de qué
   lote salió su unidad), ampliable sin romper el modelo si hiciera falta.
+
+## Fase 15 — Tickets
+
+**Objetivo:** el recibo imprimible de una venta cobrada, en texto
+monoespaciado para rollo térmico de 58/80mm, a partir de una plantilla
+*versionada* — editar la plantilla nunca reescribe un ticket ya impreso
+(regla 6/7 aplicada al propio recibo). Vive en `app.tickets`, el paquete
+que la fase 0 ya reservaba ("Versioned receipt templates for 58mm/80mm
+printing"). Botón **Imprimir ticket** en el TPV, sobre la venta ya cobrada
+que la fase 13 dejó lista.
+
+Entregado:
+
+- **`ticket_templates`**: sólo una plantilla activa a la vez en toda la
+  tienda (no varias familias en paralelo — un TPV imprime un único
+  formato). Crear una nueva desactiva la anterior; **`revise_template`**
+  es la única forma de cambiar qué imprime una plantilla ya usada — nunca
+  muta la fila existente, la retira (`is_active=False`) y crea una versión
+  nueva (`version + 1`) bajo el mismo `name`, así que revisar la plantilla
+  activa (409 si se intenta revisar una ya retirada) nunca reescribe lo
+  que un ticket antiguo señala.
+- **`tickets`**: uno por venta como máximo (`UniqueConstraint`), generado
+  una única vez — `generate_ticket` es idempotente: la segunda llamada
+  devuelve la misma fila, con el mismo `rendered_text` ya congelado, sin
+  volver a renderizar aunque la plantilla activa haya cambiado entre
+  medias (verificado literalmente: cambiar la plantilla y reimprimir sigue
+  mostrando la cabecera original). Sólo procede contra una venta
+  `COMPLETED` (fase 13) — antes de cobrar no hay pagos ni total definitivo
+  que imprimir.
+- **`app.tickets.render`**: función pura (sin base de datos) que da forma
+  al texto — cabecera/pie centrados, línea de venta y fecha, cada línea de
+  producto con cantidad/precio/total, desglose de impuestos opcional
+  (según la plantilla), pagos por método, y cambio sólo si hubo sobrepago
+  en efectivo. `CHARS_PER_WIDTH` fija 32/48 caracteres para 58/80mm; cada
+  línea generada se verifica que cabe en el ancho declarado. Corregido
+  *antes* de que fuera un bug real: formatear una cantidad entera como
+  `100` usando `Decimal.normalize()` puede volcar a notación científica
+  (`1E+2`) — evitado a propósito con `quantize()` + `:f` en vez de
+  `normalize()`.
+- **Frontend**: botón **Imprimir ticket** en `Receipt.tsx` (fase 13) que
+  genera/recupera el ticket y muestra el texto monoespaciado en pantalla,
+  disparando `window.print()`; una regla CSS global
+  (`.ticket-print-root`, `src/index.css`) oculta el resto de la página al
+  imprimir — el truco clásico de "imprime sólo este elemento", sin tocar
+  el resto del árbol de componentes.
+- **`backend/scripts/seed_e2e_catalog.py` ampliado de nuevo**: siembra una
+  plantilla activa por defecto — sin ella, imprimir en un entorno nuevo
+  fallaría con 422 ("sin plantilla activa configurada").
+- **Permisos**: sólo `ticket.manage` (`ADMIN`/`MANAGER`), para gestionar
+  plantillas — generar/leer el ticket de una venta reutiliza `sale.read`
+  (`CASHIER` ya lo tiene desde la fase 11): imprimir es sólo renderizar
+  una venta que el cajero ya puede ver, no una capacidad nueva.
+
+Archivos añadidos/tocados: `backend/app/tickets/*` (nuevo — `models`,
+`render`, `schemas`, `service`, `presenters`, `router`),
+`backend/app/rbac/permissions.py` (`PHASE_15_*`), `backend/app/db/registry.py`,
+`backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_15_tickets.py`,
+`backend/tests/{test_ticket_render,test_tickets}.py`,
+`backend/scripts/seed_e2e_catalog.py` (plantilla por defecto),
+`frontend/src/features/pos/{api,Receipt}.tsx`, `frontend/src/index.css`
+(`.ticket-print-root`), `frontend/src/features/pos/Receipt.test.tsx`,
+`tests/e2e/specs/pos.sale.spec.ts`.
+
+Endpoints nuevos: `GET|POST /ticket-templates`,
+`GET /ticket-templates/active`, `POST /ticket-templates/{id}/revise` ·
+`POST /sales/{id}/tickets`, `GET /sales/{id}/ticket`.
+
+Migración: `0561a769c519_phase_15_tickets` — crea `ticket_templates`/
+`tickets`; siembra `ticket.manage` para `ADMIN`/`MANAGER`. `downgrade()`
+deshace también el seed de permisos; verificado con *round-trip* completo
+y `alembic check`.
+
+Tests: 22 nuevos en backend (253 en total) — 11 puramente unitarios sobre
+`render_ticket` (cabecera/pie, id y fecha, línea con cantidad/precio/
+total, desglose de impuestos activable, cambio sólo con sobrepago en
+efectivo, métodos de pago traducidos, ningún renglón excede el ancho
+declarado en 58/80mm, cantidades enteras sin notación científica) y 11 de
+API/servicio (crear plantilla activa y desactiva la anterior, revisar crea
+versión nueva, revisar una ya retirada rechazado con 409, generar ticket
+para venta completada, generar dos veces es idempotente y el texto queda
+congelado aunque la plantilla cambie entre medias, venta `DRAFT` rechazada,
+sin plantilla activa rechazado, `GET` antes de generar es 404, `GET`
+después coincide, `CASHIER` puede generar/leer pero no gestionar
+plantillas, no autenticado 401). `ruff`, `ruff format --check` y `mypy`
+limpios; `pytest -q` → 253/253 contra PostgreSQL real. Frontend: 8 tests
+nuevos en `Receipt.test.tsx` (60 en total) — genera y muestra el texto del
+ticket y dispara `window.print()`, error si falla, "Cerrar" vuelve a la
+confirmación; `tsc -b`, `eslint`, `prettier --check`, `vitest run` y
+`vite build` limpios. 1 spec E2E nueva (imprimir muestra el texto
+renderizado, con `window.print()` interceptado vía
+`page.addInitScript` — Playwright no puede pilotar el diálogo nativo del
+sistema operativo, así que la propia prueba lo sustituye por un *no-op*
+antes de cargar la página, patrón habitual en cualquier suite E2E que
+cruza esa frontera) — 17/17 specs E2E en verde, dos pasadas sin
+*flakiness*.
+
+Deuda técnica conocida:
+
+- Sin pantalla de gestión de plantillas en `/admin` todavía (mismo
+  criterio que fases 1–14): la API está completa y documentada en
+  `/api/docs`.
+- Sólo hay un formato de plantilla (una cabecera y un pie de texto plano,
+  totales y líneas con un diseño fijo) — suficiente para un ticket de
+  tienda minorista; una fase futura que necesite logotipos, códigos de
+  barra o QR en el propio recibo ampliaría `render_ticket`, no el modelo.

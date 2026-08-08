@@ -1,4 +1,8 @@
-import { type Sale } from '@/features/pos/api';
+import { useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+
+import { generateTicket, type Sale } from '@/features/pos/api';
+import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
 interface ReceiptProps {
@@ -6,13 +10,52 @@ interface ReceiptProps {
   onDismiss: () => void;
 }
 
+function describeError(error: unknown): string {
+  return error instanceof ApiError ? error.message : 'No se ha podido generar el ticket.';
+}
+
 /**
  * The brief confirmation shown right after a successful checkout (phase
- * 13) — total charged, how it was paid and any change due. Printing an
- * actual 58/80mm ticket is phase 15; this is only the on-screen
- * confirmation the cashier needs before handing back change and moving on.
+ * 13) — total charged, how it was paid and any change due — plus the
+ * means to print an actual 58/80mm ticket (phase 15): generating one is
+ * idempotent (`POST /sales/{id}/tickets`), so tapping **Imprimir ticket**
+ * again after a misfire just reprints the same frozen text rather than
+ * rendering a new one.
  */
 export function Receipt({ sale, onDismiss }: ReceiptProps) {
+  const [ticketText, setTicketText] = useState<string | null>(null);
+
+  const printMutation = useMutation({
+    mutationFn: () => generateTicket(sale.id),
+    onSuccess: (ticket) => setTicketText(ticket.rendered_text),
+  });
+
+  // `.ticket-print-root` (src/index.css) hides the rest of the page for
+  // `@media print` — this just has to trigger the browser's print dialog
+  // once that text is actually on screen.
+  useEffect(() => {
+    if (ticketText !== null) {
+      window.print();
+    }
+  }, [ticketText]);
+
+  if (ticketText !== null) {
+    return (
+      <div className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8">
+        <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
+          {ticketText}
+        </pre>
+        <button
+          type="button"
+          onClick={() => setTicketText(null)}
+          className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
+        >
+          Cerrar
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
       <div>
@@ -36,13 +79,29 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="rounded-lg bg-emerald-600 px-8 py-3 text-base font-semibold text-white hover:bg-emerald-500"
-      >
-        Nueva venta
-      </button>
+      {printMutation.isError && (
+        <p role="alert" className="text-sm text-red-400">
+          {describeError(printMutation.error)}
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={() => printMutation.mutate()}
+          disabled={printMutation.isPending}
+          className="rounded-lg bg-slate-700 px-6 py-3 text-base font-semibold text-slate-50 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {printMutation.isPending ? 'Generando…' : 'Imprimir ticket'}
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-lg bg-emerald-600 px-8 py-3 text-base font-semibold text-white hover:bg-emerald-500"
+        >
+          Nueva venta
+        </button>
+      </div>
     </div>
   );
 }

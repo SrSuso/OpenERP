@@ -1,0 +1,158 @@
+"""Ticket template management and per-sale ticket generation.
+
+Only one template is active store-wide at a time — simpler than several
+named families active in parallel, and matches the real constraint (a
+till prints one receipt layout). ``revise_template`` is the only way to
+change what a *new* ticket looks like; it never mutates a past version
+(see ``app.tickets.models`` for why).
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.audit import service as audit
+from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.sales.models import Sale, SaleLine, SaleStatus
+from app.tickets.models import Ticket, TicketTemplate
+from app.tickets.render import render_ticket
+from app.tickets.schemas import TicketTemplateCreate, TicketTemplateRevise
+
+_SALE_OPTIONS = (
+    selectinload(Sale.lines).selectinload(SaleLine.product),
+    selectinload(Sale.payments),
+)
+
+
+async def list_templates(session: AsyncSession) -> list[TicketTemplate]:
+    stmt = select(TicketTemplate).order_by(TicketTemplate.name, TicketTemplate.version.desc())
+    return list((await session.execute(stmt)).scalars())
+
+
+async def get_active_template(session: AsyncSession) -> TicketTemplate:
+    stmt = select(TicketTemplate).where(TicketTemplate.is_active.is_(True))
+    template = (await session.execute(stmt)).scalar_one_or_none()
+    if template is None:
+        raise ValidationError(
+            "No active ticket template configured — create one with POST /ticket-templates first."
+        )
+    return template
+
+
+async def _deactivate_all(session: AsyncSession) -> None:
+    await session.execute(update(TicketTemplate).values(is_active=False))
+
+
+async def create_template(session: AsyncSession, payload: TicketTemplateCreate) -> TicketTemplate:
+    await _deactivate_all(session)
+    template = TicketTemplate(
+        name=payload.name,
+        version=1,
+        width_mm=payload.width_mm,
+        header_text=payload.header_text,
+        footer_text=payload.footer_text,
+        show_tax_breakdown=payload.show_tax_breakdown,
+        is_active=True,
+    )
+    session.add(template)
+    await session.flush()
+    await audit.record(
+        session,
+        action="created",
+        entity_type="ticket_template",
+        entity_id=template.id,
+        after={"name": template.name, "version": template.version, "width_mm": template.width_mm},
+    )
+    return template
+
+
+async def get_template(session: AsyncSession, template_id: int) -> TicketTemplate:
+    template = await session.get(TicketTemplate, template_id)
+    if template is None:
+        raise NotFoundError(f"Ticket template {template_id} not found.")
+    return template
+
+
+async def revise_template(
+    session: AsyncSession, template_id: int, payload: TicketTemplateRevise
+) -> TicketTemplate:
+    current = await get_template(session, template_id)
+    if not current.is_active:
+        raise ConflictError(
+            f"Template {template_id} is not the active version — revise the active one instead."
+        )
+
+    current.is_active = False
+    await session.flush()
+
+    revised = TicketTemplate(
+        name=current.name,
+        version=current.version + 1,
+        width_mm=payload.width_mm,
+        header_text=payload.header_text,
+        footer_text=payload.footer_text,
+        show_tax_breakdown=payload.show_tax_breakdown,
+        is_active=True,
+    )
+    session.add(revised)
+    await session.flush()
+    await audit.record(
+        session,
+        action="revised",
+        entity_type="ticket_template",
+        entity_id=revised.id,
+        before={"template_id": current.id, "version": current.version},
+        after={"template_id": revised.id, "version": revised.version},
+    )
+    return revised
+
+
+async def get_ticket(session: AsyncSession, sale_id: int) -> Ticket:
+    stmt = select(Ticket).where(Ticket.sale_id == sale_id)
+    ticket = (await session.execute(stmt)).scalar_one_or_none()
+    if ticket is None:
+        raise NotFoundError(f"No ticket generated yet for sale {sale_id}.")
+    return ticket
+
+
+async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
+    """Idempotent: a sale gets exactly one ticket, ever. A second call
+    returns the same row untouched — including its already-frozen
+    ``rendered_text`` — rather than re-rendering against whatever template
+    happens to be active now."""
+    existing = (
+        await session.execute(select(Ticket).where(Ticket.sale_id == sale_id))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    sale_stmt = select(Sale).where(Sale.id == sale_id).options(*_SALE_OPTIONS)
+    sale = (await session.execute(sale_stmt)).scalar_one_or_none()
+    if sale is None:
+        raise ValidationError(f"Sale {sale_id} does not exist.")
+    if sale.status != SaleStatus.COMPLETED:
+        raise ValidationError(
+            f"Only a completed sale has a ticket to print (this one is {sale.status})."
+        )
+
+    template = await get_active_template(session)
+    rendered_text = render_ticket(sale, template)
+
+    ticket = Ticket(
+        sale_id=sale_id,
+        template_id=template.id,
+        width_mm=template.width_mm,
+        rendered_text=rendered_text,
+    )
+    session.add(ticket)
+    await session.flush()
+    await audit.record(
+        session,
+        action="generated",
+        entity_type="ticket",
+        entity_id=ticket.id,
+        after={"sale_id": sale_id, "template_id": template.id},
+    )
+    return ticket

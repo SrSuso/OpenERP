@@ -16,7 +16,7 @@ táctil (`/pos`), construido como **monolito modular**.
 
 ## Estado
 
-**Fases 0–14 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas, POS, pagos, devoluciones) completadas.** Las fases siguientes
+**Fases 0–15 (bootstrap, auth y RBAC, auditoría, productos, precios, proveedores, compras, inventory ledger, lotes, recepciones, categorías POS, ventas, POS, pagos, devoluciones, tickets) completadas.** Las fases siguientes
 se implementan en orden estricto y ninguna avanza con la anterior rota. Ver
 [`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada y
 [`docs/USAGE.md`](docs/USAGE.md) para cómo arrancar el proyecto, crear el

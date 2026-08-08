@@ -25,6 +25,7 @@ from app.rbac import models as rbac_models
 from app.returns import models as return_models
 from app.sales import models as sales_models
 from app.suppliers import models as supplier_models
+from app.tickets import models as ticket_models
 from app.users import models as user_models
 
 # ... one line per module as its phase lands.
@@ -42,5 +43,6 @@ __all__ = [
     "return_models",
     "sales_models",
     "supplier_models",
+    "ticket_models",
     "user_models",
 ]
