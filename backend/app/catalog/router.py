@@ -13,10 +13,14 @@ from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import SessionDep
 from app.catalog import service
+from app.catalog.models import PosCategory
 from app.catalog.presenters import product_to_read as _to_read
 from app.catalog.schemas import (
     BarcodeCreate,
     PackageCreate,
+    PosCategoryCreate,
+    PosCategoryRead,
+    PosCategoryUpdate,
     ProductCategoryCreate,
     ProductCategoryRead,
     ProductCreate,
@@ -24,12 +28,23 @@ from app.catalog.schemas import (
     ProductUpdate,
 )
 from app.rbac.dependencies import require_permission
-from app.rbac.permissions import PRODUCT_MANAGE, PRODUCT_READ
+from app.rbac.permissions import POS_CATEGORY_MANAGE, PRODUCT_MANAGE, PRODUCT_READ
 
 router = APIRouter(tags=["catalog"])
 
 _require_read = Depends(require_permission(PRODUCT_READ))
 _require_manage = Depends(require_permission(PRODUCT_MANAGE))
+_require_pos_category_manage = Depends(require_permission(POS_CATEGORY_MANAGE))
+
+
+def _pos_category_to_read(category: PosCategory) -> PosCategoryRead:
+    return PosCategoryRead(
+        id=category.id,
+        name=category.name,
+        color=category.color,
+        display_order=category.display_order,
+        is_active=category.is_active,
+    )
 
 
 @router.get(
@@ -57,13 +72,59 @@ async def create_category(
 async def list_products(
     session: SessionDep,
     category_id: Annotated[int | None, Query()] = None,
+    pos_category_id: Annotated[int | None, Query()] = None,
     active_only: Annotated[bool, Query()] = True,
     search: Annotated[str | None, Query()] = None,
 ) -> list[ProductRead]:
     products = await service.list_products(
-        session, category_id=category_id, active_only=active_only, search=search
+        session,
+        category_id=category_id,
+        pos_category_id=pos_category_id,
+        active_only=active_only,
+        search=search,
     )
     return [_to_read(p) for p in products]
+
+
+@router.get("/pos-categories", response_model=list[PosCategoryRead], dependencies=[_require_read])
+async def list_pos_categories(
+    session: SessionDep,
+    active_only: Annotated[bool, Query()] = True,
+) -> list[PosCategoryRead]:
+    categories = await service.list_pos_categories(session, active_only=active_only)
+    return [_pos_category_to_read(c) for c in categories]
+
+
+@router.post(
+    "/pos-categories",
+    response_model=PosCategoryRead,
+    status_code=201,
+    dependencies=[_require_pos_category_manage],
+)
+async def create_pos_category(payload: PosCategoryCreate, session: SessionDep) -> PosCategoryRead:
+    return _pos_category_to_read(await service.create_pos_category(session, payload))
+
+
+@router.patch(
+    "/pos-categories/{pos_category_id}",
+    response_model=PosCategoryRead,
+    dependencies=[_require_pos_category_manage],
+)
+async def update_pos_category(
+    pos_category_id: int, payload: PosCategoryUpdate, session: SessionDep
+) -> PosCategoryRead:
+    return _pos_category_to_read(
+        await service.update_pos_category(session, pos_category_id, payload)
+    )
+
+
+@router.post(
+    "/pos-categories/{pos_category_id}/deactivate",
+    response_model=PosCategoryRead,
+    dependencies=[_require_pos_category_manage],
+)
+async def deactivate_pos_category(pos_category_id: int, session: SessionDep) -> PosCategoryRead:
+    return _pos_category_to_read(await service.deactivate_pos_category(session, pos_category_id))
 
 
 @router.get("/products/barcode/{barcode}", response_model=ProductRead, dependencies=[_require_read])

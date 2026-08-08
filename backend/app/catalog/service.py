@@ -10,10 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
-from app.catalog.models import Product, ProductBarcode, ProductCategory, ProductPackage
+from app.catalog.models import PosCategory, Product, ProductBarcode, ProductCategory, ProductPackage
 from app.catalog.schemas import (
     BarcodeCreate,
     PackageCreate,
+    PosCategoryCreate,
+    PosCategoryUpdate,
     ProductCategoryCreate,
     ProductCreate,
     ProductUpdate,
@@ -22,6 +24,7 @@ from app.core.errors import ConflictError, NotFoundError, ValidationError
 
 _PRODUCT_OPTIONS = (
     selectinload(Product.category),
+    selectinload(Product.pos_category),
     selectinload(Product.packages).selectinload(ProductPackage.barcodes),
 )
 
@@ -31,6 +34,8 @@ def _snapshot(product: Product) -> dict[str, Any]:
         "sku": product.sku,
         "name": product.name,
         "category_id": product.category_id,
+        "pos_category_id": product.pos_category_id,
+        "pos_display_order": product.pos_display_order,
         "base_unit_name": product.base_unit_name,
         "cost": str(product.cost),
         "list_price": str(product.list_price),
@@ -73,6 +78,115 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
     return category
 
 
+# --- POS categories (phase 10) ------------------------------------------------
+
+
+def _pos_category_snapshot(category: PosCategory) -> dict[str, Any]:
+    return {
+        "name": category.name,
+        "color": category.color,
+        "display_order": category.display_order,
+        "is_active": category.is_active,
+    }
+
+
+async def list_pos_categories(
+    session: AsyncSession, *, active_only: bool = True
+) -> list[PosCategory]:
+    stmt = select(PosCategory).order_by(PosCategory.display_order, PosCategory.name)
+    if active_only:
+        stmt = stmt.where(PosCategory.is_active.is_(True))
+    return list((await session.execute(stmt)).scalars())
+
+
+async def get_pos_category(session: AsyncSession, pos_category_id: int) -> PosCategory:
+    stmt = (
+        select(PosCategory)
+        .where(PosCategory.id == pos_category_id)
+        .execution_options(populate_existing=True)
+    )
+    category = (await session.execute(stmt)).scalar_one_or_none()
+    if category is None:
+        raise NotFoundError(f"POS category {pos_category_id} not found.")
+    return category
+
+
+async def _assert_pos_category_name_free(
+    session: AsyncSession, name: str, *, exclude_id: int | None = None
+) -> None:
+    stmt = select(PosCategory).where(PosCategory.name == name)
+    if exclude_id is not None:
+        stmt = stmt.where(PosCategory.id != exclude_id)
+    existing = (await session.execute(stmt)).scalar_one_or_none()
+    if existing is not None:
+        raise ConflictError(f"A POS category named {name!r} already exists.")
+
+
+async def create_pos_category(session: AsyncSession, payload: PosCategoryCreate) -> PosCategory:
+    await _assert_pos_category_name_free(session, payload.name)
+
+    category = PosCategory(
+        name=payload.name, color=payload.color, display_order=payload.display_order
+    )
+    session.add(category)
+    await session.flush()
+    await audit.record(
+        session,
+        action="created",
+        entity_type="pos_category",
+        entity_id=category.id,
+        after=_pos_category_snapshot(category),
+    )
+    return category
+
+
+async def update_pos_category(
+    session: AsyncSession, pos_category_id: int, payload: PosCategoryUpdate
+) -> PosCategory:
+    category = await get_pos_category(session, pos_category_id)
+    before = _pos_category_snapshot(category)
+
+    if payload.name is not None and payload.name != category.name:
+        await _assert_pos_category_name_free(session, payload.name, exclude_id=category.id)
+        category.name = payload.name
+    if payload.color is not None:
+        category.color = payload.color
+    if payload.display_order is not None:
+        category.display_order = payload.display_order
+
+    await session.flush()
+    updated = await get_pos_category(session, pos_category_id)
+    await audit.record(
+        session,
+        action="updated",
+        entity_type="pos_category",
+        entity_id=pos_category_id,
+        before=before,
+        after=_pos_category_snapshot(updated),
+    )
+    return updated
+
+
+async def deactivate_pos_category(session: AsyncSession, pos_category_id: int) -> PosCategory:
+    """Rule 14: POS categories are never deleted, only deactivated. Products
+    already assigned to it keep the link (traceability) — the POS grid
+    (phase 12) is expected to only offer active categories, so a
+    deactivated one simply stops being selectable, not silently reassigned."""
+    category = await get_pos_category(session, pos_category_id)
+    before = _pos_category_snapshot(category)
+    category.is_active = False
+    await session.flush()
+    await audit.record(
+        session,
+        action="deactivated",
+        entity_type="pos_category",
+        entity_id=pos_category_id,
+        before=before,
+        after=_pos_category_snapshot(category),
+    )
+    return category
+
+
 # --- products ------------------------------------------------------------------
 
 
@@ -80,6 +194,7 @@ async def list_products(
     session: AsyncSession,
     *,
     category_id: int | None = None,
+    pos_category_id: int | None = None,
     active_only: bool = True,
     search: str | None = None,
 ) -> list[Product]:
@@ -88,6 +203,9 @@ async def list_products(
         stmt = stmt.where(Product.is_active.is_(True))
     if category_id is not None:
         stmt = stmt.where(Product.category_id == category_id)
+    if pos_category_id is not None:
+        stmt = stmt.where(Product.pos_category_id == pos_category_id)
+        stmt = stmt.order_by(None).order_by(Product.pos_display_order, Product.name)
     if search:
         pattern = f"%{search.lower()}%"
         stmt = stmt.where(
@@ -138,6 +256,13 @@ async def _category_or_422(session: AsyncSession, category_id: int) -> ProductCa
     return category
 
 
+async def _pos_category_or_422(session: AsyncSession, pos_category_id: int) -> PosCategory:
+    category = await session.get(PosCategory, pos_category_id)
+    if category is None:
+        raise ValidationError(f"POS category {pos_category_id} does not exist.")
+    return category
+
+
 async def _assert_barcode_free(session: AsyncSession, barcode: str) -> None:
     existing = (
         await session.execute(select(ProductBarcode).where(ProductBarcode.barcode == barcode))
@@ -154,6 +279,8 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         raise ConflictError("A product with this SKU already exists.")
     if payload.category_id is not None:
         await _category_or_422(session, payload.category_id)
+    if payload.pos_category_id is not None:
+        await _pos_category_or_422(session, payload.pos_category_id)
     if payload.base_barcode is not None:
         await _assert_barcode_free(session, payload.base_barcode)
 
@@ -162,6 +289,8 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         name=payload.name,
         description=payload.description,
         category_id=payload.category_id,
+        pos_category_id=payload.pos_category_id,
+        pos_display_order=payload.pos_display_order,
         base_unit_name=payload.base_unit_name,
         cost=payload.cost,
         list_price=payload.list_price,
@@ -209,6 +338,11 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
     if payload.category_id is not None:
         await _category_or_422(session, payload.category_id)
         product.category_id = payload.category_id
+    if payload.pos_category_id is not None:
+        await _pos_category_or_422(session, payload.pos_category_id)
+        product.pos_category_id = payload.pos_category_id
+    if payload.pos_display_order is not None:
+        product.pos_display_order = payload.pos_display_order
     if payload.min_stock is not None:
         product.min_stock = payload.min_stock
     if payload.track_lots is not None:

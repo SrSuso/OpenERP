@@ -184,6 +184,21 @@ PHASE_9_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (RECEIVING_READ, RECEIVING_MANAGE),
 }
 
+# --- phase 10: categorías POS -------------------------------------------------
+POS_CATEGORY_MANAGE = "pos_category.manage"
+
+PHASE_10_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(POS_CATEGORY_MANAGE, "Create/edit POS button categories and assign products."),
+)
+
+#: Frozen grants for the phase 10 migration only. Reading POS categories
+#: reuses ``product.read`` (already granted to CASHIER since phase 3) —
+#: the POS grid (phase 12) only needs to look them up, never manage them.
+PHASE_10_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (POS_CATEGORY_MANAGE,),
+    "MANAGER": (POS_CATEGORY_MANAGE,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -197,4 +212,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_7_PERMISSIONS
     + PHASE_8_PERMISSIONS
     + PHASE_9_PERMISSIONS
+    + PHASE_10_PERMISSIONS
 )

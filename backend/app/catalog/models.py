@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
@@ -29,6 +29,21 @@ class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 
+class PosCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
+    """A till-button category (phase 10): groups products on the POS grid
+    (phase 12) with a colour and a display order, independently from a
+    product's shelf ``ProductCategory``. A product without one falls back
+    to an "Otros" bucket at the frontend — this table never seeds a
+    default row itself."""
+
+    __tablename__ = "pos_categories"
+
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    color: Mapped[str] = mapped_column(String(7), default="#64748b", server_default="'#64748b'")
+    display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+
 class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "products"
 
@@ -38,6 +53,14 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     category_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("product_categories.id"), nullable=True, index=True
     )
+    #: Phase 10: which POS button/tab this product shows under. Independent
+    #: from ``category_id`` — see :class:`PosCategory`.
+    pos_category_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("pos_categories.id"), nullable=True, index=True
+    )
+    #: Sort position of this product's button within its POS category grid
+    #: (phase 12); lower first. Ties break by name at the query layer.
+    pos_display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     #: Name of the base inventory unit ("BRIK", "UNIT", "KG", ...). Every
     #: stock quantity for this product, everywhere, is expressed in this
@@ -69,6 +92,7 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     category: Mapped[ProductCategory | None] = relationship()
+    pos_category: Mapped[PosCategory | None] = relationship()
     packages: Mapped[list[ProductPackage]] = relationship(
         back_populates="product", order_by="ProductPackage.factor", cascade="all, delete-orphan"
     )

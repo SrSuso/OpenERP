@@ -17,6 +17,29 @@ class ProductCategoryRead(BaseModel):
     is_active: bool
 
 
+_HEX_COLOR = r"^#[0-9A-Fa-f]{6}$"
+
+
+class PosCategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    color: str = Field(default="#64748b", pattern=_HEX_COLOR)
+    display_order: int = Field(default=0, ge=0)
+
+
+class PosCategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    color: str | None = Field(default=None, pattern=_HEX_COLOR)
+    display_order: int | None = Field(default=None, ge=0)
+
+
+class PosCategoryRead(BaseModel):
+    id: int
+    name: str
+    color: str
+    display_order: int
+    is_active: bool
+
+
 class PackageCreate(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     factor: Decimal = Field(gt=0)
@@ -40,6 +63,8 @@ class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str = Field(default="", max_length=2000)
     category_id: int | None = None
+    pos_category_id: int | None = None
+    pos_display_order: int = Field(default=0, ge=0)
     base_unit_name: str = Field(min_length=1, max_length=20)
     base_barcode: str | None = Field(default=None, min_length=1, max_length=64)
     cost: Decimal = Field(ge=0)
@@ -60,6 +85,8 @@ class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
     category_id: int | None = None
+    pos_category_id: int | None = None
+    pos_display_order: int | None = Field(default=None, ge=0)
     min_stock: Decimal | None = Field(default=None, ge=0)
     track_lots: bool | None = None
     track_expiration: bool | None = None
@@ -72,6 +99,9 @@ class ProductRead(BaseModel):
     description: str
     category_id: int | None
     category_name: str | None
+    pos_category_id: int | None
+    pos_category_name: str | None
+    pos_display_order: int
     base_unit_name: str
     cost: Decimal
     list_price: Decimal

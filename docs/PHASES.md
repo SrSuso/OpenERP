@@ -17,7 +17,7 @@ y commit.
 | 7 | Inventory ledger | ✅ completada |
 | 8 | Lotes y caducidad | ✅ completada |
 | 9 | Recepciones | ✅ completada |
-| 10 | Categorías POS | pendiente |
+| 10 | Categorías POS | ✅ completada |
 | 11 | Ventas | pendiente |
 | 12 | POS | pendiente |
 | 13 | Pagos | pendiente |
@@ -771,3 +771,71 @@ Deuda técnica conocida:
   `GET /purchase-orders/{id}` en la misma transacción lógica de otro
   cliente no se ve afectada por este detalle (transacciones separadas por
   petición, regla ya establecida en la fase 0).
+
+## Fase 10 — Categorías POS
+
+**Objetivo:** un segundo esquema de categorías, independiente del
+`ProductCategory` de estantería (fase 3), pensado para agrupar los botones
+de la rejilla del TPV (fase 12) por pestañas con color y orden — tal y
+como anticipaba el propio *docstring* de `ProductCategory` desde la fase
+3 ("Independent from the POS-facing categories of phase 10"). Vive dentro
+de `app.catalog`, no es un paquete nuevo.
+
+Entregado:
+
+- **`pos_categories`**: `name` (único), `color` (hex de 6 dígitos,
+  `#64748b` por defecto), `display_order`, `is_active` (regla 14:
+  desactivar, nunca borrar — una categoría desactivada deja de listarse
+  con `active_only=True`, pero los productos que ya apuntan a ella
+  conservan el enlace, por trazabilidad).
+- `products.pos_category_id` (nullable — no todo producto tiene botón
+  propio) y `products.pos_display_order` (orden dentro de su categoría),
+  gestionados a través del `PATCH /products/{id}` ya existente (fase 3):
+  no hizo falta un endpoint nuevo, sólo dos campos más en
+  `ProductUpdate`/`ProductCreate`.
+- `GET /products` acepta ahora `pos_category_id` como filtro (para que la
+  fase 12 pida directamente "los productos de esta pestaña", ordenados
+  por `pos_display_order`).
+- **Permisos**: sólo `pos_category.manage` (`ADMIN`/`MANAGER`) — la
+  lectura reutiliza `product.read`, ya concedido a `CASHIER` desde la
+  fase 3, siguiendo el mismo patrón que la fase 4 (`PRICING_MANAGE` sin
+  un `_READ` propio) ya que el TPV necesita leer categorías POS pero
+  nunca gestionarlas.
+
+Archivos añadidos/tocados: `backend/app/catalog/models.py`
+(`PosCategory`, columnas `pos_category_id`/`pos_display_order` en
+`Product`), `backend/app/catalog/{schemas,service,router,presenters}.py`,
+`backend/app/rbac/permissions.py` (`PHASE_10_*`),
+`backend/migrations/versions/…_phase_10_pos_categories.py`,
+`backend/tests/test_pos_categories.py`. No hizo falta tocar
+`app/db/registry.py` ni `app/api/v1/router.py`: `PosCategory` vive en el
+paquete ya registrado de la fase 3 y sus endpoints se añaden al router ya
+montado.
+
+Endpoints nuevos: `GET|POST /pos-categories`,
+`PATCH /pos-categories/{id}`, `POST /pos-categories/{id}/deactivate` ·
+`GET /products` ahora acepta `?pos_category_id=`.
+
+Migración: `6682eb0bfca8_phase_10_pos_categories` — crea `pos_categories`;
+añade `pos_category_id`/`pos_display_order` a `products` con su FK;
+siembra `pos_category.manage`. `downgrade()` deshace también el seed de
+permisos; verificado con *round-trip* completo y `alembic check`.
+
+Tests: 12 nuevos (194 en total), incluidos orden por `display_order`,
+color por defecto, formato de color inválido (422), nombre duplicado
+(409), desactivación (oculta de `active_only` pero sigue en el listado
+completo), asignación de producto a categoría inexistente (422), filtro
+`GET /products?pos_category_id=` y permisos (`403`/`401`). `ruff`,
+`ruff format --check` y `mypy` limpios; `pytest -q` → 194/194 contra
+PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de categorías POS en `/admin` todavía (mismo criterio que
+  fases 1–9); la propia rejilla del TPV que las consume llega en la fase
+  12.
+- Un producto sólo puede pertenecer a una categoría POS a la vez (M:1,
+  no M:N) — suficiente para "qué botón muestra", que es el único caso de
+  uso que la fase 12 necesita; si en el futuro hiciera falta que un
+  producto apareciera en varias pestañas, sería una tabla de asociación
+  nueva, no un cambio de esta.
