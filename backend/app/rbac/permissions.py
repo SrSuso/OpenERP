@@ -199,6 +199,24 @@ PHASE_10_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (POS_CATEGORY_MANAGE,),
 }
 
+# --- phase 11: ventas ---------------------------------------------------------
+SALE_READ = "sale.read"
+SALE_MANAGE = "sale.manage"
+
+PHASE_11_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(SALE_READ, "Look up sales and their lines."),
+    PermissionDef(SALE_MANAGE, "Open a sale, add/remove lines, cancel it."),
+)
+
+#: Frozen grants for the phase 11 migration only. Unlike every module
+#: before it, CASHIER gets both — ringing up a sale is their job, not just
+#: something they read.
+PHASE_11_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (SALE_READ, SALE_MANAGE),
+    "MANAGER": (SALE_READ, SALE_MANAGE),
+    "CASHIER": (SALE_READ, SALE_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -213,4 +231,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_8_PERMISSIONS
     + PHASE_9_PERMISSIONS
     + PHASE_10_PERMISSIONS
+    + PHASE_11_PERMISSIONS
 )

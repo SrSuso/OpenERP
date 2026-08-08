@@ -18,7 +18,7 @@ y commit.
 | 8 | Lotes y caducidad | ✅ completada |
 | 9 | Recepciones | ✅ completada |
 | 10 | Categorías POS | ✅ completada |
-| 11 | Ventas | pendiente |
+| 11 | Ventas | ✅ completada |
 | 12 | POS | pendiente |
 | 13 | Pagos | pendiente |
 | 14 | Devoluciones | pendiente |
@@ -839,3 +839,82 @@ Deuda técnica conocida:
   uso que la fase 12 necesita; si en el futuro hiciera falta que un
   producto apareciera en varias pestañas, sería una tabla de asociación
   nueva, no un cambio de esta.
+
+## Fase 11 — Ventas
+
+**Objetivo:** el carrito de una venta — abrir una venta, añadir/quitar
+líneas con captura de precio/impuesto (rule 7), y cancelarla — sin tocar
+todavía ni el stock ni el cobro. El propio *docstring* de `app.sales`
+desde la fase 0 ya lo anticipaba: *"Sales, sale lines, payments and atomic
+checkout (phases 11, 13)"* — esta fase cubre "sales, sale lines"; "payments
+and atomic checkout" es exclusivamente de la fase 13, una vez existan los
+pagos. Ninguna línea de esta fase llama a
+`app.inventory.service.record_movement` ni a `app.lots.service` — el
+stock no se reserva ni se mueve hasta que la fase 13 registre un pago.
+
+Entregado:
+
+- **`sales`**: `warehouse_id`/`location_id` (de dónde se vende — ya
+  necesarios para que la fase 13 sepa qué ubicación descontar),
+  `status` (`DRAFT`/`COMPLETED`/`CANCELLED` — el enum completo se define
+  ya, igual que `PurchaseOrderStatus` hizo para la fase 9, para que la
+  fase 13 no necesite migrar nada, sólo añadir comportamiento),
+  `cashier_user_id` (nullable, regla 14), `completed_at` (nullable,
+  lo rellena sólo la fase 13).
+- **`sale_lines`**: mismo patrón de *snapshot* que `PurchaseOrderLine`
+  (fase 6) pero en la dirección contraria — el precio canónico
+  (`Product.list_price`) es por unidad base, así que cada línea guarda
+  `package_factor`/`package_name` y `quantity_base = quantity_packages *
+  factor` (regla 3), y copia `unit_price`/`tax_rate` del producto en el
+  momento de añadir la línea, sin volver a leerlos nunca (regla 7,
+  verificado literalmente:
+  `test_line_price_is_a_snapshot_and_ignores_later_price_changes`).
+  `discount_rate` por línea, aplicado antes del impuesto
+  (`test_discount_rate_is_applied_before_tax`).
+- Sólo `DRAFT -> CANCELLED` es alcanzable desde este módulo; añadir o
+  quitar líneas exige `DRAFT` (409 en otro caso). Un producto desactivado
+  no se puede vender (422, regla 14).
+- **Alta por código de barras** (`POST /sales/{id}/lines/by-barcode`):
+  reutiliza `app.catalog.service.get_product_by_barcode` para que el TPV
+  (fase 12) pueda escanear directamente sin resolver antes el producto en
+  el frontend.
+- **Permisos**: a diferencia de todos los módulos anteriores, `CASHIER`
+  recibe tanto `sale.read` como `sale.manage` — cobrar es su trabajo, no
+  sólo algo que consulta.
+
+Archivos añadidos/tocados: `backend/app/sales/*` (nuevo),
+`backend/app/rbac/permissions.py` (`PHASE_11_*`),
+`backend/app/db/registry.py`, `backend/app/api/v1/router.py`,
+`backend/migrations/versions/…_phase_11_sales.py`,
+`backend/tests/test_sales.py`. De paso se limpió un comentario obsoleto
+en `api/v1/router.py` que hacía referencia a un `receiving.router` que
+nunca existió (la fase 9 montó sus endpoints en `purchasing_router`
+directamente).
+
+Endpoints nuevos: `GET|POST /sales`, `GET /sales/{id}`,
+`POST /sales/{id}/lines`, `POST /sales/{id}/lines/by-barcode`,
+`DELETE /sales/{id}/lines/{line_id}`, `POST /sales/{id}/cancel`.
+
+Migración: `2573ff5a5eb7_phase_11_sales` — crea `sales`, `sale_lines`;
+siembra `sale.read`/`sale.manage`. `downgrade()` deshace también el seed
+de permisos; verificado con *round-trip* completo y `alembic check`.
+
+Tests: 11 nuevos (205 en total), incluidos el *snapshot* de precio
+inmune a cambios posteriores, venta por caja (conversión a unidades
+base), descuento aplicado antes del impuesto, alta por código de barras,
+eliminar una línea recalcula el total, producto desactivado rechazado,
+transición a `CANCELLED` y rechazo de mutaciones tras cancelar,
+ubicación que no pertenece al almacén (422), y permisos
+(incluido que `CASHIER` sí puede gestionar). `ruff`, `ruff format --check`
+y `mypy` limpios; `pytest -q` → 205/205 contra PostgreSQL real.
+
+Deuda técnica conocida:
+
+- Sin pantalla de ventas en `/admin` ni rejilla en `/pos` todavía (la
+  propia fase 12 es esa UI); esta fase es sólo la API del carrito.
+- No se comprueba disponibilidad de stock al añadir una línea — a
+  propósito: la disponibilidad sólo se comprueba, atómicamente con el
+  cobro, en la fase 13 (igual que un TPV real no reserva stock sólo por
+  tener algo en el ticket). Añadir más de lo que hay en almacén a un
+  `DRAFT` es válido; fallará al intentar cobrarlo si sigue sin stock
+  suficiente.

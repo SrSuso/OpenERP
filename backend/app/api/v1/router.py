@@ -16,6 +16,7 @@ from app.lots.router import router as lots_router
 from app.pricing.router import router as pricing_router
 from app.purchasing.router import router as purchasing_router
 from app.rbac.router import router as rbac_router
+from app.sales.router import router as sales_router
 from app.suppliers.router import router as suppliers_router
 from app.users.router import router as users_router
 
@@ -31,6 +32,8 @@ api_router.include_router(suppliers_router)
 api_router.include_router(purchasing_router)
 api_router.include_router(inventory_router)
 api_router.include_router(lots_router)
+api_router.include_router(sales_router)
+# Phase 9 (receiving) added its endpoints to purchasing_router directly —
+# see app.purchasing's own module docstring for why.
 
-# Phase 9: api_router.include_router(receiving.router)
 # ... one line per module as its phase lands.
