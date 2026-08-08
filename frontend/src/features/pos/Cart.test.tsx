@@ -31,18 +31,34 @@ const SALE: Sale = {
   notes: '',
   lines: [MILK_LINE],
   total: '2.640000',
+  payments: [],
+  change_due: '0.000000',
 };
+
+const EMPTY_SALE: Sale = { ...SALE, lines: [], total: '0.000000' };
+
+function renderCart(overrides: Partial<Parameters<typeof Cart>[0]> = {}) {
+  return render(
+    <Cart
+      sale={SALE}
+      onRemoveLine={vi.fn()}
+      onCancelSale={vi.fn()}
+      onCheckout={vi.fn()}
+      {...overrides}
+    />,
+  );
+}
 
 describe('Cart', () => {
   it('shows an empty-cart message when there is no sale yet or it has no lines', () => {
-    render(<Cart sale={null} onRemoveLine={vi.fn()} onCancelSale={vi.fn()} />);
+    renderCart({ sale: null });
 
     expect(screen.getByText(/el carrito está vacío/i)).toBeInTheDocument();
     expect(screen.getByText('0,00 €')).toBeInTheDocument();
   });
 
   it('lists each line with its quantity, package and formatted total', () => {
-    render(<Cart sale={SALE} onRemoveLine={vi.fn()} onCancelSale={vi.fn()} />);
+    renderCart();
 
     expect(screen.getByText('Leche entera 1L')).toBeInTheDocument();
     expect(screen.getByText(/2 × brick/i)).toBeInTheDocument();
@@ -50,7 +66,7 @@ describe('Cart', () => {
   });
 
   it('shows the sale total', () => {
-    render(<Cart sale={SALE} onRemoveLine={vi.fn()} onCancelSale={vi.fn()} />);
+    renderCart();
 
     expect(screen.getByText('Total')).toBeInTheDocument();
     expect(screen.getAllByText('2,64 €').length).toBeGreaterThan(0);
@@ -58,7 +74,7 @@ describe('Cart', () => {
 
   it('calls onRemoveLine with the tapped line', async () => {
     const onRemoveLine = vi.fn();
-    render(<Cart sale={SALE} onRemoveLine={onRemoveLine} onCancelSale={vi.fn()} />);
+    renderCart({ onRemoveLine });
 
     await userEvent.click(screen.getByRole('button', { name: /quitar leche entera 1l/i }));
 
@@ -67,7 +83,7 @@ describe('Cart', () => {
 
   it('calls onCancelSale when "Cancelar venta" is tapped', async () => {
     const onCancelSale = vi.fn();
-    render(<Cart sale={SALE} onRemoveLine={vi.fn()} onCancelSale={onCancelSale} />);
+    renderCart({ onCancelSale });
 
     await userEvent.click(screen.getByRole('button', { name: /cancelar venta/i }));
 
@@ -75,8 +91,29 @@ describe('Cart', () => {
   });
 
   it('disables "Cancelar venta" when there is no open sale', () => {
-    render(<Cart sale={null} onRemoveLine={vi.fn()} onCancelSale={vi.fn()} />);
+    renderCart({ sale: null });
 
     expect(screen.getByRole('button', { name: /cancelar venta/i })).toBeDisabled();
+  });
+
+  it('calls onCheckout when "Cobrar" is tapped', async () => {
+    const onCheckout = vi.fn();
+    renderCart({ onCheckout });
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+
+    expect(onCheckout).toHaveBeenCalled();
+  });
+
+  it('disables "Cobrar" when the cart has no lines', () => {
+    renderCart({ sale: EMPTY_SALE });
+
+    expect(screen.getByRole('button', { name: /^cobrar$/i })).toBeDisabled();
+  });
+
+  it('disables "Cobrar" when there is no open sale', () => {
+    renderCart({ sale: null });
+
+    expect(screen.getByRole('button', { name: /^cobrar$/i })).toBeDisabled();
   });
 });

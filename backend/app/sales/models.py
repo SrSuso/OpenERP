@@ -1,18 +1,20 @@
-"""Sales and their lines.
+"""Sales, their lines and payments.
 
-Phase 11 only ever drives a sale through ``DRAFT -> CANCELLED``; reaching
-``COMPLETED`` is exclusively phase 13's job, once payments exist — recording
-a payment there is what actually moves stock (via
-``app.inventory.service.record_movement``/``app.lots.service`` FEFO
-consumption) and closes the sale, atomically with the payment itself (rule
-5). The status enum is defined in full now so phase 13 has nothing to
-migrate — only behaviour to add, exactly like ``PurchaseOrderStatus`` did
-for phase 9.
+Phase 11 only ever drove a sale through ``DRAFT -> CANCELLED``; reaching
+``COMPLETED`` is phase 13's job (this module) — recording a payment is what
+actually moves stock (via ``app.inventory.service.record_movement``/
+``app.lots.service`` FEFO consumption) and closes the sale, atomically with
+the payment itself (rule 5). See ``app.sales.service.checkout``.
 
 Every line snapshots the economics it was rung up at (rule 6/7: a later
 price or tax change must never reshape a sale already on the ticket) —
 ``unit_price``/``tax_rate`` are copied from the product at the moment the
 line is added, never re-read from it afterwards.
+
+``Payment`` rows are append-only too (same philosophy as ``audit_log``,
+``product_price_history``): a till never edits or deletes a tender once
+recorded, only ``app.returns`` (phase 14) can economically undo one, and
+that is a new row of its own, not a mutation of this one.
 """
 
 from __future__ import annotations
@@ -36,6 +38,12 @@ class SaleStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class PaymentMethod(StrEnum):
+    CASH = "CASH"
+    CARD = "CARD"
+    OTHER = "OTHER"
+
+
 class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "sales"
 
@@ -57,6 +65,9 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
     location: Mapped[Location] = relationship()
     lines: Mapped[list[SaleLine]] = relationship(
         back_populates="sale", cascade="all, delete-orphan", order_by="SaleLine.id"
+    )
+    payments: Mapped[list[Payment]] = relationship(
+        back_populates="sale", cascade="all, delete-orphan", order_by="Payment.id"
     )
 
 
@@ -88,3 +99,18 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     sale: Mapped[Sale] = relationship(back_populates="lines")
     product: Mapped[Product] = relationship()
     package: Mapped[ProductPackage] = relationship()
+
+
+class Payment(IntPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "payments"
+
+    sale_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sales.id"), index=True)
+    method: Mapped[str] = mapped_column(String(20))
+    #: What the customer actually tendered for this payment — may exceed
+    #: what was still owed at the time (a cash tender bigger than the
+    #: balance due), in which case ``checkout`` returns the excess as
+    #: change rather than recording it here (rule 8: this is what was
+    #: handed over, not what the till kept).
+    amount: Mapped[Money]
+
+    sale: Mapped[Sale] = relationship(back_populates="payments")

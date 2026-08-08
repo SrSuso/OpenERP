@@ -106,7 +106,18 @@ export function productsQuery(filters: { posCategoryId?: number; search?: string
   });
 }
 
-// --- sales (phase 11: cart only — checkout/payment is phase 13) -----------------
+// --- sales (phase 11: cart · phase 13: checkout/payment) -------------------------
+
+export const paymentMethodSchema = z.enum(['CASH', 'CARD', 'OTHER']);
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+
+export const paymentSchema = z.object({
+  id: z.number(),
+  method: paymentMethodSchema,
+  amount: z.string(),
+  created_at: z.string(),
+});
+export type Payment = z.infer<typeof paymentSchema>;
 
 export const saleLineSchema = z.object({
   id: z.number(),
@@ -135,6 +146,8 @@ export const saleSchema = z.object({
   notes: z.string(),
   lines: z.array(saleLineSchema),
   total: z.string(),
+  payments: z.array(paymentSchema),
+  change_due: z.string(),
 });
 export type Sale = z.infer<typeof saleSchema>;
 
@@ -200,4 +213,18 @@ export async function removeLine(saleId: number, lineId: number): Promise<Sale> 
 
 export async function cancelSale(saleId: number): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/cancel`, { method: 'POST', schema: saleSchema });
+}
+
+export interface Tender {
+  method: PaymentMethod;
+  /** What was tendered — plain decimal string, e.g. `'20.00'`. */
+  amount: string;
+}
+
+export async function checkout(saleId: number, payments: Tender[]): Promise<Sale> {
+  return apiFetch(`${API_V1}/sales/${saleId}/checkout`, {
+    method: 'POST',
+    schema: saleSchema,
+    body: { payments },
+  });
 }

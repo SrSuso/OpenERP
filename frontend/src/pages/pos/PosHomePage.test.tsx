@@ -3,7 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { type Sale } from '@/features/pos/api';
+import { type Sale, type Tender } from '@/features/pos/api';
 
 import { PosHomePage } from './PosHomePage';
 
@@ -46,6 +46,8 @@ function emptySale(id: number): Sale {
     notes: '',
     lines: [],
     total: '0.000000',
+    payments: [],
+    change_due: '0.000000',
   };
 }
 
@@ -76,6 +78,8 @@ function saleWithMilkLine(id: number): Sale {
       },
     ],
     total: '1.320000',
+    payments: [],
+    change_due: '0.000000',
   };
 }
 
@@ -109,6 +113,28 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
       }
       if (url.includes('/sales') && url.includes('status=DRAFT')) {
         return Promise.resolve(jsonResponse(sale ? [sale] : []));
+      }
+      if (method === 'POST' && /\/sales\/\d+\/checkout$/.test(url)) {
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { payments: Tender[] })
+          : {
+              payments: [],
+            };
+        const tendered = body.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+        const total = sale ? Number(sale.total) : 0;
+        const completed: Sale = {
+          ...(sale ?? emptySale(nextSaleId)),
+          status: 'COMPLETED',
+          payments: body.payments.map((p, index) => ({
+            id: index + 1,
+            method: p.method,
+            amount: Number(p.amount).toFixed(6),
+            created_at: '2026-08-08T10:00:00Z',
+          })),
+          change_due: Math.max(0, tendered - total).toFixed(6),
+        };
+        sale = null;
+        return Promise.resolve(jsonResponse(completed));
       }
       if (method === 'POST' && /\/sales$/.test(url)) {
         postSalesCalls.count += 1;
@@ -189,5 +215,36 @@ describe('PosHomePage', () => {
 
     await screen.findByText(/el carrito está vacío/i);
     expect(backend.postSalesCalls.count).toBe(1);
+  });
+
+  it('checking out shows a receipt, and dismissing it opens a fresh sale', async () => {
+    stubBackend({ existingDraft: saleWithMilkLine(42) });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    const tendered = await screen.findByLabelText(/importe recibido/i);
+    expect(tendered).toHaveValue('1.32');
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+
+    await screen.findByText(/venta cobrada/i);
+    expect(screen.getByText('Efectivo')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /nueva venta/i }));
+
+    await screen.findByText(/el carrito está vacío/i);
+    expect(screen.queryByText(/venta cobrada/i)).not.toBeInTheDocument();
+  });
+
+  it('"Volver" from checkout returns to the cart without charging', async () => {
+    stubBackend({ existingDraft: saleWithMilkLine(42) });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    await screen.findByLabelText(/importe recibido/i);
+    await userEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(await screen.findAllByText('Leche entera 1L')).toHaveLength(2);
   });
 });

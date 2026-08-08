@@ -1,16 +1,21 @@
-"""Sale (cart) management.
+"""Sale (cart) management and checkout.
 
-Only ``DRAFT -> CANCELLED`` is driven here — see the module docstring in
-``app.sales.models`` for why reaching ``COMPLETED`` belongs to phase 13.
-Nothing in this module touches ``stock_movements``/``stock_balance``:
-adding a line only ever snapshots prices and computes totals, it never
-reserves or moves stock — phase 13's checkout is the only place stock
-availability is ever checked, atomically with recording the payment.
+``DRAFT -> CANCELLED`` never touches stock — adding/removing a line only
+snapshots prices and computes totals. ``DRAFT -> COMPLETED`` (:func:`checkout`)
+is the only place stock availability is ever checked, atomically with
+recording the payment(s) and moving the ledger (rule 5): every line is
+locked and decremented (FEFO, via ``app.lots.service``, for lot-tracked
+products; a plain ``app.inventory.service.record_movement`` otherwise)
+*before* the sale flips to ``COMPLETED`` — any failure partway through
+rolls back the whole request (phase 0's one-transaction-per-request
+policy), so a sale can never end up completed with only some of its lines
+actually deducted from stock.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -24,13 +29,21 @@ from app.catalog.models import Product, ProductPackage
 from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
-from app.inventory.models import Location, Warehouse
-from app.sales.models import Sale, SaleLine, SaleStatus
-from app.sales.schemas import SaleCreate, SaleLineByBarcodeCreate, SaleLineCreate
+from app.inventory import service as inventory_service
+from app.inventory.models import Location, MovementType, Warehouse
+from app.lots import service as lots_service
+from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus
+from app.sales.schemas import (
+    CheckoutRequest,
+    SaleCreate,
+    SaleLineByBarcodeCreate,
+    SaleLineCreate,
+)
 
 _SALE_OPTIONS = (
     selectinload(Sale.lines).selectinload(SaleLine.product),
     selectinload(Sale.lines).selectinload(SaleLine.package),
+    selectinload(Sale.payments),
 )
 
 
@@ -267,5 +280,100 @@ async def cancel_sale(session: AsyncSession, sale_id: int) -> Sale:
         entity_id=sale_id,
         before=before,
         after=_sale_snapshot(sale),
+    )
+    return await get_sale(session, sale_id)
+
+
+async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest) -> Sale:
+    sale = await get_sale(session, sale_id)
+    if sale.status != SaleStatus.DRAFT:
+        raise ConflictError(f"Cannot check out a sale that is already {sale.status}.")
+    if not sale.lines:
+        raise ValidationError("Cannot check out a sale with no lines.")
+
+    sale_total = _q(sum((compute_line_totals(line).total for line in sale.lines), start=Decimal(0)))
+    tendered_total = _q(sum((p.amount for p in payload.payments), start=Decimal(0)))
+    if tendered_total < sale_total:
+        raise ValidationError(
+            f"Payment does not cover the sale total: needs {sale_total}, got {tendered_total}."
+        )
+
+    change_due = tendered_total - sale_total
+    if change_due > 0:
+        cash_tendered = _q(
+            sum(
+                (p.amount for p in payload.payments if p.method == PaymentMethod.CASH),
+                start=Decimal(0),
+            )
+        )
+        if cash_tendered < change_due:
+            raise ValidationError(
+                "Change can only be given back on a cash tender — card/other payments must be "
+                "exact (no overpayment without a cash tender to cover the change)."
+            )
+
+    # Rule 5: lock, check and decrement every line's stock *before* the sale
+    # is marked COMPLETED — any ConflictError below rolls back this whole
+    # request (nothing partially deducted), and nothing here has mutated
+    # the sale itself yet, so a DRAFT sale that fails checkout is exactly
+    # as it was, ready to retry (e.g. after a restock).
+    for line in sale.lines:
+        product = line.product
+        available = await inventory_service.lock_and_get_available_quantity(
+            session,
+            product_id=line.product_id,
+            warehouse_id=sale.warehouse_id,
+            location_id=sale.location_id,
+        )
+        if available < line.quantity_base:
+            raise ConflictError(
+                f"Not enough stock for {product.sku}: needs {line.quantity_base}, "
+                f"only {available} available at this location."
+            )
+
+        if product.track_lots:
+            await lots_service.execute_fefo_consumption(
+                session,
+                product_id=line.product_id,
+                warehouse_id=sale.warehouse_id,
+                location_id=sale.location_id,
+                quantity=line.quantity_base,
+                movement_type=MovementType.SALE,
+                unit_cost=product.cost,
+                reference_type="sale",
+                reference_id=sale.id,
+            )
+        else:
+            await inventory_service.record_movement(
+                session,
+                product_id=line.product_id,
+                warehouse_id=sale.warehouse_id,
+                location_id=sale.location_id,
+                quantity=-line.quantity_base,
+                movement_type=MovementType.SALE,
+                unit_cost=product.cost,
+                reference_type="sale",
+                reference_id=sale.id,
+            )
+
+    for tender in payload.payments:
+        session.add(Payment(sale_id=sale.id, method=tender.method, amount=tender.amount))
+
+    before = _sale_snapshot(sale)
+    sale.status = SaleStatus.COMPLETED
+    sale.completed_at = datetime.now(UTC)
+    await session.flush()
+    await audit.record(
+        session,
+        action="completed",
+        entity_type="sale",
+        entity_id=sale_id,
+        before=before,
+        after={
+            **_sale_snapshot(sale),
+            "total": str(sale_total),
+            "tendered": str(tendered_total),
+            "change_due": str(change_due),
+        },
     )
     return await get_sale(session, sale_id)

@@ -1,10 +1,11 @@
 # Guía de uso
 
 Cómo poner en marcha OpenERP y usarlo, tal y como está hoy (fases 0 y 1:
-bootstrap + autenticación/RBAC; fase 12: el TPV). Las fases intermedias
-(2–11) son sólo API, documentada en `/api/docs` — no añaden nada que un
-usuario final "use" directamente, así que no tienen sección propia aquí.
-Cada fase que sí la necesite añade la suya, sin reescribir las anteriores.
+bootstrap + autenticación/RBAC; fases 12/13: el TPV y cobrar en él). Las
+fases intermedias (2–11) son sólo API, documentada en `/api/docs` — no
+añaden nada que un usuario final "use" directamente, así que no tienen
+sección propia aquí. Cada fase que sí la necesite añade la suya, sin
+reescribir las anteriores.
 
 ---
 
@@ -240,11 +241,10 @@ tres desde `PATCH /roles/{id}/permissions`.
 
 ---
 
-## 6. Usar el TPV (fase 12)
+## 6. Usar el TPV (fases 12/13)
 
 `/pos` es una pantalla táctil de pantalla completa, pensada para un cajero
-(rol `CASHIER`, sólo necesita `pos.access`). Cobrar (checkout/pagos) es la
-fase 13 — de momento el TPV sólo construye el ticket.
+(rol `CASHIER`, sólo necesita `pos.access`).
 
 Para verla con productos de verdad en desarrollo, siembra un catálogo mínimo
 (idempotente, los mismos datos que usa la suite E2E):
@@ -266,3 +266,10 @@ Al entrar a `/pos`:
 - **Cancelar venta** cancela el ticket actual (irreversible) y abre uno
   nuevo automáticamente — no hay forma de "vaciar" un ticket salvo quitando
   línea a línea o cancelándolo entero.
+- **Cobrar** (fase 13) pide el método (efectivo/tarjeta) y el importe —
+  editable en efectivo, con el cambio calculado en vivo; exacto en tarjeta.
+  Confirmar comprueba stock real, mueve el inventario, cierra la venta y
+  muestra un recibo en pantalla con el cambio a entregar; al continuar se
+  abre automáticamente un ticket nuevo. Si no hay stock suficiente, o el
+  importe no cubre el total, se rechaza y el ticket sigue abierto tal cual
+  estaba — nada queda a medias.

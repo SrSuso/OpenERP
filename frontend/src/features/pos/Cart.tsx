@@ -8,15 +8,16 @@ interface CartProps {
   disabled?: boolean;
   onRemoveLine: (line: SaleLine) => void;
   onCancelSale: () => void;
+  onCheckout: () => void;
 }
 
 /**
  * The running ticket: lines already added to the open `DRAFT` sale (phase
- * 11's cart), a running total, and the means to remove a line or abandon
- * the whole sale. Charging it is explicitly out of scope here — phase 13
- * adds payment/checkout on top of this same sale.
+ * 11's cart), a running total, and the means to remove a line, abandon the
+ * whole sale, or move on to payment (phase 13's `Checkout`, rendered by
+ * `PosHomePage` in place of this component once **Cobrar** is tapped).
  */
-export function Cart({ sale, disabled, onRemoveLine, onCancelSale }: CartProps) {
+export function Cart({ sale, disabled, onRemoveLine, onCancelSale, onCheckout }: CartProps) {
   const lines = sale?.lines ?? [];
 
   return (
@@ -69,13 +70,21 @@ export function Cart({ sale, disabled, onRemoveLine, onCancelSale }: CartProps) 
         )}
       </div>
 
-      <div className="border-t border-slate-700 px-4 py-4">
-        <div className="flex items-baseline justify-between">
+      <div className="border-t border-slate-700 p-4">
+        <div className="mb-3 flex items-baseline justify-between">
           <span className="text-sm text-slate-300">Total</span>
           <span className="text-2xl font-bold text-emerald-400">
             {formatMoney(sale?.total ?? '0')}
           </span>
         </div>
+        <button
+          type="button"
+          onClick={onCheckout}
+          disabled={disabled || lines.length === 0}
+          className="w-full rounded-lg bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Cobrar
+        </button>
       </div>
     </aside>
   );

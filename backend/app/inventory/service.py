@@ -181,6 +181,38 @@ async def record_movement(
     return movement
 
 
+async def lock_and_get_available_quantity(
+    session: AsyncSession, *, product_id: int, warehouse_id: int, location_id: int
+) -> Decimal:
+    """Row-lock every ``stock_balance`` row for this product/location
+    (every lot, plus the no-lot row if the product doesn't track lots) and
+    return their total.
+
+    This is what makes phase 13's checkout stock check race-free: locking
+    first and only writing the decrement afterwards, *in the same
+    transaction*, means a second concurrent checkout for the same
+    product/location blocks on this statement until the first commits or
+    rolls back — it can never see the same "enough stock" snapshot the
+    first one already spent. (Postgres refuses ``FOR UPDATE`` together with
+    an aggregate, hence locking the rows first and summing in Python rather
+    than a single ``SELECT SUM(...) ... FOR UPDATE``.)
+
+    A product with no balance row at all (never moved) correctly locks
+    nothing and returns 0 — there is nothing to race over.
+    """
+    stmt = (
+        select(StockBalance.quantity)
+        .where(
+            StockBalance.product_id == product_id,
+            StockBalance.warehouse_id == warehouse_id,
+            StockBalance.location_id == location_id,
+        )
+        .with_for_update()
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return sum(rows, Decimal(0))
+
+
 async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) -> StockMovement:
     movement = await record_movement(
         session,

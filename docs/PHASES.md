@@ -20,7 +20,7 @@ y commit.
 | 10 | Categorías POS | ✅ completada |
 | 11 | Ventas | ✅ completada |
 | 12 | POS | ✅ completada |
-| 13 | Pagos | pendiente |
+| 13 | Pagos | ✅ completada |
 | 14 | Devoluciones | pendiente |
 | 15 | Tickets | pendiente |
 | 16 | Dashboards | pendiente |
@@ -1029,3 +1029,123 @@ Deuda técnica conocida:
 - Sin pantalla de ventas en `/admin` todavía (mismo criterio que fases
   1–11): la API está completa y documentada en `/api/docs`.
 - No hay botón de cobro — a propósito, es la fase 13.
+
+## Fase 13 — Pagos
+
+**Objetivo:** el checkout atómico que cierra el ciclo de la venta: comprobar
+stock disponible, cobrar (uno o varios métodos de pago), mover el
+inventario (FEFO para productos con lote) y marcar la venta `COMPLETED` —
+todo en una única transacción (regla 5), tal y como anticipaba el
+*docstring* de `app.sales.models` desde la fase 11. Botón **Cobrar** en el
+TPV, sobre la misma venta `DRAFT` que las fases 11/12 ya construían.
+
+Entregado:
+
+- **`payments`** (*append-only*, mismo criterio que `audit_log`/
+  `product_price_history`): `sale_id`, `method`
+  (`CASH`/`CARD`/`OTHER`), `amount` — lo que el cliente entregó, no lo que
+  la caja se queda (una entrega en efectivo mayor que el total no se
+  recorta aquí; el sobrante sale como cambio, calculado, no almacenado).
+- **`POST /sales/{id}/checkout`**: acepta una lista de pagos (permite pago
+  mixto, p. ej. parte tarjeta + parte efectivo). Rechaza (422) si la suma
+  no cubre el total, o si sobra importe sin que haya un pago en efectivo
+  que lo cubra (no se puede "dar cambio" de una tarjeta). El cambio
+  (`change_due`) se calcula, nunca se guarda — igual que los totales de
+  línea desde la fase 11.
+- **Comprobación de stock, por fin real**: la fase 11 dejó explícitamente
+  sin comprobar la disponibilidad al añadir una línea ("fallará al
+  intentar cobrarlo si sigue sin stock suficiente") — este es ese momento.
+  Por cada línea, `app.inventory.service.lock_and_get_available_quantity`
+  bloquea (`SELECT ... FOR UPDATE`) todas las filas de `stock_balance` de
+  ese producto/ubicación (todos los lotes si los tiene) antes de decidir
+  si hay suficiente — bloquear primero y decrementar después, en la misma
+  transacción, es lo que hace la comprobación segura bajo concurrencia real
+  (dos cobros a la vez para el último ejemplo del catálogo no pueden ver
+  ambos "hay suficiente"). Postgres no permite `FOR UPDATE` junto a un
+  agregado, así que se bloquean las filas una a una y se suman en Python en
+  vez de un único `SELECT SUM(...) ... FOR UPDATE`.
+- **Movimiento de inventario por línea**: `movement_type=SALE`,
+  `reference_type="sale"`, `reference_id=<sale.id>` — para productos con
+  lote, vía `app.lots.service.execute_fefo_consumption` (el mecanismo que
+  la fase 8 dejó ya listo, literalmente a la espera de que "la fase 13 lo
+  dispare desde el propio flujo de cobro"); para el resto, un
+  `record_movement` directo. Cualquier fallo a mitad (falta de stock en la
+  línea 2 de 3, por ejemplo) deshace **toda** la petición — nada de venta
+  completada con sólo parte del stock descontado — gracias a la política de
+  una transacción por petición de la fase 0, no a lógica añadida aquí.
+- Sólo `DRAFT -> COMPLETED` es alcanzable desde `checkout`; una venta que
+  ya esté `COMPLETED`/`CANCELLED` lo rechaza (409), y una vez `COMPLETED`
+  tampoco admite añadir/quitar líneas ni cancelarla (mismo guard de estado
+  de la fase 11, ahora alcanzable con un tercer valor).
+- **Frontend**: botón **Cobrar** en `Cart` (fase 12), habilitado sólo con
+  el carrito no vacío; `Checkout.tsx` (nuevo) — efectivo/tarjeta, importe
+  editable con vista previa de cambio en vivo, tarjeta siempre exacta;
+  `Receipt.tsx` (nuevo) — confirmación con lo cobrado y el cambio a
+  entregar, con **Nueva venta** que reutiliza el mismo mecanismo de
+  "reanudar o abrir" de la fase 12 (limpia la caché de ventas `DRAFT` y
+  deja que el efecto ya existente abra una venta nueva).
+- **`backend/scripts/seed_e2e_catalog.py` ampliado**: desde esta fase
+  también siembra stock (1000 unidades) de cada producto nuevo — cobrar
+  necesita existencia real, no sólo que el producto exista.
+
+Archivos añadidos/tocados: `backend/app/sales/models.py` (`Payment`,
+`PaymentMethod`), `backend/app/sales/{schemas,service,presenters,router}.py`
+(`checkout`, `CheckoutRequest`/`PaymentCreate`/`PaymentRead`,
+`SaleRead.payments`/`change_due`), `backend/app/inventory/service.py`
+(`lock_and_get_available_quantity`),
+`backend/migrations/versions/…_phase_13_payments.py`,
+`backend/tests/test_checkout.py` (nuevo), `backend/scripts/seed_e2e_catalog.py`
+(stock), `frontend/src/features/pos/{api,Cart}.tsx` (checkout/`Tender`,
+botón **Cobrar**), `frontend/src/features/pos/{Checkout,Receipt}.tsx`
+(nuevos), `frontend/src/pages/pos/PosHomePage.tsx` (orquesta cobrar/recibo),
+`tests/e2e/specs/pos.sale.spec.ts` (checkout, renombrado a "phases 12/13").
+No hizo falta ningún permiso nuevo: `checkout` reutiliza `sale.manage`
+(`CASHIER` ya lo tiene desde la fase 11 — cobrar es su trabajo).
+
+Endpoints nuevos: `POST /sales/{id}/checkout`.
+
+Migración: `6996851d411a_phase_13_payments` — crea `payments`; sin siembra
+de permisos (ninguno nuevo). `downgrade()` la elimina; verificado con
+*round-trip* completo y `alembic check`.
+
+Tests: 12 nuevos en backend (217 en total) — cobro exacto en efectivo mueve
+stock y completa la venta, pago mixto tarjeta+efectivo, sobrepago en
+efectivo calcula el cambio, sobrepago con tarjeta sin efectivo se rechaza,
+importe insuficiente se rechaza y la venta queda `DRAFT`, stock
+insuficiente se rechaza atómicamente (verificado que ni el stock ni los
+pagos cambian), venta sin líneas rechazada, doble cobro rechazado, venta
+`COMPLETED` rechaza añadir/quitar líneas y cancelar, venta cancelada
+rechaza el cobro, consumo FEFO multi-lote a través del propio checkout
+(mismo caso de aceptación que la fase 8, ahora disparado por `/checkout` en
+vez de por el endpoint manual), y una prueba de concurrencia real (dos
+ventas queriendo agotar el mismo stock a la vez: exactamente una gana, el
+balance final es 0, nunca negativo). `ruff`, `ruff format --check` y `mypy`
+limpios; `pytest -q` → 217/217 contra PostgreSQL real.
+
+**Frontend**: 20 tests nuevos (57 en total) — `Checkout.tsx` (8: importe por
+defecto, tarjeta bloquea el importe exacto, aviso si no cubre el total,
+vista previa de cambio, confirmar con el método/importe correctos, volver,
+error, deshabilitado mientras está pendiente), `Receipt.tsx` (5), botón
+**Cobrar** en `Cart.tsx` (3 nuevos), y el flujo completo en
+`PosHomePage.test.tsx` (2 nuevos, con el mismo *fake* de backend con estado
+propio de la fase 12). `tsc -b`, `eslint` y `prettier --check` limpios;
+`vitest run` → 57/57; `vite build` limpio. 6 specs E2E nuevas en
+`pos.sale.spec.ts` (cobro exacto muestra recibo y deja una venta nueva
+lista, sobrepago en efectivo muestra el cambio, volver desde el cobro no
+cobra nada) — 16/16 specs E2E en verde, dos pasadas consecutivas sin
+*flakiness*.
+
+Deuda técnica conocida:
+
+- Sólo se admite un método de pago "simple" por *tender* (sin
+  desglose de propina, sin pago aplazado/fiado); suficiente para una tienda
+  minorista con TPV único, ampliable sin tocar el modelo si hiciera falta.
+- El límite por almacén, no por cajero/terminal, de la fase 12 sigue
+  vigente aquí (`checkout` opera sobre la venta `DRAFT` que ya exista,
+  cualquiera que sea su origen) — mismo criterio, misma nota de deuda
+  técnica que la fase 12.
+- Sin pantalla de ventas/pagos en `/admin` todavía (mismo criterio que
+  fases 1–12).
+- Imprimir un ticket físico es explícitamente la fase 15; `Receipt.tsx` es
+  sólo la confirmación en pantalla que el cajero necesita antes de entregar
+  el cambio.

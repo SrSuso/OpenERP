@@ -33,7 +33,7 @@ async function resetCart(page: Page) {
 // run serially so two of *these* tests never race each other over it. (This
 // spec is the only one that mutates a sale; specs that merely load `/pos`
 // cannot collide with it the same way.)
-test.describe.serial('POS cart (phase 12)', () => {
+test.describe.serial('POS cart & checkout (phases 12/13)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsCashier(page);
     await resetCart(page);
@@ -79,6 +79,42 @@ test.describe.serial('POS cart (phase 12)', () => {
     await expect(page.getByText(/el carrito está vacío/i)).not.toBeVisible();
 
     await page.reload();
+
+    await expect(page.getByRole('button', { name: /quitar leche entera 1l/i })).toBeVisible();
+  });
+
+  test('checking out with exact cash shows a receipt, and a fresh sale is ready right after', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: MILK_NAME }).click();
+    await page.getByRole('button', { name: /^cobrar$/i }).click();
+
+    await expect(page.getByRole('heading', { name: /^cobrar$/i })).toBeVisible();
+    await page.getByRole('button', { name: /confirmar cobro/i }).click();
+
+    await expect(page.getByText(/venta cobrada/i)).toBeVisible();
+    await page.getByRole('button', { name: /nueva venta/i }).click();
+
+    await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
+  });
+
+  test('a cash overpayment shows the change due on the receipt', async ({ page }) => {
+    await page.getByRole('button', { name: MILK_NAME }).click(); // 1,32 €
+    await page.getByRole('button', { name: /^cobrar$/i }).click();
+
+    await page.getByLabel(/importe recibido/i).fill('2.00');
+    await page.getByRole('button', { name: /confirmar cobro/i }).click();
+
+    await expect(page.getByText(/cambio a entregar/i)).toBeVisible();
+    await expect(page.getByText('0,68 €')).toBeVisible();
+    await page.getByRole('button', { name: /nueva venta/i }).click();
+  });
+
+  test('"Volver" from checkout returns to the cart without charging', async ({ page }) => {
+    await page.getByRole('button', { name: MILK_NAME }).click();
+    await page.getByRole('button', { name: /^cobrar$/i }).click();
+
+    await page.getByRole('button', { name: /volver/i }).click();
 
     await expect(page.getByRole('button', { name: /quitar leche entera 1l/i })).toBeVisible();
   });

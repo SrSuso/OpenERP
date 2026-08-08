@@ -3,12 +3,15 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import { Cart } from '@/features/pos/Cart';
 import { CategoryTabs } from '@/features/pos/CategoryTabs';
+import { Checkout } from '@/features/pos/Checkout';
 import { ProductGrid } from '@/features/pos/ProductGrid';
+import { Receipt } from '@/features/pos/Receipt';
 import {
   addLine,
   addLineByBarcode,
   basePackage,
   cancelSale,
+  checkout,
   createSale,
   draftSalesQuery,
   locationsQuery,
@@ -19,6 +22,7 @@ import {
   type Product,
   type Sale,
   type SaleLine,
+  type Tender,
 } from '@/features/pos/api';
 import { ApiError } from '@/lib/api';
 
@@ -38,6 +42,12 @@ export function PosHomePage() {
   const [barcode, setBarcode] = useState('');
   const [sale, setSale] = useState<Sale | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
+  const [view, setView] = useState<'cart' | 'checkout'>('cart');
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  //: The sale just completed, kept only long enough to show its receipt —
+  //: independent of `sale`, which by then has already gone back to `null`
+  //: so the effect below can open the next one.
+  const [receipt, setReceipt] = useState<Sale | null>(null);
 
   const warehouses = useQuery(warehousesQuery);
   const warehouseId = warehouses.data?.[0]?.id ?? null;
@@ -141,6 +151,23 @@ export function PosHomePage() {
     onError: (error) => setLineError(describeError(error)),
   });
 
+  const checkoutMutation = useMutation({
+    mutationFn: (payments: Tender[]) => checkout(sale!.id, payments),
+    // Same cache-sync reasoning as cancel: clear the draft-sales cache so
+    // the resume effect opens a genuinely new sale instead of resurrecting
+    // the one that was just completed.
+    onSuccess: (completed) => {
+      if (warehouseId !== null) {
+        queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, []);
+      }
+      setCheckoutError(null);
+      setReceipt(completed);
+      setSale(null);
+      setView('cart');
+    },
+    onError: (error) => setCheckoutError(describeError(error)),
+  });
+
   const busy =
     addLineMutation.isPending ||
     addBarcodeMutation.isPending ||
@@ -191,77 +218,97 @@ export function PosHomePage() {
 
       {!sessionLoading && !sessionErrored && warehouseId !== null && locationId !== null && (
         <>
-          {failedToOpenSale && sale === null && (
-            <p className="flex flex-1 items-center justify-center gap-3 text-red-400">
-              No se ha podido abrir la venta.
-              <button
-                type="button"
-                onClick={() => openSale()}
-                className="rounded bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-50 hover:bg-slate-600"
-              >
-                Reintentar
-              </button>
-            </p>
-          )}
-
-          {(sale !== null || (!failedToOpenSale && isOpeningSale)) && (
-            <div className="flex min-h-0 flex-1">
-              <div className="flex min-w-0 flex-1 flex-col">
-                <form
-                  onSubmit={handleBarcodeSubmit}
-                  className="flex gap-2 border-b border-slate-700 p-3"
-                >
-                  <label htmlFor="pos-barcode" className="sr-only">
-                    Código de barras
-                  </label>
-                  <input
-                    id="pos-barcode"
-                    type="text"
-                    value={barcode}
-                    onChange={(event) => setBarcode(event.target.value)}
-                    placeholder="Escanear o introducir código de barras"
-                    disabled={sale === null || busy}
-                    className="flex-1 rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 disabled:opacity-50"
-                  />
+          {receipt !== null ? (
+            <Receipt sale={receipt} onDismiss={() => setReceipt(null)} />
+          ) : (
+            <>
+              {failedToOpenSale && sale === null && (
+                <p className="flex flex-1 items-center justify-center gap-3 text-red-400">
+                  No se ha podido abrir la venta.
                   <button
-                    type="submit"
-                    disabled={sale === null || busy || barcode.trim() === ''}
-                    className="rounded bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={() => openSale()}
+                    className="rounded bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-50 hover:bg-slate-600"
                   >
-                    Añadir
+                    Reintentar
                   </button>
-                </form>
+                </p>
+              )}
 
-                {lineError && (
-                  <p
-                    role="alert"
-                    className="border-b border-red-900 bg-red-950/50 px-4 py-2 text-sm text-red-300"
-                  >
-                    {lineError}
-                  </p>
-                )}
-
-                <CategoryTabs
-                  categories={categories.data ?? []}
-                  selectedId={selectedCategoryId}
-                  onSelect={setSelectedCategoryId}
+              {sale !== null && view === 'checkout' ? (
+                <Checkout
+                  sale={sale}
+                  isPending={checkoutMutation.isPending}
+                  error={checkoutError}
+                  onConfirm={(payments) => checkoutMutation.mutate(payments)}
+                  onBack={() => setView('cart')}
                 />
-                <ProductGrid
-                  products={products.data ?? []}
-                  isPending={products.isPending}
-                  isError={products.isError}
-                  onPick={(product) => addLineMutation.mutate(product)}
-                  disabled={sale === null || busy}
-                />
-              </div>
+              ) : (
+                (sale !== null || (!failedToOpenSale && isOpeningSale)) && (
+                  <div className="flex min-h-0 flex-1">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <form
+                        onSubmit={handleBarcodeSubmit}
+                        className="flex gap-2 border-b border-slate-700 p-3"
+                      >
+                        <label htmlFor="pos-barcode" className="sr-only">
+                          Código de barras
+                        </label>
+                        <input
+                          id="pos-barcode"
+                          type="text"
+                          value={barcode}
+                          onChange={(event) => setBarcode(event.target.value)}
+                          placeholder="Escanear o introducir código de barras"
+                          disabled={sale === null || busy}
+                          className="flex-1 rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 disabled:opacity-50"
+                        />
+                        <button
+                          type="submit"
+                          disabled={sale === null || busy || barcode.trim() === ''}
+                          className="rounded bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Añadir
+                        </button>
+                      </form>
 
-              <Cart
-                sale={sale}
-                disabled={busy}
-                onRemoveLine={(line) => removeLineMutation.mutate(line)}
-                onCancelSale={() => cancelMutation.mutate()}
-              />
-            </div>
+                      {lineError && (
+                        <p
+                          role="alert"
+                          className="border-b border-red-900 bg-red-950/50 px-4 py-2 text-sm text-red-300"
+                        >
+                          {lineError}
+                        </p>
+                      )}
+
+                      <CategoryTabs
+                        categories={categories.data ?? []}
+                        selectedId={selectedCategoryId}
+                        onSelect={setSelectedCategoryId}
+                      />
+                      <ProductGrid
+                        products={products.data ?? []}
+                        isPending={products.isPending}
+                        isError={products.isError}
+                        onPick={(product) => addLineMutation.mutate(product)}
+                        disabled={sale === null || busy}
+                      />
+                    </div>
+
+                    <Cart
+                      sale={sale}
+                      disabled={busy}
+                      onRemoveLine={(line) => removeLineMutation.mutate(line)}
+                      onCancelSale={() => cancelMutation.mutate()}
+                      onCheckout={() => {
+                        setCheckoutError(null);
+                        setView('checkout');
+                      }}
+                    />
+                  </div>
+                )
+              )}
+            </>
           )}
         </>
       )}

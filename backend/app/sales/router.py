@@ -15,6 +15,7 @@ from app.rbac.permissions import SALE_MANAGE, SALE_READ
 from app.sales import service
 from app.sales.presenters import sale_to_read as _to_read
 from app.sales.schemas import (
+    CheckoutRequest,
     SaleCreate,
     SaleLineByBarcodeCreate,
     SaleLineCreate,
@@ -79,3 +80,8 @@ async def remove_line(sale_id: int, line_id: int, session: SessionDep) -> SaleRe
 @router.post("/sales/{sale_id}/cancel", response_model=SaleRead, dependencies=[_require_manage])
 async def cancel_sale(sale_id: int, session: SessionDep) -> SaleRead:
     return _to_read(await service.cancel_sale(session, sale_id))
+
+
+@router.post("/sales/{sale_id}/checkout", response_model=SaleRead, dependencies=[_require_manage])
+async def checkout(sale_id: int, payload: CheckoutRequest, session: SessionDep) -> SaleRead:
+    return _to_read(await service.checkout(session, sale_id, payload))

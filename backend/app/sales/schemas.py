@@ -52,6 +52,24 @@ class SaleLineRead(BaseModel):
     total: Decimal
 
 
+class PaymentCreate(BaseModel):
+    method: str = Field(pattern="^(CASH|CARD|OTHER)$")
+    #: What the customer tendered — may exceed the balance due (change is
+    #: computed and returned, never stored as a negative payment).
+    amount: Decimal = Field(gt=0)
+
+
+class CheckoutRequest(BaseModel):
+    payments: list[PaymentCreate] = Field(min_length=1)
+
+
+class PaymentRead(BaseModel):
+    id: int
+    method: str
+    amount: Decimal
+    created_at: datetime
+
+
 class SaleRead(BaseModel):
     id: int
     warehouse_id: int
@@ -63,3 +81,7 @@ class SaleRead(BaseModel):
     created_at: datetime
     lines: list[SaleLineRead]
     total: Decimal
+    payments: list[PaymentRead]
+    #: Cash handed back to the customer on the last checkout — 0 unless
+    #: ``status == COMPLETED`` and a cash tender overshot the total.
+    change_due: Decimal

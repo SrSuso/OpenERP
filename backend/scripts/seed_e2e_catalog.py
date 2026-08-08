@@ -2,9 +2,16 @@
 
 Without this, `/pos` has a warehouse/location (seeded by the phase 7
 migration) but nothing to sell — the grid would always render its empty
-state. Idempotent — safe to run on every CI job / local E2E run; does
-nothing to a POS category or product that already exists (matched by name
-and SKU respectively).
+state. Since phase 13, checking out also needs actual stock (checkout
+validates availability before it will complete a sale), so this seeds a
+generous quantity of each product too. Idempotent — safe to run on every CI
+job / local E2E run; does nothing to a POS category or product that already
+exists (matched by name and SKU respectively). Stock is only seeded the
+moment a product is *created*, not topped up on later runs — same
+philosophy as `seed_e2e_users.py` (acts once, doesn't "fix up" state on
+every call); re-seed a depleted local database with
+`uv run python -m scripts.devdb reset && make db-upgrade && make seed-e2e
+&& make seed-e2e-catalog` if a long local testing session runs it dry.
 
 Usage::
 
@@ -24,6 +31,11 @@ from app.catalog.models import PosCategory, Product
 from app.catalog.schemas import PosCategoryCreate, ProductCreate
 from app.db import registry as _registry  # noqa: F401 — registers every ORM model
 from app.db.session import session_scope
+from app.inventory import service as inventory
+from app.inventory.models import Location, Warehouse
+
+#: Comfortably more than any E2E run will check out.
+_SEEDED_STOCK = Decimal(1000)
 
 
 @dataclass(frozen=True)
@@ -63,6 +75,17 @@ _PRODUCTS = (
 
 async def _seed() -> int:
     async with session_scope() as session:
+        warehouse = (
+            await session.execute(select(Warehouse).where(Warehouse.name == "Tienda principal"))
+        ).scalar_one()
+        location = (
+            await session.execute(
+                select(Location).where(
+                    Location.warehouse_id == warehouse.id, Location.name == "Almacén"
+                )
+            )
+        ).scalar_one()
+
         category = (
             await session.execute(select(PosCategory).where(PosCategory.name == _POS_CATEGORY_NAME))
         ).scalar_one_or_none()
@@ -82,7 +105,7 @@ async def _seed() -> int:
                 print(f"already present: product {spec.sku}")
                 continue
 
-            await catalog.create_product(
+            product = await catalog.create_product(
                 session,
                 ProductCreate(
                     sku=spec.sku,
@@ -95,7 +118,16 @@ async def _seed() -> int:
                     tax_rate=spec.tax_rate,
                 ),
             )
-            print(f"created product: {spec.sku}")
+            await inventory.record_movement(
+                session,
+                product_id=product.id,
+                warehouse_id=warehouse.id,
+                location_id=location.id,
+                quantity=_SEEDED_STOCK,
+                movement_type="ADJUSTMENT",
+                unit_cost=spec.cost,
+            )
+            print(f"created product: {spec.sku} (stocked {_SEEDED_STOCK})")
     return 0
 
 
