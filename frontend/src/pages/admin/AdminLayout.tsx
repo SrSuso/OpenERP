@@ -1,12 +1,17 @@
 import { NavLink, Outlet } from 'react-router';
 
+import { useAuth } from '@/features/auth/AuthContext';
+
 /**
  * Shell for `/admin`.
  *
- * Phase 1 replaces the static nav with one filtered by the signed-in user's
- * permissions — and the backend re-checks every one of them regardless.
+ * The nav below is intentionally minimal in phase 1 (just "Inicio"); later
+ * phases add entries filtered by `hasPermission(...)` — the backend
+ * re-checks every one of them regardless.
  */
 export function AdminLayout() {
+  const { user, logout } = useAuth();
+
   return (
     <div className="flex h-full">
       <aside className="w-56 shrink-0 border-r border-slate-200 bg-white p-4">
@@ -23,9 +28,25 @@ export function AdminLayout() {
           </NavLink>
         </nav>
       </aside>
-      <main className="flex-1 overflow-auto p-8">
-        <Outlet />
-      </main>
+      <div className="flex flex-1 flex-col overflow-auto">
+        <header className="flex items-center justify-end gap-3 border-b border-slate-200 px-8 py-3 text-sm text-slate-600">
+          {user && (
+            <span>
+              {user.full_name} · <span className="text-slate-400">{user.role}</span>
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="font-medium text-brand-700 hover:underline"
+          >
+            Salir
+          </button>
+        </header>
+        <main className="flex-1 p-8">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

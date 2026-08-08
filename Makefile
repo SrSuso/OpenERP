@@ -72,6 +72,12 @@ db-revision:  ## Autogenerate a migration:  make db-revision m="add products"
 db-reset:  ## Drop, recreate and migrate the database
 	cd $(BACKEND) && uv run python -m scripts.devdb reset && uv run alembic upgrade head
 
+# --- auth --------------------------------------------------------------
+
+.PHONY: bootstrap-admin
+bootstrap-admin:  ## Create the first admin user (interactive)
+	cd $(BACKEND) && uv run python -m app.auth.bootstrap
+
 # --- run -------------------------------------------------------------------
 
 .PHONY: dev-api

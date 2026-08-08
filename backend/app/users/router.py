@@ -1,0 +1,71 @@
+"""User account endpoints.
+
+Everything here needs ``users.manage`` except a signed-in user changing
+their own password.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from app.auth.dependencies import CurrentUser, SessionDep
+from app.rbac.dependencies import require_permission
+from app.rbac.permissions import USERS_MANAGE
+from app.users import service
+from app.users.models import User
+from app.users.schemas import PasswordChange, UserCreate, UserRead, UserUpdate
+
+router = APIRouter(tags=["users"])
+
+_require_users_manage = Depends(require_permission(USERS_MANAGE))
+
+
+def _to_read(user: User) -> UserRead:
+    return UserRead(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        role_id=user.role_id,
+        role_name=user.role.name,
+    )
+
+
+@router.get("/users", response_model=list[UserRead], dependencies=[_require_users_manage])
+async def list_users(session: SessionDep) -> list[UserRead]:
+    return [_to_read(u) for u in await service.list_users(session)]
+
+
+@router.post(
+    "/users", response_model=UserRead, status_code=201, dependencies=[_require_users_manage]
+)
+async def create_user(payload: UserCreate, session: SessionDep) -> UserRead:
+    return _to_read(await service.create_user(session, payload))
+
+
+@router.get("/users/{user_id}", response_model=UserRead, dependencies=[_require_users_manage])
+async def get_user(user_id: int, session: SessionDep) -> UserRead:
+    return _to_read(await service.get_user(session, user_id))
+
+
+@router.patch("/users/{user_id}", response_model=UserRead, dependencies=[_require_users_manage])
+async def update_user(user_id: int, payload: UserUpdate, session: SessionDep) -> UserRead:
+    return _to_read(await service.update_user(session, user_id, payload))
+
+
+@router.post(
+    "/users/{user_id}/deactivate",
+    response_model=UserRead,
+    dependencies=[_require_users_manage],
+)
+async def deactivate_user(user_id: int, session: SessionDep) -> UserRead:
+    return _to_read(await service.deactivate_user(session, user_id))
+
+
+@router.post("/users/me/password", status_code=204)
+async def change_my_password(
+    payload: PasswordChange, user: CurrentUser, session: SessionDep
+) -> None:
+    """Any authenticated user may change their own password — no
+    ``users.manage`` needed, it only ever touches the caller's own row."""
+    await service.change_password(session, user, payload)

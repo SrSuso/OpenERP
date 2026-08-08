@@ -16,8 +16,11 @@ táctil (`/pos`), construido como **monolito modular**.
 
 ## Estado
 
-**Fase 0 (bootstrap) completada.** Las fases siguientes se implementan en orden
-estricto y ninguna avanza con la anterior rota. Ver [`docs/PHASES.md`](docs/PHASES.md).
+**Fases 0 (bootstrap) y 1 (auth y RBAC) completadas.** Las fases siguientes
+se implementan en orden estricto y ninguna avanza con la anterior rota. Ver
+[`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada y
+[`docs/USAGE.md`](docs/USAGE.md) para cómo arrancar el proyecto, crear el
+primer administrador e iniciar sesión.
 
 ---
 
@@ -58,6 +61,10 @@ npm install                           # suite E2E (Playwright)
 
 cd backend && uv run alembic upgrade head && cd ..
 ```
+
+No hay registro público: crea el primer administrador con
+`make bootstrap-admin` (interactivo) antes de iniciar sesión — detalle en
+[`docs/USAGE.md`](docs/USAGE.md).
 
 ### 3. Arrancar
 

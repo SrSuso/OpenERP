@@ -64,6 +64,27 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:5173"]
     )
 
+    # --- auth / sessions -----------------------------------------------------
+    # Server-side, revocable sessions behind an httpOnly cookie (never a JWT):
+    # a compromised or shared-terminal session must be killable instantly, and
+    # the frontend already sends `credentials: 'include'` on every request.
+    session_cookie_name: str = "openerp_session"
+    session_ttl_days: int = 30
+    # Sliding expiry is only written to the database at most once per this
+    # interval, so a busy POS terminal doesn't turn every request into a write.
+    session_touch_interval_seconds: int = 60
+
+    # Optional: non-interactive first-admin creation (see app.auth.bootstrap).
+    # Never committed anywhere; supplied via environment at deploy time only.
+    bootstrap_admin_email: str | None = None
+    bootstrap_admin_password: str | None = None
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        """``Secure`` requires HTTPS; only enforced outside local dev, where
+        the API is plain HTTP."""
+        return self.environment == "production"
+
     @field_validator("log_level")
     @classmethod
     def _upper_log_level(cls, value: str) -> str:

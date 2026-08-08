@@ -24,19 +24,27 @@ import shutil
 import subprocess
 import sys
 import uuid
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.auth.security import hash_password
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine, get_session
 from app.main import create_app
+from app.rbac.models import Role
+from app.users.models import User
 from scripts.devdb import create_database, drop_database, wait_for_server
+
+#: The password every fixture-created user gets, unless told otherwise.
+DEFAULT_PASSWORD = "correct horse battery staple"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -232,3 +240,61 @@ async def client(settings: Settings, db_session: AsyncSession) -> AsyncIterator[
     async with AsyncClient(transport=transport, base_url="http://testserver") as http:
         yield http
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def make_user(db_session: AsyncSession) -> Callable[..., Awaitable[User]]:
+    """Factory: insert a user with the given (seeded) role and return it.
+
+    Roles/permissions come from the phase 1 migration's seed data
+    (``ADMIN``/``MANAGER``/``CASHIER``), already present in every test
+    database because ``database_url`` runs a real ``alembic upgrade head``.
+    """
+
+    async def _make(
+        *,
+        email: str,
+        role_name: str = "ADMIN",
+        password: str = DEFAULT_PASSWORD,
+        full_name: str = "Test User",
+        is_active: bool = True,
+    ) -> User:
+        role = (await db_session.execute(select(Role).where(Role.name == role_name))).scalar_one()
+        user = User(
+            email=email,
+            full_name=full_name,
+            password_hash=hash_password(password),
+            role_id=role.id,
+            is_active=is_active,
+        )
+        db_session.add(user)
+        await db_session.flush()
+        return user
+
+    return _make
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def login(
+    client: AsyncClient, make_user: Callable[..., Awaitable[User]]
+) -> Callable[..., Awaitable[dict[str, Any]]]:
+    """Create a fresh user with the given role and log ``client`` in as them.
+
+    ``client``'s cookie jar carries the session afterwards, so callers just
+    keep using ``client`` — this is the "authenticated client" every phase
+    beyond this one needs to protect its own routes.
+    """
+
+    async def _login(
+        *, role_name: str = "ADMIN", email: str | None = None, password: str = DEFAULT_PASSWORD
+    ) -> dict[str, Any]:
+        email = email or f"{role_name.lower()}-{uuid.uuid4().hex[:8]}@example.com"
+        await make_user(email=email, role_name=role_name, password=password)
+        response = await client.post(
+            "/api/v1/auth/login", json={"email": email, "password": password}
+        )
+        response.raise_for_status()
+        result: dict[str, Any] = response.json()
+        return result
+
+    return _login
