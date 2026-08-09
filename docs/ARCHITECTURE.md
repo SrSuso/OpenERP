@@ -201,13 +201,39 @@ Puntos de diseño a tener en cuenta:
   duplicado a mano); **React Hook Form + Zod** para formularios y su
   validación.
 - El frontend hoy cubre **login, TPV completo, el panel de dashboards**
-  (widgets de fase 16) y **usuarios/roles/mi cuenta** (`/admin/access`,
-  `/admin/account` — añadido tras el cierre de las 22 fases, backend ya
-  existente desde la fase 1). Catálogo/precios/compras/inventario/lotes/
-  devoluciones/tickets/notificaciones siguen sin pantalla propia — se opera
-  contra la API (Swagger UI en `/api/docs`), documentado en `USAGE.md` §3.
-  Añadir esas pantallas es trabajo de frontend puro sobre una API que ya
-  existe por completo, mismo patrón que `features/users`/`features/roles`.
+  (widgets de fase 16), **usuarios/roles/mi cuenta** (`/admin/access`,
+  `/admin/account`) y **catálogo** (`/admin/catalog` — productos,
+  presentaciones/códigos de barras, categorías de producto y categorías
+  POS; todo añadido tras el cierre de las 22 fases, backend ya existente
+  desde las fases 1/3/10). Precios/compras/inventario/lotes/devoluciones/
+  tickets/notificaciones siguen sin pantalla propia — se opera contra la
+  API (Swagger UI en `/api/docs`), documentado en `USAGE.md` §3. Añadir
+  esas pantallas es trabajo de frontend puro sobre una API que ya existe
+  por completo, mismo patrón que `features/users`/`features/roles`/
+  `features/catalog`.
+  - `/admin/catalog` sigue el mismo patrón de pestañas que `/admin/access`
+    (`CatalogPage.tsx`: barra de pestañas + `<Outlet />`), pero gated de
+    una sola vez con `RequirePermission permission="product.read"` en vez
+    de `RequireAnyPermission` — las dos pestañas (`ProductsPage`,
+    `CategoriesPage`) sólo necesitan lectura para verse; cada acción de
+    escritura dentro (crear/editar/desactivar un producto, crear una
+    categoría, gestionar categorías POS) se muestra u oculta por su cuenta
+    según `hasPermission('product.manage')`/`hasPermission
+    ('pos_category.manage')` — dos permisos distintos del backend para dos
+    cosas distintas (ver `app/catalog/router.py`).
+  - Los campos `NUMERIC(18,6)` (coste, precio, IVA, stock mínimo, factor de
+    una presentación) viajan como *string*, nunca como `number` — regla 8
+    también en el frontend. `lib/decimal.ts`'s `decimalString()` es el
+    validador Zod compartido que lo comprueba en los formularios
+    (`features/catalog/CreateProductForm.tsx`,
+    `features/catalog/EditProductForm.tsx`,
+    `features/catalog/PackagesPanel.tsx`).
+  - Editar un producto sólo toca campos de catálogo (nombre, descripción,
+    categorías, stock mínimo, lotes/caducidad) — coste/precio/IVA sólo se
+    fijan al crearlo; cambiarlos después es responsabilidad exclusiva del
+    módulo de precios (todavía sin pantalla), igual que en el backend
+    (`ProductUpdate`'s propio docstring en
+    `backend/app/catalog/schemas.py`).
   - `/admin/access` es una sola sección con pestañas — `AccessPage`
     (`pages/admin/AccessPage.tsx`) sólo pinta la barra de pestañas y un
     `<Outlet />`; `Usuarios` y `Roles` son rutas hijas (`users`/`roles`)

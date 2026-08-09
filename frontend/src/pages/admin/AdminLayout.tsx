@@ -23,6 +23,11 @@ export function AdminLayout() {
           <NavLink to="/admin" end className={linkClassName}>
             Inicio
           </NavLink>
+          {hasPermission('product.read') && (
+            <NavLink to="/admin/catalog" className={linkClassName}>
+              Catálogo
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles

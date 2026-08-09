@@ -141,12 +141,30 @@ a casilla. Cambia el conjunto completo de permisos de ese rol — no hay
 "añadir uno más", cada guardado deja el rol exactamente con lo que esté
 marcado en ese momento.
 
-### 3.6. Gestión de productos, compras, proveedores...
+### 3.6. Catálogo (productos y categorías)
+
+Enlace **Catálogo** — visible si tu cuenta puede ver productos (`ADMIN`,
+`MANAGER` y, de hecho, también `CASHIER`, aunque un cajero no tiene acceso
+al panel para llegar hasta aquí). Dos pestañas:
+
+- **Productos**: buscar, filtrar por categoría, ver el listado. Si además
+  puedes gestionar catálogo, también **Nuevo producto** (SKU, nombre,
+  unidad, coste/precio inicial, IVA...), **Editar** (nombre, descripción,
+  categorías, stock mínimo, si controla lotes/caducidad — el precio y el
+  coste, una vez creado el producto, se cambian desde el módulo de
+  precios, todavía sin pantalla propia) y **Desactivar**. El botón
+  **Presentaciones** de cada producto despliega sus formatos de venta
+  (unidad suelta, caja de 6...) y permite añadir uno nuevo o un código de
+  barras.
+- **Categorías**: categorías de estantería (simples, solo nombre) y
+  categorías POS (las pestañas de colores del TPV) — estas últimas
+  necesitan un permiso propio para crearlas/editarlas.
+
+### 3.7. Compras, proveedores, inventario...
 
 Estas áreas todavía no tienen pantallas propias en el panel — las gestiona
-tu administrador directamente. Si necesitas dar de alta un producto, un
-proveedor o un pedido de compra, pídeselo a la persona que administra el
-sistema.
+tu administrador directamente. Si necesitas dar de alta un proveedor o un
+pedido de compra, pídeselo a la persona que administra el sistema.
 
 ---
 

@@ -1,0 +1,193 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+
+import {
+  type Product,
+  type ProductCategory,
+  type ProductUpdateInput,
+  type PosCategory,
+} from '@/features/catalog/api';
+import { decimalString } from '@/lib/decimal';
+
+// Mirrors backend/app/catalog/schemas.py's ProductUpdate exactly — no
+// cost/price/tax here on purpose, see that schema's own docstring
+// (features/pricing, a later module, is the only write path for those).
+const editProductSchema = z.object({
+  name: z.string().min(1, 'Introduce un nombre.').max(255),
+  description: z.string().max(2000).optional(),
+  category_id: z.string(),
+  pos_category_id: z.string(),
+  pos_display_order: z.coerce.number().int().min(0),
+  min_stock: decimalString({ min: 0 }),
+  track_lots: z.boolean(),
+  track_expiration: z.boolean(),
+});
+
+type EditProductFormValues = z.infer<typeof editProductSchema>;
+
+interface EditProductFormProps {
+  product: Product;
+  categories: ProductCategory[];
+  posCategories: PosCategory[];
+  onSubmit: (payload: ProductUpdateInput) => void;
+  onCancel: () => void;
+  isPending: boolean;
+  submitError: string | null;
+}
+
+export function EditProductForm({
+  product,
+  categories,
+  posCategories,
+  onSubmit,
+  onCancel,
+  isPending,
+  submitError,
+}: EditProductFormProps) {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<EditProductFormValues>({
+    resolver: zodResolver(editProductSchema),
+    defaultValues: {
+      name: product.name,
+      description: product.description,
+      category_id: product.category_id === null ? '' : String(product.category_id),
+      pos_category_id: product.pos_category_id === null ? '' : String(product.pos_category_id),
+      pos_display_order: product.pos_display_order,
+      min_stock: product.min_stock,
+      track_lots: product.track_lots,
+      track_expiration: product.track_expiration,
+    },
+  });
+
+  const submit = handleSubmit((values) =>
+    onSubmit({
+      name: values.name,
+      description: values.description ?? '',
+      category_id: values.category_id === '' ? null : Number(values.category_id),
+      pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
+      pos_display_order: values.pos_display_order,
+      min_stock: values.min_stock,
+      track_lots: values.track_lots,
+      track_expiration: values.track_expiration,
+    }),
+  );
+
+  return (
+    <form
+      onSubmit={(event) => void submit(event)}
+      noValidate
+      className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-4"
+    >
+      <h4 className="mb-3 text-sm font-semibold text-slate-700">
+        Editar «{product.sku}» — {product.name}
+      </h4>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="text-sm text-slate-600 sm:col-span-2">
+          Nombre
+          <input
+            type="text"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('name')}
+          />
+          {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Orden en el TPV
+          <input
+            type="number"
+            min={0}
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('pos_display_order')}
+          />
+        </label>
+
+        <label className="text-sm text-slate-600 sm:col-span-3">
+          Descripción
+          <input
+            type="text"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('description')}
+          />
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Categoría
+          <select
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('category_id')}
+          >
+            <option value="">Sin categoría</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Categoría POS
+          <select
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('pos_category_id')}
+          >
+            <option value="">Sin categoría POS</option>
+            {posCategories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Stock mínimo
+          <input
+            type="text"
+            inputMode="decimal"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('min_stock')}
+          />
+          {errors.min_stock && (
+            <p className="mt-1 text-sm text-red-600">{errors.min_stock.message}</p>
+          )}
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" {...register('track_lots')} />
+          Controla lotes
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" {...register('track_expiration')} />
+          Controla caducidad
+        </label>
+      </div>
+
+      {submitError && <p className="mt-3 text-sm text-red-600">{submitError}</p>}
+
+      <div className="mt-4 flex gap-2">
+        <button
+          type="submit"
+          disabled={isPending}
+          className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {isPending ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}

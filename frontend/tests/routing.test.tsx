@@ -80,10 +80,17 @@ function stubFetch(options: {
         );
       }
 
-      // /admin/users and /admin/roles (only reached in the tests that
-      // navigate there) fetch their own lists on mount — empty is enough
-      // to get past the loading state and check what rendered.
-      if (url.endsWith('/users') || url.endsWith('/roles') || url.endsWith('/permissions')) {
+      // /admin/access and /admin/catalog's tabs (only reached in the tests
+      // that navigate there) fetch their own lists on mount — empty is
+      // enough to get past the loading state and check what rendered.
+      if (
+        url.endsWith('/users') ||
+        url.endsWith('/roles') ||
+        url.endsWith('/permissions') ||
+        url.includes('/product-categories') ||
+        url.includes('/pos-categories') ||
+        url.includes('/products?')
+      ) {
         return Promise.resolve(jsonResponse([]));
       }
 
@@ -247,6 +254,27 @@ describe('routing', () => {
     stubFetch({ me: 'admin', permissions: ['admin.access', 'pos.access'] });
 
     renderAt('/admin/access');
+
+    expect(
+      await screen.findByRole('heading', { name: /panel de administración/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('sends /admin/catalog straight to the Productos tab for a user with product.read', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'product.read'] });
+
+    renderAt('/admin/catalog');
+
+    // No product.manage: view-only, "Nuevo producto" never appears.
+    await screen.findByRole('link', { name: 'Categorías' });
+    expect(screen.getByRole('link', { name: 'Productos' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
+  });
+
+  it('bounces a user without product.read away from /admin/catalog', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access'] });
+
+    renderAt('/admin/catalog');
 
     expect(
       await screen.findByRole('heading', { name: /panel de administración/i }),

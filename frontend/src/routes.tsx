@@ -11,6 +11,9 @@ import { AccessIndexRedirect, AccessPage } from '@/pages/admin/AccessPage';
 import { AccountPage } from '@/pages/admin/AccountPage';
 import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
+import { CatalogPage } from '@/pages/admin/CatalogPage';
+import { CategoriesPage } from '@/pages/admin/CategoriesPage';
+import { ProductsPage } from '@/pages/admin/ProductsPage';
 import { RolesPage } from '@/pages/admin/RolesPage';
 import { UsersPage } from '@/pages/admin/UsersPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -67,6 +70,20 @@ export const routes: RouteObject[] = [
                         element: <RequirePermission permission="roles.manage" />,
                         children: [{ path: 'roles', element: <RolesPage /> }],
                       },
+                    ],
+                  },
+                ],
+              },
+              {
+                path: 'catalog',
+                element: <RequirePermission permission="product.read" />,
+                children: [
+                  {
+                    element: <CatalogPage />,
+                    children: [
+                      { index: true, element: <Navigate to="products" replace /> },
+                      { path: 'products', element: <ProductsPage /> },
+                      { path: 'categories', element: <CategoriesPage /> },
                     ],
                   },
                 ],
