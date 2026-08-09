@@ -1,0 +1,200 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+import { AuthProvider } from '@/features/auth/AuthContext';
+import { type Product } from '@/features/catalog/api';
+import {
+  type Location,
+  type StockBalance,
+  type StockMovement,
+  type Warehouse,
+} from '@/features/inventory/api';
+
+import { InventoryBalancesPage } from './InventoryBalancesPage';
+import { InventoryWarehousesPage } from './InventoryWarehousesPage';
+
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  });
+}
+
+const ME = {
+  id: 1,
+  email: 'admin@example.com',
+  full_name: 'Admin Uno',
+  role: 'ADMIN',
+  permissions: ['admin.access', 'inventory.read', 'inventory.manage'],
+};
+
+function stubBackend() {
+  const warehouses: Warehouse[] = [{ id: 1, name: 'Almacén central', is_active: true }];
+  const locations: Location[] = [{ id: 1, warehouse_id: 1, name: 'Recepción', is_active: true }];
+  const product: Product = {
+    id: 10,
+    sku: 'P000010',
+    name: 'Agua 1.5L',
+    description: '',
+    category_id: null,
+    category_name: null,
+    pos_category_id: null,
+    pos_category_name: null,
+    pos_display_order: 0,
+    base_unit_name: 'UNIT',
+    cost: '0.500000',
+    list_price: '1.000000',
+    tax_rate: '0',
+    surcharge_rate: '0',
+    margin_rate: null,
+    taxes: [],
+    price_formula: null,
+    min_stock: '0',
+    track_lots: false,
+    track_expiration: false,
+    is_active: true,
+    packages: [],
+  };
+  const balances: StockBalance[] = [
+    {
+      product_id: 10,
+      product_sku: 'P000010',
+      warehouse_id: 1,
+      location_id: 1,
+      lot_id: null,
+      quantity: '24',
+    },
+  ];
+  const createWarehouseCalls: string[] = [];
+  const createLocationCalls: { warehouseId: number; name: string }[] = [];
+  const adjustmentCalls: Record<string, unknown>[] = [];
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const method = init?.method ?? 'GET';
+      const body = () =>
+        init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+
+      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
+      if (method === 'GET' && /\/products\?/.test(url))
+        return Promise.resolve(jsonResponse([product]));
+      if (method === 'GET' && /\/warehouses$/.test(url))
+        return Promise.resolve(jsonResponse(warehouses));
+      if (method === 'POST' && /\/warehouses$/.test(url)) {
+        const name = body()['name'] as string;
+        createWarehouseCalls.push(name);
+        const created: Warehouse = { id: 2, name, is_active: true };
+        warehouses.push(created);
+        return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      const locMatch = /\/warehouses\/(\d+)\/locations$/.exec(url);
+      if (method === 'GET' && locMatch) {
+        return Promise.resolve(
+          jsonResponse(locations.filter((l) => l.warehouse_id === Number(locMatch[1]))),
+        );
+      }
+      if (method === 'POST' && locMatch) {
+        const warehouseId = Number(locMatch[1]);
+        const name = body()['name'] as string;
+        createLocationCalls.push({ warehouseId, name });
+        const created: Location = { id: 2, warehouse_id: warehouseId, name, is_active: true };
+        locations.push(created);
+        return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      if (method === 'GET' && /\/stock-balance\?/.test(url)) {
+        return Promise.resolve(jsonResponse(balances));
+      }
+      if (method === 'POST' && /\/stock-movements\/adjustments$/.test(url)) {
+        const b = body();
+        adjustmentCalls.push(b);
+        const movement: StockMovement = {
+          id: 1,
+          product_id: b['product_id'] as number,
+          product_sku: product.sku,
+          warehouse_id: b['warehouse_id'] as number,
+          location_id: b['location_id'] as number,
+          lot_id: null,
+          quantity: b['quantity'] as string,
+          movement_type: b['movement_type'] as string,
+          reference_type: null,
+          reference_id: null,
+          unit_cost: b['unit_cost'] as string,
+          user_id: 1,
+          created_at: new Date().toISOString(),
+        };
+        return Promise.resolve(jsonResponse(movement, { status: 201 }));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
+    }),
+  );
+
+  return { createWarehouseCalls, createLocationCalls, adjustmentCalls };
+}
+
+function renderComponent(children: React.ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>,
+  );
+}
+
+describe('InventoryWarehousesPage', () => {
+  it('creates a warehouse and a location', async () => {
+    const backend = stubBackend();
+    renderComponent(<InventoryWarehousesPage />);
+
+    await screen.findByText('Almacén central');
+
+    await userEvent.type(screen.getByPlaceholderText('Almacén central…'), 'Almacén norte');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir almacén' }));
+    await screen.findByText('Almacén norte');
+    expect(backend.createWarehouseCalls).toEqual(['Almacén norte']);
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Ubicaciones' })[0]!);
+    await screen.findByText('Recepción');
+
+    await userEvent.type(screen.getByPlaceholderText('Recepción, Pasillo 1…'), 'Pasillo 2');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir ubicación' }));
+
+    await screen.findByText('Pasillo 2');
+    expect(backend.createLocationCalls).toEqual([{ warehouseId: 1, name: 'Pasillo 2' }]);
+  });
+});
+
+describe('InventoryBalancesPage', () => {
+  it('lists stock balances and records an adjustment', async () => {
+    const backend = stubBackend();
+    renderComponent(<InventoryBalancesPage />);
+
+    expect(await screen.findByText('P000010')).toBeInTheDocument();
+    expect(screen.getByText('24')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
+    const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
+    await userEvent.selectOptions(within(form).getByLabelText('Producto'), '10');
+    await userEvent.selectOptions(within(form).getByLabelText('Almacén'), '1');
+    await userEvent.selectOptions(within(form).getByLabelText('Ubicación'), '1');
+    await userEvent.type(within(form).getByLabelText('Cantidad (con signo)'), '-2');
+    await userEvent.click(within(form).getByRole('button', { name: 'Registrar ajuste' }));
+
+    expect(backend.adjustmentCalls).toEqual([
+      {
+        product_id: 10,
+        warehouse_id: 1,
+        location_id: 1,
+        movement_type: 'ADJUSTMENT',
+        quantity: '-2',
+        unit_cost: '0',
+        lot_id: null,
+        reason: '',
+      },
+    ]);
+  });
+});

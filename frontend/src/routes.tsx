@@ -13,6 +13,10 @@ import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
 import { CatalogPage } from '@/pages/admin/CatalogPage';
 import { CategoriesPage } from '@/pages/admin/CategoriesPage';
+import { InventoryBalancesPage } from '@/pages/admin/InventoryBalancesPage';
+import { InventoryMovementsPage } from '@/pages/admin/InventoryMovementsPage';
+import { InventoryPage } from '@/pages/admin/InventoryPage';
+import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
 import { PricingPage } from '@/pages/admin/PricingPage';
 import { PricingTaxesPage } from '@/pages/admin/PricingTaxesPage';
@@ -116,6 +120,21 @@ export const routes: RouteObject[] = [
                 path: 'purchasing',
                 element: <RequirePermission permission="purchase.read" />,
                 children: [{ index: true, element: <PurchasingPage /> }],
+              },
+              {
+                path: 'inventory',
+                element: <RequirePermission permission="inventory.read" />,
+                children: [
+                  {
+                    element: <InventoryPage />,
+                    children: [
+                      { index: true, element: <Navigate to="balances" replace /> },
+                      { path: 'balances', element: <InventoryBalancesPage /> },
+                      { path: 'movements', element: <InventoryMovementsPage /> },
+                      { path: 'warehouses', element: <InventoryWarehousesPage /> },
+                    ],
+                  },
+                ],
               },
             ],
           },

@@ -1,0 +1,215 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useQuery } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+
+import { type Product } from '@/features/catalog/api';
+import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
+import { decimalString } from '@/lib/decimal';
+
+const adjustmentSchema = z.object({
+  product_id: z.string().min(1, 'Elige un producto.'),
+  warehouse_id: z.string().min(1, 'Elige un almacén.'),
+  location_id: z.string().min(1, 'Elige una ubicación.'),
+  movement_type: z.enum(['ADJUSTMENT', 'WASTE']),
+  // Con signo para ADJUSTMENT (puede sumar o restar); WASTE siempre resta
+  // — el backend lo normaliza si se manda en positivo (rule ver AdjustmentCreate).
+  quantity: z
+    .string()
+    .trim()
+    .transform((value) => value.replace(',', '.'))
+    .refine((value) => /^-?\d+(\.\d{1,6})?$/.test(value) && Number(value) !== 0, {
+      message: 'Introduce una cantidad distinta de cero.',
+    }),
+  unit_cost: decimalString({ min: 0 }),
+  lot_id: z.string().optional(),
+  reason: z.string().max(500).optional(),
+});
+
+type AdjustmentFormValues = z.infer<typeof adjustmentSchema>;
+
+interface AdjustmentFormProps {
+  products: Product[];
+  onSubmit: (payload: {
+    product_id: number;
+    warehouse_id: number;
+    location_id: number;
+    movement_type: 'ADJUSTMENT' | 'WASTE';
+    quantity: string;
+    unit_cost: string;
+    lot_id: number | null;
+    reason: string;
+  }) => void;
+  isPending: boolean;
+  submitError: string | null;
+}
+
+/** Ajuste manual de stock (recuento, rotura…) — mismo endpoint tanto para
+ * `ADJUSTMENT` (con signo) como `WASTE` (siempre una pérdida). */
+export function AdjustmentForm({
+  products,
+  onSubmit,
+  isPending,
+  submitError,
+}: AdjustmentFormProps) {
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<AdjustmentFormValues>({
+    resolver: zodResolver(adjustmentSchema),
+    defaultValues: { movement_type: 'ADJUSTMENT', unit_cost: '0' },
+  });
+
+  const warehouseId = watch('warehouse_id');
+  const warehouses = useQuery(warehousesQuery);
+  const locations = useQuery(locationsQuery(warehouseId ? Number(warehouseId) : null));
+
+  const submit = handleSubmit((values) =>
+    onSubmit({
+      product_id: Number(values.product_id),
+      warehouse_id: Number(values.warehouse_id),
+      location_id: Number(values.location_id),
+      movement_type: values.movement_type,
+      quantity: values.quantity,
+      unit_cost: values.unit_cost,
+      lot_id: values.lot_id ? Number(values.lot_id) : null,
+      reason: values.reason ?? '',
+    }),
+  );
+
+  return (
+    <form
+      onSubmit={(event) => void submit(event)}
+      noValidate
+      className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+    >
+      <h3 className="mb-3 text-sm font-semibold text-slate-700">Registrar ajuste</h3>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="text-sm text-slate-600">
+          Producto
+          <select
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('product_id')}
+          >
+            <option value="">Elige un producto…</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.sku} — {product.name}
+              </option>
+            ))}
+          </select>
+          {errors.product_id && (
+            <p className="mt-1 text-sm text-red-600">{errors.product_id.message}</p>
+          )}
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Almacén
+          <select
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('warehouse_id')}
+          >
+            <option value="">Elige un almacén…</option>
+            {(warehouses.data ?? []).map((warehouse) => (
+              <option key={warehouse.id} value={warehouse.id}>
+                {warehouse.name}
+              </option>
+            ))}
+          </select>
+          {errors.warehouse_id && (
+            <p className="mt-1 text-sm text-red-600">{errors.warehouse_id.message}</p>
+          )}
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Ubicación
+          <select
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('location_id')}
+          >
+            <option value="">Elige una ubicación…</option>
+            {(locations.data ?? []).map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+          {errors.location_id && (
+            <p className="mt-1 text-sm text-red-600">{errors.location_id.message}</p>
+          )}
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Tipo
+          <select
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('movement_type')}
+          >
+            <option value="ADJUSTMENT">Ajuste (recuento)</option>
+            <option value="WASTE">Merma</option>
+          </select>
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Cantidad (con signo)
+          <input
+            type="text"
+            inputMode="decimal"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('quantity')}
+          />
+          {errors.quantity && (
+            <p className="mt-1 text-sm text-red-600">{errors.quantity.message}</p>
+          )}
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Coste/ud.
+          <input
+            type="text"
+            inputMode="decimal"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('unit_cost')}
+          />
+          {errors.unit_cost && (
+            <p className="mt-1 text-sm text-red-600">{errors.unit_cost.message}</p>
+          )}
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Lote (opcional, ID)
+          <input
+            type="text"
+            inputMode="numeric"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('lot_id')}
+          />
+        </label>
+
+        <label className="text-sm text-slate-600 sm:col-span-2">
+          Motivo (opcional)
+          <input
+            type="text"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('reason')}
+          />
+        </label>
+      </div>
+
+      {submitError && <p className="mt-3 text-sm text-red-600">{submitError}</p>}
+
+      <div className="mt-4">
+        <button
+          type="submit"
+          disabled={isPending}
+          className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {isPending ? 'Registrando…' : 'Registrar ajuste'}
+        </button>
+      </div>
+    </form>
+  );
+}
