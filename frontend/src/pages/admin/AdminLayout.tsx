@@ -68,6 +68,11 @@ export function AdminLayout() {
               Notificaciones
             </NavLink>
           )}
+          {hasPermission('job.read') && (
+            <NavLink to="/admin/outbox" className={linkClassName}>
+              Outbox / correo
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles

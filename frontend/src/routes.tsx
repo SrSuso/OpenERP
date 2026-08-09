@@ -19,6 +19,7 @@ import { InventoryPage } from '@/pages/admin/InventoryPage';
 import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
 import { LotsPage } from '@/pages/admin/LotsPage';
 import { NotificationsPage } from '@/pages/admin/NotificationsPage';
+import { OutboxPage } from '@/pages/admin/OutboxPage';
 import { ReturnsPage } from '@/pages/admin/ReturnsPage';
 import { TicketTemplatesPage } from '@/pages/admin/TicketTemplatesPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
@@ -159,6 +160,11 @@ export const routes: RouteObject[] = [
                 path: 'notifications',
                 element: <RequirePermission permission="notification.read" />,
                 children: [{ index: true, element: <NotificationsPage /> }],
+              },
+              {
+                path: 'outbox',
+                element: <RequirePermission permission="job.read" />,
+                children: [{ index: true, element: <OutboxPage /> }],
               },
             ],
           },
