@@ -296,6 +296,22 @@ PHASE_18_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (JOB_READ, JOB_MANAGE),
 }
 
+# --- phase 19: informes ---------------------------------------------------------
+REPORT_READ = "report.read"
+REPORT_MANAGE = "report.manage"
+
+PHASE_19_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(REPORT_READ, "Run reports and view saved report definitions."),
+    PermissionDef(REPORT_MANAGE, "Save and delete report definitions."),
+)
+
+#: Frozen grants for the phase 19 migration only. Back-office only, same
+#: criterion as dashboards/purchasing — CASHIER has no reason to see this.
+PHASE_19_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (REPORT_READ, REPORT_MANAGE),
+    "MANAGER": (REPORT_READ, REPORT_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -316,4 +332,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_16_PERMISSIONS
     + PHASE_17_PERMISSIONS
     + PHASE_18_PERMISSIONS
+    + PHASE_19_PERMISSIONS
 )
