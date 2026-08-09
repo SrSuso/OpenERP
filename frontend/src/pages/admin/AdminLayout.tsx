@@ -58,6 +58,11 @@ export function AdminLayout() {
               Devoluciones
             </NavLink>
           )}
+          {hasPermission('ticket.manage') && (
+            <NavLink to="/admin/ticket-templates" className={linkClassName}>
+              Plantillas de ticket
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles

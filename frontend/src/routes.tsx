@@ -19,6 +19,7 @@ import { InventoryPage } from '@/pages/admin/InventoryPage';
 import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
 import { LotsPage } from '@/pages/admin/LotsPage';
 import { ReturnsPage } from '@/pages/admin/ReturnsPage';
+import { TicketTemplatesPage } from '@/pages/admin/TicketTemplatesPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
 import { PricingPage } from '@/pages/admin/PricingPage';
 import { PricingTaxesPage } from '@/pages/admin/PricingTaxesPage';
@@ -147,6 +148,11 @@ export const routes: RouteObject[] = [
                 path: 'returns',
                 element: <RequirePermission permission="return.read" />,
                 children: [{ index: true, element: <ReturnsPage /> }],
+              },
+              {
+                path: 'ticket-templates',
+                element: <RequirePermission permission="ticket.manage" />,
+                children: [{ index: true, element: <TicketTemplatesPage /> }],
               },
             ],
           },
