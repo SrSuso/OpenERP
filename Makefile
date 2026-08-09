@@ -198,3 +198,7 @@ prod-bootstrap-admin:  ## Create the first admin user in production (interactive
 prod-backup:  ## Back up the production database (needs pg_dump on the host PATH)
 	OPENERP_DATABASE_URL="$$(grep -m1 '^OPENERP_DATABASE_URL=' .env.production | cut -d= -f2- | sed 's/@postgres:/@127.0.0.1:/')" \
 	  ./scripts/backup-postgres.sh
+
+.PHONY: prod-deploy
+prod-deploy:  ## Pull the latest code and redeploy: make prod-deploy [force=1] [backup=1]
+	./scripts/deploy-update.sh $(if $(force),--force) $(if $(backup),--backup)

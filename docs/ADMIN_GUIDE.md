@@ -172,7 +172,16 @@ Desde un equipo de la red interna, con el certificado ya importado (§2.2):
 ### 3.1. Desplegar una actualización de código
 
 ```bash
-git pull
+make prod-deploy               # git pull + build + migrate + up, en ese orden
+make prod-deploy backup=1      # además, hace un prod-backup antes de tocar nada
+make prod-deploy force=1       # redespliega aunque git pull no traiga commits nuevos
+```
+
+Equivale a `scripts/deploy-update.sh`, que hace exactamente estos cuatro
+pasos y para en seco si alguno falla:
+
+```bash
+git pull --ff-only
 make prod-build
 make prod-migrate
 make prod-up          # recrea los contenedores con las imágenes nuevas
@@ -181,7 +190,9 @@ make prod-up          # recrea los contenedores con las imágenes nuevas
 El orden importa: `migrate` corre y debe terminar con éxito antes de que
 `api`/`worker` arranquen (lo hace `docker compose` solo, vía
 `depends_on: condition: service_completed_successfully`) — un despliegue
-nunca deja la aplicación corriendo contra un esquema a medio migrar.
+nunca deja la aplicación corriendo contra un esquema a medio migrar. El
+script también se niega a arrancar si el checkout tiene cambios locales sin
+commitear (`git status`), para no pisarlos con el `pull`.
 
 ---
 
