@@ -1,0 +1,151 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+import { AuthProvider } from '@/features/auth/AuthContext';
+import { type Warehouse } from '@/features/inventory/api';
+import { type Incident, type NotificationRule } from '@/features/notifications/api';
+
+import { NotificationsPage } from './NotificationsPage';
+
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  });
+}
+
+const ME = {
+  id: 1,
+  email: 'admin@example.com',
+  full_name: 'Admin Uno',
+  role: 'ADMIN',
+  permissions: ['admin.access', 'notification.read', 'notification.manage'],
+};
+
+function stubBackend() {
+  const warehouse: Warehouse = { id: 1, name: 'Almacén central', is_active: true };
+  const rules: NotificationRule[] = [];
+  let incidents: Incident[] = [];
+  const createRuleCalls: Record<string, unknown>[] = [];
+  const toggleCalls: { id: number; body: Record<string, unknown> }[] = [];
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const method = init?.method ?? 'GET';
+      const body = () =>
+        init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+
+      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
+      if (method === 'GET' && /\/warehouses$/.test(url))
+        return Promise.resolve(jsonResponse([warehouse]));
+
+      if (method === 'GET' && /\/notification-rules$/.test(url)) {
+        return Promise.resolve(jsonResponse(rules));
+      }
+      if (method === 'POST' && /\/notification-rules$/.test(url)) {
+        const b = body();
+        createRuleCalls.push(b);
+        const created: NotificationRule = {
+          id: rules.length + 1,
+          name: b['name'] as string,
+          rule_type: b['rule_type'] as NotificationRule['rule_type'],
+          params: b['params'] as Record<string, unknown>,
+          is_active: true,
+        };
+        rules.push(created);
+        return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      const toggleMatch = /\/notification-rules\/(\d+)$/.exec(url);
+      if (method === 'PATCH' && toggleMatch) {
+        const id = Number(toggleMatch[1]);
+        const b = body();
+        toggleCalls.push({ id, body: b });
+        const rule = rules.find((r) => r.id === id)!;
+        if ('is_active' in b) rule.is_active = b['is_active'] as boolean;
+        return Promise.resolve(jsonResponse(rule));
+      }
+
+      if (method === 'GET' && /\/incidents\?/.test(url)) {
+        const status = new URL(url, 'http://x').searchParams.get('status');
+        return Promise.resolve(
+          jsonResponse(status ? incidents.filter((i) => i.status === status) : incidents),
+        );
+      }
+      if (method === 'POST' && /\/notifications\/evaluate$/.test(url)) {
+        incidents = [
+          {
+            id: 1,
+            rule_id: 1,
+            rule_name: rules[0]?.name ?? 'Stock bajo',
+            subject_type: 'product',
+            subject_id: 10,
+            message: 'P000010 (Agua): quedan 2 unidades, por debajo del mínimo (5).',
+            status: 'OPEN',
+            first_detected_at: new Date().toISOString(),
+            last_seen_at: new Date().toISOString(),
+            resolved_at: null,
+          },
+        ];
+        return Promise.resolve(jsonResponse(incidents));
+      }
+      const resolveMatch = /\/incidents\/(\d+)\/resolve$/.exec(url);
+      if (method === 'POST' && resolveMatch) {
+        const incident = incidents.find((i) => i.id === Number(resolveMatch[1]))!;
+        incident.status = 'RESOLVED';
+        incident.resolved_at = new Date().toISOString();
+        return Promise.resolve(jsonResponse(incident));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
+    }),
+  );
+
+  return { createRuleCalls, toggleCalls };
+}
+
+function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <NotificationsPage />
+      </AuthProvider>
+    </QueryClientProvider>,
+  );
+}
+
+describe('NotificationsPage', () => {
+  it('creates a low-stock rule, deactivates it, then evaluates and resolves an incident', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByText('Todavía no hay ninguna regla.');
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
+
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Stock bajo almacén central');
+    await userEvent.selectOptions(screen.getByLabelText('Almacén (vacío = todos)'), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    await screen.findByText('Stock bajo almacén central');
+    expect(backend.createRuleCalls).toEqual([
+      { name: 'Stock bajo almacén central', rule_type: 'LOW_STOCK', params: { warehouse_id: 1 } },
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
+    await screen.findByText('Inactiva');
+    expect(backend.toggleCalls).toEqual([{ id: 1, body: { is_active: false } }]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Incidencias' }));
+    await screen.findByText('No hay incidencias con estos filtros.');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Evaluar ahora' }));
+    await screen.findByText(/quedan 2 unidades/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Resolver' }));
+    await screen.findByText('No hay incidencias con estos filtros.');
+  });
+});

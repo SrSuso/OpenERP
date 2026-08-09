@@ -18,6 +18,7 @@ import { InventoryMovementsPage } from '@/pages/admin/InventoryMovementsPage';
 import { InventoryPage } from '@/pages/admin/InventoryPage';
 import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
 import { LotsPage } from '@/pages/admin/LotsPage';
+import { NotificationsPage } from '@/pages/admin/NotificationsPage';
 import { ReturnsPage } from '@/pages/admin/ReturnsPage';
 import { TicketTemplatesPage } from '@/pages/admin/TicketTemplatesPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
@@ -153,6 +154,11 @@ export const routes: RouteObject[] = [
                 path: 'ticket-templates',
                 element: <RequirePermission permission="ticket.manage" />,
                 children: [{ index: true, element: <TicketTemplatesPage /> }],
+              },
+              {
+                path: 'notifications',
+                element: <RequirePermission permission="notification.read" />,
+                children: [{ index: true, element: <NotificationsPage /> }],
               },
             ],
           },

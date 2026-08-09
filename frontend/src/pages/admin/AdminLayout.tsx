@@ -63,6 +63,11 @@ export function AdminLayout() {
               Plantillas de ticket
             </NavLink>
           )}
+          {hasPermission('notification.read') && (
+            <NavLink to="/admin/notifications" className={linkClassName}>
+              Notificaciones
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles
