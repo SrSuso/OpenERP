@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +45,16 @@ class UnitCreate(BaseModel):
 class UnitRead(BaseModel):
     id: int
     name: str
+    display_order: int
+
+
+class UnitMoveDirection(StrEnum):
+    up = "up"
+    down = "down"
+
+
+class UnitMoveRequest(BaseModel):
+    direction: UnitMoveDirection
 
 
 _HEX_COLOR = r"^#[0-9A-Fa-f]{6}$"

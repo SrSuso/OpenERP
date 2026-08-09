@@ -15,10 +15,22 @@ const QUANTITY_FORMATTER = new Intl.NumberFormat('es-ES', {
   maximumFractionDigits: 3,
 });
 
+const PERCENT_FORMATTER = new Intl.NumberFormat('es-ES', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
 export function formatMoney(value: string): string {
   return `${MONEY_FORMATTER.format(Number(value))} €`;
 }
 
 export function formatQuantity(value: string): string {
   return QUANTITY_FORMATTER.format(Number(value));
+}
+
+/** A `Rate` (`app.db.types.Rate`) is already a plain percentage number —
+ * `"21.000000"` means 21%, not 0.21 — this only trims the trailing zeros
+ * NUMERIC(18,6) always carries. */
+export function formatRate(value: string): string {
+  return PERCENT_FORMATTER.format(Number(value));
 }

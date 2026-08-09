@@ -250,7 +250,27 @@ Puntos de diseño a tener en cuenta:
     siendo el mismo `String(20)` de siempre (regla 3, y todo módulo que ya
     lo lee lo sigue leyendo igual); `Unit` sólo alimenta el desplegable y
     mantiene los nombres consistentes, sin ninguna migración que tocara
-    los módulos que ya usaban ese campo.
+    los módulos que ya usaban ese campo. `display_order` (pedido también)
+    es orden manual, no de inserción — `POST /units/{id}/move`
+    (`app.catalog.service.move_unit`) renormaliza toda la lista a 0..N-1
+    en cada movimiento, así los empates de antes del primer reordenado
+    (todas a 0 por defecto) nunca bloquean subir/bajar una unidad.
+  - **Impuestos editables, asignables al dar de alta un producto, "como
+    Odoo"** (pedido explícitamente): `PATCH /taxes/{id}` permite cambiar
+    nombre y/o tasa de un impuesto ya creado — un cambio de tasa
+    recalcula el `list_price` de *todos* los productos (más simple y tan
+    correcto como recalcular al cambiar la fórmula global, en vez de
+    averiguar cuáles exactamente lo usan directa o heredadamente). En el
+    frontend, `features/pricing/TaxChips.tsx` es el selector de impuestos
+    como etiquetas pulsables — el mismo componente en el alta de producto
+    (`CreateProductForm`), en su panel de precio ya creado
+    (`ProductPricingPanel`) y en el margen/impuestos de una categoría
+    (`ProductCategoriesPanel`), para que asignar impuestos se vea y se
+    sienta igual en los tres sitios. `POST /products` (`ProductCreate`)
+    sigue sin aceptar impuestos — el alta hace un `PATCH .../pricing`
+    de seguimiento justo después si se eligió alguno (ver
+    `ProductsPage.tsx`'s `createMutation`), no un campo nuevo en el
+    esquema de alta.
   - `/admin/catalog` sigue el mismo patrón de pestañas que `/admin/access`
     (`CatalogPage.tsx`: barra de pestañas + `<Outlet />`), pero gated de
     una sola vez con `RequirePermission permission="product.read"` en vez

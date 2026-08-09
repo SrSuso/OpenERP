@@ -54,7 +54,16 @@ export function ProductsPage() {
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
 
   const createMutation = useMutation({
-    mutationFn: (payload: ProductCreateInput) => createProduct(payload),
+    mutationFn: async ({ payload, taxIds }: { payload: ProductCreateInput; taxIds: number[] }) => {
+      const created = await createProduct(payload);
+      // Los impuestos no van en el alta (ProductCreate no los acepta,
+      // ver ProductCreateInput's propio comentario) — un segundo PATCH
+      // inmediatamente después, sólo si se eligió alguno.
+      if (taxIds.length > 0) {
+        await setProductPricing(created.id, { tax_ids: taxIds });
+      }
+      return created;
+    },
     onSuccess: () => {
       invalidateProducts();
       setShowCreateForm(false);
@@ -179,13 +188,14 @@ export function ProductsPage() {
           categories={categories.data ?? []}
           posCategories={posCategories.data ?? []}
           units={units.data ?? []}
+          taxes={taxes.data ?? []}
           isPending={createMutation.isPending}
           submitError={createError}
           onCancel={() => {
             setShowCreateForm(false);
             setCreateError(null);
           }}
-          onSubmit={(payload) => createMutation.mutate(payload)}
+          onSubmit={(payload, taxIds) => createMutation.mutate({ payload, taxIds })}
         />
       )}
 

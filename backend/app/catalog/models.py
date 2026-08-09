@@ -38,6 +38,12 @@ class Unit(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "units"
 
     name: Mapped[str] = mapped_column(String(20), unique=True)
+    #: User-controlled ordering for the dropdown (pedido explícitamente) —
+    #: not an identity/insertion order. `app.catalog.service.move_unit`
+    #: renormalises every row to 0..N-1 on each move, so ties from before
+    #: the first move (every row still at its 0 default) never block
+    #: reordering.
+    display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):

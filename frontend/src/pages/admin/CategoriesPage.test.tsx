@@ -37,12 +37,13 @@ function stubBackend() {
   const posCategories: PosCategory[] = [
     { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
   ];
-  const units: Unit[] = [{ id: 1, name: 'UNIT' }];
+  const units: Unit[] = [{ id: 1, name: 'UNIT', display_order: 0 }];
   const taxes: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
   const createCategoryCalls: string[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
   const createUnitCalls: string[] = [];
+  const moveUnitCalls: { id: number; direction: string }[] = [];
   const categoryPricingCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
@@ -103,14 +104,31 @@ function stubBackend() {
       if (method === 'GET' && url.includes('/units')) {
         return Promise.resolve(jsonResponse(units));
       }
-      if (method === 'POST' && url.includes('/units')) {
+      if (method === 'POST' && /\/units$/.test(url)) {
         const body = init?.body
           ? (JSON.parse(init.body as string) as { name: string })
           : { name: '' };
         createUnitCalls.push(body.name);
-        const created = { id: 2, name: body.name };
+        const created: Unit = {
+          id: units.length + 1,
+          name: body.name,
+          display_order: units.length,
+        };
         units.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      if (method === 'POST' && /\/units\/(\d+)\/move$/.test(url)) {
+        const id = Number(/\/units\/(\d+)\/move$/.exec(url)![1]);
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { direction: string })
+          : { direction: '' };
+        moveUnitCalls.push({ id, direction: body.direction });
+        const index = units.findIndex((u) => u.id === id);
+        const target = body.direction === 'up' ? index - 1 : index + 1;
+        if (index >= 0 && target >= 0 && target < units.length) {
+          [units[index], units[target]] = [units[target]!, units[index]!];
+        }
+        return Promise.resolve(jsonResponse(units));
       }
       if (method === 'GET' && url.includes('/taxes')) {
         return Promise.resolve(jsonResponse(taxes));
@@ -125,6 +143,7 @@ function stubBackend() {
     createPosCategoryCalls,
     deactivatePosCategoryCalls,
     createUnitCalls,
+    moveUnitCalls,
     categoryPricingCalls,
   };
 }
@@ -209,11 +228,25 @@ describe('CategoriesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Margen/impuestos' }));
     const marginInput = screen.getByPlaceholderText('vacío = sin margen por defecto');
     await userEvent.type(marginInput, '25');
-    await userEvent.click(screen.getByRole('checkbox', { name: /IVA general/ }));
+    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(backend.categoryPricingCalls).toEqual([
       { id: 1, body: { margin_rate: '25', tax_ids: [1] } },
     ]);
+  });
+
+  it('reorders units with the up/down buttons', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('UNIT');
+
+    await userEvent.type(screen.getByPlaceholderText('UNIT, KG, L…'), 'kg');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[2]!);
+    await screen.findByText('KG');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Subir KG' }));
+
+    expect(backend.moveUnitCalls).toEqual([{ id: 2, direction: 'up' }]);
   });
 });

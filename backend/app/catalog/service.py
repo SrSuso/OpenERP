@@ -28,6 +28,7 @@ from app.catalog.schemas import (
     ProductCreate,
     ProductUpdate,
     UnitCreate,
+    UnitMoveDirection,
 )
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 
@@ -125,7 +126,7 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
 
 
 async def list_units(session: AsyncSession) -> list[Unit]:
-    stmt = select(Unit).order_by(Unit.name)
+    stmt = select(Unit).order_by(Unit.display_order, Unit.name)
     return list((await session.execute(stmt)).scalars())
 
 
@@ -136,13 +137,44 @@ async def create_unit(session: AsyncSession, payload: UnitCreate) -> Unit:
     if existing is not None:
         raise ConflictError("A unit with this name already exists.")
 
-    unit = Unit(name=payload.name)
+    # Al final de la lista actual, no a display_order=0 — así una unidad
+    # nueva no salta por delante de las que el usuario ya ha ordenado.
+    count = (await session.execute(select(func.count()).select_from(Unit))).scalar_one()
+
+    unit = Unit(name=payload.name, display_order=count)
     session.add(unit)
     await session.flush()
     await audit.record(
         session, action="created", entity_type="unit", entity_id=unit.id, after={"name": unit.name}
     )
     return unit
+
+
+async def move_unit(
+    session: AsyncSession, unit_id: int, direction: UnitMoveDirection
+) -> list[Unit]:
+    """Sube o baja una unidad un puesto. Renormaliza todo el orden a
+    0..N-1 en cada llamada — así los empates de antes del primer
+    movimiento (todas en display_order=0 por defecto) nunca bloquean
+    reordenar, sin necesitar una migración de datos aparte."""
+    units = await list_units(session)
+    for index, unit in enumerate(units):
+        unit.display_order = index
+
+    try:
+        index = next(i for i, u in enumerate(units) if u.id == unit_id)
+    except StopIteration:
+        raise NotFoundError(f"Unit {unit_id} not found.") from None
+
+    target_index = index - 1 if direction == UnitMoveDirection.up else index + 1
+    if 0 <= target_index < len(units):
+        units[index].display_order, units[target_index].display_order = (
+            units[target_index].display_order,
+            units[index].display_order,
+        )
+
+    await session.flush()
+    return await list_units(session)
 
 
 # --- POS categories (phase 10) ------------------------------------------------

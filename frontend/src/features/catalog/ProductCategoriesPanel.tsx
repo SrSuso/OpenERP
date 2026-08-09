@@ -6,7 +6,8 @@ import {
   productCategoriesQuery,
   type ProductCategory,
 } from '@/features/catalog/api';
-import { setCategoryPricing, taxesQuery } from '@/features/pricing/api';
+import { setCategoryPricing, taxesQuery, type Tax } from '@/features/pricing/api';
+import { TaxChips } from '@/features/pricing/TaxChips';
 import { ApiError } from '@/lib/api';
 
 /** Categorías de estantería (independientes de las categorías POS del TPV
@@ -104,13 +105,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
 /** El margen/impuestos por defecto de una categoría — todo producto suyo
  * sin su propio valor hereda esto (ver features/pricing/ProductPricingPanel,
  * donde un producto lo pisa explícitamente). */
-function CategoryPricingRow({
-  category,
-  taxes,
-}: {
-  category: ProductCategory;
-  taxes: { id: number; name: string; rate: string }[];
-}) {
+function CategoryPricingRow({ category, taxes }: { category: ProductCategory; taxes: Tax[] }) {
   const queryClient = useQueryClient();
   const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
   const [taxIds, setTaxIds] = useState<Set<number>>(new Set(category.taxes.map((t) => t.id)));
@@ -149,18 +144,8 @@ function CategoryPricingRow({
       </label>
 
       <p className="mb-1 text-xs text-slate-600">Impuestos por defecto</p>
-      <div className="mb-2 flex flex-wrap gap-3 text-xs">
-        {taxes.map((tax) => (
-          <label key={tax.id} className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={taxIds.has(tax.id)}
-              onChange={() => toggleTax(tax.id)}
-            />
-            {tax.name} ({tax.rate}%)
-          </label>
-        ))}
-        {taxes.length === 0 && <span className="text-slate-400">No hay impuestos creados.</span>}
+      <div className="mb-2">
+        <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
       </div>
 
       <button

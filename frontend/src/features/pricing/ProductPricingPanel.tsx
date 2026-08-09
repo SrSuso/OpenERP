@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { type Product, type ProductCategory } from '@/features/catalog/api';
 import { type PricingOverrideInput, type Tax } from '@/features/pricing/api';
+import { TaxChips } from '@/features/pricing/TaxChips';
 import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
 
@@ -103,21 +104,7 @@ export function ProductPricingPanel({
               ? `hereda los de "${category?.name ?? 'sin categoría'}"`
               : 'propios de este producto'}
           </span>
-          <div className="flex flex-wrap gap-3">
-            {taxes.map((tax) => (
-              <label key={tax.id} className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={taxIds.has(tax.id)}
-                  onChange={() => toggleTax(tax.id)}
-                />
-                {tax.name} ({tax.rate}%)
-              </label>
-            ))}
-            {taxes.length === 0 && (
-              <span className="text-slate-400">No hay impuestos creados.</span>
-            )}
-          </div>
+          <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
         </div>
       </div>
 

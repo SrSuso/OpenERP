@@ -72,6 +72,57 @@ async def test_duplicate_tax_name_is_a_conflict(
     assert response.status_code == 409
 
 
+async def test_admin_can_rename_a_tax_and_change_its_rate(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    tax_id = await _create_tax(client, "IVA provisional", "20")
+
+    response = await client.patch(
+        f"/api/v1/taxes/{tax_id}", json={"name": "IVA general", "rate": "21"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "IVA general"
+    assert body["rate"] == "21.000000"
+
+
+async def test_renaming_a_tax_to_an_existing_name_is_a_conflict(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    await _create_tax(client, "IVA A", "21")
+    tax_b = await _create_tax(client, "IVA B", "10")
+
+    response = await client.patch(f"/api/v1/taxes/{tax_b}", json={"name": "IVA A"})
+
+    assert response.status_code == 409
+
+
+async def test_changing_a_taxs_rate_recomputes_products_that_use_it(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    tax_id = await _create_tax(client, "IVA a cambiar", "10")
+    product_id = (await client.post("/api/v1/products", json=_product_payload(cost="10"))).json()[
+        "id"
+    ]
+    await client.patch(
+        f"/api/v1/products/{product_id}/pricing",
+        json={"margin_rate": "0", "tax_ids": [tax_id]},
+    )
+    # (10 + 10*10/100) * 1 = 11
+    before = (await client.get(f"/api/v1/products/{product_id}")).json()
+    assert Decimal(before["list_price"]) == Decimal("11.000000")
+
+    await client.patch(f"/api/v1/taxes/{tax_id}", json={"rate": "50"})
+
+    after = (await client.get(f"/api/v1/products/{product_id}")).json()
+    # (10 + 10*50/100) * 1 = 15
+    assert Decimal(after["list_price"]) == Decimal("15.000000")
+
+
 async def test_product_with_no_explicit_pricing_inherits_the_categorys(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

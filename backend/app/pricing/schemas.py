@@ -54,6 +54,16 @@ class TaxCreate(BaseModel):
     rate: Decimal = Field(ge=0)
 
 
+class TaxUpdate(BaseModel):
+    """Editar un impuesto ya creado — nombre y/o tasa, lo que se mande.
+    Cambiar la tasa recalcula, sola, el precio de cada producto que lo
+    tenga aplicado (propio o heredado de su categoría) — mismo mecanismo
+    que un cambio de fórmula, ver app.pricing.service.update_tax."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    rate: Decimal | None = Field(default=None, ge=0)
+
+
 class TaxRead(BaseModel):
     id: int
     name: str

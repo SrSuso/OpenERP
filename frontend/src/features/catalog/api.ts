@@ -50,9 +50,12 @@ export async function createProductCategory(name: string): Promise<ProductCatego
 export const unitSchema = z.object({
   id: z.number(),
   name: z.string(),
+  display_order: z.number(),
 });
 export type Unit = z.infer<typeof unitSchema>;
 
+// Ya viene ordenada del backend (display_order, name) — el propio orden de
+// la lista es el orden que se ve en el desplegable de "unidad base".
 export const unitsQuery = queryOptions({
   queryKey: ['catalog', 'units'] as const,
   queryFn: ({ signal }) => apiFetch(`${API_V1}/units`, { schema: z.array(unitSchema), signal }),
@@ -60,6 +63,14 @@ export const unitsQuery = queryOptions({
 
 export async function createUnit(name: string): Promise<Unit> {
   return apiFetch(`${API_V1}/units`, { method: 'POST', schema: unitSchema, body: { name } });
+}
+
+export async function moveUnit(id: number, direction: 'up' | 'down'): Promise<Unit[]> {
+  return apiFetch(`${API_V1}/units/${id}/move`, {
+    method: 'POST',
+    schema: z.array(unitSchema),
+    body: { direction },
+  });
 }
 
 // --- categorías POS (botones/pestañas del TPV, fase 10) -------------------

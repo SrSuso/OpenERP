@@ -27,6 +27,7 @@ from app.pricing.schemas import (
     SetPricingInputsRequest,
     TaxCreate,
     TaxRead,
+    TaxUpdate,
 )
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import PRICING_MANAGE, PRODUCT_READ
@@ -123,6 +124,11 @@ async def list_taxes(session: SessionDep) -> list[TaxRead]:
 @router.post("/taxes", response_model=TaxRead, status_code=201, dependencies=[_require_manage])
 async def create_tax(payload: TaxCreate, session: SessionDep) -> TaxRead:
     return _tax_to_read(await service.create_tax(session, payload))
+
+
+@router.patch("/taxes/{tax_id}", response_model=TaxRead, dependencies=[_require_manage])
+async def update_tax(tax_id: int, payload: TaxUpdate, session: SessionDep) -> TaxRead:
+    return _tax_to_read(await service.update_tax(session, tax_id, payload))
 
 
 # --- category-level pricing defaults ----------------------------------------

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import SessionDep
 from app.catalog import service
-from app.catalog.models import PosCategory
+from app.catalog.models import PosCategory, Unit
 from app.catalog.presenters import category_to_read as _category_to_read
 from app.catalog.presenters import product_to_read as _to_read
 from app.catalog.schemas import (
@@ -28,6 +28,7 @@ from app.catalog.schemas import (
     ProductRead,
     ProductUpdate,
     UnitCreate,
+    UnitMoveRequest,
     UnitRead,
 )
 from app.rbac.dependencies import require_permission
@@ -69,15 +70,24 @@ async def create_category(
     return _category_to_read(await service.create_category(session, payload))
 
 
+def _unit_to_read(unit: Unit) -> UnitRead:
+    return UnitRead(id=unit.id, name=unit.name, display_order=unit.display_order)
+
+
 @router.get("/units", response_model=list[UnitRead], dependencies=[_require_read])
 async def list_units(session: SessionDep) -> list[UnitRead]:
-    return [UnitRead(id=u.id, name=u.name) for u in await service.list_units(session)]
+    return [_unit_to_read(u) for u in await service.list_units(session)]
 
 
 @router.post("/units", response_model=UnitRead, status_code=201, dependencies=[_require_manage])
 async def create_unit(payload: UnitCreate, session: SessionDep) -> UnitRead:
-    unit = await service.create_unit(session, payload)
-    return UnitRead(id=unit.id, name=unit.name)
+    return _unit_to_read(await service.create_unit(session, payload))
+
+
+@router.post("/units/{unit_id}/move", response_model=list[UnitRead], dependencies=[_require_manage])
+async def move_unit(unit_id: int, payload: UnitMoveRequest, session: SessionDep) -> list[UnitRead]:
+    units = await service.move_unit(session, unit_id, payload.direction)
+    return [_unit_to_read(u) for u in units]
 
 
 @router.get("/products", response_model=list[ProductRead], dependencies=[_require_read])

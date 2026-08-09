@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatMoney, formatQuantity } from './format';
+import { formatMoney, formatQuantity, formatRate } from './format';
 
 describe('formatMoney', () => {
   it('renders a NUMERIC(18,6) string as two-decimal euros', () => {
@@ -27,5 +27,15 @@ describe('formatQuantity', () => {
 
   it('rounds beyond three decimals', () => {
     expect(formatQuantity('1.234567')).toBe('1,235');
+  });
+});
+
+describe('formatRate', () => {
+  it('drops the NUMERIC(18,6) trailing zeros — 21 means 21%, not 0.21', () => {
+    expect(formatRate('21.000000')).toBe('21');
+  });
+
+  it('keeps meaningful decimals (e.g. recargo de equivalencia)', () => {
+    expect(formatRate('5.200000')).toBe('5,2');
   });
 });

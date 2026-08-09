@@ -10,7 +10,8 @@ import {
   type ProductCreateInput,
   type Unit,
 } from '@/features/catalog/api';
-import { previewFormula } from '@/features/pricing/api';
+import { previewFormula, type Tax } from '@/features/pricing/api';
+import { TaxChips } from '@/features/pricing/TaxChips';
 import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
 
@@ -40,17 +41,32 @@ interface CreateProductFormProps {
   categories: ProductCategory[];
   posCategories: PosCategory[];
   units: Unit[];
-  onSubmit: (payload: ProductCreateInput) => void;
+  taxes: Tax[];
+  /** `taxIds` va aparte de `ProductCreateInput`: el alta en sí no lleva
+   * impuestos (backend/app/catalog/schemas.py's ProductCreate no los
+   * acepta — impuestos es cosa de app.pricing) — quien llama hace un
+   * PATCH .../pricing justo después si se eligió alguno. */
+  onSubmit: (payload: ProductCreateInput, taxIds: number[]) => void;
   onCancel: () => void;
   isPending: boolean;
   submitError: string | null;
 }
 
-/** Suma de las tasas de los impuestos de la categoría elegida — lo que el
- * producto heredaría si no fija los suyos propios (no hay override de
- * impuestos todavía en el alta; se añade después desde "Precio" en la
- * fila del producto). */
-function categoryTaxRate(categories: ProductCategory[], categoryId: string): string {
+/** Suma de las tasas de los impuestos elegidos si hay alguno explícito;
+ * si no, la de la categoría — exactamente la prioridad que resuelve
+ * app.pricing.service.effective_tax_rate una vez el producto existe. */
+function effectiveTaxRatePreview(
+  categories: ProductCategory[],
+  categoryId: string,
+  taxes: Tax[],
+  selectedTaxIds: Set<number>,
+): string {
+  if (selectedTaxIds.size > 0) {
+    return taxes
+      .filter((tax) => selectedTaxIds.has(tax.id))
+      .reduce((sum, tax) => sum + Number(tax.rate), 0)
+      .toString();
+  }
   const category = categories.find((c) => String(c.id) === categoryId);
   if (!category) return '0';
   return category.taxes.reduce((sum, tax) => sum + Number(tax.rate), 0).toString();
@@ -65,11 +81,22 @@ export function CreateProductForm({
   categories,
   posCategories,
   units,
+  taxes,
   onSubmit,
   onCancel,
   isPending,
   submitError,
 }: CreateProductFormProps) {
+  const [taxIds, setTaxIds] = useState<Set<number>>(new Set());
+
+  function toggleTax(id: number) {
+    setTaxIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const {
     register,
     handleSubmit,
@@ -117,7 +144,7 @@ export function CreateProductForm({
   useEffect(() => {
     const marginRate =
       marginInput.trim() !== '' ? marginInput : categoryMarginRate(categories, categoryId);
-    const taxRate = categoryTaxRate(categories, categoryId);
+    const taxRate = effectiveTaxRatePreview(categories, categoryId, taxes, taxIds);
     if (!cost || Number.isNaN(Number(cost.replace(',', '.')))) {
       setEstimatedPrice(null);
       return;
@@ -134,24 +161,27 @@ export function CreateProductForm({
     // re-run this effect on every render (its identity isn't memoised) —
     // deliberately left out.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cost, marginInput, categoryId, categories]);
+  }, [cost, marginInput, categoryId, categories, taxes, taxIds]);
 
   const submit = handleSubmit((values) =>
-    onSubmit({
-      name: values.name,
-      description: values.description ?? '',
-      category_id: values.category_id === '' ? null : Number(values.category_id),
-      pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
-      pos_display_order: values.pos_display_order,
-      base_unit_name: values.base_unit_name,
-      base_barcode: values.base_barcode === '' ? null : (values.base_barcode ?? null),
-      cost: values.cost,
-      list_price: values.list_price,
-      margin_rate: values.margin_rate.trim() === '' ? null : values.margin_rate,
-      min_stock: values.min_stock,
-      track_lots: values.track_lots,
-      track_expiration: values.track_expiration,
-    }),
+    onSubmit(
+      {
+        name: values.name,
+        description: values.description ?? '',
+        category_id: values.category_id === '' ? null : Number(values.category_id),
+        pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
+        pos_display_order: values.pos_display_order,
+        base_unit_name: values.base_unit_name,
+        base_barcode: values.base_barcode === '' ? null : (values.base_barcode ?? null),
+        cost: values.cost,
+        list_price: values.list_price,
+        margin_rate: values.margin_rate.trim() === '' ? null : values.margin_rate,
+        min_stock: values.min_stock,
+        track_lots: values.track_lots,
+        track_expiration: values.track_expiration,
+      },
+      [...taxIds],
+    ),
   );
 
   return (
@@ -281,6 +311,16 @@ export function CreateProductForm({
             {...register('margin_rate')}
           />
         </label>
+
+        <div className="text-sm text-slate-600 sm:col-span-3">
+          <span className="mb-1 block">
+            Impuestos —{' '}
+            {taxIds.size > 0
+              ? 'propios de este producto'
+              : `sin elegir, hereda los de "${categories.find((c) => String(c.id) === categoryId)?.name ?? 'sin categoría'}"`}
+          </span>
+          <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
+        </div>
 
         <div className="text-sm text-slate-600">
           <span className="block">PVP estimado</span>

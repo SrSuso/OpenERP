@@ -6,6 +6,7 @@ import {
   previewFormula,
   updatePricingSettings,
 } from '@/features/pricing/api';
+import { FormulaHelp } from '@/features/pricing/FormulaHelp';
 import { formatMoney } from '@/lib/format';
 
 /** La fórmula que calcula el PVP de cualquier producto que no tenga una
@@ -50,13 +51,11 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-1 text-sm font-semibold text-slate-700">Fórmula del PVP</h3>
-      <p className="mb-3 text-xs text-slate-500">
-        Variables disponibles: <code>cost</code>, <code>tax_rate</code>, <code>surcharge_rate</code>
-        , <code>margin_rate</code> (los impuestos/margen efectivos del producto o, si no tiene los
-        suyos, los de su categoría). Funciones: <code>round()</code>, <code>ceil()</code>,{' '}
-        <code>floor()</code>.
-      </p>
+      <h3 className="mb-3 text-sm font-semibold text-slate-700">Fórmula del PVP</h3>
+
+      <div className="mb-4">
+        <FormulaHelp />
+      </div>
 
       {settings.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 

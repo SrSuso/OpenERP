@@ -28,6 +28,7 @@ from app.pricing.schemas import (
     PricingSettingsUpdate,
     SetPricingInputsRequest,
     TaxCreate,
+    TaxUpdate,
 )
 
 
@@ -299,6 +300,59 @@ async def create_tax(session: AsyncSession, payload: TaxCreate) -> Tax:
         entity_id=tax.id,
         after={"name": tax.name, "rate": str(tax.rate)},
     )
+    # Ver el mismo `session.refresh` en update_tax: sin esto, `tax.rate`
+    # trae el Decimal crudo del JSON en vez del NUMERIC(18,6) normalizado.
+    await session.refresh(tax)
+    return tax
+
+
+async def update_tax(session: AsyncSession, tax_id: int, payload: TaxUpdate) -> Tax:
+    """Editar nombre y/o tasa de un impuesto ya creado. Un cambio de tasa
+    puede afectar a cualquier producto que lo tenga aplicado — propio o
+    heredado de su categoría — así que recalcula, sola, la lista entera en
+    vez de averiguar cuáles exactamente lo usan (más simple, y tan
+    correcto como el recálculo al cambiar la fórmula de la tienda)."""
+    tax = await session.get(Tax, tax_id)
+    if tax is None:
+        raise NotFoundError(f"Tax {tax_id} not found.")
+    before = {"name": tax.name, "rate": str(tax.rate)}
+
+    if payload.name is not None and payload.name != tax.name:
+        existing = (
+            await session.execute(select(Tax).where(Tax.name == payload.name, Tax.id != tax_id))
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ConflictError("A tax with this name already exists.")
+        tax.name = payload.name
+
+    rate_changed = payload.rate is not None and payload.rate != tax.rate
+    if payload.rate is not None:
+        tax.rate = payload.rate
+
+    await session.flush()
+    await audit.record(
+        session,
+        action="updated",
+        entity_type="tax",
+        entity_id=tax_id,
+        before=before,
+        after={"name": tax.name, "rate": str(tax.rate)},
+    )
+
+    if rate_changed:
+        settings = await get_settings(session)
+        stmt = select(Product).options(*_PRODUCT_PRICING_OPTIONS)
+        products = list((await session.execute(stmt)).scalars())
+        for product in products:
+            _recompute_with(product, settings)
+            await _record_history(session, product)
+        await session.flush()
+
+    # Sin esto, `tax.rate` se queda con el Decimal crudo tal y como llegó
+    # en el JSON en vez del valor NUMERIC(18,6) normalizado que Postgres
+    # guardó de verdad — mismo motivo que `populate_existing=True` en
+    # app.catalog.service.get_product.
+    await session.refresh(tax)
     return tax
 
 

@@ -35,7 +35,7 @@ const CATEGORIES: ProductCategory[] = [
 const POS_CATEGORIES: PosCategory[] = [
   { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
 ];
-const UNITS: Unit[] = [{ id: 1, name: 'UNIT' }];
+const UNITS: Unit[] = [{ id: 1, name: 'UNIT', display_order: 0 }];
 const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
 
 function baseProduct(): Product {
@@ -221,6 +221,26 @@ describe('ProductsPage', () => {
     });
     expect(backend.createCalls[0]).not.toHaveProperty('sku');
     expect(backend.createCalls[0]).not.toHaveProperty('tax_rate');
+    // Sin ningún impuesto elegido, no hay PATCH .../pricing de más.
+    expect(backend.pricingCalls).toEqual([]);
+  });
+
+  it('assigns the chosen taxes right after creating the product', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Con IVA');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    const price = screen.getByLabelText('Precio de venta');
+    await userEvent.clear(price);
+    await userEvent.type(price, '1');
+    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    await screen.findByText('Con IVA');
+    expect(backend.pricingCalls).toEqual([{ id: 99, body: { tax_ids: [1] } }]);
   });
 
   it('edits a product (catalog-only fields)', async () => {
@@ -274,7 +294,7 @@ describe('ProductsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Precio' }));
     const marginInput = screen.getByPlaceholderText('heredado: 30%');
     await userEvent.type(marginInput, '15');
-    await userEvent.click(screen.getByRole('checkbox', { name: /IVA general/ }));
+    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
 
     // El nuevo PVP aparece tanto en la columna "Precio" de la fila como en

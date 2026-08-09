@@ -33,6 +33,14 @@ export async function createTax(name: string, rate: string): Promise<Tax> {
   });
 }
 
+export async function updateTax(id: number, input: { name?: string; rate?: string }): Promise<Tax> {
+  return apiFetch(`${API_V1}/taxes/${id}`, {
+    method: 'PATCH',
+    schema: taxSchema,
+    body: input,
+  });
+}
+
 // --- fórmula del PVP, configurable, un único valor para toda la tienda ----
 
 export const pricingSettingsSchema = z.object({ formula: z.string() });

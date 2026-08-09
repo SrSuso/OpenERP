@@ -26,6 +26,7 @@ const ME = {
 function stubBackend() {
   const taxes: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
   const createCalls: { name: string; rate: string }[] = [];
+  const updateCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -35,7 +36,7 @@ function stubBackend() {
 
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
       if (method === 'GET' && url.includes('/taxes')) return Promise.resolve(jsonResponse(taxes));
-      if (method === 'POST' && url.includes('/taxes')) {
+      if (method === 'POST' && /\/taxes$/.test(url)) {
         const body = init?.body
           ? (JSON.parse(init.body as string) as { name: string; rate: string })
           : { name: '', rate: '' };
@@ -44,12 +45,21 @@ function stubBackend() {
         taxes.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
+      if (method === 'PATCH' && /\/taxes\/(\d+)$/.test(url)) {
+        const id = Number(/\/taxes\/(\d+)$/.exec(url)![1]);
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        updateCalls.push({ id, body });
+        const tax = taxes.find((t) => t.id === id)!;
+        if ('name' in body) tax.name = body['name'] as string;
+        if ('rate' in body) tax.rate = body['rate'] as string;
+        return Promise.resolve(jsonResponse(tax));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createCalls };
+  return { createCalls, updateCalls };
 }
 
 function renderPage() {
@@ -83,5 +93,35 @@ describe('PricingTaxesPage', () => {
 
     expect(await screen.findByText('Recargo de equivalencia')).toBeInTheDocument();
     expect(backend.createCalls).toEqual([{ name: 'Recargo de equivalencia', rate: '5.2' }]);
+  });
+
+  it('edits a tax name and rate inline', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('IVA general');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    const nameInput = screen.getAllByDisplayValue('IVA general')[0]!;
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'IVA reducido');
+    const rateInput = screen.getAllByDisplayValue('21')[0]!;
+    await userEvent.clear(rateInput);
+    await userEvent.type(rateInput, '10');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(await screen.findByText('IVA reducido')).toBeInTheDocument();
+    expect(backend.updateCalls).toEqual([{ id: 1, body: { name: 'IVA reducido', rate: '10' } }]);
+  });
+
+  it('cancels an edit without saving', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('IVA general');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(screen.getByText('IVA general')).toBeInTheDocument();
+    expect(backend.updateCalls).toEqual([]);
   });
 });

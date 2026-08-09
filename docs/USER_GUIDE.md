@@ -151,18 +151,21 @@ al panel para llegar hasta aquí). Dos pestañas:
   falta poner un SKU — el sistema le pone uno internamente él solo, nunca
   hay que pensarlo. Si además puedes gestionar catálogo: **Nuevo
   producto** (nombre, unidad — se elige de una lista, no se escribe —,
-  coste, margen opcional, precio de venta con una vista previa calculada
-  en el momento), **Editar** (nombre, descripción, categorías, stock
-  mínimo, si controla lotes/caducidad), **Precio** (coste, margen propio
-  o heredado de la categoría, qué impuestos aplican) y **Desactivar**. El
-  botón **Presentaciones** despliega los formatos de venta del producto
-  (unidad suelta, caja de 6...) y permite añadir uno nuevo o un código de
-  barras.
+  coste, margen opcional, qué impuestos aplican — como etiquetas que se
+  tocan para marcar/desmarcar, igual que en cualquier otro sitio de la
+  aplicación donde se eligen impuestos —, precio de venta con una vista
+  previa calculada en el momento), **Editar** (nombre, descripción,
+  categorías, stock mínimo, si controla lotes/caducidad), **Precio**
+  (coste, margen propio o heredado de la categoría, impuestos propios o
+  heredados) y **Desactivar**. El botón **Presentaciones** despliega los
+  formatos de venta del producto (unidad suelta, caja de 6...) y permite
+  añadir uno nuevo o un código de barras.
 - **Categorías**: categorías de estantería (nombre, y opcionalmente un
   margen/impuestos por defecto que heredan sus productos — botón
   «Margen/impuestos»), categorías POS (las pestañas de colores del TPV,
   necesitan un permiso propio) y **Unidades** (la lista que alimenta el
-  desplegable de "unidad base" al dar de alta un producto).
+  desplegable de "unidad base" al dar de alta un producto — con flechas
+  ↑/↓ para ordenarlas como más cómodo resulte).
 
 ### 3.7. Precios
 
@@ -170,15 +173,19 @@ Enlace **Precios** — sólo lo ves si puedes gestionar precios (`ADMIN` o
 `MANAGER`). Dos pestañas:
 
 - **Impuestos**: el catálogo de impuestos (nombre + tasa, p.ej. «IVA
-  general» 21%). Se asignan a una categoría o a un producto concreto desde
-  sus propias pantallas en Catálogo — varios pueden aplicar a la vez sobre
-  el mismo producto (se suman).
+  general» 21%) — **Editar** en cada fila para cambiar el nombre o la
+  tasa de uno ya creado (si cambias la tasa, se recalcula en el momento
+  el precio de todo lo que lo tenga puesto). Se asignan a una categoría o
+  a un producto concreto desde sus propias pantallas en Catálogo — varios
+  pueden aplicar a la vez sobre el mismo producto (se suman).
 - **Fórmula**: la fórmula que calcula el precio de venta de cualquier
   producto que no tenga la suya propia, a partir del coste y del
   margen/impuestos que le correspondan (los suyos si los tiene, si no los
-  de su categoría). Se puede probar con unos valores de ejemplo antes de
-  guardarla; al guardarla se recalculan en el momento todos los productos
-  afectados.
+  de su categoría). Encima del cuadro de la fórmula hay una tabla con
+  todas las variables y funciones que se pueden usar, con lo que
+  significa cada una. Se puede probar con unos valores de ejemplo antes
+  de guardarla; al guardarla se recalculan en el momento todos los
+  productos afectados.
 
 ### 3.8. Compras, proveedores, inventario...
 
