@@ -80,16 +80,23 @@ function stubFetch(options: {
         );
       }
 
-      // /admin/access and /admin/catalog's tabs (only reached in the tests
-      // that navigate there) fetch their own lists on mount — empty is
-      // enough to get past the loading state and check what rendered.
+      // /admin/access, /admin/catalog and /admin/pricing's tabs (only
+      // reached in the tests that navigate there) fetch their own lists on
+      // mount — empty is enough to get past the loading state and check
+      // what rendered. /pricing/settings isn't a list, so it gets its own
+      // shape below.
+      if (url.includes('/pricing/settings')) {
+        return Promise.resolve(jsonResponse({ formula: 'cost' }));
+      }
       if (
         url.endsWith('/users') ||
         url.endsWith('/roles') ||
         url.endsWith('/permissions') ||
         url.includes('/product-categories') ||
         url.includes('/pos-categories') ||
-        url.includes('/products?')
+        url.includes('/products?') ||
+        url.includes('/units') ||
+        url.includes('/taxes')
       ) {
         return Promise.resolve(jsonResponse([]));
       }
@@ -275,6 +282,25 @@ describe('routing', () => {
     stubFetch({ me: 'admin', permissions: ['admin.access'] });
 
     renderAt('/admin/catalog');
+
+    expect(
+      await screen.findByRole('heading', { name: /panel de administración/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('sends /admin/pricing straight to the Impuestos tab for a user with pricing.manage', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'pricing.manage'] });
+
+    renderAt('/admin/pricing');
+
+    await screen.findByRole('link', { name: 'Fórmula' });
+    expect(screen.getByRole('link', { name: 'Impuestos' })).toBeInTheDocument();
+  });
+
+  it('bounces a user without pricing.manage away from /admin/pricing', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access'] });
+
+    renderAt('/admin/pricing');
 
     expect(
       await screen.findByRole('heading', { name: /panel de administración/i }),

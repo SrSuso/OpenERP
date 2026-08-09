@@ -13,6 +13,9 @@ import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
 import { CatalogPage } from '@/pages/admin/CatalogPage';
 import { CategoriesPage } from '@/pages/admin/CategoriesPage';
+import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
+import { PricingPage } from '@/pages/admin/PricingPage';
+import { PricingTaxesPage } from '@/pages/admin/PricingTaxesPage';
 import { ProductsPage } from '@/pages/admin/ProductsPage';
 import { RolesPage } from '@/pages/admin/RolesPage';
 import { UsersPage } from '@/pages/admin/UsersPage';
@@ -84,6 +87,20 @@ export const routes: RouteObject[] = [
                       { index: true, element: <Navigate to="products" replace /> },
                       { path: 'products', element: <ProductsPage /> },
                       { path: 'categories', element: <CategoriesPage /> },
+                    ],
+                  },
+                ],
+              },
+              {
+                path: 'pricing',
+                element: <RequirePermission permission="pricing.manage" />,
+                children: [
+                  {
+                    element: <PricingPage />,
+                    children: [
+                      { index: true, element: <Navigate to="taxes" replace /> },
+                      { path: 'taxes', element: <PricingTaxesPage /> },
+                      { path: 'formula', element: <PricingFormulaPage /> },
                     ],
                   },
                 ],

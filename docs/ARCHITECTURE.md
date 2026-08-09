@@ -202,15 +202,55 @@ Puntos de diseño a tener en cuenta:
   validación.
 - El frontend hoy cubre **login, TPV completo, el panel de dashboards**
   (widgets de fase 16), **usuarios/roles/mi cuenta** (`/admin/access`,
-  `/admin/account`) y **catálogo** (`/admin/catalog` — productos,
-  presentaciones/códigos de barras, categorías de producto y categorías
-  POS; todo añadido tras el cierre de las 22 fases, backend ya existente
-  desde las fases 1/3/10). Precios/compras/inventario/lotes/devoluciones/
-  tickets/notificaciones siguen sin pantalla propia — se opera contra la
-  API (Swagger UI en `/api/docs`), documentado en `USAGE.md` §3. Añadir
-  esas pantallas es trabajo de frontend puro sobre una API que ya existe
-  por completo, mismo patrón que `features/users`/`features/roles`/
-  `features/catalog`.
+  `/admin/account`), **catálogo** (`/admin/catalog` — productos,
+  presentaciones/códigos de barras, categorías de producto, categorías POS
+  y unidades) y **precios** (`/admin/pricing` — impuestos y la fórmula del
+  PVP; todo añadido tras el cierre de las 22 fases). Compras/inventario/
+  lotes/devoluciones/tickets/notificaciones siguen sin pantalla propia —
+  se opera contra la API (Swagger UI en `/api/docs`), documentado en
+  `USAGE.md` §3. Añadir esas pantallas es trabajo de frontend puro sobre
+  una API que ya existe por completo, mismo patrón que `features/users`/
+  `features/roles`/`features/catalog`/`features/pricing`.
+  - **Impuestos y margen, con herencia categoría → producto** (pedido
+    explícitamente, no parte de las 22 fases): `Tax` (nombre + tasa,
+    `app/pricing/models.py`) se asigna a un producto y/o a su categoría
+    mediante las tablas de asociación `product_taxes`/`category_taxes` —
+    varios pueden aplicar a la vez y se suman (`effective_tax_rate`).
+    `ProductCategory.margin_rate` y `Product.margin_rate` son ambos
+    anulables — `None` es "sin valor propio, hereda", no "0%"
+    (`effective_margin_rate`). La prioridad es siempre la misma: valor
+    explícito del producto si lo tiene, si no el de su categoría, si no
+    0 — resuelta en un único sitio (`app/pricing/service.py`), nunca
+    reimplementada en el router ni en el frontend.
+  - **`PricingSettings` — la fórmula del PVP, configurable, una sola para
+    toda la tienda** (`pricing_settings`, fila única): el usuario pidió
+    poder definir su propia fórmula en un panel en vez de un cálculo fijo
+    de margen. Reutiliza el motor de fórmulas ya existente desde la fase 4
+    (`app/pricing/formula.py`, AST restringido — regla 12) con las mismas
+    cuatro variables, sólo que `tax_rate`/`margin_rate` ahora son los
+    *efectivos* (ver punto anterior), no columnas crudas. Un producto con
+    su propia `price_formula` la sigue usando en vez de la de la tienda —
+    sin cambios ahí. Guardar la fórmula global, o el margen/impuestos de
+    una categoría, recalcula en el momento el `list_price` de todos los
+    productos afectados que no tengan su propio override (bucle simple,
+    con su fila de histórico cada uno — ver `_recompute_category_products`/
+    `update_settings`) — no es un valor derivado en la lectura, sigue
+    siendo una columna guardada como toda la vida, coherente con
+    `product_price_history`.
+  - **SKU ya no se teclea**: `ProductCreate.sku` es opcional; si no se
+    manda (el caso normal desde el panel), `app.catalog.service.
+    create_product` le pone uno («P######» a partir del id de la propia
+    fila) después del primer `flush`. Sigue siendo único y obligatorio a
+    nivel de columna — sólo cambió quién lo rellena. Ventas, compras,
+    inventario, lotes, notificaciones y dashboards lo siguen usando
+    exactamente igual que antes, sin ningún cambio en esos módulos.
+  - **`Unit`** (`app/catalog/models.py`): lista gestionada para el
+    desplegable "unidad base" del alta de producto. Deliberadamente *no*
+    es una foreign key desde `Product` — `Product.base_unit_name` sigue
+    siendo el mismo `String(20)` de siempre (regla 3, y todo módulo que ya
+    lo lee lo sigue leyendo igual); `Unit` sólo alimenta el desplegable y
+    mantiene los nombres consistentes, sin ninguna migración que tocara
+    los módulos que ya usaban ese campo.
   - `/admin/catalog` sigue el mismo patrón de pestañas que `/admin/access`
     (`CatalogPage.tsx`: barra de pestañas + `<Outlet />`), pero gated de
     una sola vez con `RequirePermission permission="product.read"` en vez

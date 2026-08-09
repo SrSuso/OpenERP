@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthContext';
-import { type PosCategory, type ProductCategory } from '@/features/catalog/api';
+import { type PosCategory, type ProductCategory, type Unit } from '@/features/catalog/api';
+import { type Tax } from '@/features/pricing/api';
 
 import { CategoriesPage } from './CategoriesPage';
 
@@ -20,17 +21,29 @@ const ME = {
   email: 'admin@example.com',
   full_name: 'Admin Uno',
   role: 'ADMIN',
-  permissions: ['admin.access', 'product.read', 'product.manage', 'pos_category.manage'],
+  permissions: [
+    'admin.access',
+    'product.read',
+    'product.manage',
+    'pos_category.manage',
+    'pricing.manage',
+  ],
 };
 
 function stubBackend() {
-  const categories: ProductCategory[] = [{ id: 1, name: 'Bebidas', is_active: true }];
+  const categories: ProductCategory[] = [
+    { id: 1, name: 'Bebidas', is_active: true, margin_rate: null, taxes: [] },
+  ];
   const posCategories: PosCategory[] = [
     { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
   ];
+  const units: Unit[] = [{ id: 1, name: 'UNIT' }];
+  const taxes: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
   const createCategoryCalls: string[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
+  const createUnitCalls: string[] = [];
+  const categoryPricingCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -48,9 +61,21 @@ function stubBackend() {
           ? (JSON.parse(init.body as string) as { name: string })
           : { name: '' };
         createCategoryCalls.push(body.name);
-        const created = { id: 2, name: body.name, is_active: true };
+        const created = { id: 2, name: body.name, is_active: true, margin_rate: null, taxes: [] };
         categories.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      if (method === 'PATCH' && /\/product-categories\/(\d+)\/pricing$/.test(url)) {
+        const id = Number(/\/product-categories\/(\d+)\/pricing$/.exec(url)![1]);
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        categoryPricingCalls.push({ id, body });
+        const category = categories.find((c) => c.id === id)!;
+        if ('margin_rate' in body) category.margin_rate = body['margin_rate'] as string | null;
+        if ('tax_ids' in body) {
+          const ids = body['tax_ids'] as number[];
+          category.taxes = taxes.filter((t) => ids.includes(t.id));
+        }
+        return Promise.resolve(jsonResponse(category));
       }
       if (method === 'GET' && url.includes('/pos-categories')) {
         return Promise.resolve(jsonResponse(posCategories));
@@ -75,12 +100,33 @@ function stubBackend() {
         category.is_active = false;
         return Promise.resolve(jsonResponse(category));
       }
+      if (method === 'GET' && url.includes('/units')) {
+        return Promise.resolve(jsonResponse(units));
+      }
+      if (method === 'POST' && url.includes('/units')) {
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { name: string })
+          : { name: '' };
+        createUnitCalls.push(body.name);
+        const created = { id: 2, name: body.name };
+        units.push(created);
+        return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      if (method === 'GET' && url.includes('/taxes')) {
+        return Promise.resolve(jsonResponse(taxes));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createCategoryCalls, createPosCategoryCalls, deactivatePosCategoryCalls };
+  return {
+    createCategoryCalls,
+    createPosCategoryCalls,
+    deactivatePosCategoryCalls,
+    createUnitCalls,
+    categoryPricingCalls,
+  };
 }
 
 function renderPage() {
@@ -95,12 +141,13 @@ function renderPage() {
 }
 
 describe('CategoriesPage', () => {
-  it('lists product categories and POS categories', async () => {
+  it('lists product categories, POS categories and units', async () => {
     stubBackend();
     renderPage();
 
     expect(await screen.findByText('Bebidas')).toBeInTheDocument();
     expect(screen.getByText('Ofertas')).toBeInTheDocument();
+    expect(screen.getByText('UNIT')).toBeInTheDocument();
   });
 
   it('creates a product category', async () => {
@@ -121,8 +168,8 @@ describe('CategoriesPage', () => {
     await screen.findByText('Ofertas');
 
     await userEvent.type(screen.getByLabelText('Nombre'), 'Congelados');
-    // Two "Añadir" buttons on this page (product categories + POS
-    // categories); the POS one is the second in DOM order.
+    // Tres botones "Añadir" en esta página (categorías de producto, POS y
+    // unidades); el de POS es el segundo en el orden del DOM.
     await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[1]!);
 
     await screen.findByText('Congelados');
@@ -140,5 +187,33 @@ describe('CategoriesPage', () => {
 
     await screen.findByText(/Ofertas.*inactiva/);
     expect(backend.deactivatePosCategoryCalls).toEqual([1]);
+  });
+
+  it('creates a unit', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('UNIT');
+
+    await userEvent.type(screen.getByPlaceholderText('UNIT, KG, L…'), 'kg');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[2]!);
+
+    expect(await screen.findByText('KG')).toBeInTheDocument();
+    expect(backend.createUnitCalls).toEqual(['KG']);
+  });
+
+  it('sets a category default margin and taxes', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Margen/impuestos' }));
+    const marginInput = screen.getByPlaceholderText('vacío = sin margen por defecto');
+    await userEvent.type(marginInput, '25');
+    await userEvent.click(screen.getByRole('checkbox', { name: /IVA general/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(backend.categoryPricingCalls).toEqual([
+      { id: 1, body: { margin_rate: '25', tax_ids: [1] } },
+    ]);
   });
 });

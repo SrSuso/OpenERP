@@ -4,8 +4,18 @@ every price change)."""
 
 from __future__ import annotations
 
-from app.catalog.models import Product, ProductPackage
-from app.catalog.schemas import PackageRead, ProductRead
+from app.catalog.models import Product, ProductCategory, ProductPackage
+from app.catalog.schemas import PackageRead, ProductCategoryRead, ProductRead, ProductTaxRead
+
+
+def category_to_read(category: ProductCategory) -> ProductCategoryRead:
+    return ProductCategoryRead(
+        id=category.id,
+        name=category.name,
+        is_active=category.is_active,
+        margin_rate=category.margin_rate,
+        taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in category.taxes],
+    )
 
 
 def package_to_read(package: ProductPackage) -> PackageRead:
@@ -35,6 +45,7 @@ def product_to_read(product: Product) -> ProductRead:
         tax_rate=product.tax_rate,
         surcharge_rate=product.surcharge_rate,
         margin_rate=product.margin_rate,
+        taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in product.taxes],
         price_formula=product.price_formula,
         min_stock=product.min_stock,
         track_lots=product.track_lots,

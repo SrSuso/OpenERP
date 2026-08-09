@@ -10,17 +10,23 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import SessionDep
+from app.catalog.presenters import category_to_read as _category_to_read
 from app.catalog.presenters import product_to_read as _to_read
-from app.catalog.schemas import ProductRead
+from app.catalog.schemas import ProductCategoryRead, ProductRead
 from app.pricing import service
-from app.pricing.models import ProductPriceHistory
+from app.pricing.models import ProductPriceHistory, Tax
 from app.pricing.schemas import (
+    CategoryPricingUpdate,
     FormulaPreviewRequest,
     FormulaPreviewResponse,
     PriceHistoryEntryRead,
+    PricingSettingsRead,
+    PricingSettingsUpdate,
     SetFormulaRequest,
     SetManualPriceRequest,
     SetPricingInputsRequest,
+    TaxCreate,
+    TaxRead,
 )
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import PRICING_MANAGE, PRODUCT_READ
@@ -29,6 +35,10 @@ router = APIRouter(tags=["pricing"])
 
 _require_read = Depends(require_permission(PRODUCT_READ))
 _require_manage = Depends(require_permission(PRICING_MANAGE))
+
+
+def _tax_to_read(tax: Tax) -> TaxRead:
+    return TaxRead(id=tax.id, name=tax.name, rate=tax.rate, is_active=tax.is_active)
 
 
 def _history_to_read(entry: ProductPriceHistory) -> PriceHistoryEntryRead:
@@ -100,3 +110,47 @@ async def set_manual_price(
     product_id: int, payload: SetManualPriceRequest, session: SessionDep
 ) -> ProductRead:
     return _to_read(await service.set_manual_price(session, product_id, payload.list_price))
+
+
+# --- taxes (managed on their own — never a raw number typed on a product) ---
+
+
+@router.get("/taxes", response_model=list[TaxRead], dependencies=[_require_read])
+async def list_taxes(session: SessionDep) -> list[TaxRead]:
+    return [_tax_to_read(t) for t in await service.list_taxes(session)]
+
+
+@router.post("/taxes", response_model=TaxRead, status_code=201, dependencies=[_require_manage])
+async def create_tax(payload: TaxCreate, session: SessionDep) -> TaxRead:
+    return _tax_to_read(await service.create_tax(session, payload))
+
+
+# --- category-level pricing defaults ----------------------------------------
+
+
+@router.patch(
+    "/product-categories/{category_id}/pricing",
+    response_model=ProductCategoryRead,
+    dependencies=[_require_manage],
+)
+async def set_category_pricing(
+    category_id: int, payload: CategoryPricingUpdate, session: SessionDep
+) -> ProductCategoryRead:
+    return _category_to_read(await service.update_category_pricing(session, category_id, payload))
+
+
+# --- store-wide pricing formula ("PVP calculado automáticamente") ----------
+
+
+@router.get("/pricing/settings", response_model=PricingSettingsRead, dependencies=[_require_read])
+async def get_pricing_settings(session: SessionDep) -> PricingSettingsRead:
+    settings = await service.get_settings(session)
+    return PricingSettingsRead(formula=settings.formula)
+
+
+@router.put("/pricing/settings", response_model=PricingSettingsRead, dependencies=[_require_manage])
+async def set_pricing_settings(
+    payload: PricingSettingsUpdate, session: SessionDep
+) -> PricingSettingsRead:
+    settings = await service.update_settings(session, payload)
+    return PricingSettingsRead(formula=settings.formula)

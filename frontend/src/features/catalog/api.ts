@@ -3,12 +3,28 @@ import { z } from 'zod';
 
 import { API_V1, apiFetch } from '@/lib/api';
 
+// --- impuestos, tal y como los ve un producto/categoría (el CRUD real,
+// crear/listar impuestos con su nombre y tasa, vive en features/pricing) ---
+
+export const productTaxSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  rate: z.string(),
+});
+export type ProductTax = z.infer<typeof productTaxSchema>;
+
 // --- categorías de producto (estanterías, independientes de las de POS) ---
 
 export const productCategorySchema = z.object({
   id: z.number(),
   name: z.string(),
   is_active: z.boolean(),
+  // Por defecto para todos los productos de la categoría — un producto con
+  // su propio valor explícito lo pisa (ver docs/ARCHITECTURE.md, módulo
+  // Precios). Se gestionan desde features/pricing (PATCH .../pricing), no
+  // desde aquí.
+  margin_rate: z.string().nullable(),
+  taxes: z.array(productTaxSchema),
 });
 export type ProductCategory = z.infer<typeof productCategorySchema>;
 
@@ -27,6 +43,23 @@ export async function createProductCategory(name: string): Promise<ProductCatego
     schema: productCategorySchema,
     body: { name },
   });
+}
+
+// --- unidades (lista gestionada para el desplegable "unidad base") --------
+
+export const unitSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+export type Unit = z.infer<typeof unitSchema>;
+
+export const unitsQuery = queryOptions({
+  queryKey: ['catalog', 'units'] as const,
+  queryFn: ({ signal }) => apiFetch(`${API_V1}/units`, { schema: z.array(unitSchema), signal }),
+});
+
+export async function createUnit(name: string): Promise<Unit> {
+  return apiFetch(`${API_V1}/units`, { method: 'POST', schema: unitSchema, body: { name } });
 }
 
 // --- categorías POS (botones/pestañas del TPV, fase 10) -------------------
@@ -94,6 +127,9 @@ export type Package = z.infer<typeof packageSchema>;
 
 export const productSchema = z.object({
   id: z.number(),
+  // Nunca se teclea (ver ProductCreateInput) — generado por el backend
+  // ("P000123") como referencia interna que usan ventas/compras/
+  // inventario/lotes, no algo que se gestione desde el panel.
   sku: z.string(),
   name: z.string(),
   description: z.string(),
@@ -107,7 +143,11 @@ export const productSchema = z.object({
   list_price: z.string(),
   tax_rate: z.string(),
   surcharge_rate: z.string(),
-  margin_rate: z.string(),
+  // null = hereda el margen de la categoría (o 0 si tampoco la categoría
+  // tiene uno) — ver ProductCategory.margin_rate.
+  margin_rate: z.string().nullable(),
+  // Vacío = hereda los impuestos de la categoría, no "sin impuestos".
+  taxes: z.array(productTaxSchema),
   price_formula: z.string().nullable(),
   min_stock: z.string(),
   track_lots: z.boolean(),
@@ -143,11 +183,14 @@ export function productsQuery(filters: ProductFilters) {
   });
 }
 
-/** Only what `ProductCreate` accepts — the initial price. Every later price
- * change is `features/pricing`'s exclusive write path (see
- * backend/app/catalog/schemas.py's own docstring on `ProductUpdate`). */
+/** No `sku` (autogenerado por el backend) ni `tax_rate` (los impuestos se
+ * eligen del catálogo de features/pricing, nunca un número suelto) —
+ * `list_price` sigue siendo manual aquí: el formulario la calcula en vivo
+ * con `POST /pricing/preview` y manda el resultado, así que crear un
+ * producto nunca sobreescribe en silencio lo que se ve en pantalla. Cambios
+ * de precio posteriores son el camino exclusivo de `features/pricing` (ver
+ * backend/app/catalog/schemas.py's `ProductUpdate`). */
 export interface ProductCreateInput {
-  sku: string;
   name: string;
   description: string;
   category_id: number | null;
@@ -157,7 +200,7 @@ export interface ProductCreateInput {
   base_barcode: string | null;
   cost: string;
   list_price: string;
-  tax_rate: string;
+  margin_rate: string | null;
   min_stock: string;
   track_lots: boolean;
   track_expiration: boolean;

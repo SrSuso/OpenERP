@@ -8,6 +8,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# isort: off
+# Must run before anything below touches a SQLAlchemy mapper (e.g. a
+# module-level `selectinload(...)` tuple, several routers have one):
+# configuring any one mapper configures *every* pending one in the shared
+# registry, and a relationship that references another module's model by
+# name only (app.catalog.models's `taxes`, resolved against
+# app.pricing.models's `Tax` — see that relationship's own docstring on
+# why it isn't a real import instead) fails to resolve if that module
+# hasn't been imported yet. `app.api.v1.router` below imports catalog's
+# router well before pricing's own line in the same file, so without
+# this, whichever import happens to trigger configuration first raises.
+from app.db import registry as _model_registry  # noqa: F401
+# isort: on
+
 from app.api.middleware import (
     REQUEST_ID_HEADER,
     RequestContextMiddleware,

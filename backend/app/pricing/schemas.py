@@ -24,13 +24,59 @@ class FormulaPreviewResponse(BaseModel):
 
 
 class SetPricingInputsRequest(BaseModel):
-    """Updates whichever pricing inputs are given; if the product currently
-    has a formula, its price is recomputed from the new inputs."""
+    """Updates whichever pricing inputs are given (a field simply absent
+    from the JSON body is left untouched). If the product already has a
+    formula, changing ``cost``/``tax_rate``/``surcharge_rate`` recomputes
+    its price from it, same as before this had ``margin_rate``/
+    ``tax_ids``. Those last two are new and behave differently on purpose:
+    touching either one *always* recomputes the price (using the
+    product's own formula, or the store-wide default if it has none) even
+    without one set — margin/taxes changing is exactly the moment "PVP
+    calculado automáticamente" is supposed to kick in. A manually-priced
+    product (``PUT .../manual-price``) that never has its margin/taxes
+    touched again keeps that exact price forever.
+
+    ``margin_rate: null`` (present, explicitly null) clears the product's
+    own margin back to "inherit the category's"; omitting the key leaves
+    it as-is. Same idea for ``tax_ids``: present with an empty list clears
+    the product's own tax override back to "inherit the category's".
+    """
 
     cost: Decimal | None = Field(default=None, ge=0)
     tax_rate: Decimal | None = Field(default=None, ge=0)
     surcharge_rate: Decimal | None = Field(default=None, ge=0)
     margin_rate: Decimal | None = Field(default=None, ge=0)
+    tax_ids: list[int] | None = Field(default=None)
+
+
+class TaxCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    rate: Decimal = Field(ge=0)
+
+
+class TaxRead(BaseModel):
+    id: int
+    name: str
+    rate: Decimal
+    is_active: bool
+
+
+class CategoryPricingUpdate(BaseModel):
+    """Same presence-sensitive semantics as `SetPricingInputsRequest`'s
+    margin_rate/tax_ids — see its docstring. Saving either one here always
+    recomputes every product in the category that doesn't have its own
+    explicit override (see app.pricing.service.update_category_pricing)."""
+
+    margin_rate: Decimal | None = Field(default=None, ge=0)
+    tax_ids: list[int] | None = Field(default=None)
+
+
+class PricingSettingsRead(BaseModel):
+    formula: str
+
+
+class PricingSettingsUpdate(BaseModel):
+    formula: str = Field(min_length=1, max_length=2000)
 
 
 class SetFormulaRequest(BaseModel):

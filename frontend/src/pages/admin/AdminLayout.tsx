@@ -28,6 +28,11 @@ export function AdminLayout() {
               Catálogo
             </NavLink>
           )}
+          {hasPermission('pricing.manage') && (
+            <NavLink to="/admin/pricing" className={linkClassName}>
+              Precios
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles

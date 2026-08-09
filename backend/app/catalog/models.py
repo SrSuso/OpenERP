@@ -10,12 +10,34 @@ product always has exactly one.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
 from app.db.types import Money, Quantity, Rate, numeric
+
+if TYPE_CHECKING:
+    # Only for the type hints below — see app.pricing.models's own
+    # docstring on why the relationships here use string secondary/target
+    # names instead of a real import (pricing depends on catalog, not the
+    # other way around; this stays type-checker-only to avoid a cycle).
+    from app.pricing.models import Tax
+
+
+class Unit(IntPrimaryKeyMixin, TimestampMixin, Base):
+    """A managed list of base-unit names ("UNIT", "KG", "L"...) a product can
+    be stocked in — purely a picker for the admin panel's "unidad base"
+    dropdown. Deliberately *not* a foreign key from `Product`:
+    `Product.base_unit_name` stays the free string it always was (rule 3,
+    and every downstream module — purchasing, inventory, sales, lots,
+    tickets — already reads it as one), so adding this table needed no
+    migration touching any of them."""
+
+    __tablename__ = "units"
+
+    name: Mapped[str] = mapped_column(String(20), unique=True)
 
 
 class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
@@ -27,6 +49,18 @@ class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(100), unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    #: Default margin/taxes for every product in this category — ``None``
+    #: means "nothing set here", not "0%" (a category with no margin set
+    #: contributes nothing to a product's effective margin, same as one
+    #: with no taxes attached contributes no tax). A product's own
+    #: `Product.margin_rate`/`Product.taxes`, when it has any, wins over
+    #: this — see `app.pricing.service.effective_margin_rate`/
+    #: `effective_tax_rate`, the only place that resolves the priority.
+    margin_rate: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
+    taxes: Mapped[list[Tax]] = relationship(
+        secondary="category_taxes", order_by="Tax.name", viewonly=False
+    )
 
 
 class PosCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
@@ -73,6 +107,12 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: second, unaudited way to change a price.
     cost: Mapped[Money]
     list_price: Mapped[Money]
+    #: Legacy single-rate field, kept for backward compatibility with every
+    #: module that already reads it (history, tickets, dashboards...) and
+    #: with the formula engine's ``tax_rate`` variable. No longer written by
+    #: hand from the product form: `app.pricing.service.effective_tax_rate`
+    #: computes it from `taxes`/the category's, and every write path that
+    #: touches taxes keeps this column in sync as a cache of that sum.
     tax_rate: Mapped[Rate]
     # server_default (unlike the other Rate/Money columns): these two were
     # added in phase 4 to an already-shipped table, so existing rows need a
@@ -80,9 +120,26 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     # every write from here on (ProductCreate defaults to 0, and every
     # later write goes through app.pricing).
     surcharge_rate: Mapped[Decimal] = mapped_column(numeric(), server_default="0")
-    margin_rate: Mapped[Decimal] = mapped_column(numeric(), server_default="0")
+    #: ``None`` = no explicit override, inherit the category's
+    #: `ProductCategory.margin_rate` (also possibly ``None``, in which case
+    #: the effective margin is 0) — see
+    #: `app.pricing.service.effective_margin_rate`. Was ``NOT NULL DEFAULT
+    #: 0`` before category-level margins existed, when "unset" and "0%"
+    #: were the same thing; now they aren't, so this had to become nullable.
+    margin_rate: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
+    #: Explicit tax override for this product. Empty = inherit the
+    #: category's `ProductCategory.taxes`; non-empty = these, and only
+    #: these, apply — see `app.pricing.service.effective_tax_rate`. Several
+    #: can apply at once (they stack additively, e.g. IVA + recargo de
+    #: equivalencia).
+    taxes: Mapped[list[Tax]] = relationship(
+        secondary="product_taxes", order_by="Tax.name", viewonly=False
+    )
     #: The pricing formula text; ``app.pricing.formula`` parses and
     #: evaluates it with a restricted AST walker (rule 12: never eval()).
+    #: ``None`` uses the store-wide default formula
+    #: (`app.pricing.models.PricingSettings`) instead — see
+    #: `app.pricing.service.recompute_list_price`.
     price_formula: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     min_stock: Mapped[Quantity]

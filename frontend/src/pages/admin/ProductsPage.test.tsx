@@ -4,7 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthContext';
-import { type PosCategory, type Product, type ProductCategory } from '@/features/catalog/api';
+import {
+  type PosCategory,
+  type Product,
+  type ProductCategory,
+  type Unit,
+} from '@/features/catalog/api';
+import { type Tax } from '@/features/pricing/api';
 
 import { ProductsPage } from './ProductsPage';
 
@@ -20,18 +26,22 @@ const ME = {
   email: 'admin@example.com',
   full_name: 'Admin Uno',
   role: 'ADMIN',
-  permissions: ['admin.access', 'product.read', 'product.manage'],
+  permissions: ['admin.access', 'product.read', 'product.manage', 'pricing.manage'],
 };
 
-const CATEGORIES: ProductCategory[] = [{ id: 1, name: 'Bebidas', is_active: true }];
+const CATEGORIES: ProductCategory[] = [
+  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [] },
+];
 const POS_CATEGORIES: PosCategory[] = [
   { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
 ];
+const UNITS: Unit[] = [{ id: 1, name: 'UNIT' }];
+const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
 
 function baseProduct(): Product {
   return {
     id: 1,
-    sku: 'AGUA-1L',
+    sku: 'P000001',
     name: 'Agua 1L',
     description: '',
     category_id: 1,
@@ -42,9 +52,10 @@ function baseProduct(): Product {
     base_unit_name: 'UNIT',
     cost: '0.300000',
     list_price: '0.600000',
-    tax_rate: '0.210000',
+    tax_rate: '0.000000',
     surcharge_rate: '0.000000',
-    margin_rate: '0.000000',
+    margin_rate: null,
+    taxes: [],
     price_formula: null,
     min_stock: '10.000000',
     track_lots: false,
@@ -60,6 +71,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
   const updateCalls: { id: number; body: Record<string, unknown> }[] = [];
   const deactivateCalls: number[] = [];
   const addPackageCalls: { productId: number; body: Record<string, unknown> }[] = [];
+  const pricingCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -67,14 +79,21 @@ function stubBackend(options: { products?: Product[] } = {}) {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
 
-      if (url.includes('/auth/me')) {
-        return Promise.resolve(jsonResponse(ME));
-      }
+      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
       if (method === 'GET' && url.includes('/product-categories')) {
         return Promise.resolve(jsonResponse(CATEGORIES));
       }
       if (method === 'GET' && url.includes('/pos-categories')) {
         return Promise.resolve(jsonResponse(POS_CATEGORIES));
+      }
+      if (method === 'GET' && url.includes('/units')) {
+        return Promise.resolve(jsonResponse(UNITS));
+      }
+      if (method === 'GET' && url.includes('/taxes')) {
+        return Promise.resolve(jsonResponse(TAXES));
+      }
+      if (method === 'POST' && url.includes('/pricing/preview')) {
+        return Promise.resolve(jsonResponse({ result: '1.000000' }));
       }
       if (method === 'GET' && url.includes('/products?')) {
         return Promise.resolve(jsonResponse(products));
@@ -82,18 +101,10 @@ function stubBackend(options: { products?: Product[] } = {}) {
       if (method === 'POST' && /\/products$/.test(url.split('?')[0]!)) {
         const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
         createCalls.push(body);
-        if (products.some((p) => p.sku === body['sku'])) {
-          return Promise.resolve(
-            jsonResponse(
-              { error: { code: 'conflict', message: 'A product with this SKU already exists.' } },
-              { status: 409 },
-            ),
-          );
-        }
         const created: Product = {
           ...baseProduct(),
           id: 99,
-          sku: body['sku'] as string,
+          sku: 'P000099',
           name: body['name'] as string,
           packages: [
             {
@@ -137,12 +148,26 @@ function stubBackend(options: { products?: Product[] } = {}) {
         });
         return Promise.resolve(jsonResponse(product));
       }
+      if (method === 'PATCH' && /\/products\/(\d+)\/pricing$/.test(url)) {
+        const id = Number(/\/products\/(\d+)\/pricing$/.exec(url)![1]);
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        pricingCalls.push({ id, body });
+        const product = products.find((p) => p.id === id)!;
+        if ('cost' in body) product.cost = body['cost'] as string;
+        if ('margin_rate' in body) product.margin_rate = body['margin_rate'] as string | null;
+        if ('tax_ids' in body) {
+          const ids = body['tax_ids'] as number[];
+          product.taxes = TAXES.filter((t) => ids.includes(t.id));
+        }
+        product.list_price = '9.990000';
+        return Promise.resolve(jsonResponse(product));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createCalls, updateCalls, deactivateCalls, addPackageCalls };
+  return { createCalls, updateCalls, deactivateCalls, addPackageCalls, pricingCalls };
 }
 
 function renderPage() {
@@ -157,23 +182,26 @@ function renderPage() {
 }
 
 describe('ProductsPage', () => {
-  it('lists the existing products', async () => {
+  it('lists the existing products, no SKU field to fill in when creating', async () => {
     stubBackend();
     renderPage();
 
     expect(await screen.findByText('Agua 1L')).toBeInTheDocument();
-    expect(screen.getByText('AGUA-1L')).toBeInTheDocument();
+    expect(screen.getByText('P000001')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    expect(screen.queryByLabelText('SKU')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^IVA/)).not.toBeInTheDocument();
   });
 
-  it('creates a product with the given fields', async () => {
+  it('creates a product picking the unit from the dropdown', async () => {
     const backend = stubBackend();
     renderPage();
     await screen.findByText('Agua 1L');
 
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await userEvent.type(screen.getByLabelText('SKU'), 'REFRESCO-33');
     await userEvent.type(screen.getByLabelText('Nombre'), 'Refresco 33cl');
-    await userEvent.type(screen.getByLabelText('Unidad base'), 'UNIT');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
     const cost = screen.getByLabelText('Coste');
     await userEvent.clear(cost);
     await userEvent.type(cost, '0.5');
@@ -185,26 +213,14 @@ describe('ProductsPage', () => {
     expect(await screen.findByText('Refresco 33cl')).toBeInTheDocument();
     expect(backend.createCalls).toHaveLength(1);
     expect(backend.createCalls[0]).toMatchObject({
-      sku: 'REFRESCO-33',
       name: 'Refresco 33cl',
       base_unit_name: 'UNIT',
       cost: '0.5',
       list_price: '1',
+      margin_rate: null,
     });
-  });
-
-  it('shows a clear error when the SKU is already taken', async () => {
-    stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await userEvent.type(screen.getByLabelText('SKU'), 'AGUA-1L');
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Duplicado');
-    await userEvent.type(screen.getByLabelText('Unidad base'), 'UNIT');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
-
-    expect(await screen.findByText('Ya existe un producto con ese SKU.')).toBeInTheDocument();
+    expect(backend.createCalls[0]).not.toHaveProperty('sku');
+    expect(backend.createCalls[0]).not.toHaveProperty('tax_rate');
   });
 
   it('edits a product (catalog-only fields)', async () => {
@@ -250,7 +266,27 @@ describe('ProductsPage', () => {
     ]);
   });
 
-  it('does not offer to create/edit/deactivate without product.manage', async () => {
+  it('sets a product-level margin and tax override from the Precio panel', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Precio' }));
+    const marginInput = screen.getByPlaceholderText('heredado: 30%');
+    await userEvent.type(marginInput, '15');
+    await userEvent.click(screen.getByRole('checkbox', { name: /IVA general/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
+
+    // El nuevo PVP aparece tanto en la columna "Precio" de la fila como en
+    // "PVP actual" del propio panel — findAllByText en vez de findByText,
+    // que exige un único nodo.
+    expect(await screen.findAllByText('9,99 €')).not.toHaveLength(0);
+    expect(backend.pricingCalls).toEqual([
+      { id: 1, body: { cost: '0.300000', margin_rate: '15', tax_ids: [1] } },
+    ]);
+  });
+
+  it('does not offer to create/edit/deactivate/price without product.manage', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) => {
@@ -263,6 +299,8 @@ describe('ProductsPage', () => {
         }
         if (url.includes('/product-categories')) return Promise.resolve(jsonResponse(CATEGORIES));
         if (url.includes('/pos-categories')) return Promise.resolve(jsonResponse(POS_CATEGORIES));
+        if (url.includes('/units')) return Promise.resolve(jsonResponse(UNITS));
+        if (url.includes('/taxes')) return Promise.resolve(jsonResponse(TAXES));
         if (url.includes('/products?')) return Promise.resolve(jsonResponse([baseProduct()]));
         return Promise.reject(new Error(`Unexpected fetch to ${url} in test`));
       }),
@@ -274,5 +312,6 @@ describe('ProductsPage', () => {
     expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Precio' })).not.toBeInTheDocument();
   });
 });

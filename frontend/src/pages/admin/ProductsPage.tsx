@@ -10,6 +10,7 @@ import {
   posCategoriesQuery,
   productCategoriesQuery,
   productsQuery,
+  unitsQuery,
   updateProduct,
   type Product,
   type ProductCreateInput,
@@ -18,7 +19,9 @@ import {
 import { CreateProductForm } from '@/features/catalog/CreateProductForm';
 import { EditProductForm } from '@/features/catalog/EditProductForm';
 import { PackagesPanel } from '@/features/catalog/PackagesPanel';
-import { ProductsTable } from '@/features/catalog/ProductsTable';
+import { ProductsTable, type ProductPanel } from '@/features/catalog/ProductsTable';
+import { setProductPricing, taxesQuery, type PricingOverrideInput } from '@/features/pricing/api';
+import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
 import { ApiError } from '@/lib/api';
 
 export function ProductsPage() {
@@ -30,12 +33,14 @@ export function ProductsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<{ productId: number; panel: ProductPanel } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
   const categories = useQuery(productCategoriesQuery);
   const posCategories = useQuery(posCategoriesQuery);
+  const units = useQuery(unitsQuery);
+  const taxes = useQuery(taxesQuery);
   const products = useQuery(
     productsQuery({
       ...(search ? { search } : {}),
@@ -108,6 +113,17 @@ export function ProductsPage() {
     onSuccess: invalidateProducts,
   });
 
+  const savePricingMutation = useMutation({
+    mutationFn: ({
+      productId,
+      input,
+    }: {
+      productId: number;
+      input: PricingOverrideInput & { cost?: string };
+    }) => setProductPricing(productId, input),
+    onSuccess: invalidateProducts,
+  });
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -162,6 +178,7 @@ export function ProductsPage() {
         <CreateProductForm
           categories={categories.data ?? []}
           posCategories={posCategories.data ?? []}
+          units={units.data ?? []}
           isPending={createMutation.isPending}
           submitError={createError}
           onCancel={() => {
@@ -196,27 +213,43 @@ export function ProductsPage() {
         <ProductsTable
           products={products.data}
           canManage={canManage}
-          expandedId={expandedId}
-          onToggleExpand={(id) => setExpandedId((current) => (current === id ? null : id))}
+          expanded={expanded}
+          onToggleExpand={(productId, panel) =>
+            setExpanded((current) =>
+              current?.productId === productId && current.panel === panel
+                ? null
+                : { productId, panel },
+            )
+          }
           onEdit={(product) => {
             setEditingProduct(product);
             setEditError(null);
           }}
           onDeactivate={(id) => deactivateMutation.mutate(id)}
           isDeactivating={deactivateMutation.isPending}
-          renderExpanded={(product) => (
-            <PackagesPanel
-              product={product}
-              isAddingPackage={addPackageMutation.isPending}
-              isAddingBarcode={addBarcodeMutation.isPending}
-              onAddPackage={(name, factor, barcode) =>
-                addPackageMutation.mutate({ productId: product.id, name, factor, barcode })
-              }
-              onAddBarcode={(packageId, barcode) =>
-                addBarcodeMutation.mutate({ productId: product.id, packageId, barcode })
-              }
-            />
-          )}
+          renderExpanded={(product, panel) =>
+            panel === 'packages' ? (
+              <PackagesPanel
+                product={product}
+                isAddingPackage={addPackageMutation.isPending}
+                isAddingBarcode={addBarcodeMutation.isPending}
+                onAddPackage={(name, factor, barcode) =>
+                  addPackageMutation.mutate({ productId: product.id, name, factor, barcode })
+                }
+                onAddBarcode={(packageId, barcode) =>
+                  addBarcodeMutation.mutate({ productId: product.id, packageId, barcode })
+                }
+              />
+            ) : (
+              <ProductPricingPanel
+                product={product}
+                category={categories.data?.find((c) => c.id === product.category_id)}
+                taxes={taxes.data ?? []}
+                isSaving={savePricingMutation.isPending}
+                onSave={(input) => savePricingMutation.mutate({ productId: product.id, input })}
+              />
+            )
+          }
         />
       )}
     </div>

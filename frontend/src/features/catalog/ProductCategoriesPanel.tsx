@@ -1,17 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
-import { createProductCategory, productCategoriesQuery } from '@/features/catalog/api';
+import {
+  createProductCategory,
+  productCategoriesQuery,
+  type ProductCategory,
+} from '@/features/catalog/api';
+import { setCategoryPricing, taxesQuery } from '@/features/pricing/api';
 import { ApiError } from '@/lib/api';
 
 /** Categorías de estantería (independientes de las categorías POS del TPV
- * — ver `PosCategoriesPanel`). Solo alta: no hay endpoint para
- * desactivarlas todavía en el backend. */
+ * — ver `PosCategoriesPanel`). Alta simple, más el margen/impuestos por
+ * defecto que heredan sus productos (ver `CategoryPricingRow`) — no hay
+ * endpoint para desactivarlas todavía en el backend. */
 export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   const categories = useQuery(productCategoriesQuery);
+  const taxes = useQuery(taxesQuery);
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (value: string) => createProductCategory(value),
@@ -41,13 +49,28 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
 
       {categories.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 
-      <ul className="mb-3 flex flex-wrap gap-2">
+      <ul className="mb-3 flex flex-col gap-1.5">
         {categories.data?.map((category) => (
-          <li
-            key={category.id}
-            className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
-          >
-            {category.name}
+          <li key={category.id}>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                {category.name}
+              </span>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedId((current) => (current === category.id ? null : category.id))
+                  }
+                  className="text-xs font-medium text-brand-700 hover:underline"
+                >
+                  {expandedId === category.id ? 'Ocultar precio' : 'Margen/impuestos'}
+                </button>
+              )}
+            </div>
+            {expandedId === category.id && (
+              <CategoryPricingRow category={category} taxes={taxes.data ?? []} />
+            )}
           </li>
         ))}
         {categories.data?.length === 0 && (
@@ -74,6 +97,80 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
         </form>
       )}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/** El margen/impuestos por defecto de una categoría — todo producto suyo
+ * sin su propio valor hereda esto (ver features/pricing/ProductPricingPanel,
+ * donde un producto lo pisa explícitamente). */
+function CategoryPricingRow({
+  category,
+  taxes,
+}: {
+  category: ProductCategory;
+  taxes: { id: number; name: string; rate: string }[];
+}) {
+  const queryClient = useQueryClient();
+  const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
+  const [taxIds, setTaxIds] = useState<Set<number>>(new Set(category.taxes.map((t) => t.id)));
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      setCategoryPricing(category.id, {
+        margin_rate: marginInput.trim() === '' ? null : marginInput,
+        tax_ids: [...taxIds],
+      }),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey }),
+  });
+
+  function toggleTax(id: number) {
+    setTaxIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div className="mt-1.5 rounded border border-slate-200 bg-slate-50 p-3">
+      <label className="mb-2 block text-xs text-slate-600">
+        Margen por defecto (%)
+        <input
+          type="text"
+          inputMode="decimal"
+          value={marginInput}
+          onChange={(event) => setMarginInput(event.target.value)}
+          placeholder="vacío = sin margen por defecto"
+          className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+        />
+      </label>
+
+      <p className="mb-1 text-xs text-slate-600">Impuestos por defecto</p>
+      <div className="mb-2 flex flex-wrap gap-3 text-xs">
+        {taxes.map((tax) => (
+          <label key={tax.id} className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={taxIds.has(tax.id)}
+              onChange={() => toggleTax(tax.id)}
+            />
+            {tax.name} ({tax.rate}%)
+          </label>
+        ))}
+        {taxes.length === 0 && <span className="text-slate-400">No hay impuestos creados.</span>}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+        className="rounded bg-brand-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+      >
+        {saveMutation.isPending ? 'Guardando…' : 'Guardar'}
+      </button>
     </div>
   );
 }

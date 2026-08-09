@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
-from app.catalog.models import PosCategory, Product, ProductBarcode, ProductCategory, ProductPackage
+from app.catalog.models import (
+    PosCategory,
+    Product,
+    ProductBarcode,
+    ProductCategory,
+    ProductPackage,
+    Unit,
+)
 from app.catalog.schemas import (
     BarcodeCreate,
     PackageCreate,
@@ -19,14 +27,36 @@ from app.catalog.schemas import (
     ProductCategoryCreate,
     ProductCreate,
     ProductUpdate,
+    UnitCreate,
 )
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 
-_PRODUCT_OPTIONS = (
-    selectinload(Product.category),
-    selectinload(Product.pos_category),
-    selectinload(Product.packages).selectinload(ProductPackage.barcodes),
-)
+
+# Built by a function, not a module-level tuple: `Product.taxes`/
+# `ProductCategory.taxes` (app.catalog.models) reference `Tax`
+# (app.pricing.models) by name only (avoids catalog importing pricing —
+# pricing already imports catalog, see that relationship's own docstring),
+# so SQLAlchemy can't resolve it until app.pricing.models has actually been
+# imported somewhere. Building these tuples at call time instead of import
+# time guarantees that already happened (the whole app is done importing
+# every router — pricing's included — well before the first real request
+# reaches any function that calls this), where building them eagerly at
+# `import app.catalog.service` time does not: that import happens from
+# `app.api.v1.router` *before* pricing's own line in the same file.
+def _product_options() -> tuple[Any, ...]:
+    return (
+        selectinload(Product.category),
+        selectinload(Product.pos_category),
+        selectinload(Product.packages).selectinload(ProductPackage.barcodes),
+        selectinload(Product.taxes),
+    )
+
+
+#: A category's own read shape (app.pricing's PATCH .../pricing endpoint
+#: returns one too) always needs its taxes alongside it. Same
+#: call-time-not-import-time reasoning as `_product_options`.
+def _category_options() -> tuple[Any, ...]:
+    return (selectinload(ProductCategory.taxes),)
 
 
 def _snapshot(product: Product) -> dict[str, Any]:
@@ -41,7 +71,7 @@ def _snapshot(product: Product) -> dict[str, Any]:
         "list_price": str(product.list_price),
         "tax_rate": str(product.tax_rate),
         "surcharge_rate": str(product.surcharge_rate),
-        "margin_rate": str(product.margin_rate),
+        "margin_rate": str(product.margin_rate) if product.margin_rate is not None else None,
         "price_formula": product.price_formula,
         "min_stock": str(product.min_stock),
         "track_lots": product.track_lots,
@@ -54,8 +84,21 @@ def _snapshot(product: Product) -> dict[str, Any]:
 
 
 async def list_categories(session: AsyncSession) -> list[ProductCategory]:
-    stmt = select(ProductCategory).order_by(ProductCategory.name)
+    stmt = select(ProductCategory).options(*_category_options()).order_by(ProductCategory.name)
     return list((await session.execute(stmt)).scalars())
+
+
+async def get_category(session: AsyncSession, category_id: int) -> ProductCategory:
+    stmt = (
+        select(ProductCategory)
+        .where(ProductCategory.id == category_id)
+        .options(*_category_options())
+        .execution_options(populate_existing=True)
+    )
+    category = (await session.execute(stmt)).scalar_one_or_none()
+    if category is None:
+        raise NotFoundError(f"Category {category_id} not found.")
+    return category
 
 
 async def create_category(session: AsyncSession, payload: ProductCategoryCreate) -> ProductCategory:
@@ -75,7 +118,31 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
         entity_id=category.id,
         after={"name": category.name},
     )
-    return category
+    return await get_category(session, category.id)
+
+
+# --- units ---------------------------------------------------------------------
+
+
+async def list_units(session: AsyncSession) -> list[Unit]:
+    stmt = select(Unit).order_by(Unit.name)
+    return list((await session.execute(stmt)).scalars())
+
+
+async def create_unit(session: AsyncSession, payload: UnitCreate) -> Unit:
+    existing = (
+        await session.execute(select(Unit).where(Unit.name == payload.name))
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise ConflictError("A unit with this name already exists.")
+
+    unit = Unit(name=payload.name)
+    session.add(unit)
+    await session.flush()
+    await audit.record(
+        session, action="created", entity_type="unit", entity_id=unit.id, after={"name": unit.name}
+    )
+    return unit
 
 
 # --- POS categories (phase 10) ------------------------------------------------
@@ -198,7 +265,7 @@ async def list_products(
     active_only: bool = True,
     search: str | None = None,
 ) -> list[Product]:
-    stmt = select(Product).options(*_PRODUCT_OPTIONS).order_by(Product.name)
+    stmt = select(Product).options(*_product_options()).order_by(Product.name)
     if active_only:
         stmt = stmt.where(Product.is_active.is_(True))
     if category_id is not None:
@@ -224,7 +291,7 @@ async def get_product(session: AsyncSession, product_id: int) -> Product:
     stmt = (
         select(Product)
         .where(Product.id == product_id)
-        .options(*_PRODUCT_OPTIONS)
+        .options(*_product_options())
         .execution_options(populate_existing=True)
     )
     product = (await session.execute(stmt)).scalar_one_or_none()
@@ -272,11 +339,12 @@ async def _assert_barcode_free(session: AsyncSession, barcode: str) -> None:
 
 
 async def create_product(session: AsyncSession, payload: ProductCreate) -> Product:
-    existing = (
-        await session.execute(select(Product).where(Product.sku == payload.sku))
-    ).scalar_one_or_none()
-    if existing is not None:
-        raise ConflictError("A product with this SKU already exists.")
+    if payload.sku is not None:
+        existing = (
+            await session.execute(select(Product).where(Product.sku == payload.sku))
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ConflictError("A product with this SKU already exists.")
     if payload.category_id is not None:
         await _category_or_422(session, payload.category_id)
     if payload.pos_category_id is not None:
@@ -284,8 +352,13 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
     if payload.base_barcode is not None:
         await _assert_barcode_free(session, payload.base_barcode)
 
+    # No SKU given (the normal case from the admin panel, see ProductCreate's
+    # own docstring): insert with a throwaway-unique placeholder, then
+    # rewrite it to "P######" from the row's own id once flush has assigned
+    # one — a plain string, not a real business key, nothing outside this
+    # function ever sees the placeholder.
     product = Product(
-        sku=payload.sku,
+        sku=payload.sku if payload.sku is not None else f"__pending_{uuid4().hex[:12]}",
         name=payload.name,
         description=payload.description,
         category_id=payload.category_id,
@@ -303,6 +376,9 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
     )
     session.add(product)
     await session.flush()
+    if payload.sku is None:
+        product.sku = f"P{product.id:06d}"
+        await session.flush()
 
     # Rule 3/4: every product gets exactly one base package (factor=1),
     # created here rather than exposed as a separate step — a product

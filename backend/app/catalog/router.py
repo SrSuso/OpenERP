@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query
 from app.auth.dependencies import SessionDep
 from app.catalog import service
 from app.catalog.models import PosCategory
+from app.catalog.presenters import category_to_read as _category_to_read
 from app.catalog.presenters import product_to_read as _to_read
 from app.catalog.schemas import (
     BarcodeCreate,
@@ -26,6 +27,8 @@ from app.catalog.schemas import (
     ProductCreate,
     ProductRead,
     ProductUpdate,
+    UnitCreate,
+    UnitRead,
 )
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import POS_CATEGORY_MANAGE, PRODUCT_MANAGE, PRODUCT_READ
@@ -51,8 +54,7 @@ def _pos_category_to_read(category: PosCategory) -> PosCategoryRead:
     "/product-categories", response_model=list[ProductCategoryRead], dependencies=[_require_read]
 )
 async def list_categories(session: SessionDep) -> list[ProductCategoryRead]:
-    categories = await service.list_categories(session)
-    return [ProductCategoryRead(id=c.id, name=c.name, is_active=c.is_active) for c in categories]
+    return [_category_to_read(c) for c in await service.list_categories(session)]
 
 
 @router.post(
@@ -64,8 +66,18 @@ async def list_categories(session: SessionDep) -> list[ProductCategoryRead]:
 async def create_category(
     payload: ProductCategoryCreate, session: SessionDep
 ) -> ProductCategoryRead:
-    category = await service.create_category(session, payload)
-    return ProductCategoryRead(id=category.id, name=category.name, is_active=category.is_active)
+    return _category_to_read(await service.create_category(session, payload))
+
+
+@router.get("/units", response_model=list[UnitRead], dependencies=[_require_read])
+async def list_units(session: SessionDep) -> list[UnitRead]:
+    return [UnitRead(id=u.id, name=u.name) for u in await service.list_units(session)]
+
+
+@router.post("/units", response_model=UnitRead, status_code=201, dependencies=[_require_manage])
+async def create_unit(payload: UnitCreate, session: SessionDep) -> UnitRead:
+    unit = await service.create_unit(session, payload)
+    return UnitRead(id=unit.id, name=unit.name)
 
 
 @router.get("/products", response_model=list[ProductRead], dependencies=[_require_read])
