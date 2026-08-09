@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import {
+  activateProduct,
   createProduct,
   deactivateProduct,
   posCategoriesQuery,
@@ -69,6 +70,11 @@ export function ProductsPage() {
 
   const deactivateMutation = useMutation({
     mutationFn: (id: number) => deactivateProduct(id),
+    onSuccess: invalidateProducts,
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: (id: number) => activateProduct(id),
     onSuccess: invalidateProducts,
   });
 
@@ -149,6 +155,8 @@ export function ProductsPage() {
           canManage={canManage}
           onDeactivate={(id) => deactivateMutation.mutate(id)}
           isDeactivating={deactivateMutation.isPending}
+          onActivate={(id) => activateMutation.mutate(id)}
+          isActivating={activateMutation.isPending}
         />
       )}
     </div>

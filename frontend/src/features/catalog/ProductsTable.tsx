@@ -8,6 +8,8 @@ interface ProductsTableProps {
   canManage: boolean;
   onDeactivate: (id: number) => void;
   isDeactivating: boolean;
+  onActivate: (id: number) => void;
+  isActivating: boolean;
 }
 
 /** Cada fila enlaza a la ficha completa del producto
@@ -19,7 +21,15 @@ export function ProductsTable({
   canManage,
   onDeactivate,
   isDeactivating,
+  onActivate,
+  isActivating,
 }: ProductsTableProps) {
+  function confirmDeactivate(product: Product) {
+    if (window.confirm(`¿Desactivar «${product.name}»? Dejará de venderse en el TPV.`)) {
+      onDeactivate(product.id);
+    }
+  }
+
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <table className="w-full text-left text-sm">
@@ -63,11 +73,21 @@ export function ProductsTable({
                 {canManage && product.is_active && (
                   <button
                     type="button"
-                    onClick={() => onDeactivate(product.id)}
+                    onClick={() => confirmDeactivate(product)}
                     disabled={isDeactivating}
                     className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Desactivar
+                  </button>
+                )}
+                {canManage && !product.is_active && (
+                  <button
+                    type="button"
+                    onClick={() => onActivate(product.id)}
+                    disabled={isActivating}
+                    className="text-sm font-medium text-brand-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Reactivar
                   </button>
                 )}
               </td>

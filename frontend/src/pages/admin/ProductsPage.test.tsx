@@ -70,6 +70,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
   const products: Product[] = options.products ?? [baseProduct()];
   const createCalls: Record<string, unknown>[] = [];
   const deactivateCalls: number[] = [];
+  const activateCalls: number[] = [];
   const pricingCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
@@ -125,6 +126,13 @@ function stubBackend(options: { products?: Product[] } = {}) {
         product.is_active = false;
         return Promise.resolve(jsonResponse(product));
       }
+      if (method === 'POST' && /\/products\/(\d+)\/activate$/.test(url)) {
+        const id = Number(/\/products\/(\d+)\/activate$/.exec(url)![1]);
+        activateCalls.push(id);
+        const product = products.find((p) => p.id === id)!;
+        product.is_active = true;
+        return Promise.resolve(jsonResponse(product));
+      }
       if (method === 'PATCH' && /\/products\/(\d+)\/pricing$/.test(url)) {
         const id = Number(/\/products\/(\d+)\/pricing$/.exec(url)![1]);
         const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
@@ -141,7 +149,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
     }),
   );
 
-  return { createCalls, deactivateCalls, pricingCalls };
+  return { createCalls, deactivateCalls, activateCalls, pricingCalls };
 }
 
 function renderPage() {
@@ -230,8 +238,22 @@ describe('ProductsPage', () => {
     );
   });
 
-  it('deactivates a product', async () => {
+  it('asks for confirmation before deactivating, and does nothing if cancelled', async () => {
     const backend = stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith('¿Desactivar «Agua 1L»? Dejará de venderse en el TPV.');
+    expect(backend.deactivateCalls).toEqual([]);
+    expect(screen.getByText('Activo')).toBeInTheDocument();
+  });
+
+  it('deactivates a product once confirmed, and offers to reactivate it', async () => {
+    const backend = stubBackend();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
     await screen.findByText('Agua 1L');
 
@@ -239,6 +261,11 @@ describe('ProductsPage', () => {
 
     await screen.findByText('Inactivo');
     expect(backend.deactivateCalls).toEqual([1]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
+
+    await screen.findByText('Activo');
+    expect(backend.activateCalls).toEqual([1]);
   });
 
   it('does not offer to create/deactivate a product without product.manage, but the detail link stays', async () => {

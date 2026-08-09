@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type TemplateFields } from '@/features/tickets/api';
+import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 
 const fieldsSchema = z.object({
   name: z.string().max(100).optional(),
@@ -38,6 +39,7 @@ export function TemplateFieldsForm({
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors },
   } = useForm<TemplateFormValues>({
     resolver: zodResolver(fieldsSchema),
@@ -47,6 +49,13 @@ export function TemplateFieldsForm({
       footer_text: defaults?.footer_text ?? '',
       show_tax_breakdown: defaults?.show_tax_breakdown ?? true,
     },
+  });
+
+  const preview = renderTicketPreview({
+    width_mm: Number(watch('width_mm')) as 58 | 80,
+    header_text: watch('header_text') ?? '',
+    footer_text: watch('footer_text') ?? '',
+    show_tax_breakdown: watch('show_tax_breakdown'),
   });
 
   const submit = handleSubmit((values) => {
@@ -73,52 +82,63 @@ export function TemplateFieldsForm({
         {mode === 'create' ? 'Nueva plantilla' : 'Revisar plantilla activa'}
       </h3>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {mode === 'create' && (
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="grid flex-1 gap-3 sm:grid-cols-2">
+          {mode === 'create' && (
+            <label className="text-sm text-slate-600">
+              Nombre
+              <input
+                type="text"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                {...register('name')}
+              />
+              {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
+            </label>
+          )}
+
           <label className="text-sm text-slate-600">
-            Nombre
-            <input
-              type="text"
+            Ancho del papel
+            <select
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              {...register('name')}
-            />
-            {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
+              {...register('width_mm')}
+            >
+              <option value="58">58 mm</option>
+              <option value="80">80 mm</option>
+            </select>
           </label>
-        )}
 
-        <label className="text-sm text-slate-600">
-          Ancho del papel
-          <select
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('width_mm')}
-          >
-            <option value="58">58 mm</option>
-            <option value="80">80 mm</option>
-          </select>
-        </label>
+          <label className="text-sm text-slate-600 sm:col-span-2">
+            Cabecera
+            <textarea
+              rows={3}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('header_text')}
+            />
+          </label>
 
-        <label className="text-sm text-slate-600 sm:col-span-2">
-          Cabecera
-          <textarea
-            rows={3}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('header_text')}
-          />
-        </label>
+          <label className="text-sm text-slate-600 sm:col-span-2">
+            Pie
+            <textarea
+              rows={3}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('footer_text')}
+            />
+          </label>
 
-        <label className="text-sm text-slate-600 sm:col-span-2">
-          Pie
-          <textarea
-            rows={3}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('footer_text')}
-          />
-        </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
+            <input type="checkbox" {...register('show_tax_breakdown')} />
+            Mostrar desglose de impuestos
+          </label>
+        </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('show_tax_breakdown')} />
-          Mostrar desglose de impuestos
-        </label>
+        <div className="lg:w-64 lg:shrink-0">
+          <p className="mb-1 text-xs font-semibold uppercase text-slate-500">
+            Vista previa (con datos de ejemplo)
+          </p>
+          <pre className="overflow-x-auto rounded border border-dashed border-slate-300 bg-slate-50 p-3 font-mono text-xs leading-tight text-slate-700">
+            {preview}
+          </pre>
+        </div>
       </div>
 
       {submitError && <p className="mt-3 text-sm text-red-600">{submitError}</p>}

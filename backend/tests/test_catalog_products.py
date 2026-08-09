@@ -153,6 +153,15 @@ async def test_update_product_and_deactivate(
     full_list = await client.get("/api/v1/products", params={"active_only": False})
     assert product_id in {p["id"] for p in full_list.json()}
 
+    # Rule 14's other half: deactivating never deletes, so it can always be
+    # switched back on (sold again, or deactivated by mistake).
+    activate_response = await client.post(f"/api/v1/products/{product_id}/activate")
+    assert activate_response.status_code == 200
+    assert activate_response.json()["is_active"] is True
+
+    active_list_again = await client.get("/api/v1/products")
+    assert product_id in {p["id"] for p in active_list_again.json()}
+
 
 async def test_cashier_can_read_but_not_manage_products(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]

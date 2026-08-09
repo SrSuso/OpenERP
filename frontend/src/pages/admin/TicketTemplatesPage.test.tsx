@@ -124,6 +124,8 @@ describe('TicketTemplatesPage', () => {
     await userEvent.type(screen.getByLabelText('Nombre'), 'Tienda principal');
     await userEvent.selectOptions(screen.getByLabelText('Ancho del papel'), '58');
     await userEvent.type(screen.getByLabelText('Cabecera'), 'Gracias por su compra');
+    // La vista previa se actualiza en vivo mientras se escribe, antes de guardar nada.
+    expect(screen.getByText(/Gracias por su compra/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
     await screen.findByText(/Activa: Tienda principal · v1 · 58 mm/);
@@ -140,6 +142,7 @@ describe('TicketTemplatesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Revisar' }));
     const footerInput = screen.getByLabelText('Pie');
     await userEvent.type(footerInput, 'Vuelva pronto');
+    expect(screen.getByText(/Vuelva pronto/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Guardar nueva versión' }));
 
     await screen.findByText(/Activa: Tienda principal · v2 · 58 mm/);

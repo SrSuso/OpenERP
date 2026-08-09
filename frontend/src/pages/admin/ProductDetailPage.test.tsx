@@ -95,6 +95,8 @@ function stubBackend() {
   const pricingCalls: Record<string, unknown>[] = [];
   const addPackageCalls: Record<string, unknown>[] = [];
   const linkSupplierCalls: { supplierId: number; body: Record<string, unknown> }[] = [];
+  const deactivateCalls: number[] = [];
+  const activateCalls: number[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -168,12 +170,29 @@ function stubBackend() {
         });
         return Promise.resolve(jsonResponse(product));
       }
+      if (method === 'POST' && /\/products\/1\/deactivate$/.test(url)) {
+        deactivateCalls.push(1);
+        product.is_active = false;
+        return Promise.resolve(jsonResponse(product));
+      }
+      if (method === 'POST' && /\/products\/1\/activate$/.test(url)) {
+        activateCalls.push(1);
+        product.is_active = true;
+        return Promise.resolve(jsonResponse(product));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { updateCalls, pricingCalls, addPackageCalls, linkSupplierCalls };
+  return {
+    updateCalls,
+    pricingCalls,
+    addPackageCalls,
+    linkSupplierCalls,
+    deactivateCalls,
+    activateCalls,
+  };
 }
 
 function renderPage() {
@@ -239,5 +258,34 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Compras' }));
     expect(await screen.findByText('Distribuciones Ejemplo SL')).toBeInTheDocument();
     expect(screen.getByText('#7')).toBeInTheDocument();
+  });
+
+  it('confirms before deactivating, and offers to reactivate afterwards', async () => {
+    const backend = stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith('¿Desactivar «Agua 1L»? Dejará de venderse en el TPV.');
+    expect(backend.deactivateCalls).toEqual([1]);
+    await screen.findByText(/Inactivo/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
+    expect(backend.activateCalls).toEqual([1]);
+    await screen.findByText(/Activo/);
+  });
+
+  it('does nothing when deactivation is cancelled', async () => {
+    const backend = stubBackend();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
+
+    expect(backend.deactivateCalls).toEqual([]);
+    expect(screen.getByText(/Activo/)).toBeInTheDocument();
   });
 });

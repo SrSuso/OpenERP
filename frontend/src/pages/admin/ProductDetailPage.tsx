@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import {
+  activateProduct,
   addBarcode,
   addPackage,
   deactivateProduct,
@@ -86,6 +87,11 @@ export function ProductDetailPage() {
     onSuccess: invalidateProduct,
   });
 
+  const activateMutation = useMutation({
+    mutationFn: () => activateProduct(productId),
+    onSuccess: invalidateProduct,
+  });
+
   const savePricingMutation = useMutation({
     mutationFn: (input: PricingOverrideInput & { cost?: string }) =>
       setProductPricing(productId, input),
@@ -148,11 +154,25 @@ export function ProductDetailPage() {
         {canManageProduct && data.is_active && (
           <button
             type="button"
-            onClick={() => deactivateMutation.mutate()}
+            onClick={() => {
+              if (window.confirm(`¿Desactivar «${data.name}»? Dejará de venderse en el TPV.`)) {
+                deactivateMutation.mutate();
+              }
+            }}
             disabled={deactivateMutation.isPending}
             className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-600 disabled:opacity-50"
           >
             Desactivar
+          </button>
+        )}
+        {canManageProduct && !data.is_active && (
+          <button
+            type="button"
+            onClick={() => activateMutation.mutate()}
+            disabled={activateMutation.isPending}
+            className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Reactivar
           </button>
         )}
       </div>

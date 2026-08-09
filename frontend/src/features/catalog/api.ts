@@ -261,6 +261,16 @@ export async function deactivateProduct(id: number): Promise<Product> {
   });
 }
 
+/** El otro lado de la regla 14 ("se desactiva, nunca se borra"): un
+ * producto desactivado por error, o que vuelve a venderse, se puede
+ * reactivar sin perder su SKU/historial. */
+export async function activateProduct(id: number): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${id}/activate`, {
+    method: 'POST',
+    schema: productSchema,
+  });
+}
+
 export async function addPackage(
   productId: number,
   payload: { name: string; factor: string; barcode: string | null },

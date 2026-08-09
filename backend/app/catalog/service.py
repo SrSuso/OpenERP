@@ -488,6 +488,26 @@ async def deactivate_product(session: AsyncSession, product_id: int) -> Product:
     return product
 
 
+async def activate_product(session: AsyncSession, product_id: int) -> Product:
+    """The other half of rule 14's "deactivated, never deleted": a product
+    stopped selling by mistake, or one that comes back into the catalogue,
+    can be switched active again — it never lost its id/SKU/history while
+    inactive, so this is just flipping the flag back."""
+    product = await get_product(session, product_id)
+    before = _snapshot(product)
+    product.is_active = True
+    await session.flush()
+    await audit.record(
+        session,
+        action="activated",
+        entity_type="product",
+        entity_id=product_id,
+        before=before,
+        after=_snapshot(product),
+    )
+    return product
+
+
 async def add_package(session: AsyncSession, product_id: int, payload: PackageCreate) -> Product:
     await get_product(session, product_id)  # 404s if the product doesn't exist
     existing = (

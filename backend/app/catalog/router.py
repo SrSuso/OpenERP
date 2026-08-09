@@ -182,6 +182,13 @@ async def deactivate_product(product_id: int, session: SessionDep) -> ProductRea
 
 
 @router.post(
+    "/products/{product_id}/activate", response_model=ProductRead, dependencies=[_require_manage]
+)
+async def activate_product(product_id: int, session: SessionDep) -> ProductRead:
+    return _to_read(await service.activate_product(session, product_id))
+
+
+@router.post(
     "/products/{product_id}/packages", response_model=ProductRead, dependencies=[_require_manage]
 )
 async def add_package(product_id: int, payload: PackageCreate, session: SessionDep) -> ProductRead:
