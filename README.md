@@ -22,9 +22,17 @@ recepciones, categorías POS, ventas, POS, pagos, devoluciones, tickets,
 dashboards, notificaciones, SMTP/outbox, seguridad, rendimiento,
 backup/restore, y el cierre: tests completos de aceptación de extremo a
 extremo sobre los 21 módulos anteriores juntos). Ver
-[`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada y
-[`docs/USAGE.md`](docs/USAGE.md) para cómo arrancar el proyecto, crear el
-primer administrador e iniciar sesión.
+[`docs/PHASES.md`](docs/PHASES.md) para el detalle de cada fase cerrada.
+
+**Documentación** (para instalarlo, administrarlo o usarlo — no sólo para
+desarrollar sobre él):
+
+| Documento | Para quién |
+| --- | --- |
+| [`docs/USAGE.md`](docs/USAGE.md) | Arranque en local para desarrollar, paso a paso. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Documentación técnica: cómo está construido el código, backend y frontend. |
+| [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) | Manual de administración: despliegue en la red interna, variables de entorno, backups, usuarios/roles, operación diaria. |
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Manual de usuario: cómo usar el TPV y el panel de administración, sin tecnicismos. |
 
 ---
 
@@ -138,6 +146,28 @@ restaura sobre una vacía y verifica fila por fila.
 
 ---
 
+## Despliegue en la red interna
+
+Lo anterior es para desarrollar en tu máquina. Para publicar OpenERP en un
+servidor de la red interna de la empresa (no sólo en `localhost`) hay un
+stack de Docker Compose de producción independiente — imágenes propias del
+backend/frontend, HTTPS con certificado interno y las tres piezas
+(API, worker, frontend) como servicios separados:
+
+```bash
+make prod-cert host=openerp.tuempresa.local   # certificado TLS interno
+cp .env.production.example .env.production    # y edítalo (contraseñas, dominio)
+make prod-build
+make prod-up
+make prod-migrate
+make prod-bootstrap-admin
+```
+
+Guía completa, con qué es cada pieza y cómo operarlo, en
+[`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md).
+
+---
+
 ## Estructura
 
 ```
@@ -153,12 +183,19 @@ backend/
   migrations/       # Alembic
   scripts/          # utilidades de desarrollo (devdb)
   tests/
+  Dockerfile        # imagen de producción (api/worker/migrate)
 frontend/
   src/              # features/, pages/admin, pages/pos, lib/
   tests/
+  Dockerfile        # imagen de producción (build + nginx)
 tests/e2e/          # Playwright: config + specs (proyecto npm de la raíz)
-docker/compose.yml  # PostgreSQL + Mailpit
-scripts/            # alternativas rootless a Docker
+docker/
+  compose.yml       # infraestructura de desarrollo: PostgreSQL + Mailpit
+  compose.prod.yml  # stack de producción: postgres, mailpit, migrate, api, worker, web
+  nginx/nginx.conf  # reverse proxy + TLS + estáticos del `web` de producción
+deploy/certs/       # certificado TLS interno (generado, no versionado)
+scripts/            # alternativas rootless a Docker, backup/restore, gen-internal-cert.sh
+docs/               # ARCHITECTURE.md, ADMIN_GUIDE.md, USER_GUIDE.md, USAGE.md, PHASES.md
 ```
 
 Hay tres proyectos npm: `frontend/` (la aplicación), la raíz (sólo la suite E2E,

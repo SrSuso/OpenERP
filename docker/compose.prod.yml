@@ -1,0 +1,118 @@
+name: openerp-prod
+
+# Production stack for a single internal server. Contrast with
+# docker/compose.yml, which only runs the *dev* infrastructure
+# (PostgreSQL + Mailpit) while the API/worker/frontend run on the host;
+# here every OpenERP process runs in its own container, and `web`
+# terminates TLS in front of everything (see docker/nginx/nginx.conf and
+# docs/ADMIN_GUIDE.md).
+#
+# Usage (from the repo root, or via the `make prod-*` targets):
+#   docker compose -f docker/compose.prod.yml --env-file .env.production up -d --wait
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+    ports:
+      # Bound to the server itself only — never exposed to the LAN.
+      # Lets scripts/backup-postgres.sh and scripts/restore-postgres.sh
+      # run unchanged from the host against 127.0.0.1.
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 5000
+    ports:
+      # UI/API only on the server itself — reach it with `ssh -L
+      # 8025:127.0.0.1:8025 <server>` rather than exposing it on the LAN.
+      # See docs/ADMIN_GUIDE.md if/when this is replaced by a real SMTP
+      # relay (change OPENERP_SMTP_* in .env.production; this service and
+      # its port mapping can then be dropped entirely).
+      - '127.0.0.1:8025:8025'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8025/readyz']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: applies Alembic migrations, then exits 0. `api` and `worker`
+  # both wait on it via `service_completed_successfully`, so a deploy never
+  # races the app against a schema that isn't there yet.
+  migrate:
+    build:
+      context: ../backend
+    image: openerp-backend:${OPENERP_VERSION:-latest}
+    env_file: ../.env.production
+    command: ['uv', 'run', 'alembic', 'upgrade', 'head']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: ../backend
+    image: openerp-backend:${OPENERP_VERSION:-latest}
+    env_file: ../.env.production
+    command:
+      ['uv', 'run', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000', '--workers', '2']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../backend
+    image: openerp-backend:${OPENERP_VERSION:-latest}
+    env_file: ../.env.production
+    command: ['uv', 'run', 'python', '-m', 'app.jobs.worker']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../frontend
+    image: openerp-frontend:${OPENERP_VERSION:-latest}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ../docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../deploy/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1/']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres-data:

@@ -153,3 +153,48 @@ build:  ## Production build of the frontend
 
 .PHONY: check
 check: lint test build  ## Everything CI runs, except E2E
+
+# --- production deployment (docs/ADMIN_GUIDE.md) ----------------------------
+
+PROD_COMPOSE := docker compose -f docker/compose.prod.yml --env-file .env.production
+
+.PHONY: prod-cert
+prod-cert:  ## Generate the internal TLS cert: make prod-cert host=openerp.miempresa.local
+	./scripts/gen-internal-cert.sh $(host)
+
+.PHONY: prod-build
+prod-build:  ## Build the production images (backend + frontend)
+	$(PROD_COMPOSE) build
+
+.PHONY: prod-up
+prod-up:  ## Start (or update) the production stack
+	$(PROD_COMPOSE) up -d --wait
+
+.PHONY: prod-down
+prod-down:  ## Stop the production stack (keeps the database volume)
+	$(PROD_COMPOSE) down
+
+.PHONY: prod-restart
+prod-restart:  ## Restart just the API and worker (e.g. after editing .env.production)
+	$(PROD_COMPOSE) up -d --force-recreate api worker
+
+.PHONY: prod-logs
+prod-logs:  ## Follow logs of every production service
+	$(PROD_COMPOSE) logs -f
+
+.PHONY: prod-ps
+prod-ps:  ## Show the status of every production service
+	$(PROD_COMPOSE) ps
+
+.PHONY: prod-migrate
+prod-migrate:  ## Apply pending migrations against the production database
+	$(PROD_COMPOSE) run --rm migrate
+
+.PHONY: prod-bootstrap-admin
+prod-bootstrap-admin:  ## Create the first admin user in production (interactive)
+	$(PROD_COMPOSE) run --rm api uv run python -m app.auth.bootstrap
+
+.PHONY: prod-backup
+prod-backup:  ## Back up the production database (needs pg_dump on the host PATH)
+	OPENERP_DATABASE_URL="$$(grep -m1 '^OPENERP_DATABASE_URL=' .env.production | cut -d= -f2- | sed 's/@postgres:/@127.0.0.1:/')" \
+	  ./scripts/backup-postgres.sh

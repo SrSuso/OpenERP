@@ -26,6 +26,12 @@ test-results/
 .env
 .env.local
 *.local
+.env.production
+
+# --- production TLS material (phase: production deployment) ---
+# Never commit private keys. scripts/gen-internal-cert.sh writes here.
+/deploy/certs/*
+!/deploy/certs/.gitkeep
 
 # --- database backups (phase 21) ---
 /backups/
