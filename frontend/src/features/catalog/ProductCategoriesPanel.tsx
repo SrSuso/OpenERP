@@ -116,8 +116,13 @@ function CategoryPricingRow({ category, taxes }: { category: ProductCategory; ta
         margin_rate: marginInput.trim() === '' ? null : marginInput,
         tax_ids: [...taxIds],
       }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
+      // Guardar recalcula el PVP de todos los productos de la categoría
+      // (backend: app.pricing.service.update_category_pricing) — refresca
+      // la lista de productos para que se vea al momento.
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+    },
   });
 
   function toggleTax(id: number) {

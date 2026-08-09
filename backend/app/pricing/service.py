@@ -8,7 +8,7 @@ in the same transaction, so the history can never miss one.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -19,6 +19,7 @@ from app.audit import service as audit
 from app.catalog import service as catalog
 from app.catalog.models import Product, ProductCategory
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.db.types import MONEY_QUANTUM
 from app.pricing import formula
 from app.pricing.formula import FormulaError
 from app.pricing.models import PricingSettings, ProductPriceHistory, Tax
@@ -75,11 +76,21 @@ def _snapshot(product: Product) -> dict[str, Any]:
     }
 
 
+def _quantize_price(value: Decimal) -> Decimal:
+    """A PVP is money — always settled to 2 decimals, however many the
+    formula's arithmetic (percentages, divisions...) produced along the
+    way. Same rounding unit/mode as ticket rendering
+    (``app.tickets.render``), just shared here via ``MONEY_QUANTUM``
+    instead of a second local constant."""
+    return value.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+
+
 def preview(payload: FormulaPreviewRequest) -> Decimal:
     """Validate and evaluate a formula against arbitrary sample inputs —
-    never touches the database."""
+    never touches the database. Rounded the same way a real save would be,
+    so what's shown here is exactly what ends up as ``list_price``."""
     try:
-        return formula.evaluate(
+        result = formula.evaluate(
             payload.formula,
             {
                 "cost": payload.cost,
@@ -90,6 +101,7 @@ def preview(payload: FormulaPreviewRequest) -> Decimal:
         )
     except FormulaError as exc:
         raise ValidationError(str(exc)) from exc
+    return _quantize_price(result)
 
 
 #: Everything effective_tax_rate/effective_margin_rate need loaded —
@@ -157,12 +169,14 @@ async def _taxes_by_id(session: AsyncSession, tax_ids: list[int]) -> list[Tax]:
 def _recompute_with(product: Product, settings: PricingSettings) -> None:
     """Evaluates the product's own formula, or the store-wide default if
     it has none, against its *effective* inputs — the actual "PVP
-    calculado automáticamente" the margin/tax panels trigger."""
+    calculado automáticamente" the margin/tax panels trigger. Result is
+    always rounded to 2 decimals — see `_quantize_price`."""
     text = product.price_formula or settings.formula
     try:
-        product.list_price = formula.evaluate(text, _variables(product))
+        result = formula.evaluate(text, _variables(product))
     except FormulaError as exc:
         raise ValidationError(str(exc)) from exc
+    product.list_price = _quantize_price(result)
 
 
 async def set_pricing_inputs(
@@ -220,9 +234,10 @@ async def set_price_formula(session: AsyncSession, product_id: int, formula_text
     before = _snapshot(product)
     product.price_formula = formula_text
     try:
-        product.list_price = formula.evaluate(formula_text, _variables(product))
+        result = formula.evaluate(formula_text, _variables(product))
     except FormulaError as exc:
         raise ValidationError(str(exc)) from exc
+    product.list_price = _quantize_price(result)
 
     await session.flush()
     await _record_history(session, product)

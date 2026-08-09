@@ -132,6 +132,10 @@ function EditTaxRow({ tax, onDone }: { tax: Tax; onDone: () => void }) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taxesQuery.queryKey });
+      // Cambiar la tasa recalcula el PVP de cada producto que la tenga
+      // aplicada (backend: app.pricing.service.update_tax) — sin esto la
+      // lista de productos se queda con el precio viejo hasta recargar.
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
       onDone();
     },
     onError: (err: unknown) => {

@@ -271,6 +271,26 @@ Puntos de diseño a tener en cuenta:
     de seguimiento justo después si se eligió alguno (ver
     `ProductsPage.tsx`'s `createMutation`), no un campo nuevo en el
     esquema de alta.
+  - **El PVP calculado siempre se redondea a 2 decimales** (pedido
+    explícitamente — la columna es `NUMERIC(18,6)`, pero un PVP es dinero
+    y siempre se cobra en céntimos): `app.pricing.service._quantize_price`
+    aplica `MONEY_QUANTUM` (`app/db/types.py`, ya existía para esto pero
+    no se usaba todavía) con `ROUND_HALF_UP` — mismo redondeo que usa
+    `app.tickets.render` para imprimir un ticket. Se aplica en los tres
+    sitios donde se evalúa una fórmula contra un producto real
+    (`_recompute_with`, `set_price_formula`) y también en `preview()`, así
+    lo que se ve al «Probar» la fórmula es exactamente el número que se
+    guardaría.
+  - **El PVP recalculado se ve al momento en la lista de productos, no
+    sólo tras recargar** (bug reportado: cambiar los impuestos de una
+    categoría o de un impuesto ya creado recalculaba bien en el backend,
+    pero la tabla de productos seguía en caché con el precio viejo).
+    `TaxesPanel`'s `EditTaxRow`, `PricingSettingsPanel` y
+    `ProductCategoriesPanel`'s `CategoryPricingRow` invalidan ahora
+    también `['catalog', 'products']` al guardar, además de su propia
+    query — el guardado del `ProductPricingPanel` (precio de un producto
+    concreto) ya lo hacía desde el principio, a través de
+    `ProductsPage.tsx`'s `invalidateProducts`.
   - `/admin/catalog` sigue el mismo patrón de pestañas que `/admin/access`
     (`CatalogPage.tsx`: barra de pestañas + `<Outlet />`), pero gated de
     una sola vez con `RequirePermission permission="product.read"` en vez

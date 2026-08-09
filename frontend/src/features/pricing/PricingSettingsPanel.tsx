@@ -39,6 +39,11 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
     mutationFn: () => updatePricingSettings(formula),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: pricingSettingsQuery.queryKey });
+      // Guardar recalcula el PVP de todo producto sin fórmula propia
+      // (backend: app.pricing.service.update_settings) — refresca la
+      // lista de productos para que se vea al momento, no sólo tras
+      // recargar la página.
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
       setFormulaInput(null);
       setError(null);
       setSaved(true);
