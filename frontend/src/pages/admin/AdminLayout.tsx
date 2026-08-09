@@ -2,29 +2,39 @@ import { NavLink, Outlet } from 'react-router';
 
 import { useAuth } from '@/features/auth/AuthContext';
 
+const linkClassName = ({ isActive }: { isActive: boolean }) =>
+  `rounded px-3 py-2 ${isActive ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-700 hover:bg-slate-100'}`;
+
 /**
- * Shell for `/admin`.
- *
- * The nav below is intentionally minimal in phase 1 (just "Inicio"); later
- * phases add entries filtered by `hasPermission(...)` — the backend
- * re-checks every one of them regardless.
+ * Shell for `/admin`. Nav entries beyond "Inicio" are filtered by
+ * `hasPermission(...)` — hiding a link is a convenience, the backend
+ * re-checks every one of them regardless (rule 11), and `RequirePermission`
+ * on the matching route in routes.tsx is the second line of defence if
+ * someone navigates there directly.
  */
 export function AdminLayout() {
-  const { user, logout } = useAuth();
+  const { user, hasPermission, logout } = useAuth();
 
   return (
     <div className="flex h-full">
       <aside className="w-56 shrink-0 border-r border-slate-200 bg-white p-4">
         <p className="mb-6 text-lg font-semibold text-brand-700">OpenERP</p>
         <nav className="flex flex-col gap-1 text-sm">
-          <NavLink
-            to="/admin"
-            end
-            className={({ isActive }) =>
-              `rounded px-3 py-2 ${isActive ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-700 hover:bg-slate-100'}`
-            }
-          >
+          <NavLink to="/admin" end className={linkClassName}>
             Inicio
+          </NavLink>
+          {hasPermission('users.manage') && (
+            <NavLink to="/admin/users" className={linkClassName}>
+              Usuarios
+            </NavLink>
+          )}
+          {hasPermission('roles.manage') && (
+            <NavLink to="/admin/roles" className={linkClassName}>
+              Roles
+            </NavLink>
+          )}
+          <NavLink to="/admin/account" className={linkClassName}>
+            Mi cuenta
           </NavLink>
         </nav>
       </aside>

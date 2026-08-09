@@ -127,17 +127,27 @@ make prod-logs      # Ctrl-C para dejar de seguir
 
 ### 2.5. Crear el primer administrador
 
-No hay registro público — se crea a mano, una vez por instalación:
+No hay registro público — se crea una vez por instalación. Con
+`OPENERP_BOOTSTRAP_ADMIN_EMAIL`/`OPENERP_BOOTSTRAP_ADMIN_PASSWORD` ya puestos
+en `.env.production` (la plantilla trae un valor por defecto, §2.3), no
+hace falta contestar nada:
 
 ```bash
 make prod-bootstrap-admin
-# admin email: admin@tuempresa.example
-# admin password: ********
-# confirm password: ********
 ```
 
 Es idempotente: si ya existe un admin con ese email, no hace nada y termina
-bien — seguro de dejar en un procedimiento de despliegue repetible.
+bien — seguro de dejar en un procedimiento de despliegue repetible. Si
+prefieres no dejar la contraseña por defecto en el `.env.production`
+(queda en texto plano en el servidor), borra esas dos líneas del fichero
+antes de este paso y el comando te la pedirá de forma interactiva en su
+lugar.
+
+**Entra y cámbiala de inmediato**: `https://<host>/admin` con el email y la
+contraseña de `.env.production` → **Mi cuenta** en el menú lateral →
+cambia la contraseña ahí. Mientras no lo hagas, cualquiera con el
+`.env.production` (o con el valor por defecto de este documento) tiene
+acceso de administrador total.
 
 ### 2.6. Verificar
 
@@ -208,32 +218,41 @@ disco.
 
 ## 5. Gestión de usuarios y roles
 
-No hay pantallas propias en `/admin` todavía para esto (ver
-[`ARCHITECTURE.md`](ARCHITECTURE.md), §3) — se hace contra la API, mejor
-desde Swagger UI ya autenticado: entra en `https://<host>/admin` con tu
-usuario admin y abre `https://<host>/api/docs` en la misma pestaña del
-navegador (reutiliza la sesión).
+Desde el propio panel, en `https://<host>/admin`: **Usuarios** y **Roles**
+en el menú lateral (visibles según tus permisos — ver §5.1). Ya no hace
+falta `curl` ni Swagger UI para esto; se dejan documentados al final de
+cada apartado sólo como referencia/alternativa si alguna vez la necesitas
+(automatizar un alta en un script, por ejemplo).
 
 ### 5.1. Roles de partida
 
 | Rol | Permisos por defecto | Pensado para |
 | --- | --- | --- |
 | `ADMIN` | todos | Dueño/gerencia con acceso total. |
-| `MANAGER` | `admin.access`, `users.manage` | Encargado de tienda: entra al panel y gestiona personal, no la estructura de roles. |
+| `MANAGER` | `admin.access`, `users.manage` | Encargado de tienda: entra al panel, da de alta/desactiva personal y les asigna un rol existente — no puede crear roles nuevos ni tocar qué permisos tiene cada uno. |
 | `CASHIER` | `pos.access` | Cajero: sólo el TPV. |
 
-No son una lista cerrada: cualquier `ADMIN` puede crear roles nuevos o
-cambiar los permisos de estos tres desde `PATCH /roles/{id}/permissions`.
-`GET /api/v1/permissions` da el catálogo completo y siempre actualizado de
-claves disponibles (a fecha de esta guía incluye, entre otras:
+No son una lista cerrada: en **Roles** (sólo visible para `ADMIN` —
+necesita `roles.manage`) se pueden crear roles nuevos y marcar qué
+permisos tiene cada uno. Referencia por `curl`:
+`GET /api/v1/permissions`/`PATCH /roles/{id}/permissions` — el catálogo
+completo de claves disponibles (a fecha de esta guía incluye, entre otras:
 `admin.access`, `pos.access`, `users.manage`, `roles.manage`, `audit.read`,
 `product.read`/`product.manage`, `pricing.manage`, `supplier.read`/`.manage`,
 `purchase.read`/`.manage`, `receiving.read`/`.manage`, `inventory.read`/`.manage`,
 `lot.read`/`.manage`, `sale.read`/`.manage`, `return.read`/`.manage`,
 `ticket.manage`, `pos_category.manage`, `dashboard.read`/`.manage`,
-`notification.read`/`.manage`, `job.read`/`.manage`).
+`notification.read`/`.manage`, `job.read`/`.manage`) también se ve en la
+propia pantalla **Roles** al crear/editar uno.
 
 ### 5.2. Dar de alta un usuario
+
+En **Usuarios** → **Nuevo usuario**: email, nombre, contraseña provisional
+y rol (desplegable con los roles existentes). La persona debería cambiar
+esa contraseña provisional desde **Mi cuenta** en su primer inicio de
+sesión — el panel no fuerza el cambio todavía, es cosa de decírselo.
+
+Por `curl`, si hiciera falta automatizarlo:
 
 ```bash
 curl -b cookies.txt https://<host>/api/v1/roles          # averigua el id del rol
@@ -247,13 +266,12 @@ curl -b cookies.txt -X POST https://<host>/api/v1/users \
   }'
 ```
 
-(O el equivalente desde Swagger UI, más cómodo si no manejas `curl`: cada
-endpoint tiene un botón *Try it out*.)
-
 ### 5.3. Desactivar un usuario
 
 Los usuarios nunca se borran (conservan su histórico) — se desactivan, y
-desde ese momento no pueden iniciar sesión:
+desde ese momento no pueden iniciar sesión. Botón **Desactivar** en la fila
+del usuario en **Usuarios** (no aparece en tu propia fila — no puedes
+desactivarte a ti mismo desde el panel). Por `curl`:
 
 ```bash
 curl -b cookies.txt -X POST https://<host>/api/v1/users/<id>/deactivate

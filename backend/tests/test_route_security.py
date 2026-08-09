@@ -2,8 +2,9 @@
 regression test over the actual route table rather than trusted by
 convention: every endpoint in the app must either require authentication
 (and, for anything beyond a user's own account, a specific permission via
-``app.rbac.dependencies.require_permission``) or be on the short, explicit
-allowlist below of what is legitimately public/self-service.
+``app.rbac.dependencies.require_permission`` or ``require_any_permission``)
+or be on the short, explicit allowlist below of what is legitimately
+public/self-service.
 
 Walks FastAPI's own dependency graph (``route.dependant``) rather than
 re-deriving permissions by hand, so this catches a router mounted without
@@ -103,10 +104,18 @@ def test_every_authenticated_route_checks_a_permission_unless_self_service() -> 
             if key in PUBLIC_ROUTES or key in SELF_SERVICE_ROUTES:
                 continue
             names = _dependency_names(route)
-            assert any("require_permission" in name for name in names), (
+            # require_any_permission's inner closure is also named "_check"
+            # (like require_permission's), qualified as
+            # "require_any_permission.<locals>._check" — contains
+            # "permission" but not the literal substring "require_permission",
+            # so it needs its own check alongside it.
+            assert any(
+                "require_permission" in name or "require_any_permission" in name for name in names
+            ), (
                 f"{key} is authenticated but checks no specific permission — "
-                f"add `require_permission(...)` (or add it to SELF_SERVICE_ROUTES "
-                f"if it genuinely only ever acts on the caller's own account)."
+                f"add `require_permission(...)`/`require_any_permission(...)` (or "
+                f"add it to SELF_SERVICE_ROUTES if it genuinely only ever acts on "
+                f"the caller's own account)."
             )
 
 

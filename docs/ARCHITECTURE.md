@@ -179,10 +179,12 @@ tras clonar el repo o desplegar una versión nueva.
 src/
   pages/
     auth/       # LoginPage
-    admin/      # AdminLayout, AdminHomePage (dashboards)
+    admin/      # AdminLayout, AdminHomePage (dashboards), UsersPage,
+                # RolesPage, AccountPage
     pos/        # PosLayout, PosHomePage (TPV)
     NotFoundPage.tsx
-  features/     # lógica de cada superficie: auth, dashboards, pos, health
+  features/     # lógica de cada superficie: auth, dashboards, pos, health,
+                # users, roles
   lib/          # cliente HTTP, utilidades compartidas
   routes.tsx    # mapa de rutas de React Router
 ```
@@ -198,12 +200,27 @@ Puntos de diseño a tener en cuenta:
 - **TanStack Query** para todo el estado de servidor (nada de estado de API
   duplicado a mano); **React Hook Form + Zod** para formularios y su
   validación.
-- El frontend hoy cubre **login, TPV completo y el panel de dashboards**
-  (widgets de fase 16). Gestión de usuarios/roles/catálogo/compras etc. no
-  tiene pantallas propias todavía — se opera contra la API (Swagger UI en
-  `/api/docs`), documentado en `USAGE.md` §3 y `ADMIN_GUIDE.md`. Añadir
-  esas pantallas es trabajo de frontend puro sobre una API que ya existe
-  por completo.
+- El frontend hoy cubre **login, TPV completo, el panel de dashboards**
+  (widgets de fase 16) y **usuarios/roles/mi cuenta** (`/admin/users`,
+  `/admin/roles`, `/admin/account` — añadido tras el cierre de las 22
+  fases, backend ya existente desde la fase 1). Catálogo/precios/compras/
+  inventario/lotes/devoluciones/tickets/notificaciones siguen sin pantalla
+  propia — se opera contra la API (Swagger UI en `/api/docs`), documentado
+  en `USAGE.md` §3. Añadir esas pantallas es trabajo de frontend puro sobre
+  una API que ya existe por completo, mismo patrón que `features/users`/
+  `features/roles`.
+  - `/admin/users` y `/admin/roles` están cada una detrás de su propio
+    `RequirePermission` en `routes.tsx` (`users.manage`/`roles.manage`,
+    igual que el backend) — `AdminLayout` sólo muestra el enlace si
+    `hasPermission(...)`, pero ocultar un enlace es cosmético, no la
+    barrera real (regla 11): navegar a la URL directamente sin el permiso
+    rebota a `/`.
+  - `GET /roles`/`GET /permissions` aceptan `users.manage` además de
+    `roles.manage` (`require_any_permission`, `app/rbac/dependencies.py`)
+    — una razón puramente de frontend: un `MANAGER` sin `roles.manage`
+    todavía necesita leer el catálogo de roles para el desplegable de
+    `CreateUserForm`. Crear/editar un rol sigue exigiendo `roles.manage`
+    a secas.
 - `tests/setup.ts` sustituye `<canvas>`/`ResizeObserver` (que jsdom no
   implementa) por dobles — los componentes de gráfico (ECharts) se prueban
   de verdad sólo en Playwright (E2E), no en Vitest.

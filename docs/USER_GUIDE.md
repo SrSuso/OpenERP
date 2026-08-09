@@ -117,21 +117,44 @@ Cada widget tiene su propio control para retirarlo del panel. Se quita sin
 más — no hay confirmación adicional ni forma de deshacerlo, aunque puedes
 volver a añadir el mismo indicador cuando quieras.
 
-### 3.4. Gestión de productos, compras, proveedores, usuarios...
+### 3.4. Usuarios (si tienes permiso)
+
+Enlace **Usuarios** en el menú lateral — sólo lo ves si tu cuenta puede
+gestionar personal (`ADMIN` o `MANAGER`). Desde ahí:
+
+- **Nuevo usuario**: email, nombre, una contraseña provisional y el rol
+  (cajero, encargado...). Dile a esa persona que la cambie en cuanto entre
+  la primera vez (§4).
+- Cambiar el rol de alguien: el desplegable de la columna «Rol» de su fila.
+- **Desactivar**: la persona deja de poder iniciar sesión, pero su
+  histórico (ventas, movimientos...) no se pierde — nunca se borra a
+  nadie. No puedes desactivar tu propia cuenta desde aquí.
+
+### 3.5. Roles y permisos (sólo `ADMIN`)
+
+Enlace **Roles** — sólo visible con permiso para gestionar roles (por
+defecto, únicamente `ADMIN`). Desde ahí puedes crear un rol nuevo (por
+ejemplo "Encargado de almacén") y marcar qué puede hacer cada uno, casilla
+a casilla. Cambia el conjunto completo de permisos de ese rol — no hay
+"añadir uno más", cada guardado deja el rol exactamente con lo que esté
+marcado en ese momento.
+
+### 3.6. Gestión de productos, compras, proveedores...
 
 Estas áreas todavía no tienen pantallas propias en el panel — las gestiona
 tu administrador directamente. Si necesitas dar de alta un producto, un
-proveedor, un pedido de compra o una cuenta nueva para un compañero,
-pídeselo a la persona que administra el sistema.
+proveedor o un pedido de compra, pídeselo a la persona que administra el
+sistema.
 
 ---
 
 ## 4. Cambiar tu contraseña
 
-Desde tu propia cuenta, sin necesitar permisos especiales, puedes cambiar tu
-contraseña en cualquier momento pidiéndoselo a tu administrador si el panel
-no tiene todavía una pantalla para hacerlo tú mismo — mientras tanto es una
-operación de un solo paso que cualquier administrador puede hacer por ti.
+Enlace **Mi cuenta** en el menú lateral de `/admin` (visible para
+cualquiera con acceso al panel): pide tu contraseña actual y la nueva dos
+veces. Si entraste con una contraseña provisional que te dio un
+administrador, cámbiala aquí lo antes posible — es el primer paso
+recomendado tras tu primer inicio de sesión.
 
 ---
 

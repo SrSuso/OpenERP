@@ -29,3 +29,24 @@ def require_permission(key: str) -> Callable[[User], Coroutine[Any, Any, User]]:
         return user
 
     return _check
+
+
+def require_any_permission(*keys: str) -> Callable[[User], Coroutine[Any, Any, User]]:
+    """Like :func:`require_permission`, but lets the request through if the
+    signed-in user's role grants *any one* of ``keys``.
+
+    Used to widen a couple of read-only RBAC endpoints (``GET /roles``,
+    ``GET /permissions``) beyond ``roles.manage`` alone: a MANAGER has
+    ``users.manage`` but not ``roles.manage`` (phase 1's own grants), yet
+    still needs to *read* the role catalogue to populate a role picker when
+    creating a user from the admin panel. The write endpoints
+    (``POST /roles``, ``PATCH /roles/{id}/permissions``) still require
+    ``roles.manage`` alone — see app.rbac.router.
+    """
+
+    async def _check(user: CurrentUser) -> User:
+        if user_permissions(user).isdisjoint(keys):
+            raise PermissionDeniedError(f"Missing permission: one of {list(keys)}")
+        return user
+
+    return _check

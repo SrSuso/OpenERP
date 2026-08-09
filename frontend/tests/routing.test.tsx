@@ -36,13 +36,14 @@ const UNAUTHENTICATED_ENVELOPE = {
   request_id: 'req-me',
 };
 
-function meBody(role: 'ADMIN' | 'CASHIER'): unknown {
+function meBody(role: 'ADMIN' | 'CASHIER', permissions?: string[]): unknown {
   return {
     id: 1,
     email: 'test@example.com',
     full_name: 'Test User',
     role,
-    permissions: role === 'ADMIN' ? ['admin.access', 'pos.access'] : ['pos.access'],
+    permissions:
+      permissions ?? (role === 'ADMIN' ? ['admin.access', 'pos.access'] : ['pos.access']),
   };
 }
 
@@ -51,7 +52,11 @@ function meBody(role: 'ADMIN' | 'CASHIER'): unknown {
  * what the signed-in user (if any) and the health check look like — routes
  * now depend on `/auth/me` (phase 1), not just `/health/live` (phase 0).
  */
-function stubFetch(options: { me: 'admin' | 'cashier' | 'signed-out'; health?: 'ok' | 'down' }) {
+function stubFetch(options: {
+  me: 'admin' | 'cashier' | 'signed-out';
+  health?: 'ok' | 'down';
+  permissions?: string[];
+}) {
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL) => {
@@ -61,7 +66,9 @@ function stubFetch(options: { me: 'admin' | 'cashier' | 'signed-out'; health?: '
         if (options.me === 'signed-out') {
           return Promise.resolve(jsonResponse(UNAUTHENTICATED_ENVELOPE, { status: 401 }));
         }
-        return Promise.resolve(jsonResponse(meBody(options.me === 'admin' ? 'ADMIN' : 'CASHIER')));
+        return Promise.resolve(
+          jsonResponse(meBody(options.me === 'admin' ? 'ADMIN' : 'CASHIER', options.permissions)),
+        );
       }
 
       if (url.includes('/health/live')) {
@@ -70,6 +77,13 @@ function stubFetch(options: { me: 'admin' | 'cashier' | 'signed-out'; health?: '
             ? jsonResponse(HEALTH_DOWN_ENVELOPE, { status: 503 })
             : jsonResponse(HEALTH_OK),
         );
+      }
+
+      // /admin/users and /admin/roles (only reached in the tests that
+      // navigate there) fetch their own lists on mount — empty is enough
+      // to get past the loading state and check what rendered.
+      if (url.endsWith('/users') || url.endsWith('/roles') || url.endsWith('/permissions')) {
+        return Promise.resolve(jsonResponse([]));
       }
 
       return Promise.reject(new Error(`Unexpected fetch to ${url} in test`));
@@ -166,5 +180,51 @@ describe('routing', () => {
     await waitFor(() =>
       expect(screen.getByTestId('api-status')).toHaveTextContent(/sin conexión/i),
     );
+  });
+
+  it('bounces an admin without users.manage away from /admin/users', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'pos.access'] });
+
+    renderAt('/admin/users');
+
+    // RequirePermission sends it to `/`, which resolves back to /admin's
+    // own index for this admin.access user (HomeRedirect) — never /login.
+    expect(
+      await screen.findByRole('heading', { name: /panel de administración/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('lets a MANAGER (users.manage, no roles.manage) into /admin/users', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'users.manage'] });
+
+    renderAt('/admin/users');
+
+    expect(await screen.findByRole('heading', { name: /^usuarios$/i })).toBeInTheDocument();
+  });
+
+  it('bounces a MANAGER without roles.manage away from /admin/roles', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'users.manage'] });
+
+    renderAt('/admin/roles');
+
+    expect(
+      await screen.findByRole('heading', { name: /panel de administración/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('lets an ADMIN (roles.manage) into /admin/roles', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'roles.manage'] });
+
+    renderAt('/admin/roles');
+
+    expect(await screen.findByRole('heading', { name: /^roles$/i })).toBeInTheDocument();
+  });
+
+  it('lets any signed-in admin-panel user into /admin/account, no extra permission needed', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access'] });
+
+    renderAt('/admin/account');
+
+    expect(await screen.findByRole('heading', { name: /mi cuenta/i })).toBeInTheDocument();
   });
 });

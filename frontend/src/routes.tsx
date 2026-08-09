@@ -2,8 +2,11 @@ import { type RouteObject } from 'react-router';
 
 import { HomeRedirect, RequireAuth, RequirePermission } from '@/features/auth/guards';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { AccountPage } from '@/pages/admin/AccountPage';
 import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
+import { RolesPage } from '@/pages/admin/RolesPage';
+import { UsersPage } from '@/pages/admin/UsersPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { PosHomePage } from '@/pages/pos/PosHomePage';
 import { PosLayout } from '@/pages/pos/PosLayout';
@@ -29,7 +32,20 @@ export const routes: RouteObject[] = [
           {
             path: '/admin',
             element: <AdminLayout />,
-            children: [{ index: true, element: <AdminHomePage /> }],
+            children: [
+              { index: true, element: <AdminHomePage /> },
+              // No extra permission needed beyond admin.access — the
+              // backend only ever touches the caller's own row here.
+              { path: 'account', element: <AccountPage /> },
+              {
+                element: <RequirePermission permission="users.manage" />,
+                children: [{ path: 'users', element: <UsersPage /> }],
+              },
+              {
+                element: <RequirePermission permission="roles.manage" />,
+                children: [{ path: 'roles', element: <RolesPage /> }],
+              },
+            ],
           },
         ],
       },

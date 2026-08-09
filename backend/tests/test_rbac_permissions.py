@@ -49,16 +49,33 @@ async def test_cashier_gets_403_managing_users(
     assert response.json()["error"]["code"] == "permission_denied"
 
 
-async def test_manager_can_manage_users_but_not_roles(
+async def test_manager_can_manage_users_and_read_roles_but_not_write_them(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
+    """MANAGER has users.manage but not roles.manage. It can read the role
+    catalogue (needed to assign a role when creating a user from the admin
+    panel) but still can't create a role or change one's permissions —
+    see app.rbac.router's own docstring on the read/write split."""
     await login(role_name="MANAGER")
 
     users_response = await client.get("/api/v1/users")
     assert users_response.status_code == 200
 
     roles_response = await client.get("/api/v1/roles")
-    assert roles_response.status_code == 403
+    assert roles_response.status_code == 200
+
+    permissions_response = await client.get("/api/v1/permissions")
+    assert permissions_response.status_code == 200
+
+    create_response = await client.post(
+        "/api/v1/roles", json={"name": "SHOULD_FAIL", "description": ""}
+    )
+    assert create_response.status_code == 403
+
+    # The permission check runs before the handler body, so this is 403
+    # regardless of whether role id 1 exists in this test's database.
+    grant_response = await client.patch("/api/v1/roles/1/permissions", json={"permission_keys": []})
+    assert grant_response.status_code == 403
 
 
 async def test_unauthenticated_request_is_401_not_403(client: AsyncClient) -> None:
