@@ -111,6 +111,31 @@ export async function cancelOrder(orderId: number): Promise<PurchaseOrder> {
   });
 }
 
+// --- historial de compras de un producto ------------------------------------
+
+export const productPurchaseHistoryEntrySchema = z.object({
+  purchase_order_id: z.number(),
+  date: z.string(),
+  status: z.string(),
+  supplier_id: z.number(),
+  supplier_name: z.string(),
+  package_name: z.string(),
+  quantity_packages: z.string(),
+  unit_cost: z.string(),
+});
+export type ProductPurchaseHistoryEntry = z.infer<typeof productPurchaseHistoryEntrySchema>;
+
+export function productPurchaseHistoryQuery(productId: number) {
+  return queryOptions({
+    queryKey: ['purchasing', 'product-history', productId] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/products/${productId}/purchase-history`, {
+        schema: z.array(productPurchaseHistoryEntrySchema),
+        signal,
+      }),
+  });
+}
+
 // --- recepciones de mercancía (fase 9) --------------------------------------
 
 export const goodsReceiptLineSchema = z.object({

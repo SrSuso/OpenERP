@@ -20,6 +20,7 @@ import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
 import { LotsPage } from '@/pages/admin/LotsPage';
 import { NotificationsPage } from '@/pages/admin/NotificationsPage';
 import { OutboxPage } from '@/pages/admin/OutboxPage';
+import { ProductDetailPage } from '@/pages/admin/ProductDetailPage';
 import { ReturnsPage } from '@/pages/admin/ReturnsPage';
 import { TicketTemplatesPage } from '@/pages/admin/TicketTemplatesPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
@@ -100,6 +101,10 @@ export const routes: RouteObject[] = [
                       { path: 'categories', element: <CategoriesPage /> },
                     ],
                   },
+                  // Fuera del Outlet de CatalogPage a propósito — la ficha de
+                  // un producto es su propia pantalla, no una pestaña más
+                  // junto a "Productos"/"Categorías" (ver ProductDetailPage).
+                  { path: 'products/:productId', element: <ProductDetailPage /> },
                 ],
               },
               {

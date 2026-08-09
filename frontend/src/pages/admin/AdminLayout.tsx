@@ -30,7 +30,7 @@ export function AdminLayout() {
           )}
           {hasPermission('pricing.manage') && (
             <NavLink to="/admin/pricing" className={linkClassName}>
-              Precios
+              Impuestos
             </NavLink>
           )}
           {hasPermission('supplier.read') && (

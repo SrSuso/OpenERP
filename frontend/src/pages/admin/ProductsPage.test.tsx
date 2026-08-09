@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthContext';
@@ -68,9 +69,7 @@ function baseProduct(): Product {
 function stubBackend(options: { products?: Product[] } = {}) {
   const products: Product[] = options.products ?? [baseProduct()];
   const createCalls: Record<string, unknown>[] = [];
-  const updateCalls: { id: number; body: Record<string, unknown> }[] = [];
   const deactivateCalls: number[] = [];
-  const addPackageCalls: { productId: number; body: Record<string, unknown> }[] = [];
   const pricingCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
@@ -119,14 +118,6 @@ function stubBackend(options: { products?: Product[] } = {}) {
         products.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
-      if (method === 'PATCH' && /\/products\/(\d+)$/.test(url)) {
-        const id = Number(/\/products\/(\d+)$/.exec(url)![1]);
-        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
-        updateCalls.push({ id, body });
-        const product = products.find((p) => p.id === id)!;
-        Object.assign(product, body);
-        return Promise.resolve(jsonResponse(product));
-      }
       if (method === 'POST' && /\/products\/(\d+)\/deactivate$/.test(url)) {
         const id = Number(/\/products\/(\d+)\/deactivate$/.exec(url)![1]);
         deactivateCalls.push(id);
@@ -134,32 +125,15 @@ function stubBackend(options: { products?: Product[] } = {}) {
         product.is_active = false;
         return Promise.resolve(jsonResponse(product));
       }
-      if (method === 'POST' && /\/products\/(\d+)\/packages$/.test(url)) {
-        const id = Number(/\/products\/(\d+)\/packages$/.exec(url)![1]);
-        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
-        addPackageCalls.push({ productId: id, body });
-        const product = products.find((p) => p.id === id)!;
-        product.packages.push({
-          id: product.packages.length + 10,
-          name: body['name'] as string,
-          factor: body['factor'] as string,
-          is_base: false,
-          barcodes: body['barcode'] ? [body['barcode'] as string] : [],
-        });
-        return Promise.resolve(jsonResponse(product));
-      }
       if (method === 'PATCH' && /\/products\/(\d+)\/pricing$/.test(url)) {
         const id = Number(/\/products\/(\d+)\/pricing$/.exec(url)![1]);
         const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
         pricingCalls.push({ id, body });
         const product = products.find((p) => p.id === id)!;
-        if ('cost' in body) product.cost = body['cost'] as string;
-        if ('margin_rate' in body) product.margin_rate = body['margin_rate'] as string | null;
         if ('tax_ids' in body) {
           const ids = body['tax_ids'] as number[];
           product.taxes = TAXES.filter((t) => ids.includes(t.id));
         }
-        product.list_price = '9.990000';
         return Promise.resolve(jsonResponse(product));
       }
 
@@ -167,7 +141,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
     }),
   );
 
-  return { createCalls, updateCalls, deactivateCalls, addPackageCalls, pricingCalls };
+  return { createCalls, deactivateCalls, pricingCalls };
 }
 
 function renderPage() {
@@ -175,7 +149,9 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ProductsPage />
+        <MemoryRouter initialEntries={['/admin/catalog/products']}>
+          <ProductsPage />
+        </MemoryRouter>
       </AuthProvider>
     </QueryClientProvider>,
   );
@@ -243,20 +219,15 @@ describe('ProductsPage', () => {
     expect(backend.pricingCalls).toEqual([{ id: 99, body: { tax_ids: [1] } }]);
   });
 
-  it('edits a product (catalog-only fields)', async () => {
-    const backend = stubBackend();
+  it('links each row to its product detail page instead of editing inline', async () => {
+    stubBackend();
     renderPage();
     await screen.findByText('Agua 1L');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
-    const nameInput = screen.getByDisplayValue('Agua 1L');
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, 'Agua mineral 1L');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    expect(await screen.findByText('Agua mineral 1L')).toBeInTheDocument();
-    expect(backend.updateCalls).toHaveLength(1);
-    expect(backend.updateCalls[0]!.body).toMatchObject({ name: 'Agua mineral 1L' });
+    expect(screen.getByRole('link', { name: 'Ver ficha' })).toHaveAttribute(
+      'href',
+      '/admin/catalog/products/1',
+    );
   });
 
   it('deactivates a product', async () => {
@@ -270,43 +241,7 @@ describe('ProductsPage', () => {
     expect(backend.deactivateCalls).toEqual([1]);
   });
 
-  it('adds a package (presentación) from the expanded row', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Presentaciones' }));
-    await userEvent.type(screen.getByLabelText('Nueva presentación'), 'PACK 6');
-    await userEvent.type(screen.getByLabelText('Factor'), '6');
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir presentación' }));
-
-    await screen.findByText('PACK 6');
-    expect(backend.addPackageCalls).toEqual([
-      { productId: 1, body: { name: 'PACK 6', factor: '6', barcode: null } },
-    ]);
-  });
-
-  it('sets a product-level margin and tax override from the Precio panel', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Precio' }));
-    const marginInput = screen.getByPlaceholderText('heredado: 30%');
-    await userEvent.type(marginInput, '15');
-    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
-
-    // El nuevo PVP aparece tanto en la columna "Precio" de la fila como en
-    // "PVP actual" del propio panel — findAllByText en vez de findByText,
-    // que exige un único nodo.
-    expect(await screen.findAllByText('9,99 €')).not.toHaveLength(0);
-    expect(backend.pricingCalls).toEqual([
-      { id: 1, body: { cost: '0.300000', margin_rate: '15', tax_ids: [1] } },
-    ]);
-  });
-
-  it('does not offer to create/edit/deactivate/price without product.manage', async () => {
+  it('does not offer to create/deactivate a product without product.manage, but the detail link stays', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) => {
@@ -330,8 +265,7 @@ describe('ProductsPage', () => {
     await screen.findByText('Agua 1L');
 
     expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Precio' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ver ficha' })).toBeInTheDocument();
   });
 });

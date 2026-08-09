@@ -175,6 +175,14 @@ export interface ProductFilters {
   search?: string;
 }
 
+export function productQuery(id: number) {
+  return queryOptions({
+    queryKey: ['catalog', 'product', id] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/products/${id}`, { schema: productSchema, signal }),
+  });
+}
+
 export function productsQuery(filters: ProductFilters) {
   const params = new URLSearchParams();
   if (filters.categoryId !== undefined) params.set('category_id', String(filters.categoryId));

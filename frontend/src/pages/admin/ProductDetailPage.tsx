@@ -1,0 +1,283 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Link, useParams } from 'react-router';
+
+import { useAuth } from '@/features/auth/AuthContext';
+import {
+  addBarcode,
+  addPackage,
+  deactivateProduct,
+  posCategoriesQuery,
+  productCategoriesQuery,
+  productQuery,
+  updateProduct,
+  type ProductUpdateInput,
+} from '@/features/catalog/api';
+import { EditProductForm } from '@/features/catalog/EditProductForm';
+import { PackagesPanel } from '@/features/catalog/PackagesPanel';
+import { ProductPurchaseHistoryTable } from '@/features/catalog/ProductPurchaseHistoryTable';
+import { ProductSuppliersPanel } from '@/features/catalog/ProductSuppliersPanel';
+import { CreateLotForm } from '@/features/lots/CreateLotForm';
+import { LotBalancesPanel } from '@/features/lots/LotBalancesPanel';
+import { LotsTable } from '@/features/lots/LotsTable';
+import { createLot, lotsQuery, type LotCreateInput } from '@/features/lots/api';
+import { setProductPricing, taxesQuery, type PricingOverrideInput } from '@/features/pricing/api';
+import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
+import { productPurchaseHistoryQuery } from '@/features/purchasing/api';
+import { suppliersQuery } from '@/features/suppliers/api';
+
+type Tab = 'general' | 'pricing' | 'packages' | 'suppliers' | 'lots' | 'purchases';
+
+const tabClassName = (active: boolean) =>
+  `border-b-2 px-4 py-2 text-sm font-medium ${
+    active
+      ? 'border-brand-700 text-brand-700'
+      : 'border-transparent text-slate-500 hover:text-slate-700'
+  }`;
+
+/** Ficha de producto — todo lo relacionado con un producto se edita desde
+ * aquí, en pestañas (al estilo del formulario de producto de Odoo), en vez
+ * de repartido entre filas expandibles y pantallas de otros módulos. Cada
+ * pestaña sigue gateada por el permiso del módulo al que pertenece
+ * (product.manage / pricing.manage / supplier.manage / lot.manage) — sólo
+ * se reorganiza dónde vive el formulario, no quién puede usarlo. */
+export function ProductDetailPage() {
+  const { productId: productIdParam } = useParams<{ productId: string }>();
+  const productId = Number(productIdParam);
+  const { hasPermission } = useAuth();
+
+  const canManageProduct = hasPermission('product.manage');
+  const canManagePricing = hasPermission('pricing.manage');
+  const canManageSuppliers = hasPermission('supplier.manage');
+  const canManageLots = hasPermission('lot.manage');
+
+  const [tab, setTab] = useState<Tab>('general');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [createLotError, setCreateLotError] = useState<string | null>(null);
+
+  const product = useQuery(productQuery(productId));
+  const categories = useQuery(productCategoriesQuery);
+  const posCategories = useQuery(posCategoriesQuery);
+  const taxes = useQuery(taxesQuery);
+  const suppliers = useQuery(suppliersQuery(true));
+  const purchaseHistory = useQuery({
+    ...productPurchaseHistoryQuery(productId),
+    enabled: tab === 'purchases',
+  });
+  const lots = useQuery({ ...lotsQuery(productId), enabled: tab === 'lots' });
+  const queryClient = useQueryClient();
+
+  const invalidateProduct = () => {
+    void queryClient.invalidateQueries({ queryKey: ['catalog', 'product', productId] });
+    void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: ProductUpdateInput) => updateProduct(productId, payload),
+    onSuccess: () => {
+      invalidateProduct();
+      setEditError(null);
+    },
+    onError: () => setEditError('No se ha podido guardar el producto.'),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: () => deactivateProduct(productId),
+    onSuccess: invalidateProduct,
+  });
+
+  const savePricingMutation = useMutation({
+    mutationFn: (input: PricingOverrideInput & { cost?: string }) =>
+      setProductPricing(productId, input),
+    onSuccess: invalidateProduct,
+  });
+
+  const addPackageMutation = useMutation({
+    mutationFn: ({
+      name,
+      factor,
+      barcode,
+    }: {
+      name: string;
+      factor: string;
+      barcode: string | null;
+    }) => addPackage(productId, { name, factor, barcode }),
+    onSuccess: invalidateProduct,
+  });
+
+  const addBarcodeMutation = useMutation({
+    mutationFn: ({ packageId, barcode }: { packageId: number; barcode: string }) =>
+      addBarcode(productId, packageId, barcode),
+    onSuccess: invalidateProduct,
+  });
+
+  const createLotMutation = useMutation({
+    mutationFn: (payload: LotCreateInput) => createLot(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['lots', 'list', productId] });
+      setCreateLotError(null);
+    },
+    onError: () => setCreateLotError('No se ha podido crear el lote.'),
+  });
+
+  if (product.isPending) return <p className="text-sm text-slate-500">Cargando…</p>;
+  if (product.isError || !product.data) {
+    return <p className="text-sm text-red-600">No se ha encontrado el producto.</p>;
+  }
+
+  const data = product.data;
+
+  return (
+    <section>
+      <Link
+        to="/admin/catalog/products"
+        className="mb-2 inline-block text-sm text-brand-700 hover:underline"
+      >
+        ← Volver al catálogo
+      </Link>
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {data.name} <span className="font-mono text-base text-slate-400">{data.sku}</span>
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {data.category_name ?? 'Sin categoría'} · {data.is_active ? 'Activo' : 'Inactivo'}
+          </p>
+        </div>
+        {canManageProduct && data.is_active && (
+          <button
+            type="button"
+            onClick={() => deactivateMutation.mutate()}
+            disabled={deactivateMutation.isPending}
+            className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-600 disabled:opacity-50"
+          >
+            Desactivar
+          </button>
+        )}
+      </div>
+
+      <nav
+        className="mb-6 flex flex-wrap gap-2 border-b border-slate-200"
+        aria-label="Ficha de producto"
+      >
+        <button
+          type="button"
+          onClick={() => setTab('general')}
+          className={tabClassName(tab === 'general')}
+        >
+          General
+        </button>
+        {canManagePricing && (
+          <button
+            type="button"
+            onClick={() => setTab('pricing')}
+            className={tabClassName(tab === 'pricing')}
+          >
+            Precios
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setTab('packages')}
+          className={tabClassName(tab === 'packages')}
+        >
+          Presentaciones
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('suppliers')}
+          className={tabClassName(tab === 'suppliers')}
+        >
+          Proveedores
+        </button>
+        {data.track_lots && (
+          <button
+            type="button"
+            onClick={() => setTab('lots')}
+            className={tabClassName(tab === 'lots')}
+          >
+            Lotes
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setTab('purchases')}
+          className={tabClassName(tab === 'purchases')}
+        >
+          Compras
+        </button>
+      </nav>
+
+      {tab === 'general' && (
+        <EditProductForm
+          product={data}
+          categories={categories.data ?? []}
+          posCategories={posCategories.data ?? []}
+          isPending={updateMutation.isPending}
+          submitError={editError}
+          onCancel={() => setEditError(null)}
+          onSubmit={(payload) => updateMutation.mutate(payload)}
+        />
+      )}
+
+      {tab === 'pricing' && canManagePricing && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <ProductPricingPanel
+            product={data}
+            category={categories.data?.find((c) => c.id === data.category_id)}
+            taxes={taxes.data ?? []}
+            isSaving={savePricingMutation.isPending}
+            onSave={(input) => savePricingMutation.mutate(input)}
+          />
+        </div>
+      )}
+
+      {tab === 'packages' && (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <PackagesPanel
+            product={data}
+            isAddingPackage={addPackageMutation.isPending}
+            isAddingBarcode={addBarcodeMutation.isPending}
+            onAddPackage={(name, factor, barcode) =>
+              addPackageMutation.mutate({ name, factor, barcode })
+            }
+            onAddBarcode={(packageId, barcode) => addBarcodeMutation.mutate({ packageId, barcode })}
+          />
+        </div>
+      )}
+
+      {tab === 'suppliers' && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <ProductSuppliersPanel
+            productId={productId}
+            suppliers={suppliers.data ?? []}
+            canManage={canManageSuppliers}
+          />
+        </div>
+      )}
+
+      {tab === 'lots' && data.track_lots && (
+        <div className="space-y-4">
+          {canManageLots && (
+            <CreateLotForm
+              productId={productId}
+              suppliers={suppliers.data ?? []}
+              isPending={createLotMutation.isPending}
+              submitError={createLotError}
+              onSubmit={(payload) => createLotMutation.mutate(payload)}
+            />
+          )}
+          {lots.data && <LotsTable lots={lots.data} />}
+          <LotBalancesPanel productId={productId} canManage={canManageLots} />
+        </div>
+      )}
+
+      {tab === 'purchases' && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          {purchaseHistory.data && <ProductPurchaseHistoryTable entries={purchaseHistory.data} />}
+        </div>
+      )}
+    </section>
+  );
+}

@@ -10,7 +10,7 @@
 // happy-dom doesn't shadow those globals, so this file alone opts out of
 // jsdom (the project default, used everywhere else) until vitest 4 ships.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -293,8 +293,12 @@ describe('routing', () => {
 
     renderAt('/admin/pricing');
 
-    await screen.findByRole('link', { name: 'Fórmula' });
-    expect(screen.getByRole('link', { name: 'Impuestos' })).toBeInTheDocument();
+    // Dos enlaces "Impuestos" en pantalla a la vez: el del menú lateral
+    // (a /admin/pricing) y la pestaña propia de PricingPage (a
+    // /admin/pricing/taxes) — se comprueba la pestaña, no el menú.
+    const tabs = await screen.findByRole('navigation', { name: 'Precios' });
+    await within(tabs).findByRole('link', { name: 'Fórmula' });
+    expect(within(tabs).getByRole('link', { name: 'Impuestos' })).toBeInTheDocument();
   });
 
   it('bounces a user without pricing.manage away from /admin/pricing', async () => {

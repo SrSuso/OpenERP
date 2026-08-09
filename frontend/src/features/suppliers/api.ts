@@ -83,6 +83,19 @@ export function supplierProductsQuery(supplierId: number) {
   });
 }
 
+/** El mismo vínculo producto↔proveedor, visto desde el producto — para la
+ * pestaña "Proveedores" de la ficha de producto (features/catalog). */
+export function productSuppliersQuery(productId: number) {
+  return queryOptions({
+    queryKey: ['suppliers', 'by-product', productId] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/products/${productId}/suppliers`, {
+        schema: z.array(productSupplierSchema),
+        signal,
+      }),
+  });
+}
+
 export interface ProductSupplierInput {
   supplier_sku: string | null;
   supplier_cost: string;
