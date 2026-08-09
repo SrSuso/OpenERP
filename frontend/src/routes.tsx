@@ -21,6 +21,7 @@ import { LotsPage } from '@/pages/admin/LotsPage';
 import { NotificationsPage } from '@/pages/admin/NotificationsPage';
 import { OutboxPage } from '@/pages/admin/OutboxPage';
 import { ProductDetailPage } from '@/pages/admin/ProductDetailPage';
+import { ReportsPage } from '@/pages/admin/ReportsPage';
 import { ReturnsPage } from '@/pages/admin/ReturnsPage';
 import { TicketTemplatesPage } from '@/pages/admin/TicketTemplatesPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
@@ -190,6 +191,11 @@ export const routes: RouteObject[] = [
                 path: 'outbox',
                 element: <RequirePermission permission="job.read" />,
                 children: [{ index: true, element: <OutboxPage /> }],
+              },
+              {
+                path: 'reports',
+                element: <RequirePermission permission="report.read" />,
+                children: [{ index: true, element: <ReportsPage /> }],
               },
             ],
           },

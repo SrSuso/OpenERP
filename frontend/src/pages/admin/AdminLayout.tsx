@@ -65,6 +65,11 @@ export function AdminLayout() {
               Outbox / correo
             </NavLink>
           )}
+          {hasPermission('report.read') && (
+            <NavLink to="/admin/reports" className={linkClassName}>
+              Informes
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles
