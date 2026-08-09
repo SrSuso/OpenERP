@@ -82,10 +82,10 @@ export function TemplateFieldsForm({
         {mode === 'create' ? 'Nueva plantilla' : 'Revisar plantilla activa'}
       </h3>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="grid flex-1 gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <div className="grid gap-3 sm:max-w-sm sm:grid-cols-2">
           {mode === 'create' && (
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-slate-600 sm:col-span-2">
               Nombre
               <input
                 type="text"
@@ -96,7 +96,7 @@ export function TemplateFieldsForm({
             </label>
           )}
 
-          <label className="text-sm text-slate-600">
+          <label className="text-sm text-slate-600 sm:col-span-2">
             Ancho del papel
             <select
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
@@ -131,11 +131,11 @@ export function TemplateFieldsForm({
           </label>
         </div>
 
-        <div className="lg:w-64 lg:shrink-0">
+        <div className="lg:w-[26rem] lg:shrink-0">
           <p className="mb-1 text-xs font-semibold uppercase text-slate-500">
             Vista previa (con datos de ejemplo)
           </p>
-          <pre className="overflow-x-auto rounded border border-dashed border-slate-300 bg-slate-50 p-3 font-mono text-xs leading-tight text-slate-700">
+          <pre className="overflow-x-auto rounded border border-dashed border-slate-300 bg-slate-50 p-4 font-mono text-sm leading-relaxed text-slate-700">
             {preview}
           </pre>
         </div>
