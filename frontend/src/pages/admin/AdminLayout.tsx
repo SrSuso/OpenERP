@@ -53,6 +53,11 @@ export function AdminLayout() {
               Lotes
             </NavLink>
           )}
+          {hasPermission('return.read') && (
+            <NavLink to="/admin/returns" className={linkClassName}>
+              Devoluciones
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles
