@@ -6,8 +6,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthContext';
 import { type Product, type ProductCategory } from '@/features/catalog/api';
+import { type StockBalance } from '@/features/inventory/api';
 import { type ProductPurchaseHistoryEntry } from '@/features/purchasing/api';
-import { type ProductSupplier, type Supplier } from '@/features/suppliers/api';
+import { type Supplier } from '@/features/suppliers/api';
 import { type Tax } from '@/features/pricing/api';
 
 import { ProductDetailPage } from './ProductDetailPage';
@@ -35,10 +36,13 @@ const ME = {
   ],
 };
 
+const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
+const CATEGORIES_WITH_INHERITED_TAX: ProductCategory[] = [
+  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [TAXES[0]!] },
+];
 const CATEGORIES: ProductCategory[] = [
   { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [] },
 ];
-const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
 
 function baseProduct(): Product {
   return {
@@ -67,7 +71,8 @@ function baseProduct(): Product {
   };
 }
 
-function stubBackend() {
+function stubBackend(options: { categories?: ProductCategory[] } = {}) {
+  const categories = options.categories ?? CATEGORIES;
   const product = baseProduct();
   const supplier: Supplier = {
     id: 5,
@@ -78,7 +83,6 @@ function stubBackend() {
     address: '',
     is_active: true,
   };
-  const supplierLinks: ProductSupplier[] = [];
   const purchaseHistory: ProductPurchaseHistoryEntry[] = [
     {
       purchase_order_id: 7,
@@ -91,10 +95,19 @@ function stubBackend() {
       unit_cost: '0.250000',
     },
   ];
+  const stockBalances: StockBalance[] = [
+    {
+      product_id: 1,
+      product_sku: 'P000001',
+      warehouse_id: 1,
+      location_id: 1,
+      lot_id: null,
+      quantity: '42',
+    },
+  ];
   const updateCalls: Record<string, unknown>[] = [];
   const pricingCalls: Record<string, unknown>[] = [];
   const addPackageCalls: Record<string, unknown>[] = [];
-  const linkSupplierCalls: { supplierId: number; body: Record<string, unknown> }[] = [];
   const deactivateCalls: number[] = [];
   const activateCalls: number[] = [];
 
@@ -110,7 +123,7 @@ function stubBackend() {
       if (method === 'GET' && /\/products\/1$/.test(url))
         return Promise.resolve(jsonResponse(product));
       if (method === 'GET' && url.includes('/product-categories')) {
-        return Promise.resolve(jsonResponse(CATEGORIES));
+        return Promise.resolve(jsonResponse(categories));
       }
       if (method === 'GET' && url.includes('/pos-categories'))
         return Promise.resolve(jsonResponse([]));
@@ -120,26 +133,8 @@ function stubBackend() {
       if (method === 'GET' && /\/products\/1\/purchase-history$/.test(url)) {
         return Promise.resolve(jsonResponse(purchaseHistory));
       }
-      if (method === 'GET' && /\/products\/1\/suppliers$/.test(url)) {
-        return Promise.resolve(jsonResponse(supplierLinks));
-      }
-      if (method === 'PUT' && /\/products\/1\/suppliers\/(\d+)$/.test(url)) {
-        const supplierId = Number(/\/products\/1\/suppliers\/(\d+)$/.exec(url)![1]);
-        const b = body();
-        linkSupplierCalls.push({ supplierId, body: b });
-        const link: ProductSupplier = {
-          id: 1,
-          product_id: 1,
-          product_sku: product.sku,
-          product_name: product.name,
-          supplier_id: supplierId,
-          supplier_name: supplier.name,
-          supplier_sku: (b['supplier_sku'] as string | null) ?? null,
-          supplier_cost: b['supplier_cost'] as string,
-          is_preferred: b['is_preferred'] as boolean,
-        };
-        supplierLinks.push(link);
-        return Promise.resolve(jsonResponse(link));
+      if (method === 'GET' && /\/stock-balance\?/.test(url)) {
+        return Promise.resolve(jsonResponse(stockBalances));
       }
       if (method === 'PATCH' && /\/products\/1\/pricing$/.test(url)) {
         const b = body();
@@ -185,14 +180,7 @@ function stubBackend() {
     }),
   );
 
-  return {
-    updateCalls,
-    pricingCalls,
-    addPackageCalls,
-    linkSupplierCalls,
-    deactivateCalls,
-    activateCalls,
-  };
+  return { updateCalls, pricingCalls, addPackageCalls, deactivateCalls, activateCalls };
 }
 
 function renderPage() {
@@ -211,9 +199,12 @@ function renderPage() {
 }
 
 describe('ProductDetailPage', () => {
-  it('edits general fields, price/taxes, presentaciones and links a supplier, all from the same page', async () => {
+  it('edits general fields, price/taxes and presentaciones, and shows current stock', async () => {
     const backend = stubBackend();
     renderPage();
+
+    // Stock, siempre visible en la cabecera
+    await screen.findByText(/Stock: 42 uds\./);
 
     // General
     await screen.findByDisplayValue('Agua 1L');
@@ -241,23 +232,29 @@ describe('ProductDetailPage', () => {
     await screen.findByText('PACK 6');
     expect(backend.addPackageCalls).toEqual([{ name: 'PACK 6', factor: '6', barcode: null }]);
 
-    // Proveedores
-    await userEvent.click(screen.getByRole('button', { name: 'Proveedores' }));
-    await screen.findByText('Este producto no tiene proveedores vinculados.');
-    await userEvent.selectOptions(screen.getByLabelText('Proveedor'), '5');
-    const supplierCostInput = screen.getByLabelText('Coste');
-    await userEvent.clear(supplierCostInput);
-    await userEvent.type(supplierCostInput, '0.2');
-    await userEvent.click(screen.getByRole('button', { name: 'Vincular' }));
-    expect(await screen.findByText('Distribuciones Ejemplo SL')).toBeInTheDocument();
-    expect(backend.linkSupplierCalls).toEqual([
-      { supplierId: 5, body: { supplier_sku: null, supplier_cost: '0.2', is_preferred: false } },
-    ]);
-
-    // Compras
+    // Compras — resumen por proveedor + historial completo, ambos
+    // mencionan el mismo proveedor, así que se comprueba con findAllByText.
     await userEvent.click(screen.getByRole('button', { name: 'Compras' }));
-    expect(await screen.findByText('Distribuciones Ejemplo SL')).toBeInTheDocument();
+    expect(await screen.findAllByText('Distribuciones Ejemplo SL')).toHaveLength(2);
     expect(screen.getByText('#7')).toBeInTheDocument();
+  });
+
+  it('shows the category-inherited taxes pre-checked, without turning them into an override', async () => {
+    const backend = stubBackend({ categories: CATEGORIES_WITH_INHERITED_TAX });
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+
+    // Marcado visualmente aunque el producto no tiene impuestos propios —
+    // así no parece que "no se aplica ningún impuesto".
+    expect(screen.getByRole('button', { name: /IVA general/, pressed: true })).toBeInTheDocument();
+    expect(screen.getByText(/heredados de "Bebidas"/)).toBeInTheDocument();
+
+    // Guardar sin tocar los chips sigue mandando tax_ids vacío (sigue
+    // heredando) — nunca el conjunto de la categoría como si fuera propio.
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
+    expect(backend.pricingCalls).toEqual([{ cost: '0.300000', margin_rate: null, tax_ids: [] }]);
   });
 
   it('confirms before deactivating, and offers to reactivate afterwards', async () => {

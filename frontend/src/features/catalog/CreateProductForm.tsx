@@ -87,15 +87,23 @@ export function CreateProductForm({
   isPending,
   submitError,
 }: CreateProductFormProps) {
+  // `taxIds` es lo que de verdad se manda (vacío = sigue heredando, ver
+  // onSubmit más abajo); `isOverride` distingue "nunca lo ha tocado" de
+  // "ha elegido explícitamente estos" — mientras no lo toque, los chips
+  // muestran marcados los de la categoría (displayedTaxIds), para que no
+  // parezca que no se aplica ningún impuesto, pero taxIds sigue vacío.
+  const [isOverride, setIsOverride] = useState(false);
   const [taxIds, setTaxIds] = useState<Set<number>>(new Set());
 
-  function toggleTax(id: number) {
+  function toggleTax(id: number, categoryTaxIds: Set<number>) {
     setTaxIds((current) => {
-      const next = new Set(current);
+      const base = isOverride ? current : categoryTaxIds;
+      const next = new Set(base);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    setIsOverride(true);
   }
   const {
     register,
@@ -162,6 +170,11 @@ export function CreateProductForm({
     // deliberately left out.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cost, marginInput, categoryId, categories, taxes, taxIds]);
+
+  const categoryTaxIds = new Set(
+    (categories.find((c) => String(c.id) === categoryId)?.taxes ?? []).map((t) => t.id),
+  );
+  const displayedTaxIds = isOverride ? taxIds : categoryTaxIds;
 
   const submit = handleSubmit((values) =>
     onSubmit(
@@ -315,11 +328,15 @@ export function CreateProductForm({
         <div className="text-sm text-slate-600 sm:col-span-3">
           <span className="mb-1 block">
             Impuestos —{' '}
-            {taxIds.size > 0
+            {isOverride
               ? 'propios de este producto'
-              : `sin elegir, hereda los de "${categories.find((c) => String(c.id) === categoryId)?.name ?? 'sin categoría'}"`}
+              : `heredados de "${categories.find((c) => String(c.id) === categoryId)?.name ?? 'sin categoría'}" (marcados igualmente, para que se vea que sí se aplican)`}
           </span>
-          <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
+          <TaxChips
+            taxes={taxes}
+            selected={displayedTaxIds}
+            onToggle={(id) => toggleTax(id, categoryTaxIds)}
+          />
         </div>
 
         <div className="text-sm text-slate-600">

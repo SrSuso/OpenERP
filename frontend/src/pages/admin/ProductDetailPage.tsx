@@ -17,7 +17,8 @@ import {
 import { EditProductForm } from '@/features/catalog/EditProductForm';
 import { PackagesPanel } from '@/features/catalog/PackagesPanel';
 import { ProductPurchaseHistoryTable } from '@/features/catalog/ProductPurchaseHistoryTable';
-import { ProductSuppliersPanel } from '@/features/catalog/ProductSuppliersPanel';
+import { SupplierPurchaseSummary } from '@/features/catalog/SupplierPurchaseSummary';
+import { stockBalanceQuery } from '@/features/inventory/api';
 import { CreateLotForm } from '@/features/lots/CreateLotForm';
 import { LotBalancesPanel } from '@/features/lots/LotBalancesPanel';
 import { LotsTable } from '@/features/lots/LotsTable';
@@ -26,8 +27,9 @@ import { setProductPricing, taxesQuery, type PricingOverrideInput } from '@/feat
 import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
 import { productPurchaseHistoryQuery } from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
+import { formatQuantity } from '@/lib/format';
 
-type Tab = 'general' | 'pricing' | 'packages' | 'suppliers' | 'lots' | 'purchases';
+type Tab = 'general' | 'pricing' | 'packages' | 'lots' | 'purchases';
 
 const tabClassName = (active: boolean) =>
   `border-b-2 px-4 py-2 text-sm font-medium ${
@@ -49,7 +51,6 @@ export function ProductDetailPage() {
 
   const canManageProduct = hasPermission('product.manage');
   const canManagePricing = hasPermission('pricing.manage');
-  const canManageSuppliers = hasPermission('supplier.manage');
   const canManageLots = hasPermission('lot.manage');
 
   const [tab, setTab] = useState<Tab>('general');
@@ -61,6 +62,7 @@ export function ProductDetailPage() {
   const posCategories = useQuery(posCategoriesQuery);
   const taxes = useQuery(taxesQuery);
   const suppliers = useQuery(suppliersQuery(true));
+  const stockBalances = useQuery(stockBalanceQuery({ productId }));
   const purchaseHistory = useQuery({
     ...productPurchaseHistoryQuery(productId),
     enabled: tab === 'purchases',
@@ -132,6 +134,7 @@ export function ProductDetailPage() {
   }
 
   const data = product.data;
+  const totalStock = stockBalances.data?.reduce((sum, b) => sum + Number(b.quantity), 0) ?? null;
 
   return (
     <section>
@@ -148,7 +151,8 @@ export function ProductDetailPage() {
             {data.name} <span className="font-mono text-base text-slate-400">{data.sku}</span>
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {data.category_name ?? 'Sin categoría'} · {data.is_active ? 'Activo' : 'Inactivo'}
+            {data.category_name ?? 'Sin categoría'} · {data.is_active ? 'Activo' : 'Inactivo'} ·{' '}
+            Stock: {totalStock === null ? '…' : `${formatQuantity(String(totalStock))} uds.`}
           </p>
         </div>
         {canManageProduct && data.is_active && (
@@ -203,13 +207,6 @@ export function ProductDetailPage() {
           className={tabClassName(tab === 'packages')}
         >
           Presentaciones
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('suppliers')}
-          className={tabClassName(tab === 'suppliers')}
-        >
-          Proveedores
         </button>
         {data.track_lots && (
           <button
@@ -267,16 +264,6 @@ export function ProductDetailPage() {
         </div>
       )}
 
-      {tab === 'suppliers' && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <ProductSuppliersPanel
-            productId={productId}
-            suppliers={suppliers.data ?? []}
-            canManage={canManageSuppliers}
-          />
-        </div>
-      )}
-
       {tab === 'lots' && data.track_lots && (
         <div className="space-y-4">
           {canManageLots && (
@@ -295,7 +282,18 @@ export function ProductDetailPage() {
 
       {tab === 'purchases' && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          {purchaseHistory.data && <ProductPurchaseHistoryTable entries={purchaseHistory.data} />}
+          {purchaseHistory.data && (
+            <>
+              <h5 className="mb-1 text-xs font-semibold uppercase text-slate-500">
+                Resumen por proveedor
+              </h5>
+              <SupplierPurchaseSummary entries={purchaseHistory.data} />
+              <h5 className="mb-1 text-xs font-semibold uppercase text-slate-500">
+                Historial completo
+              </h5>
+              <ProductPurchaseHistoryTable entries={purchaseHistory.data} />
+            </>
+          )}
         </div>
       )}
     </section>

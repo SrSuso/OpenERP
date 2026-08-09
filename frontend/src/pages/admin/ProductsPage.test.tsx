@@ -30,14 +30,16 @@ const ME = {
   permissions: ['admin.access', 'product.read', 'product.manage', 'pricing.manage'],
 };
 
+const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
+// La categoría ya trae un impuesto propio — así una prueba puede comprobar
+// que se muestra heredado (marcado) al elegirla, sin tocar nada más.
 const CATEGORIES: ProductCategory[] = [
-  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [] },
+  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [TAXES[0]!] },
 ];
 const POS_CATEGORIES: PosCategory[] = [
   { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
 ];
 const UNITS: Unit[] = [{ id: 1, name: 'UNIT', display_order: 0 }];
-const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
 
 function baseProduct(): Product {
   return {
@@ -225,6 +227,29 @@ describe('ProductsPage', () => {
 
     await screen.findByText('Con IVA');
     expect(backend.pricingCalls).toEqual([{ id: 99, body: { tax_ids: [1] } }]);
+  });
+
+  it('shows the category-inherited taxes pre-checked when creating, without sending them', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.selectOptions(screen.getByLabelText('Categoría (estantería)'), '1');
+
+    expect(screen.getByRole('button', { name: /IVA general/, pressed: true })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Sin tocar impuestos');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    const price = screen.getByLabelText('Precio de venta');
+    await userEvent.clear(price);
+    await userEvent.type(price, '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    await screen.findByText('Sin tocar impuestos');
+    // Sigue heredando: no hay PATCH .../pricing de más, igual que si no
+    // hubiese categoría con impuestos.
+    expect(backend.pricingCalls).toEqual([]);
   });
 
   it('links each row to its product detail page instead of editing inline', async () => {

@@ -30,12 +30,22 @@ export function ProductPricingPanel({
   const [cost, setCost] = useState(product.cost);
   const [costError, setCostError] = useState<string | null>(null);
   const [marginInput, setMarginInput] = useState(product.margin_rate ?? '');
-  const [taxIds, setTaxIds] = useState<Set<number>>(new Set(product.taxes.map((t) => t.id)));
+  // `product.taxes` sólo trae algo cuando el producto tiene su propio
+  // override (regla del backend: vacío = hereda, nunca "sin impuestos") —
+  // si está vacío, se muestran marcados los de la categoría para que la
+  // interfaz no dé a entender que no se aplica ningún impuesto. Tocar
+  // cualquier chip mientras se hereda "materializa" ese conjunto heredado
+  // en un override propio a partir de ahí (isOverride pasa a true).
+  const hasOwnTaxes = product.taxes.length > 0;
+  const [isOverride, setIsOverride] = useState(hasOwnTaxes);
+  const [taxIds, setTaxIds] = useState<Set<number>>(
+    new Set((hasOwnTaxes ? product.taxes : (category?.taxes ?? [])).map((t) => t.id)),
+  );
 
   const inheritsMargin = marginInput.trim() === '';
-  const inheritsTaxes = taxIds.size === 0;
 
   function toggleTax(id: number) {
+    setIsOverride(true);
     setTaxIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
@@ -54,7 +64,10 @@ export function ProductPricingPanel({
     onSave({
       cost: parsedCost.data,
       margin_rate: inheritsMargin ? null : marginInput,
-      tax_ids: [...taxIds],
+      // Sin tocar nada: sigue vacío (hereda), aunque la interfaz muestre
+      // marcados los de la categoría — nunca se manda ese conjunto como
+      // si fuera una elección propia sin que el usuario haya interactuado.
+      tax_ids: isOverride ? [...taxIds] : [],
     });
   }
 
@@ -100,9 +113,9 @@ export function ProductPricingPanel({
         <div className="text-xs text-slate-600 sm:col-span-3">
           <span className="mb-1 block">
             Impuestos —{' '}
-            {inheritsTaxes
-              ? `hereda los de "${category?.name ?? 'sin categoría'}"`
-              : 'propios de este producto'}
+            {isOverride
+              ? 'propios de este producto'
+              : `heredados de "${category?.name ?? 'sin categoría'}" (marcados igualmente, para que se vea que sí se aplican)`}
           </span>
           <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
         </div>
