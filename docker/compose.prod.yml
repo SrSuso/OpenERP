@@ -94,6 +94,16 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    healthcheck:
+      # backend/Dockerfile's HEALTHCHECK hits :8000/api/v1/health/live —
+      # correct for `api`, meaningless here: the worker is a polling loop
+      # with no HTTP server at all (see app/jobs/worker.py), so that probe
+      # would always fail with connection refused. Disable the inherited
+      # check for this service instead of reporting a false "unhealthy";
+      # its liveness is "is the process still running", which `restart:
+      # unless-stopped` + `docker compose ps`/`make prod-logs` already
+      # cover without a custom probe.
+      disable: true
 
   web:
     build:
