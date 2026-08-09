@@ -18,6 +18,7 @@ import { PricingPage } from '@/pages/admin/PricingPage';
 import { PricingTaxesPage } from '@/pages/admin/PricingTaxesPage';
 import { ProductsPage } from '@/pages/admin/ProductsPage';
 import { RolesPage } from '@/pages/admin/RolesPage';
+import { SuppliersPage } from '@/pages/admin/SuppliersPage';
 import { UsersPage } from '@/pages/admin/UsersPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { PosHomePage } from '@/pages/pos/PosHomePage';
@@ -104,6 +105,11 @@ export const routes: RouteObject[] = [
                     ],
                   },
                 ],
+              },
+              {
+                path: 'suppliers',
+                element: <RequirePermission permission="supplier.read" />,
+                children: [{ index: true, element: <SuppliersPage /> }],
               },
             ],
           },

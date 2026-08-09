@@ -33,6 +33,11 @@ export function AdminLayout() {
               Precios
             </NavLink>
           )}
+          {hasPermission('supplier.read') && (
+            <NavLink to="/admin/suppliers" className={linkClassName}>
+              Proveedores
+            </NavLink>
+          )}
           {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
             <NavLink to="/admin/access" className={linkClassName}>
               Usuarios y roles
