@@ -199,7 +199,7 @@ function renderPage() {
 }
 
 describe('ProductDetailPage', () => {
-  it('edits general fields, price/taxes and presentaciones, and shows current stock', async () => {
+  it('edits general fields, price/taxes and formatos, and shows current stock', async () => {
     const backend = stubBackend();
     renderPage();
 
@@ -224,11 +224,11 @@ describe('ProductDetailPage', () => {
     expect(await screen.findByText('9,99 €')).toBeInTheDocument();
     expect(backend.pricingCalls).toEqual([{ cost: '0.300000', margin_rate: '15', tax_ids: [1] }]);
 
-    // Presentaciones
-    await userEvent.click(screen.getByRole('button', { name: 'Presentaciones' }));
-    await userEvent.type(screen.getByLabelText('Nueva presentación'), 'PACK 6');
+    // Formatos
+    await userEvent.click(screen.getByRole('button', { name: 'Formatos' }));
+    await userEvent.type(screen.getByLabelText('Nuevo formato'), 'PACK 6');
     await userEvent.type(screen.getByLabelText('Factor'), '6');
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir presentación' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir formato' }));
     await screen.findByText('PACK 6');
     expect(backend.addPackageCalls).toEqual([{ name: 'PACK 6', factor: '6', barcode: null }]);
 

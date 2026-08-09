@@ -8,7 +8,7 @@ import { decimalString } from '@/lib/decimal';
 
 const addLineSchema = z.object({
   product_id: z.string().min(1, 'Elige un producto.'),
-  package_id: z.string().min(1, 'Elige una presentación.'),
+  package_id: z.string().min(1, 'Elige un formato.'),
   quantity_packages: decimalString({ min: 0.000001 }),
   unit_cost: decimalString({ min: 0 }),
   tax_rate: decimalString({ min: 0 }),
@@ -92,7 +92,7 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
       </label>
 
       <label className="text-sm text-slate-600">
-        Presentación
+        Formato
         <select
           className="mt-1 block w-32 rounded border border-slate-300 px-3 py-1.5 text-sm"
           {...register('package_id')}

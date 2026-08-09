@@ -217,17 +217,16 @@ describe('PurchasingPage', () => {
 
     await screen.findByText('No hay pedidos de compra todavía.');
 
-    // Crear pedido
+    // Crear pedido — el producto se añade antes de crearlo, no después
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo pedido' }));
     await userEvent.selectOptions(screen.getByLabelText('Proveedor'), '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
-    await screen.findByText('Distribuciones Ejemplo SL');
-    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    // No se puede crear vacío.
+    expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeDisabled();
+    await screen.findByText('Añade al menos un producto — un pedido no se puede crear vacío.');
 
-    // Añadir línea
     await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
-    await userEvent.selectOptions(screen.getByLabelText('Presentación'), '100');
+    await userEvent.selectOptions(screen.getByLabelText('Formato'), '100');
     const qtyInput = screen.getByLabelText('Cantidad');
     await userEvent.clear(qtyInput);
     await userEvent.type(qtyInput, '2');
@@ -235,6 +234,13 @@ describe('PurchasingPage', () => {
     await userEvent.clear(costInput);
     await userEvent.type(costInput, '3');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));
+
+    await screen.findByText(/P000010 — Caja de 6/);
+    expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Crear pedido' }));
+
+    await screen.findByText('Distribuciones Ejemplo SL');
+    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
 
     await screen.findByText('Caja de 6');
     expect(screen.getByText('Realizar pedido')).toBeInTheDocument();

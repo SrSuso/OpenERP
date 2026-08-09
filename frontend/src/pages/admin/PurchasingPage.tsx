@@ -5,7 +5,12 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { productsQuery } from '@/features/catalog/api';
 import { CreateOrderForm } from '@/features/purchasing/CreateOrderForm';
 import { OrdersTable } from '@/features/purchasing/OrdersTable';
-import { createOrder, purchaseOrdersQuery } from '@/features/purchasing/api';
+import {
+  addOrderLine,
+  createOrder,
+  purchaseOrdersQuery,
+  type OrderLineInput,
+} from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
 
 const STATUS_FILTERS = ['DRAFT', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'] as const;
@@ -37,7 +42,20 @@ export function PurchasingPage() {
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
-    mutationFn: (payload: { supplier_id: number; notes: string }) => createOrder(payload),
+    mutationFn: async (payload: {
+      supplier_id: number;
+      notes: string;
+      lines: OrderLineInput[];
+    }) => {
+      const order = await createOrder({ supplier_id: payload.supplier_id, notes: payload.notes });
+      // El backend sólo crea el pedido en sí (POST /purchase-orders no
+      // acepta líneas) — se añaden una a una justo después para que, desde
+      // el punto de vista de quien lo crea, sea un único paso.
+      for (const line of payload.lines) {
+        await addOrderLine(order.id, line);
+      }
+      return order;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['purchasing', 'orders'] });
       setShowCreateForm(false);
@@ -82,6 +100,7 @@ export function PurchasingPage() {
       {showCreateForm && (
         <CreateOrderForm
           suppliers={suppliers.data ?? []}
+          products={products.data ?? []}
           isPending={createMutation.isPending}
           submitError={createError}
           onCancel={() => {

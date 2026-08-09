@@ -47,7 +47,7 @@ export function PackagesPanel({
       <table className="w-full text-left text-sm">
         <thead className="text-xs uppercase text-slate-400">
           <tr>
-            <th className="py-1 font-medium">Presentación</th>
+            <th className="py-1 font-medium">Formato</th>
             <th className="py-1 font-medium">Factor ({product.base_unit_name})</th>
             <th className="py-1 font-medium">Códigos de barras</th>
             <th className="py-1 font-medium" />
@@ -93,7 +93,7 @@ export function PackagesPanel({
 
       <form onSubmit={submitPackage} className="mt-3 flex flex-wrap items-end gap-2">
         <label className="text-xs text-slate-600">
-          Nueva presentación
+          Nuevo formato
           <input
             type="text"
             required
@@ -129,7 +129,7 @@ export function PackagesPanel({
           disabled={isAddingPackage}
           className="rounded bg-brand-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
         >
-          {isAddingPackage ? 'Añadiendo…' : 'Añadir presentación'}
+          {isAddingPackage ? 'Añadiendo…' : 'Añadir formato'}
         </button>
       </form>
     </div>

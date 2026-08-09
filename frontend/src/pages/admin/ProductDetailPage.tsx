@@ -206,7 +206,7 @@ export function ProductDetailPage() {
           onClick={() => setTab('packages')}
           className={tabClassName(tab === 'packages')}
         >
-          Presentaciones
+          Formatos
         </button>
         {data.track_lots && (
           <button

@@ -28,7 +28,7 @@ export function ProductPurchaseHistoryTable({
           <th className="py-1 pr-3 font-medium">Fecha</th>
           <th className="py-1 pr-3 font-medium">Pedido</th>
           <th className="py-1 pr-3 font-medium">Proveedor</th>
-          <th className="py-1 pr-3 font-medium">Presentación</th>
+          <th className="py-1 pr-3 font-medium">Formato</th>
           <th className="py-1 pr-3 font-medium">Cantidad</th>
           <th className="py-1 pr-3 font-medium">Coste/ud.</th>
           <th className="py-1 pr-3 font-medium">Estado</th>
