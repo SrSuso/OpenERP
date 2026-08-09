@@ -17,6 +17,7 @@ import { InventoryBalancesPage } from '@/pages/admin/InventoryBalancesPage';
 import { InventoryMovementsPage } from '@/pages/admin/InventoryMovementsPage';
 import { InventoryPage } from '@/pages/admin/InventoryPage';
 import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
+import { LotsPage } from '@/pages/admin/LotsPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
 import { PricingPage } from '@/pages/admin/PricingPage';
 import { PricingTaxesPage } from '@/pages/admin/PricingTaxesPage';
@@ -135,6 +136,11 @@ export const routes: RouteObject[] = [
                     ],
                   },
                 ],
+              },
+              {
+                path: 'lots',
+                element: <RequirePermission permission="lot.read" />,
+                children: [{ index: true, element: <LotsPage /> }],
               },
             ],
           },
