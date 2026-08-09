@@ -9,7 +9,7 @@ import { LotsTable } from '@/features/lots/LotsTable';
 import { createLot, lotsQuery, type LotCreateInput } from '@/features/lots/api';
 import { suppliersQuery } from '@/features/suppliers/api';
 
-/** `/admin/lots` — gated by `lot.read`; crear lotes y consumir stock por
+/** `/admin/inventory/lots` — gated by `lot.read`; crear lotes y consumir stock por
  * FEFO necesita `lot.manage` (backend/app/rbac/permissions.py's fase 8). */
 export function LotsPage() {
   const { hasPermission } = useAuth();

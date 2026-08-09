@@ -11,11 +11,11 @@ import { AccessIndexRedirect, AccessPage } from '@/pages/admin/AccessPage';
 import { AccountPage } from '@/pages/admin/AccountPage';
 import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
-import { CatalogPage } from '@/pages/admin/CatalogPage';
+import { CatalogProductRedirect } from '@/pages/admin/CatalogProductRedirect';
 import { CategoriesPage } from '@/pages/admin/CategoriesPage';
 import { InventoryBalancesPage } from '@/pages/admin/InventoryBalancesPage';
+import { InventoryIndexRedirect, InventoryPage } from '@/pages/admin/InventoryPage';
 import { InventoryMovementsPage } from '@/pages/admin/InventoryMovementsPage';
-import { InventoryPage } from '@/pages/admin/InventoryPage';
 import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
 import { LotsPage } from '@/pages/admin/LotsPage';
 import { NotificationsPage } from '@/pages/admin/NotificationsPage';
@@ -90,23 +90,63 @@ export const routes: RouteObject[] = [
                 ],
               },
               {
-                path: 'catalog',
-                element: <RequirePermission permission="product.read" />,
+                // Productos, categorías, lotes y lo que antes vivía en
+                // /admin/inventory, todo bajo un único apartado — pedido
+                // explícito del usuario: "para mí un inventario es de
+                // productos y donde se gestiona todo lo relacionado con
+                // ellos", en vez de repartido en tres sitios del menú.
+                path: 'inventory',
+                element: (
+                  <RequireAnyPermission
+                    permissions={['product.read', 'lot.read', 'inventory.read']}
+                  />
+                ),
                 children: [
                   {
-                    element: <CatalogPage />,
+                    element: <InventoryPage />,
                     children: [
-                      { index: true, element: <Navigate to="products" replace /> },
-                      { path: 'products', element: <ProductsPage /> },
-                      { path: 'categories', element: <CategoriesPage /> },
+                      { index: true, element: <InventoryIndexRedirect /> },
+                      {
+                        element: <RequirePermission permission="product.read" />,
+                        children: [
+                          { path: 'products', element: <ProductsPage /> },
+                          { path: 'categories', element: <CategoriesPage /> },
+                        ],
+                      },
+                      {
+                        element: <RequirePermission permission="lot.read" />,
+                        children: [{ path: 'lots', element: <LotsPage /> }],
+                      },
+                      {
+                        element: <RequirePermission permission="inventory.read" />,
+                        children: [
+                          { path: 'balances', element: <InventoryBalancesPage /> },
+                          { path: 'movements', element: <InventoryMovementsPage /> },
+                          { path: 'warehouses', element: <InventoryWarehousesPage /> },
+                        ],
+                      },
                     ],
                   },
-                  // Fuera del Outlet de CatalogPage a propósito — la ficha de
-                  // un producto es su propia pantalla, no una pestaña más
-                  // junto a "Productos"/"Categorías" (ver ProductDetailPage).
+                  // Fuera del Outlet de InventoryPage a propósito — la
+                  // ficha de un producto es su propia pantalla, no una
+                  // pestaña más (ver ProductDetailPage).
                   { path: 'products/:productId', element: <ProductDetailPage /> },
                 ],
               },
+              // Enlaces viejos de antes de la reorganización — siguen
+              // funcionando en vez de dar 404 (mismo criterio que
+              // /admin/users, más abajo).
+              { path: 'catalog', element: <Navigate to="/admin/inventory/products" replace /> },
+              {
+                path: 'catalog/products',
+                element: <Navigate to="/admin/inventory/products" replace />,
+              },
+              {
+                path: 'catalog/categories',
+                element: <Navigate to="/admin/inventory/categories" replace />,
+              },
+              { path: 'catalog/products/:productId', element: <CatalogProductRedirect /> },
+              { path: 'lots', element: <Navigate to="/admin/inventory/lots" replace /> },
               {
                 path: 'pricing',
                 element: <RequirePermission permission="pricing.manage" />,
@@ -130,26 +170,6 @@ export const routes: RouteObject[] = [
                 path: 'purchasing',
                 element: <RequirePermission permission="purchase.read" />,
                 children: [{ index: true, element: <PurchasingPage /> }],
-              },
-              {
-                path: 'inventory',
-                element: <RequirePermission permission="inventory.read" />,
-                children: [
-                  {
-                    element: <InventoryPage />,
-                    children: [
-                      { index: true, element: <Navigate to="balances" replace /> },
-                      { path: 'balances', element: <InventoryBalancesPage /> },
-                      { path: 'movements', element: <InventoryMovementsPage /> },
-                      { path: 'warehouses', element: <InventoryWarehousesPage /> },
-                    ],
-                  },
-                ],
-              },
-              {
-                path: 'lots',
-                element: <RequirePermission permission="lot.read" />,
-                children: [{ index: true, element: <LotsPage /> }],
               },
               {
                 path: 'returns',

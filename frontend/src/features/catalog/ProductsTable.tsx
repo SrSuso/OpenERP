@@ -13,7 +13,7 @@ interface ProductsTableProps {
 }
 
 /** Cada fila enlaza a la ficha completa del producto
- * (`/admin/catalog/products/:id`, ver `ProductDetailPage`) — presentaciones,
+ * (`/admin/inventory/products/:id`, ver `ProductDetailPage`) — presentaciones,
  * precio, proveedores, lotes y compras se editan ahí, en pestañas, no desde
  * filas expandibles de esta tabla. */
 export function ProductsTable({
@@ -65,7 +65,7 @@ export function ProductsTable({
               </td>
               <td className="px-4 py-2 text-right whitespace-nowrap">
                 <Link
-                  to={`/admin/catalog/products/${product.id}`}
+                  to={`/admin/inventory/products/${product.id}`}
                   className="mr-3 text-sm font-medium text-brand-700 hover:underline"
                 >
                   Ver ficha

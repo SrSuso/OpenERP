@@ -23,9 +23,11 @@ export function AdminLayout() {
           <NavLink to="/admin" end className={linkClassName}>
             Inicio
           </NavLink>
-          {hasPermission('product.read') && (
-            <NavLink to="/admin/catalog" className={linkClassName}>
-              Catálogo
+          {(hasPermission('product.read') ||
+            hasPermission('lot.read') ||
+            hasPermission('inventory.read')) && (
+            <NavLink to="/admin/inventory" className={linkClassName}>
+              Inventario
             </NavLink>
           )}
           {hasPermission('pricing.manage') && (
@@ -41,16 +43,6 @@ export function AdminLayout() {
           {hasPermission('purchase.read') && (
             <NavLink to="/admin/purchasing" className={linkClassName}>
               Compras
-            </NavLink>
-          )}
-          {hasPermission('inventory.read') && (
-            <NavLink to="/admin/inventory" className={linkClassName}>
-              Inventario
-            </NavLink>
-          )}
-          {hasPermission('lot.read') && (
-            <NavLink to="/admin/lots" className={linkClassName}>
-              Lotes
             </NavLink>
           )}
           {hasPermission('return.read') && (

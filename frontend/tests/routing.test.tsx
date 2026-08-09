@@ -80,7 +80,7 @@ function stubFetch(options: {
         );
       }
 
-      // /admin/access, /admin/catalog and /admin/pricing's tabs (only
+      // /admin/access, /admin/inventory and /admin/pricing's tabs (only
       // reached in the tests that navigate there) fetch their own lists on
       // mount — empty is enough to get past the loading state and check
       // what rendered. /pricing/settings isn't a list, so it gets its own
@@ -267,10 +267,10 @@ describe('routing', () => {
     ).toBeInTheDocument();
   });
 
-  it('sends /admin/catalog straight to the Productos tab for a user with product.read', async () => {
+  it('sends /admin/inventory straight to the Productos tab for a user with product.read', async () => {
     stubFetch({ me: 'admin', permissions: ['admin.access', 'product.read'] });
 
-    renderAt('/admin/catalog');
+    renderAt('/admin/inventory');
 
     // No product.manage: view-only, "Nuevo producto" never appears.
     await screen.findByRole('link', { name: 'Categorías' });
@@ -278,10 +278,10 @@ describe('routing', () => {
     expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
   });
 
-  it('bounces a user without product.read away from /admin/catalog', async () => {
+  it('bounces a user without any inventory-related permission away from /admin/inventory', async () => {
     stubFetch({ me: 'admin', permissions: ['admin.access'] });
 
-    renderAt('/admin/catalog');
+    renderAt('/admin/inventory');
 
     expect(
       await screen.findByRole('heading', { name: /panel de administración/i }),

@@ -159,7 +159,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={['/admin/catalog/products']}>
+        <MemoryRouter initialEntries={['/admin/inventory/products']}>
           <ProductsPage />
         </MemoryRouter>
       </AuthProvider>
@@ -259,7 +259,7 @@ describe('ProductsPage', () => {
 
     expect(screen.getByRole('link', { name: 'Ver ficha' })).toHaveAttribute(
       'href',
-      '/admin/catalog/products/1',
+      '/admin/inventory/products/1',
     );
   });
 

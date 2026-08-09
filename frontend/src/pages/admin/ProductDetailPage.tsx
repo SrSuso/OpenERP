@@ -139,10 +139,10 @@ export function ProductDetailPage() {
   return (
     <section>
       <Link
-        to="/admin/catalog/products"
+        to="/admin/inventory/products"
         className="mb-2 inline-block text-sm text-brand-700 hover:underline"
       >
-        ← Volver al catálogo
+        ← Volver a productos
       </Link>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

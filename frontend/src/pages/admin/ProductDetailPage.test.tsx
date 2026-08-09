@@ -188,9 +188,9 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={['/admin/catalog/products/1']}>
+        <MemoryRouter initialEntries={['/admin/inventory/products/1']}>
           <Routes>
-            <Route path="/admin/catalog/products/:productId" element={<ProductDetailPage />} />
+            <Route path="/admin/inventory/products/:productId" element={<ProductDetailPage />} />
           </Routes>
         </MemoryRouter>
       </AuthProvider>

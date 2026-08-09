@@ -10,7 +10,7 @@ const tabClassName = ({ isActive }: { isActive: boolean }) =>
 /** `/admin/pricing` — gated by `pricing.manage` in routes.tsx (todo el
  * módulo, lectura incluida: no tiene sentido ver el catálogo de impuestos
  * ni la fórmula sin poder tocar nada). Mismo patrón de pestañas que
- * `/admin/access` y `/admin/catalog`. */
+ * `/admin/access` y `/admin/inventory`. */
 export function PricingPage() {
   return (
     <section>
