@@ -23,14 +23,9 @@ export function AdminLayout() {
           <NavLink to="/admin" end className={linkClassName}>
             Inicio
           </NavLink>
-          {hasPermission('users.manage') && (
-            <NavLink to="/admin/users" className={linkClassName}>
-              Usuarios
-            </NavLink>
-          )}
-          {hasPermission('roles.manage') && (
-            <NavLink to="/admin/roles" className={linkClassName}>
-              Roles
+          {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
+            <NavLink to="/admin/access" className={linkClassName}>
+              Usuarios y roles
             </NavLink>
           )}
           <NavLink to="/admin/account" className={linkClassName}>

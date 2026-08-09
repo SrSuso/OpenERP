@@ -11,6 +11,7 @@
 // jsdom (the project default, used everywhere else) until vitest 4 ships.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -218,6 +219,38 @@ describe('routing', () => {
     renderAt('/admin/roles');
 
     expect(await screen.findByRole('heading', { name: /^roles$/i })).toBeInTheDocument();
+  });
+
+  it('sends a MANAGER hitting /admin/access straight to the Usuarios tab, with no Roles tab shown', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'users.manage'] });
+
+    renderAt('/admin/access');
+
+    expect(await screen.findByRole('heading', { name: /^usuarios$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Roles' })).not.toBeInTheDocument();
+  });
+
+  it('shows both tabs to an ADMIN and switches on click', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'users.manage', 'roles.manage'] });
+
+    renderAt('/admin/access');
+
+    await screen.findByRole('heading', { name: /^usuarios$/i });
+    const rolesTab = screen.getByRole('link', { name: 'Roles' });
+
+    await userEvent.click(rolesTab);
+
+    expect(await screen.findByRole('heading', { name: /^roles$/i })).toBeInTheDocument();
+  });
+
+  it('bounces an admin with neither users.manage nor roles.manage away from /admin/access', async () => {
+    stubFetch({ me: 'admin', permissions: ['admin.access', 'pos.access'] });
+
+    renderAt('/admin/access');
+
+    expect(
+      await screen.findByRole('heading', { name: /panel de administración/i }),
+    ).toBeInTheDocument();
   });
 
   it('lets any signed-in admin-panel user into /admin/account, no extra permission needed', async () => {

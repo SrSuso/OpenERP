@@ -119,8 +119,9 @@ volver a añadir el mismo indicador cuando quieras.
 
 ### 3.4. Usuarios (si tienes permiso)
 
-Enlace **Usuarios** en el menú lateral — sólo lo ves si tu cuenta puede
-gestionar personal (`ADMIN` o `MANAGER`). Desde ahí:
+Enlace **Usuarios y roles** en el menú lateral — sólo lo ves si tu cuenta
+puede gestionar personal o roles (`ADMIN` o `MANAGER`). Dentro, pestaña
+**Usuarios** (siempre presente si ves la sección):
 
 - **Nuevo usuario**: email, nombre, una contraseña provisional y el rol
   (cajero, encargado...). Dile a esa persona que la cambie en cuanto entre
@@ -132,8 +133,9 @@ gestionar personal (`ADMIN` o `MANAGER`). Desde ahí:
 
 ### 3.5. Roles y permisos (sólo `ADMIN`)
 
-Enlace **Roles** — sólo visible con permiso para gestionar roles (por
-defecto, únicamente `ADMIN`). Desde ahí puedes crear un rol nuevo (por
+Dentro de **Usuarios y roles**, pestaña **Roles** — sólo aparece con
+permiso para gestionar roles (por defecto, únicamente `ADMIN`; un
+`MANAGER` sólo ve la pestaña Usuarios). Desde ahí puedes crear un rol nuevo (por
 ejemplo "Encargado de almacén") y marcar qué puede hacer cada uno, casilla
 a casilla. Cambia el conjunto completo de permisos de ese rol — no hay
 "añadir uno más", cada guardado deja el rol exactamente con lo que esté

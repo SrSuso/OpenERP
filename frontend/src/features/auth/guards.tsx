@@ -38,6 +38,23 @@ export function RequirePermission({ permission }: { permission: string }) {
 }
 
 /**
+ * Like `RequirePermission`, but passes if the visitor has *any one* of
+ * `permissions` — for a route that has more than one legitimate way in
+ * (e.g. `/admin/access`: a MANAGER only has `users.manage`, an ADMIN has
+ * both, but either is enough to see the section at all). Which sub-tab
+ * actually renders once inside is still each tab's own `RequirePermission`
+ * — this only gates the shared shell.
+ */
+export function RequireAnyPermission({ permissions }: { permissions: string[] }) {
+  const { hasPermission } = useAuth();
+
+  if (!permissions.some((permission) => hasPermission(permission))) {
+    return <Navigate to="/" replace />;
+  }
+  return <Outlet />;
+}
+
+/**
  * The `/` index route: sends the visitor to whichever surface their
  * permissions actually grant, in order of precedence.
  *

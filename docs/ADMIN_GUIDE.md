@@ -218,8 +218,9 @@ disco.
 
 ## 5. Gestión de usuarios y roles
 
-Desde el propio panel, en `https://<host>/admin`: **Usuarios** y **Roles**
-en el menú lateral (visibles según tus permisos — ver §5.1). Ya no hace
+Desde el propio panel, en `https://<host>/admin`: **Usuarios y roles** en
+el menú lateral, con una pestaña **Usuarios** y otra **Roles** dentro
+(cada pestaña visible según tus permisos — ver §5.1). Ya no hace
 falta `curl` ni Swagger UI para esto; se dejan documentados al final de
 cada apartado sólo como referencia/alternativa si alguna vez la necesitas
 (automatizar un alta en un script, por ejemplo).

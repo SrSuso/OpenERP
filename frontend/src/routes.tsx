@@ -1,7 +1,13 @@
-import { type RouteObject } from 'react-router';
+import { Navigate, type RouteObject } from 'react-router';
 
-import { HomeRedirect, RequireAuth, RequirePermission } from '@/features/auth/guards';
+import {
+  HomeRedirect,
+  RequireAnyPermission,
+  RequireAuth,
+  RequirePermission,
+} from '@/features/auth/guards';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { AccessIndexRedirect, AccessPage } from '@/pages/admin/AccessPage';
 import { AccountPage } from '@/pages/admin/AccountPage';
 import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
@@ -37,13 +43,33 @@ export const routes: RouteObject[] = [
               // No extra permission needed beyond admin.access — the
               // backend only ever touches the caller's own row here.
               { path: 'account', element: <AccountPage /> },
+              // Old direct links from before "Usuarios"/"Roles" became one
+              // section with tabs — kept working rather than 404ing.
+              { path: 'users', element: <Navigate to="/admin/access/users" replace /> },
+              { path: 'roles', element: <Navigate to="/admin/access/roles" replace /> },
               {
-                element: <RequirePermission permission="users.manage" />,
-                children: [{ path: 'users', element: <UsersPage /> }],
-              },
-              {
-                element: <RequirePermission permission="roles.manage" />,
-                children: [{ path: 'roles', element: <RolesPage /> }],
+                path: 'access',
+                // Gates the whole section: a MANAGER (users.manage only)
+                // and an ADMIN (both) both get in; the tab-level
+                // RequirePermission below decides what each can reach
+                // inside it.
+                element: <RequireAnyPermission permissions={['users.manage', 'roles.manage']} />,
+                children: [
+                  {
+                    element: <AccessPage />,
+                    children: [
+                      { index: true, element: <AccessIndexRedirect /> },
+                      {
+                        element: <RequirePermission permission="users.manage" />,
+                        children: [{ path: 'users', element: <UsersPage /> }],
+                      },
+                      {
+                        element: <RequirePermission permission="roles.manage" />,
+                        children: [{ path: 'roles', element: <RolesPage /> }],
+                      },
+                    ],
+                  },
+                ],
               },
             ],
           },

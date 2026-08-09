@@ -201,20 +201,26 @@ Puntos de diseño a tener en cuenta:
   duplicado a mano); **React Hook Form + Zod** para formularios y su
   validación.
 - El frontend hoy cubre **login, TPV completo, el panel de dashboards**
-  (widgets de fase 16) y **usuarios/roles/mi cuenta** (`/admin/users`,
-  `/admin/roles`, `/admin/account` — añadido tras el cierre de las 22
-  fases, backend ya existente desde la fase 1). Catálogo/precios/compras/
-  inventario/lotes/devoluciones/tickets/notificaciones siguen sin pantalla
-  propia — se opera contra la API (Swagger UI en `/api/docs`), documentado
-  en `USAGE.md` §3. Añadir esas pantallas es trabajo de frontend puro sobre
-  una API que ya existe por completo, mismo patrón que `features/users`/
-  `features/roles`.
-  - `/admin/users` y `/admin/roles` están cada una detrás de su propio
-    `RequirePermission` en `routes.tsx` (`users.manage`/`roles.manage`,
-    igual que el backend) — `AdminLayout` sólo muestra el enlace si
-    `hasPermission(...)`, pero ocultar un enlace es cosmético, no la
-    barrera real (regla 11): navegar a la URL directamente sin el permiso
-    rebota a `/`.
+  (widgets de fase 16) y **usuarios/roles/mi cuenta** (`/admin/access`,
+  `/admin/account` — añadido tras el cierre de las 22 fases, backend ya
+  existente desde la fase 1). Catálogo/precios/compras/inventario/lotes/
+  devoluciones/tickets/notificaciones siguen sin pantalla propia — se opera
+  contra la API (Swagger UI en `/api/docs`), documentado en `USAGE.md` §3.
+  Añadir esas pantallas es trabajo de frontend puro sobre una API que ya
+  existe por completo, mismo patrón que `features/users`/`features/roles`.
+  - `/admin/access` es una sola sección con pestañas — `AccessPage`
+    (`pages/admin/AccessPage.tsx`) sólo pinta la barra de pestañas y un
+    `<Outlet />`; `Usuarios` y `Roles` son rutas hijas (`users`/`roles`)
+    que siguen siendo `UsersPage`/`RolesPage` sin cambios. Tres capas de
+    guardas en `routes.tsx`, todas convenientes, ninguna la barrera real
+    (regla 11 — el backend re-comprueba siempre): `RequireAnyPermission`
+    en `/admin/access` (entra con `users.manage` **o** `roles.manage`),
+    `RequirePermission` en cada pestaña hija (`users.manage`/
+    `roles.manage` a secas), y `AccessPage` sólo pinta el enlace de la
+    pestaña que `hasPermission(...)` diga que sí. `/admin/users` y
+    `/admin/roles` (las rutas de antes de que esto fuera una sola sección)
+    siguen funcionando como redirects a las nuevas, para no romper enlaces
+    guardados.
   - `GET /roles`/`GET /permissions` aceptan `users.manage` además de
     `roles.manage` (`require_any_permission`, `app/rbac/dependencies.py`)
     — una razón puramente de frontend: un `MANAGER` sin `roles.manage`
