@@ -271,6 +271,41 @@ async def test_cashier_can_generate_and_read_tickets_but_not_manage_templates(
     assert (await client.get(f"/api/v1/sales/{sale['id']}/ticket")).status_code == 200
 
 
+async def test_ticket_notes_prices_include_tax_when_the_store_setting_is_on(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    default_formula = (await client.get("/api/v1/pricing/settings")).json()["formula"]
+    assert (
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={"formula": default_formula, "prices_include_tax": True},
+        )
+    ).status_code == 200
+    try:
+        await _create_template(client, header_text="Mi Tienda", show_tax_breakdown=True)
+        product = await _create_product(
+            client, sku="TICKET-TAX-INCL", list_price="12.10", tax_rate="21"
+        )
+        sale = await _completed_sale(client, product=product, quantity="1")
+
+        response = await client.post(f"/api/v1/sales/{sale['id']}/tickets")
+
+        assert response.status_code == 201
+        text = response.json()["rendered_text"]
+        assert "Precios con IVA incluido" in text
+        assert "12.10" in text  # el total cobrado, no 12.10 + IVA aparte
+    finally:
+        await login(role_name="ADMIN")
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={
+                "formula": (await client.get("/api/v1/pricing/settings")).json()["formula"],
+                "prices_include_tax": False,
+            },
+        )
+
+
 async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/ticket-templates")
 
