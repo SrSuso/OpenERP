@@ -21,6 +21,7 @@ from app.catalog.models import (
 )
 from app.catalog.schemas import (
     BarcodeCreate,
+    BarcodeUpdate,
     PackageCreate,
     PosCategoryCreate,
     PosCategoryUpdate,
@@ -560,5 +561,69 @@ async def add_barcode(
         entity_type="product",
         entity_id=product_id,
         after={"package_id": package_id, "barcode": payload.barcode},
+    )
+    return updated
+
+
+async def _get_barcode_or_404(
+    session: AsyncSession, product_id: int, package_id: int, barcode_id: int
+) -> ProductBarcode:
+    package = await session.get(ProductPackage, package_id)
+    if package is None or package.product_id != product_id:
+        raise NotFoundError(f"Package {package_id} not found on product {product_id}.")
+    barcode = await session.get(ProductBarcode, barcode_id)
+    if barcode is None or barcode.package_id != package_id:
+        raise NotFoundError(f"Barcode {barcode_id} not found on package {package_id}.")
+    return barcode
+
+
+async def update_barcode(
+    session: AsyncSession,
+    product_id: int,
+    package_id: int,
+    barcode_id: int,
+    payload: BarcodeUpdate,
+) -> Product:
+    """A barcode typed wrong, or one that changed on the manufacturer's
+    label — edited in place rather than "delete and re-add" so it keeps
+    the same row (and audit trail) instead of a fresh id."""
+    barcode = await _get_barcode_or_404(session, product_id, package_id, barcode_id)
+    before = barcode.barcode
+    if payload.barcode != before:
+        await _assert_barcode_free(session, payload.barcode)
+        barcode.barcode = payload.barcode
+        await session.flush()
+
+    updated = await get_product(session, product_id)
+    await audit.record(
+        session,
+        action="barcode_updated",
+        entity_type="product",
+        entity_id=product_id,
+        before={"package_id": package_id, "barcode": before},
+        after={"package_id": package_id, "barcode": payload.barcode},
+    )
+    return updated
+
+
+async def delete_barcode(
+    session: AsyncSession, product_id: int, package_id: int, barcode_id: int
+) -> Product:
+    """One added by mistake, or a discontinued code — removed outright
+    (unlike a product/package, a barcode is just an alternate lookup key,
+    not something sales/inventory ever reference directly, so there is no
+    rule-14-style "deactivate instead" history to preserve here)."""
+    barcode = await _get_barcode_or_404(session, product_id, package_id, barcode_id)
+    removed = barcode.barcode
+    await session.delete(barcode)
+    await session.flush()
+
+    updated = await get_product(session, product_id)
+    await audit.record(
+        session,
+        action="barcode_deleted",
+        entity_type="product",
+        entity_id=product_id,
+        before={"package_id": package_id, "barcode": removed},
     )
     return updated

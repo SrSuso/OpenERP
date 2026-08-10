@@ -8,9 +8,11 @@ import {
   addBarcode,
   addPackage,
   deactivateProduct,
+  deleteBarcode,
   posCategoriesQuery,
   productCategoriesQuery,
   productQuery,
+  updateBarcode,
   updateProduct,
   type ProductUpdateInput,
 } from '@/features/catalog/api';
@@ -27,6 +29,7 @@ import { setProductPricing, taxesQuery, type PricingOverrideInput } from '@/feat
 import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
 import { productPurchaseHistoryQuery } from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
+import { ApiError } from '@/lib/api';
 import { formatQuantity } from '@/lib/format';
 
 type Tab = 'general' | 'pricing' | 'packages' | 'lots' | 'purchases';
@@ -56,6 +59,7 @@ export function ProductDetailPage() {
   const [tab, setTab] = useState<Tab>('general');
   const [editError, setEditError] = useState<string | null>(null);
   const [createLotError, setCreateLotError] = useState<string | null>(null);
+  const [barcodeError, setBarcodeError] = useState<string | null>(null);
 
   const product = useQuery(productQuery(productId));
   const categories = useQuery(productCategoriesQuery);
@@ -113,10 +117,46 @@ export function ProductDetailPage() {
     onSuccess: invalidateProduct,
   });
 
+  const barcodeConflictMessage = (err: unknown) =>
+    err instanceof ApiError && err.code === 'conflict'
+      ? 'Ese código de barras ya está asignado a otro producto.'
+      : 'No se ha podido guardar el código de barras.';
+
   const addBarcodeMutation = useMutation({
     mutationFn: ({ packageId, barcode }: { packageId: number; barcode: string }) =>
       addBarcode(productId, packageId, barcode),
-    onSuccess: invalidateProduct,
+    onSuccess: () => {
+      invalidateProduct();
+      setBarcodeError(null);
+    },
+    onError: (err: unknown) => setBarcodeError(barcodeConflictMessage(err)),
+  });
+
+  const updateBarcodeMutation = useMutation({
+    mutationFn: ({
+      packageId,
+      barcodeId,
+      barcode,
+    }: {
+      packageId: number;
+      barcodeId: number;
+      barcode: string;
+    }) => updateBarcode(productId, packageId, barcodeId, barcode),
+    onSuccess: () => {
+      invalidateProduct();
+      setBarcodeError(null);
+    },
+    onError: (err: unknown) => setBarcodeError(barcodeConflictMessage(err)),
+  });
+
+  const deleteBarcodeMutation = useMutation({
+    mutationFn: ({ packageId, barcodeId }: { packageId: number; barcodeId: number }) =>
+      deleteBarcode(productId, packageId, barcodeId),
+    onSuccess: () => {
+      invalidateProduct();
+      setBarcodeError(null);
+    },
+    onError: () => setBarcodeError('No se ha podido eliminar el código de barras.'),
   });
 
   const createLotMutation = useMutation({
@@ -256,10 +296,18 @@ export function ProductDetailPage() {
             product={data}
             isAddingPackage={addPackageMutation.isPending}
             isAddingBarcode={addBarcodeMutation.isPending}
+            isSavingBarcode={updateBarcodeMutation.isPending || deleteBarcodeMutation.isPending}
+            barcodeError={barcodeError}
             onAddPackage={(name, factor, barcode) =>
               addPackageMutation.mutate({ name, factor, barcode })
             }
             onAddBarcode={(packageId, barcode) => addBarcodeMutation.mutate({ packageId, barcode })}
+            onEditBarcode={(packageId, barcodeId, barcode) =>
+              updateBarcodeMutation.mutate({ packageId, barcodeId, barcode })
+            }
+            onDeleteBarcode={(packageId, barcodeId) =>
+              deleteBarcodeMutation.mutate({ packageId, barcodeId })
+            }
           />
         </div>
       )}

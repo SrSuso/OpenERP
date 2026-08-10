@@ -67,7 +67,15 @@ function baseProduct(): Product {
     track_lots: false,
     track_expiration: false,
     is_active: true,
-    packages: [{ id: 1, name: 'UNIT', factor: '1.000000', is_base: true, barcodes: [] }],
+    packages: [
+      {
+        id: 1,
+        name: 'UNIT',
+        factor: '1.000000',
+        is_base: true,
+        barcodes: [{ id: 1, barcode: '8410000000010' }],
+      },
+    ],
   };
 }
 
@@ -108,6 +116,8 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
   const updateCalls: Record<string, unknown>[] = [];
   const pricingCalls: Record<string, unknown>[] = [];
   const addPackageCalls: Record<string, unknown>[] = [];
+  const editBarcodeCalls: { barcodeId: number; body: Record<string, unknown> }[] = [];
+  const deleteBarcodeCalls: number[] = [];
   const deactivateCalls: number[] = [];
   const activateCalls: number[] = [];
 
@@ -165,6 +175,23 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
         });
         return Promise.resolve(jsonResponse(product));
       }
+      const editBarcodeMatch = /\/products\/1\/packages\/(\d+)\/barcodes\/(\d+)$/.exec(url);
+      if (method === 'PATCH' && editBarcodeMatch) {
+        const barcodeId = Number(editBarcodeMatch[2]);
+        const b = body();
+        editBarcodeCalls.push({ barcodeId, body: b });
+        const pkg = product.packages.find((p) => p.id === Number(editBarcodeMatch[1]))!;
+        const entry = pkg.barcodes.find((bc) => bc.id === barcodeId)!;
+        entry.barcode = b['barcode'] as string;
+        return Promise.resolve(jsonResponse(product));
+      }
+      if (method === 'DELETE' && editBarcodeMatch) {
+        const barcodeId = Number(editBarcodeMatch[2]);
+        deleteBarcodeCalls.push(barcodeId);
+        const pkg = product.packages.find((p) => p.id === Number(editBarcodeMatch[1]))!;
+        pkg.barcodes = pkg.barcodes.filter((bc) => bc.id !== barcodeId);
+        return Promise.resolve(jsonResponse(product));
+      }
       if (method === 'POST' && /\/products\/1\/deactivate$/.test(url)) {
         deactivateCalls.push(1);
         product.is_active = false;
@@ -180,7 +207,15 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
     }),
   );
 
-  return { updateCalls, pricingCalls, addPackageCalls, deactivateCalls, activateCalls };
+  return {
+    updateCalls,
+    pricingCalls,
+    addPackageCalls,
+    editBarcodeCalls,
+    deleteBarcodeCalls,
+    deactivateCalls,
+    activateCalls,
+  };
 }
 
 function renderPage() {
@@ -272,6 +307,39 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
     expect(backend.activateCalls).toEqual([1]);
     await screen.findByText(/Activo/);
+  });
+
+  it('edits and deletes a barcode from the Formatos tab', async () => {
+    const backend = stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Formatos' }));
+    await screen.findByText('8410000000010');
+
+    // Un código tecleado mal se corrige en el sitio, no se borra y se
+    // vuelve a añadir.
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Editar código de barras 8410000000010' }),
+    );
+    const editInput = screen.getByLabelText('Nuevo valor para el código de barras 8410000000010');
+    await userEvent.clear(editInput);
+    await userEvent.type(editInput, '8410000000099');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await screen.findByText('8410000000099');
+    expect(backend.editBarcodeCalls).toEqual([
+      { barcodeId: 1, body: { barcode: '8410000000099' } },
+    ]);
+
+    // Uno añadido por error se elimina directamente, con confirmación.
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Eliminar código de barras 8410000000099' }),
+    );
+    expect(confirmSpy).toHaveBeenCalledWith('¿Eliminar el código de barras 8410000000099?');
+    await screen.findByText('—');
+    expect(backend.deleteBarcodeCalls).toEqual([1]);
   });
 
   it('does nothing when deactivation is cancelled', async () => {

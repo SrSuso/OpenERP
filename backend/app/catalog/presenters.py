@@ -5,7 +5,13 @@ every price change)."""
 from __future__ import annotations
 
 from app.catalog.models import Product, ProductCategory, ProductPackage
-from app.catalog.schemas import PackageRead, ProductCategoryRead, ProductRead, ProductTaxRead
+from app.catalog.schemas import (
+    BarcodeRead,
+    PackageRead,
+    ProductCategoryRead,
+    ProductRead,
+    ProductTaxRead,
+)
 
 
 def category_to_read(category: ProductCategory) -> ProductCategoryRead:
@@ -24,7 +30,7 @@ def package_to_read(package: ProductPackage) -> PackageRead:
         name=package.name,
         factor=package.factor,
         is_base=package.is_base,
-        barcodes=[b.barcode for b in package.barcodes],
+        barcodes=[BarcodeRead(id=b.id, barcode=b.barcode) for b in package.barcodes],
     )
 
 

@@ -62,7 +62,7 @@ export const packageSchema = z.object({
   name: z.string(),
   factor: z.string(),
   is_base: z.boolean(),
-  barcodes: z.array(z.string()),
+  barcodes: z.array(z.object({ id: z.number(), barcode: z.string() })),
 });
 
 export const productSchema = z.object({

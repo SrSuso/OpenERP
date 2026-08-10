@@ -127,12 +127,18 @@ export async function deactivatePosCategory(id: number): Promise<PosCategory> {
 
 // --- productos, presentaciones y códigos de barras -------------------------
 
+export const barcodeSchema = z.object({
+  id: z.number(),
+  barcode: z.string(),
+});
+export type Barcode = z.infer<typeof barcodeSchema>;
+
 export const packageSchema = z.object({
   id: z.number(),
   name: z.string(),
   factor: z.string(),
   is_base: z.boolean(),
-  barcodes: z.array(z.string()),
+  barcodes: z.array(barcodeSchema),
 });
 export type Package = z.infer<typeof packageSchema>;
 
@@ -291,5 +297,31 @@ export async function addBarcode(
     method: 'POST',
     schema: productSchema,
     body: { barcode },
+  });
+}
+
+/** Un código tecleado mal, o que ha cambiado en la etiqueta del fabricante
+ * — se edita en el sitio (mismo id), no se borra y se vuelve a añadir. */
+export async function updateBarcode(
+  productId: number,
+  packageId: number,
+  barcodeId: number,
+  barcode: string,
+): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${productId}/packages/${packageId}/barcodes/${barcodeId}`, {
+    method: 'PATCH',
+    schema: productSchema,
+    body: { barcode },
+  });
+}
+
+export async function deleteBarcode(
+  productId: number,
+  packageId: number,
+  barcodeId: number,
+): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${productId}/packages/${packageId}/barcodes/${barcodeId}`, {
+    method: 'DELETE',
+    schema: productSchema,
   });
 }

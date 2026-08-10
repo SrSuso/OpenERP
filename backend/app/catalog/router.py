@@ -18,6 +18,7 @@ from app.catalog.presenters import category_to_read as _category_to_read
 from app.catalog.presenters import product_to_read as _to_read
 from app.catalog.schemas import (
     BarcodeCreate,
+    BarcodeUpdate,
     PackageCreate,
     PosCategoryCreate,
     PosCategoryRead,
@@ -204,3 +205,31 @@ async def add_barcode(
     product_id: int, package_id: int, payload: BarcodeCreate, session: SessionDep
 ) -> ProductRead:
     return _to_read(await service.add_barcode(session, product_id, package_id, payload))
+
+
+@router.patch(
+    "/products/{product_id}/packages/{package_id}/barcodes/{barcode_id}",
+    response_model=ProductRead,
+    dependencies=[_require_manage],
+)
+async def update_barcode(
+    product_id: int,
+    package_id: int,
+    barcode_id: int,
+    payload: BarcodeUpdate,
+    session: SessionDep,
+) -> ProductRead:
+    return _to_read(
+        await service.update_barcode(session, product_id, package_id, barcode_id, payload)
+    )
+
+
+@router.delete(
+    "/products/{product_id}/packages/{package_id}/barcodes/{barcode_id}",
+    response_model=ProductRead,
+    dependencies=[_require_manage],
+)
+async def delete_barcode(
+    product_id: int, package_id: int, barcode_id: int, session: SessionDep
+) -> ProductRead:
+    return _to_read(await service.delete_barcode(session, product_id, package_id, barcode_id))

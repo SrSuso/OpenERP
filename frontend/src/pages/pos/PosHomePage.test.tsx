@@ -33,7 +33,13 @@ const MILK = {
   tax_rate: '10.000000',
   is_active: true,
   packages: [
-    { id: 10, name: 'Brick', factor: '1.000000', is_base: true, barcodes: ['8410000000010'] },
+    {
+      id: 10,
+      name: 'Brick',
+      factor: '1.000000',
+      is_base: true,
+      barcodes: [{ id: 100, barcode: '8410000000010' }],
+    },
   ],
 };
 

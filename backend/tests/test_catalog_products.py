@@ -48,7 +48,7 @@ async def test_admin_can_create_a_product_with_its_base_package(
     assert base["name"] == "BRIK"
     assert base["factor"] == "1.000000"
     assert base["is_base"] is True
-    assert base["barcodes"] == ["111111"]
+    assert [b["barcode"] for b in base["barcodes"]] == ["111111"]
 
 
 async def test_adding_a_box_package_with_factor_6(
@@ -68,7 +68,7 @@ async def test_adding_a_box_package_with_factor_6(
     assert set(packages) == {"BRIK", "CAJA 6"}
     assert packages["CAJA 6"]["factor"] == "6.000000"
     assert packages["CAJA 6"]["is_base"] is False
-    assert packages["CAJA 6"]["barcodes"] == ["666666"]
+    assert [b["barcode"] for b in packages["CAJA 6"]["barcodes"]] == ["666666"]
 
 
 async def test_duplicate_sku_is_a_conflict(
@@ -130,6 +130,110 @@ async def test_lookup_product_by_barcode(
 
     missing = await client.get("/api/v1/products/barcode/000000")
     assert missing.status_code == 404
+
+
+async def test_admin_can_add_edit_and_delete_a_barcode(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+    product_id = product["id"]
+    package_id = product["packages"][0]["id"]
+
+    added = await client.post(
+        f"/api/v1/products/{product_id}/packages/{package_id}/barcodes",
+        json={"barcode": "222222"},
+    )
+    assert added.status_code == 200
+    barcodes = added.json()["packages"][0]["barcodes"]
+    assert {b["barcode"] for b in barcodes} == {"111111", "222222"}
+    barcode_id = next(b["id"] for b in barcodes if b["barcode"] == "222222")
+
+    # Typed wrong, or the manufacturer changed it — edited in place, not
+    # deleted and re-added under a new id.
+    edited = await client.patch(
+        f"/api/v1/products/{product_id}/packages/{package_id}/barcodes/{barcode_id}",
+        json={"barcode": "333333"},
+    )
+    assert edited.status_code == 200
+    edited_barcodes = {b["id"]: b["barcode"] for b in edited.json()["packages"][0]["barcodes"]}
+    assert edited_barcodes[barcode_id] == "333333"
+
+    # Added by mistake — removed outright.
+    deleted = await client.delete(
+        f"/api/v1/products/{product_id}/packages/{package_id}/barcodes/{barcode_id}"
+    )
+    assert deleted.status_code == 200
+    remaining = [b["barcode"] for b in deleted.json()["packages"][0]["barcodes"]]
+    assert remaining == ["111111"]
+
+    assert (await client.get("/api/v1/products/barcode/333333")).status_code == 404
+
+
+async def test_editing_a_barcode_to_one_already_used_is_a_conflict(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+    product_id = product["id"]
+    package_id = product["packages"][0]["id"]
+    other = (
+        await client.post(
+            "/api/v1/products",
+            json=_product_payload(sku="MILK-2L", name="Leche 2L", base_barcode="999999"),
+        )
+    ).json()
+    barcode_id = product["packages"][0]["barcodes"][0]["id"]
+
+    response = await client.patch(
+        f"/api/v1/products/{product_id}/packages/{package_id}/barcodes/{barcode_id}",
+        json={"barcode": "999999"},
+    )
+
+    assert response.status_code == 409
+    assert other["id"] != product_id  # sólo por claridad de qué producto es "el otro"
+
+
+async def test_barcode_not_found_on_edit_and_delete(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+    product_id = product["id"]
+    package_id = product["packages"][0]["id"]
+
+    assert (
+        await client.patch(
+            f"/api/v1/products/{product_id}/packages/{package_id}/barcodes/999999",
+            json={"barcode": "555555"},
+        )
+    ).status_code == 404
+    assert (
+        await client.delete(f"/api/v1/products/{product_id}/packages/{package_id}/barcodes/999999")
+    ).status_code == 404
+
+
+async def test_cashier_cannot_edit_or_delete_a_barcode(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+    product_id = product["id"]
+    package_id = product["packages"][0]["id"]
+    barcode_id = product["packages"][0]["barcodes"][0]["id"]
+
+    await login(role_name="CASHIER")
+    assert (
+        await client.patch(
+            f"/api/v1/products/{product_id}/packages/{package_id}/barcodes/{barcode_id}",
+            json={"barcode": "555555"},
+        )
+    ).status_code == 403
+    assert (
+        await client.delete(
+            f"/api/v1/products/{product_id}/packages/{package_id}/barcodes/{barcode_id}"
+        )
+    ).status_code == 403
 
 
 async def test_update_product_and_deactivate(

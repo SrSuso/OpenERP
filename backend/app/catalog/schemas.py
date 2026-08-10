@@ -86,15 +86,24 @@ class PackageCreate(BaseModel):
     barcode: str | None = Field(default=None, min_length=1, max_length=64)
 
 
+class BarcodeRead(BaseModel):
+    id: int
+    barcode: str
+
+
 class PackageRead(BaseModel):
     id: int
     name: str
     factor: Decimal
     is_base: bool
-    barcodes: list[str]
+    barcodes: list[BarcodeRead]
 
 
 class BarcodeCreate(BaseModel):
+    barcode: str = Field(min_length=1, max_length=64)
+
+
+class BarcodeUpdate(BaseModel):
     barcode: str = Field(min_length=1, max_length=64)
 
 
