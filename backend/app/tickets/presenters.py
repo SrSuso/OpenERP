@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.tickets.models import Ticket, TicketTemplate
+from app.tickets.models import Ticket, TicketTaxDisplay, TicketTemplate
 from app.tickets.schemas import TicketRead, TicketTemplateRead
 
 
@@ -14,7 +14,7 @@ def template_to_read(template: TicketTemplate) -> TicketTemplateRead:
         width_mm=template.width_mm,
         header_text=template.header_text,
         footer_text=template.footer_text,
-        show_tax_breakdown=template.show_tax_breakdown,
+        tax_display=TicketTaxDisplay(template.tax_display),
         show_line_discounts=template.show_line_discounts,
         is_active=template.is_active,
     )

@@ -16,11 +16,31 @@ generation time, regardless of any template edits or reprints afterwards.
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from sqlalchemy import BigInteger, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
 from app.sales.models import Sale
+
+
+class TicketTaxDisplay(StrEnum):
+    """How a receipt reports the tax contained in its total.
+
+    A Spanish *factura simplificada* must carry at least the tax rate or
+    the words "IVA incluido" — ``NONE`` is therefore only appropriate for
+    an internal/non-fiscal receipt, which is why it isn't the default.
+    """
+
+    #: Nothing beyond the total.
+    NONE = "NONE"
+    #: One centred line ("IVA incluido") and no figures — the legal
+    #: minimum, and enough for a small shop under recargo de equivalencia.
+    NOTE = "NOTE"
+    #: A table with one row per tax rate on the sale: rate, taxable base
+    #: and tax amount.
+    BREAKDOWN = "BREAKDOWN"
 
 
 class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
@@ -35,10 +55,14 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     width_mm: Mapped[int] = mapped_column(Integer)
     header_text: Mapped[str] = mapped_column(Text, default="")
     footer_text: Mapped[str] = mapped_column(Text, default="")
-    #: When on, the tax block breaks the total down one line per distinct
-    #: tax rate present on the sale (e.g. "IVA 21%: 3,47 €") instead of a
-    #: single combined figure — see ``app.tickets.render``.
-    show_tax_breakdown: Mapped[bool] = mapped_column(default=True, server_default="true")
+    #: How the receipt reports its tax — see ``TicketTaxDisplay`` and
+    #: ``app.tickets.render``. Replaces the earlier ``show_tax_breakdown``
+    #: boolean, which could only say "a breakdown or nothing" and left no
+    #: room for the "IVA incluido" note a shop under recargo de
+    #: equivalencia actually wants.
+    tax_display: Mapped[str] = mapped_column(
+        String(20), default=TicketTaxDisplay.BREAKDOWN, server_default=TicketTaxDisplay.BREAKDOWN
+    )
     #: When on, a line whose ``discount_rate`` is above zero gets an extra
     #: row underneath it showing the discount applied.
     show_line_discounts: Mapped[bool] = mapped_column(default=False, server_default="false")

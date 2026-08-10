@@ -2,7 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-import { type TemplateFields } from '@/features/tickets/api';
+import {
+  TAX_DISPLAY_LABELS,
+  ticketTaxDisplaySchema,
+  type TemplateFields,
+  type TicketTaxDisplay,
+} from '@/features/tickets/api';
 import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 
 const fieldsSchema = z.object({
@@ -10,7 +15,7 @@ const fieldsSchema = z.object({
   width_mm: z.enum(['58', '80']),
   header_text: z.string().max(2000).optional(),
   footer_text: z.string().max(2000).optional(),
-  show_tax_breakdown: z.boolean(),
+  tax_display: ticketTaxDisplaySchema,
   show_line_discounts: z.boolean(),
 });
 
@@ -23,6 +28,10 @@ interface TemplateFieldsFormProps {
   onCancel: () => void;
   isPending: boolean;
   submitError: string | null;
+  /** Ajuste de tienda (Precios → "El PVP ya incluye el IVA"), no de la
+   * plantilla — sólo lo necesita la vista previa, para calcular las bases
+   * igual que lo hará el backend al imprimir de verdad. */
+  pricesIncludeTax: boolean;
 }
 
 /** Alta de una plantilla (nueva familia, con nombre) o revisión de la
@@ -35,6 +44,7 @@ export function TemplateFieldsForm({
   onCancel,
   isPending,
   submitError,
+  pricesIncludeTax,
 }: TemplateFieldsFormProps) {
   const {
     register,
@@ -48,7 +58,7 @@ export function TemplateFieldsForm({
       width_mm: defaults ? (String(defaults.width_mm) as '58' | '80') : '80',
       header_text: defaults?.header_text ?? '',
       footer_text: defaults?.footer_text ?? '',
-      show_tax_breakdown: defaults?.show_tax_breakdown ?? true,
+      tax_display: defaults?.tax_display ?? 'BREAKDOWN',
       show_line_discounts: defaults?.show_line_discounts ?? false,
     },
   });
@@ -57,8 +67,9 @@ export function TemplateFieldsForm({
     width_mm: Number(watch('width_mm')) as 58 | 80,
     header_text: watch('header_text') ?? '',
     footer_text: watch('footer_text') ?? '',
-    show_tax_breakdown: watch('show_tax_breakdown'),
+    tax_display: watch('tax_display'),
     show_line_discounts: watch('show_line_discounts'),
+    prices_include_tax: pricesIncludeTax,
   });
 
   const submit = handleSubmit((values) => {
@@ -71,7 +82,7 @@ export function TemplateFieldsForm({
       width_mm: Number(values.width_mm) as 58 | 80,
       header_text: values.header_text ?? '',
       footer_text: values.footer_text ?? '',
-      show_tax_breakdown: values.show_tax_breakdown,
+      tax_display: values.tax_display,
       show_line_discounts: values.show_line_discounts,
     });
   });
@@ -129,10 +140,27 @@ export function TemplateFieldsForm({
             />
           </label>
 
-          <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
-            <input type="checkbox" {...register('show_tax_breakdown')} />
-            Mostrar IVA desglosado por tipo (una línea por cada tasa de la venta)
-          </label>
+          {/* La ayuda va fuera del <label> a propósito: dentro pasaría a
+              formar parte del nombre accesible del desplegable. */}
+          <div className="text-sm text-slate-600 sm:col-span-2">
+            <label>
+              IVA en el ticket
+              <select
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                {...register('tax_display')}
+              >
+                {ticketTaxDisplaySchema.options.map((option: TicketTaxDisplay) => (
+                  <option key={option} value={option}>
+                    {TAX_DISPLAY_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="mt-1 block text-xs text-slate-400">
+              Una factura simplificada necesita al menos la nota «IVA incluido». El desglose añade
+              una tabla con la base y la cuota de cada tipo.
+            </span>
+          </div>
 
           <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
             <input type="checkbox" {...register('show_line_discounts')} />

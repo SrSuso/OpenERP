@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { pricingSettingsQuery } from '@/features/pricing/api';
 import { TemplateFieldsForm } from '@/features/tickets/TemplateFieldsForm';
 import { TemplateHistoryTable } from '@/features/tickets/TemplateHistoryTable';
 import {
+  TAX_DISPLAY_LABELS,
   activeTicketTemplateQuery,
   createTemplate,
   reviseTemplate,
@@ -22,6 +24,10 @@ export function TicketTemplatesPage() {
 
   const active = useQuery(activeTicketTemplateQuery);
   const templates = useQuery(ticketTemplatesQuery);
+  // Sólo para la vista previa: el desglose se calcula distinto según se
+  // extraiga el IVA del precio o se le sume (Precios → PricingSettings).
+  const pricing = useQuery(pricingSettingsQuery);
+  const pricesIncludeTax = pricing.data?.prices_include_tax ?? false;
   const queryClient = useQueryClient();
 
   const invalidate = () => {
@@ -73,8 +79,8 @@ export function TicketTemplatesPage() {
             {active.data.footer_text || '(sin pie)'}
           </pre>
           <p className="mt-1 text-xs text-slate-500">
-            IVA desglosado por tipo: {active.data.show_tax_breakdown ? 'sí' : 'no'} · Descuento por
-            línea: {active.data.show_line_discounts ? 'sí' : 'no'}
+            IVA en el ticket: {TAX_DISPLAY_LABELS[active.data.tax_display]} · Descuento por línea:{' '}
+            {active.data.show_line_discounts ? 'sí' : 'no'}
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -108,6 +114,7 @@ export function TicketTemplatesPage() {
       {mode === 'create' && (
         <TemplateFieldsForm
           mode="create"
+          pricesIncludeTax={pricesIncludeTax}
           isPending={createMutation.isPending}
           submitError={error}
           onCancel={() => {
@@ -124,6 +131,7 @@ export function TicketTemplatesPage() {
         <TemplateFieldsForm
           mode="revise"
           defaults={active.data}
+          pricesIncludeTax={pricesIncludeTax}
           isPending={reviseMutation.isPending}
           submitError={error}
           onCancel={() => {

@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from app.catalog.models import Product
 from app.sales.models import Payment, Sale, SaleLine, SaleStatus
-from app.tickets.models import TicketTemplate
+from app.tickets.models import TicketTaxDisplay, TicketTemplate
 from app.tickets.render import CHARS_PER_WIDTH, render_ticket
 
 
@@ -48,7 +48,7 @@ def _template(**overrides: object) -> TicketTemplate:
         "width_mm": 58,
         "header_text": "Mi Tienda\nCIF B00000000",
         "footer_text": "Gracias por su compra",
-        "show_tax_breakdown": True,
+        "tax_display": TicketTaxDisplay.BREAKDOWN,
         "show_line_discounts": False,
     }
     defaults.update(overrides)
@@ -87,36 +87,55 @@ def test_renders_each_line_with_name_and_total() -> None:
     assert "2.64" in text  # line total: 2 * 1.20 * 1.10
 
 
-def test_tax_breakdown_present_when_enabled() -> None:
+def test_breakdown_prints_a_row_per_rate_with_base_and_quota() -> None:
     sale = _sale(
         [_line("Leche", "1", "10.00", tax="21")],
         [Payment(method="CASH", amount=Decimal("12.10"))],
     )
 
-    text = _render(sale, _template(show_tax_breakdown=True))
+    text = _render(sale, _template(tax_display=TicketTaxDisplay.BREAKDOWN))
 
-    assert "Base imponible" in text
-    assert "IVA 21%" in text
-    assert "10.00" in text
-    assert "2.10" in text
+    assert "IVA incluido" in text
+    assert "Tipo" in text
+    assert "Base" in text
+    assert "Cuota" in text
+    # Una sola fila: 21%, base 10.00, cuota 2.10.
+    row = next(line for line in text.splitlines() if line.startswith("21%"))
+    assert "10.00" in row
+    assert "2.10" in row
     assert "TOTAL" in text
     assert "12.10" in text
 
 
-def test_tax_breakdown_absent_when_disabled() -> None:
+def test_tax_block_absent_entirely_under_none() -> None:
     sale = _sale(
         [_line("Leche", "1", "10.00", tax="21")],
         [Payment(method="CASH", amount=Decimal("12.10"))],
     )
 
-    text = _render(sale, _template(show_tax_breakdown=False))
+    text = _render(sale, _template(tax_display=TicketTaxDisplay.NONE))
 
-    assert "Base imponible" not in text
-    assert "IVA 21%" not in text
+    assert "IVA" not in text
+    assert "Cuota" not in text
     assert "TOTAL" in text
 
 
-def test_tax_breakdown_has_one_line_per_distinct_rate() -> None:
+def test_note_prints_the_legal_minimum_without_figures() -> None:
+    """El mínimo de una factura simplificada: la expresión "IVA incluido",
+    sin desglose (``TicketTaxDisplay.NOTE``)."""
+    sale = _sale(
+        [_line("Leche", "1", "10.00", tax="21")],
+        [Payment(method="CASH", amount=Decimal("12.10"))],
+    )
+
+    text = _render(sale, _template(tax_display=TicketTaxDisplay.NOTE))
+
+    assert "IVA incluido" in text
+    assert "Cuota" not in text
+    assert "TOTAL" in text
+
+
+def test_breakdown_has_one_row_per_distinct_rate() -> None:
     sale = _sale(
         [
             _line("Leche", "1", "10.00", tax="21"),
@@ -125,25 +144,25 @@ def test_tax_breakdown_has_one_line_per_distinct_rate() -> None:
         [Payment(method="CASH", amount=Decimal("23.10"))],
     )
 
-    text = _render(sale, _template(show_tax_breakdown=True))
+    text = _render(sale, _template(tax_display=TicketTaxDisplay.BREAKDOWN))
 
-    assert "IVA 21%" in text
-    assert "2.10" in text
-    assert "IVA 10%" in text
-    assert "1.00" in text
+    assert "2.10" in next(line for line in text.splitlines() if line.startswith("21%"))
+    assert "1.00" in next(line for line in text.splitlines() if line.startswith("10%"))
 
 
-def test_tax_exempt_lines_get_no_rate_line() -> None:
+def test_tax_exempt_lines_still_get_their_base_on_the_breakdown() -> None:
+    """Una base exenta sí sale en el desglose, con cuota 0 — es lo que
+    permite cuadrar el total contra la suma de bases."""
     sale = _sale(
         [_line("Producto exento", "1", "10.00", tax="0")],
         [Payment(method="CASH", amount=Decimal("10.00"))],
     )
 
-    text = _render(sale, _template(show_tax_breakdown=True))
+    text = _render(sale, _template(tax_display=TicketTaxDisplay.BREAKDOWN))
 
-    assert "Base imponible" in text
-    assert "IVA 0%" not in text
-    assert "IVA" not in text
+    row = next(line for line in text.splitlines() if line.startswith("0%"))
+    assert "10.00" in row
+    assert "0.00" in row
 
 
 def test_line_discount_shown_when_enabled_and_present() -> None:
@@ -241,23 +260,35 @@ def test_prices_include_tax_extracts_it_instead_of_adding_it() -> None:
         [Payment(method="CASH", amount=Decimal("12.10"))],
     )
 
-    text = _render(sale, _template(show_tax_breakdown=True), prices_include_tax=True)
+    text = _render(sale, _template(tax_display=TicketTaxDisplay.BREAKDOWN), prices_include_tax=True)
 
-    assert "Base imponible" in text
-    assert "10.00" in text
-    assert "IVA 21%" in text
-    assert "2.10" in text
+    row = next(line for line in text.splitlines() if line.startswith("21%"))
+    assert "10.00" in row  # base extraída
+    assert "2.10" in row  # cuota extraída
     assert "TOTAL" in text
-    assert "12.10" in text
-    assert "Precios con IVA incluido" in text
+    assert "12.10" in text  # el total cobrado no cambia
 
 
-def test_prices_include_tax_note_absent_when_disabled() -> None:
-    sale = _sale([_line("Leche", "1", "10.00")], [Payment(method="CASH", amount=Decimal("10.00"))])
+def test_the_breakdown_bases_add_up_to_the_total_with_several_rates() -> None:
+    """Lo que hace cuadrable el ticket: sumar base + cuota de cada fila
+    tiene que dar exactamente el TOTAL cobrado, con el IVA dentro del
+    precio (recargo de equivalencia) y varios tipos en la misma venta."""
+    sale = _sale(
+        [
+            _line("Leche", "1", "12.10", tax="21"),
+            _line("Pan", "1", "5.50", tax="10"),
+        ],
+        [Payment(method="CASH", amount=Decimal("17.60"))],
+    )
 
-    text = _render(sale, _template(), prices_include_tax=False)
+    text = _render(sale, _template(tax_display=TicketTaxDisplay.BREAKDOWN), prices_include_tax=True)
 
-    assert "Precios con IVA incluido" not in text
+    assert "10.00" in next(line for line in text.splitlines() if line.startswith("21%"))
+    assert "2.10" in next(line for line in text.splitlines() if line.startswith("21%"))
+    assert "5.00" in next(line for line in text.splitlines() if line.startswith("10%"))
+    assert "0.50" in next(line for line in text.splitlines() if line.startswith("10%"))
+    # 10.00 + 2.10 + 5.00 + 0.50 = 17.60
+    assert "17.60" in next(line for line in text.splitlines() if line.startswith("TOTAL"))
 
 
 def test_quantity_of_a_whole_number_does_not_use_scientific_notation() -> None:

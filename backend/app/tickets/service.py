@@ -54,7 +54,7 @@ async def create_template(session: AsyncSession, payload: TicketTemplateCreate) 
         width_mm=payload.width_mm,
         header_text=payload.header_text,
         footer_text=payload.footer_text,
-        show_tax_breakdown=payload.show_tax_breakdown,
+        tax_display=payload.tax_display,
         show_line_discounts=payload.show_line_discounts,
         is_active=True,
     )
@@ -95,7 +95,7 @@ async def revise_template(
         width_mm=payload.width_mm,
         header_text=payload.header_text,
         footer_text=payload.footer_text,
-        show_tax_breakdown=payload.show_tax_breakdown,
+        tax_display=payload.tax_display,
         show_line_discounts=payload.show_line_discounts,
         is_active=True,
     )

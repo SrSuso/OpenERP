@@ -6,8 +6,9 @@ const BASE_FIELDS = {
   width_mm: 58 as const,
   header_text: '',
   footer_text: '',
-  show_tax_breakdown: true,
+  tax_display: 'BREAKDOWN' as const,
   show_line_discounts: false,
+  prices_include_tax: false,
 };
 
 describe('renderTicketPreview', () => {
@@ -30,19 +31,37 @@ describe('renderTicketPreview', () => {
     expect(preview.split('\n')[1]).toBe('-'.repeat(48));
   });
 
-  it('includes the tax breakdown lines only when requested', () => {
-    const withBreakdown = renderTicketPreview({ ...BASE_FIELDS, show_tax_breakdown: true });
-    const withoutBreakdown = renderTicketPreview({ ...BASE_FIELDS, show_tax_breakdown: false });
+  it('shows nothing about tax under NONE', () => {
+    const preview = renderTicketPreview({ ...BASE_FIELDS, tax_display: 'NONE' });
 
-    expect(withBreakdown).toContain('Base imponible');
-    expect(withoutBreakdown).not.toContain('Base imponible');
+    expect(preview).not.toContain('IVA');
+    expect(preview).not.toContain('Cuota');
   });
 
-  it('breaks the tax breakdown down by rate instead of a single total', () => {
-    const preview = renderTicketPreview({ ...BASE_FIELDS, show_tax_breakdown: true });
+  it('shows only the note under NOTE', () => {
+    const preview = renderTicketPreview({ ...BASE_FIELDS, tax_display: 'NOTE' });
 
-    expect(preview).toContain('IVA 10%');
-    expect(preview).toContain('IVA 21%');
+    expect(preview).toContain('IVA incluido');
+    expect(preview).not.toContain('Cuota');
+  });
+
+  it('shows a row per rate with its base and quota under BREAKDOWN', () => {
+    const preview = renderTicketPreview({ ...BASE_FIELDS, tax_display: 'BREAKDOWN' });
+    const lines = preview.split('\n');
+
+    expect(preview).toContain('Cuota');
+    expect(lines.some((line) => line.startsWith('10%'))).toBe(true);
+    expect(lines.some((line) => line.startsWith('21%'))).toBe(true);
+  });
+
+  it('extracts the tax from the price when the store says prices include it', () => {
+    const added = renderTicketPreview({ ...BASE_FIELDS, prices_include_tax: false });
+    const included = renderTicketPreview({ ...BASE_FIELDS, prices_include_tax: true });
+
+    // Misma línea de 2 x 0,95 € al 10%: sumando IVA la base es 1,90 y el
+    // total 2,09; con el IVA dentro, la base baja a 1,73 y el total es 1,90.
+    expect(added.split('\n').find((line) => line.startsWith('10%'))).toContain('1,90 €');
+    expect(included.split('\n').find((line) => line.startsWith('10%'))).toContain('1,73 €');
   });
 
   it('includes a discount line only when requested', () => {

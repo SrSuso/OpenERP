@@ -10,7 +10,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.sales.models import Sale, SaleLine
-from app.tickets.models import TicketTemplate
+from app.tickets.models import TicketTaxDisplay, TicketTemplate
 
 #: Characters a standard monospace receipt font fits per line, for each
 #: supported roll width — the two off only because thermal printers only
@@ -76,6 +76,15 @@ def _two_column(left: str, right: str, width: int) -> list[str]:
     return lines
 
 
+def _three_column(left: str, middle: str, right: str, width: int) -> str:
+    """``left`` flush left, then ``middle`` and ``right`` right-aligned in
+    the two columns that share whatever space is left — the tax breakdown
+    table's "Tipo / Base / Cuota" rows."""
+    remaining = width - len(left)
+    middle_width = remaining // 2
+    return left + middle.rjust(middle_width) + right.rjust(remaining - middle_width)
+
+
 def _line_amounts(line: SaleLine, *, prices_include_tax: bool) -> tuple[Decimal, Decimal, Decimal]:
     """``(net, tax_amount, total)`` — same formula as
     ``app.sales.service.compute_amounts`` (duplicated rather than
@@ -112,12 +121,14 @@ def render_ticket(sale: Sale, template: TicketTemplate, *, prices_include_tax: b
 
     subtotal = Decimal(0)
     #: One accumulator per distinct rate present on the sale, not a single
-    #: combined figure — what makes the "IVA 21%: …" / "IVA 10%: …"
-    #: breakdown below possible when ``show_tax_breakdown`` is on.
+    #: combined figure — what makes the per-rate table possible under
+    #: ``TicketTaxDisplay.BREAKDOWN``.
+    net_by_rate: dict[Decimal, Decimal] = {}
     tax_by_rate: dict[Decimal, Decimal] = {}
     for line in sale.lines:
         net, tax_amount, total = _line_amounts(line, prices_include_tax=prices_include_tax)
         discount_amount = line.quantity_base * line.unit_price * line.discount_rate / Decimal(100)
+        net_by_rate[line.tax_rate] = net_by_rate.get(line.tax_rate, Decimal(0)) + net
         tax_by_rate[line.tax_rate] = tax_by_rate.get(line.tax_rate, Decimal(0)) + tax_amount
         subtotal += net
         rows.extend(_two_column(line.product.name, _money(total), width))
@@ -131,15 +142,27 @@ def render_ticket(sale: Sale, template: TicketTemplate, *, prices_include_tax: b
             )
 
     tax_total = sum(tax_by_rate.values(), start=Decimal(0))
-    rows.append(_rule(width))
-    if template.show_tax_breakdown:
-        rows.extend(_two_column("Base imponible", _money(subtotal), width))
-        for rate in sorted(rate for rate in tax_by_rate if rate > 0):
-            rows.extend(_two_column(f"IVA {_rate_label(rate)}%", _money(tax_by_rate[rate]), width))
-    if prices_include_tax:
-        rows.append(_center("Precios con IVA incluido", width))
     total = subtotal + tax_total
+    rows.append(_rule(width))
     rows.extend(_two_column("TOTAL", _money(total), width))
+
+    # The tax block goes *after* the total, the way a Spanish factura
+    # simplificada reads — see ``TicketTaxDisplay``.
+    if template.tax_display == TicketTaxDisplay.NOTE:
+        rows.append(_center("IVA incluido", width))
+    elif template.tax_display == TicketTaxDisplay.BREAKDOWN:
+        rows.append(_rule(width))
+        rows.append("IVA incluido")
+        rows.append(_three_column("Tipo", "Base", "Cuota", width))
+        for rate in sorted(net_by_rate):
+            rows.append(
+                _three_column(
+                    f"{_rate_label(rate)}%",
+                    _money(net_by_rate[rate]),
+                    _money(tax_by_rate[rate]),
+                    width,
+                )
+            )
     rows.append(_rule(width))
 
     for payment in sale.payments:

@@ -37,6 +37,9 @@ function stubBackend() {
         init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
 
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
+      if (method === 'GET' && url.includes('/pricing/settings')) {
+        return Promise.resolve(jsonResponse({ formula: 'cost', prices_include_tax: false }));
+      }
       if (method === 'GET' && /\/ticket-templates\/active$/.test(url)) {
         const active = templates.find((t) => t.is_active);
         return active
@@ -68,7 +71,7 @@ function stubBackend() {
           width_mm: b['width_mm'] as 58 | 80,
           header_text: (b['header_text'] as string) ?? '',
           footer_text: (b['footer_text'] as string) ?? '',
-          show_tax_breakdown: b['show_tax_breakdown'] as boolean,
+          tax_display: b['tax_display'] as TicketTemplate['tax_display'],
           show_line_discounts: b['show_line_discounts'] as boolean,
           is_active: true,
         };
@@ -89,7 +92,7 @@ function stubBackend() {
           width_mm: b['width_mm'] as 58 | 80,
           header_text: (b['header_text'] as string) ?? '',
           footer_text: (b['footer_text'] as string) ?? '',
-          show_tax_breakdown: b['show_tax_breakdown'] as boolean,
+          tax_display: b['tax_display'] as TicketTemplate['tax_display'],
           show_line_discounts: b['show_line_discounts'] as boolean,
           is_active: true,
         };
@@ -137,7 +140,7 @@ describe('TicketTemplatesPage', () => {
         width_mm: 58,
         header_text: 'Gracias por su compra',
         footer_text: '',
-        show_tax_breakdown: true,
+        tax_display: 'BREAKDOWN',
         show_line_discounts: false,
       },
     ]);
@@ -156,10 +159,36 @@ describe('TicketTemplatesPage', () => {
           width_mm: 58,
           header_text: 'Gracias por su compra',
           footer_text: 'Vuelva pronto',
-          show_tax_breakdown: true,
+          tax_display: 'BREAKDOWN',
           show_line_discounts: false,
         },
       },
     ]);
+  });
+
+  it('lets the shop switch the ticket from the full breakdown to just "IVA incluido"', async () => {
+    const backend = stubBackend();
+    const { container } = renderPage();
+    const preview = () => container.querySelector('pre')!.textContent ?? '';
+
+    await screen.findByText('Todavía no hay ninguna plantilla activa.');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Tienda');
+
+    // Por defecto, el desglose completo: una fila por tipo con base y cuota.
+    expect(preview()).toContain('Cuota');
+    expect(preview()).toMatch(/^21%/m);
+
+    await userEvent.selectOptions(screen.getByLabelText('IVA en el ticket'), 'NOTE');
+
+    // La vista previa cambia en vivo: se va la tabla, queda la nota.
+    expect(preview()).not.toContain('Cuota');
+    expect(preview()).toContain('IVA incluido');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    await screen.findByText(/Activa: Tienda/);
+    expect(backend.createCalls[0]).toMatchObject({ tax_display: 'NOTE' });
+    expect(screen.getByText(/Sólo la nota «IVA incluido»/)).toBeInTheDocument();
   });
 });

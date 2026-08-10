@@ -42,7 +42,7 @@ async def _create_template(
         "width_mm": 58,
         "header_text": "Mi Tienda",
         "footer_text": "Gracias",
-        "show_tax_breakdown": True,
+        "tax_display": "BREAKDOWN",
     }
     payload.update(overrides)
     response = await client.post("/api/v1/ticket-templates", json=payload)
@@ -283,7 +283,7 @@ async def test_ticket_notes_prices_include_tax_when_the_store_setting_is_on(
         )
     ).status_code == 200
     try:
-        await _create_template(client, header_text="Mi Tienda", show_tax_breakdown=True)
+        await _create_template(client, header_text="Mi Tienda", tax_display="BREAKDOWN")
         product = await _create_product(
             client, sku="TICKET-TAX-INCL", list_price="12.10", tax_rate="21"
         )
@@ -293,8 +293,11 @@ async def test_ticket_notes_prices_include_tax_when_the_store_setting_is_on(
 
         assert response.status_code == 201
         text = response.json()["rendered_text"]
-        assert "Precios con IVA incluido" in text
-        assert "12.10" in text  # el total cobrado, no 12.10 + IVA aparte
+        # base 10.00 + cuota 2.10 = 12.10, el total cobrado (no 12.10 + IVA aparte)
+        row = next(line for line in text.splitlines() if line.startswith("21%"))
+        assert "10.00" in row
+        assert "2.10" in row
+        assert "12.10" in next(line for line in text.splitlines() if line.startswith("TOTAL"))
     finally:
         await login(role_name="ADMIN")
         await client.put(

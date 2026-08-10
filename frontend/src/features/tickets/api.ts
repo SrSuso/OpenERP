@@ -7,6 +7,19 @@ import { API_V1, apiFetch } from '@/lib/api';
 // la vez en toda la tienda (app.tickets.service's docstring) — revisarla
 // crea una nueva versión bajo el mismo nombre, nunca muta la anterior.
 
+/** Cómo indica el ticket el IVA que lleva dentro — ver
+ * backend/app/tickets/models.py's `TicketTaxDisplay`. Una factura
+ * simplificada española necesita al menos `NOTE`; `NONE` sólo vale para
+ * un recibo interno. */
+export const ticketTaxDisplaySchema = z.enum(['NONE', 'NOTE', 'BREAKDOWN']);
+export type TicketTaxDisplay = z.infer<typeof ticketTaxDisplaySchema>;
+
+export const TAX_DISPLAY_LABELS: Record<TicketTaxDisplay, string> = {
+  NONE: 'No indicar nada',
+  NOTE: 'Sólo la nota «IVA incluido»',
+  BREAKDOWN: 'Desglose por tipo (base y cuota)',
+};
+
 export const ticketTemplateSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -14,7 +27,7 @@ export const ticketTemplateSchema = z.object({
   width_mm: z.union([z.literal(58), z.literal(80)]),
   header_text: z.string(),
   footer_text: z.string(),
-  show_tax_breakdown: z.boolean(),
+  tax_display: ticketTaxDisplaySchema,
   show_line_discounts: z.boolean(),
   is_active: z.boolean(),
 });
@@ -36,7 +49,7 @@ export interface TemplateFields {
   width_mm: 58 | 80;
   header_text: string;
   footer_text: string;
-  show_tax_breakdown: boolean;
+  tax_display: TicketTaxDisplay;
   show_line_discounts: boolean;
 }
 

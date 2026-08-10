@@ -7,13 +7,15 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.tickets.models import TicketTaxDisplay
+
 
 class TicketTemplateCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     width_mm: Literal[58, 80]
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
-    show_tax_breakdown: bool = True
+    tax_display: TicketTaxDisplay = TicketTaxDisplay.BREAKDOWN
     show_line_discounts: bool = False
 
 
@@ -24,7 +26,7 @@ class TicketTemplateRevise(BaseModel):
     width_mm: Literal[58, 80]
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
-    show_tax_breakdown: bool = True
+    tax_display: TicketTaxDisplay = TicketTaxDisplay.BREAKDOWN
     show_line_discounts: bool = False
 
 
@@ -35,7 +37,7 @@ class TicketTemplateRead(BaseModel):
     width_mm: int
     header_text: str
     footer_text: str
-    show_tax_breakdown: bool
+    tax_display: TicketTaxDisplay
     show_line_discounts: bool
     is_active: bool
 

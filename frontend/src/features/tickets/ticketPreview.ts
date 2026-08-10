@@ -5,6 +5,8 @@
  * backend/app/tickets/render.py's `render_ticket`: incluir la lógica real
  * exigiría construir una `Sale` de mentira sólo para previsualizar. */
 
+import { type TicketTaxDisplay } from '@/features/tickets/api';
+
 const CHARS_PER_WIDTH: Record<58 | 80, number> = { 58: 32, 80: 48 };
 
 function center(text: string, width: number): string {
@@ -26,6 +28,12 @@ function twoColumn(left: string, right: string, width: number): string[] {
   return [left, ' '.repeat(Math.max(0, width - right.length)) + right];
 }
 
+function threeColumn(left: string, middle: string, right: string, width: number): string {
+  const remaining = width - left.length;
+  const middleWidth = Math.floor(remaining / 2);
+  return left + middle.padStart(middleWidth) + right.padStart(remaining - middleWidth);
+}
+
 function eur(value: number): string {
   return `${value.toFixed(2).replace('.', ',')} €`;
 }
@@ -43,8 +51,11 @@ export interface TicketPreviewFields {
   width_mm: 58 | 80;
   header_text: string;
   footer_text: string;
-  show_tax_breakdown: boolean;
+  tax_display: TicketTaxDisplay;
   show_line_discounts: boolean;
+  /** Ajuste de tienda (Precios), no de la plantilla — la vista previa lo
+   * necesita porque cambia si el IVA se extrae del precio o se le suma. */
+  prices_include_tax: boolean;
 }
 
 export function renderTicketPreview(fields: TicketPreviewFields): string {
@@ -63,13 +74,17 @@ export function renderTicketPreview(fields: TicketPreviewFields): string {
   rows.push(rule(width));
 
   let subtotal = 0;
+  const netByRate = new Map<number, number>();
   const taxByRate = new Map<number, number>();
 
   for (const line of SAMPLE_LINES) {
     const subtotalLine = line.qty * line.unitPrice;
     const discountAmount = (subtotalLine * line.discountRate) / 100;
-    const net = subtotalLine - discountAmount;
-    const taxAmount = (net * line.taxRate) / 100;
+    const remaining = subtotalLine - discountAmount;
+    // Mismas dos ramas que backend/app/tickets/render.py's `_line_amounts`.
+    const net = fields.prices_include_tax ? remaining / (1 + line.taxRate / 100) : remaining;
+    const taxAmount = fields.prices_include_tax ? remaining - net : (net * line.taxRate) / 100;
+    netByRate.set(line.taxRate, (netByRate.get(line.taxRate) ?? 0) + net);
     taxByRate.set(line.taxRate, (taxByRate.get(line.taxRate) ?? 0) + taxAmount);
     subtotal += net;
 
@@ -81,17 +96,27 @@ export function renderTicketPreview(fields: TicketPreviewFields): string {
   }
 
   const taxTotal = [...taxByRate.values()].reduce((sum, amount) => sum + amount, 0);
+  const total = subtotal + taxTotal;
 
   rows.push(rule(width));
-  if (fields.show_tax_breakdown) {
-    rows.push(...twoColumn('Base imponible', eur(subtotal), width));
-    for (const rate of [...taxByRate.keys()].sort((a, b) => a - b)) {
-      if (rate === 0) continue;
-      rows.push(...twoColumn(`IVA ${rate}%`, eur(taxByRate.get(rate) ?? 0), width));
+  rows.push(...twoColumn('TOTAL', eur(total), width));
+  if (fields.tax_display === 'NOTE') {
+    rows.push(center('IVA incluido', width));
+  } else if (fields.tax_display === 'BREAKDOWN') {
+    rows.push(rule(width));
+    rows.push('IVA incluido');
+    rows.push(threeColumn('Tipo', 'Base', 'Cuota', width));
+    for (const rate of [...netByRate.keys()].sort((a, b) => a - b)) {
+      rows.push(
+        threeColumn(
+          `${rate}%`,
+          eur(netByRate.get(rate) ?? 0),
+          eur(taxByRate.get(rate) ?? 0),
+          width,
+        ),
+      );
     }
   }
-  const total = subtotal + taxTotal;
-  rows.push(...twoColumn('TOTAL', eur(total), width));
   rows.push(rule(width));
 
   const tendered = Math.ceil(total);
