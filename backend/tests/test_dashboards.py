@@ -136,7 +136,14 @@ async def test_list_metrics_describes_every_whitelisted_metric(
 
     assert response.status_code == 200
     keys = {m["key"] for m in response.json()}
-    assert keys == {"sales_over_time", "top_products", "stock_value", "low_stock_count"}
+    assert keys == {
+        "sales_over_time",
+        "top_products",
+        "stock_value",
+        "low_stock_count",
+        # Montado con el constructor de informes, no una consulta fija más.
+        "report",
+    }
 
 
 async def test_create_dashboard_and_add_a_widget(
@@ -519,3 +526,66 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/dashboards")
 
     assert response.status_code == 401
+
+
+async def test_a_widget_can_be_built_with_the_report_builder(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Graficar algo que no está en las cuatro métricas fijas, eligiendo
+    sujeto/agrupación/medida — sin abrir una segunda vía de consultas: se
+    valida contra la misma lista blanca que los informes."""
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _new_warehouse(client)
+    product = await _create_product(client, sku="DASH-REPORT", list_price="10.00", tax_rate="0")
+    await _completed_sale(
+        client, product=product, quantity="2", location=(warehouse_id, location_id)
+    )
+    dashboard = await _create_dashboard(client)
+    widget = (
+        await client.post(
+            f"/api/v1/dashboards/{dashboard['id']}/widgets",
+            json={
+                "metric": "report",
+                "title": "Ventas por producto",
+                "params": {
+                    "subject": "SALES",
+                    "dimensions": ["product"],
+                    "metrics": ["quantity", "revenue"],
+                    "filters": {"warehouse_id": warehouse_id},
+                },
+                "chart_type": "bar",
+            },
+        )
+    ).json()["widgets"][0]
+
+    response = await client.get(f"/api/v1/dashboards/{dashboard['id']}/widgets/{widget['id']}/data")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["columns"] == ["product_sku", "product_name", "quantity", "revenue"]
+    assert data["rows"][0]["product_sku"] == product["sku"]
+
+
+async def test_a_report_widget_with_an_invented_dimension_is_rejected(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    dashboard = await _create_dashboard(client)
+
+    response = await client.post(
+        f"/api/v1/dashboards/{dashboard['id']}/widgets",
+        json={
+            "metric": "report",
+            "title": "Inventada",
+            "params": {"subject": "SALES", "dimensions": ["no_existe"], "metrics": ["quantity"]},
+            "chart_type": "bar",
+        },
+    )
+
+    # Si cuela al guardar, tiene que caer al ejecutarse — nunca llegar a SQL.
+    if response.status_code == 201:
+        widget = response.json()["widgets"][-1]
+        data = await client.get(f"/api/v1/dashboards/{dashboard['id']}/widgets/{widget['id']}/data")
+        assert data.status_code == 422
+    else:
+        assert response.status_code == 422

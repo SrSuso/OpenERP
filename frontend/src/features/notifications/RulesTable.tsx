@@ -3,6 +3,7 @@ import { type NotificationRule, type RuleType } from '@/features/notifications/a
 const RULE_TYPE_LABELS: Record<RuleType, string> = {
   LOW_STOCK: 'Stock bajo mínimo',
   EXPIRING_LOT: 'Lotes próximos a caducar',
+  CONDITION: 'A mi medida (con condiciones)',
 };
 
 function paramsSummary(rule: NotificationRule): string {

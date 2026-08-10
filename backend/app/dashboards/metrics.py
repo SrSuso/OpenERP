@@ -24,6 +24,7 @@ from app.core.errors import ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.inventory.models import StockBalance
 from app.pricing.models import PricingSettings
+from app.reports.rules import ReportFilters, ReportSubject, run_report
 from app.sales.models import Sale, SaleLine, SaleStatus
 
 
@@ -40,6 +41,12 @@ class MetricKey(StrEnum):
     TOP_PRODUCTS = "top_products"
     STOCK_VALUE = "stock_value"
     LOW_STOCK_COUNT = "low_stock_count"
+    #: Un widget montado con el constructor de informes: sujeto,
+    #: agrupación, medidas y filtros elegidos por el usuario dentro de la
+    #: misma lista blanca (`app.reports.rules`). Es lo que permite
+    #: graficar algo que no esté en las cuatro métricas de arriba sin
+    #: abrir una segunda vía de consultas.
+    REPORT = "report"
 
 
 # --- params ------------------------------------------------------------------
@@ -67,11 +74,22 @@ class LowStockCountParams(BaseModel):
     warehouse_id: int | None = None
 
 
+class ReportParams(BaseModel):
+    """Los mismos campos que `POST /reports/run` — se validan contra la
+    lista blanca de `app.reports.rules` al ejecutarse, igual que allí."""
+
+    subject: ReportSubject
+    dimensions: list[str] = Field(default_factory=list)
+    metrics: list[str] = Field(default_factory=list)
+    filters: ReportFilters = Field(default_factory=ReportFilters)
+
+
 PARAMS_BY_METRIC: dict[MetricKey, type[BaseModel]] = {
     MetricKey.SALES_OVER_TIME: SalesOverTimeParams,
     MetricKey.TOP_PRODUCTS: TopProductsParams,
     MetricKey.STOCK_VALUE: StockValueParams,
     MetricKey.LOW_STOCK_COUNT: LowStockCountParams,
+    MetricKey.REPORT: ReportParams,
 }
 
 
@@ -219,11 +237,19 @@ async def low_stock_count(session: AsyncSession, params: LowStockCountParams) ->
     return {"low_stock_count": count}
 
 
+async def report_widget(session: AsyncSession, params: ReportParams) -> dict[str, Any]:
+    columns, rows = await run_report(
+        session, params.subject, params.dimensions, params.metrics, params.filters
+    )
+    return {"columns": columns, "rows": rows}
+
+
 _RUNNERS: dict[MetricKey, Any] = {
     MetricKey.SALES_OVER_TIME: sales_over_time,
     MetricKey.TOP_PRODUCTS: top_products,
     MetricKey.STOCK_VALUE: stock_value,
     MetricKey.LOW_STOCK_COUNT: low_stock_count,
+    MetricKey.REPORT: report_widget,
 }
 
 

@@ -48,7 +48,12 @@ async def create_rule(session: AsyncSession, payload: NotificationRuleCreate) ->
         )
         rule_engine.validate_params(rule_engine.RuleType(payload.rule_type), params)
 
-    rule = NotificationRule(name=payload.name, rule_type=payload.rule_type, params=params)
+    rule = NotificationRule(
+        name=payload.name,
+        rule_type=payload.rule_type,
+        params=params,
+        severity=payload.severity,
+    )
     session.add(rule)
     await session.flush()
     await audit.record(
@@ -74,6 +79,8 @@ async def update_rule(
         # params that fit a different rule_type past the whitelist either.
         rule_engine.validate_params(rule_engine.RuleType(rule.rule_type), payload.params)
         rule.params = payload.params
+    if payload.severity is not None:
+        rule.severity = payload.severity
     if payload.is_active is not None:
         rule.is_active = payload.is_active
 

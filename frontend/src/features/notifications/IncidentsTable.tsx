@@ -1,4 +1,4 @@
-import { type Incident } from '@/features/notifications/api';
+import { SEVERITY_LABELS, SEVERITY_STYLES, type Incident } from '@/features/notifications/api';
 
 interface IncidentsTableProps {
   incidents: Incident[];
@@ -22,6 +22,8 @@ export function IncidentsTable({
       <table className="w-full text-left text-sm">
         <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
+            <th className="px-4 py-2 font-medium">Criticidad</th>
+            <th className="px-4 py-2 font-medium">Criticidad</th>
             <th className="px-4 py-2 font-medium">Regla</th>
             <th className="px-4 py-2 font-medium">Mensaje</th>
             <th className="px-4 py-2 font-medium">Detectada</th>
@@ -33,6 +35,19 @@ export function IncidentsTable({
         <tbody>
           {incidents.map((incident) => (
             <tr key={incident.id} className="border-b border-slate-100 last:border-0">
+              <td className="px-4 py-2">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    SEVERITY_STYLES[incident.severity].badge
+                  } ${
+                    incident.status === 'OPEN' && SEVERITY_STYLES[incident.severity].blink
+                      ? 'animate-pulse'
+                      : ''
+                  }`}
+                >
+                  {SEVERITY_LABELS[incident.severity]}
+                </span>
+              </td>
               <td className="px-4 py-2 font-medium text-slate-800">{incident.rule_name}</td>
               <td className="px-4 py-2">{incident.message}</td>
               <td className="px-4 py-2 text-xs text-slate-500">

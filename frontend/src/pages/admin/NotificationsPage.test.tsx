@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -40,6 +40,23 @@ function stubBackend() {
         init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
 
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
+      if (method === 'GET' && url.includes('/notification-fields')) {
+        return Promise.resolve(
+          jsonResponse({
+            subjects: [
+              {
+                key: 'PRODUCT',
+                label: 'Productos',
+                fields: [
+                  { key: 'stock', label: 'Stock actual', type: 'NUMBER', help: 'Unidades.' },
+                ],
+              },
+            ],
+            operators: ['=', '!=', '<', '<=', '>', '>='],
+            severities: ['LOW', 'MEDIUM_LOW', 'MEDIUM_HIGH', 'HIGH'],
+          }),
+        );
+      }
       if (method === 'GET' && /\/warehouses$/.test(url))
         return Promise.resolve(jsonResponse([warehouse]));
 
@@ -53,6 +70,7 @@ function stubBackend() {
           id: rules.length + 1,
           name: b['name'] as string,
           rule_type: b['rule_type'] as NotificationRule['rule_type'],
+          severity: 'MEDIUM_LOW',
           params: b['params'] as Record<string, unknown>,
           is_active: true,
         };
@@ -81,6 +99,7 @@ function stubBackend() {
             id: 1,
             rule_id: 1,
             rule_name: rules[0]?.name ?? 'Stock bajo',
+            severity: 'HIGH' as const,
             subject_type: 'product',
             subject_id: 10,
             message: 'P000010 (Agua): quedan 2 unidades, por debajo del mínimo (5).',
@@ -132,7 +151,12 @@ describe('NotificationsPage', () => {
 
     await screen.findByText('Stock bajo almacén central');
     expect(backend.createRuleCalls).toEqual([
-      { name: 'Stock bajo almacén central', rule_type: 'LOW_STOCK', params: { warehouse_id: 1 } },
+      {
+        name: 'Stock bajo almacén central',
+        rule_type: 'LOW_STOCK',
+        severity: 'MEDIUM_LOW',
+        params: { warehouse_id: 1 },
+      },
     ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
@@ -147,5 +171,38 @@ describe('NotificationsPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Resolver' }));
     await screen.findByText('No hay incidencias con estos filtros.');
+  });
+
+  it('builds a rule from the fields and comparators the backend offers', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByRole('button', { name: 'Nueva regla' });
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
+
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Stock por debajo de 5');
+    await userEvent.selectOptions(screen.getByLabelText('Tipo'), 'CONDITION');
+    await userEvent.selectOptions(screen.getByLabelText('Criticidad'), 'HIGH');
+    await userEvent.selectOptions(screen.getByLabelText('Avisar sobre'), 'PRODUCT');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir condición' }));
+    // Los campos y comparadores vienen del backend, no escritos en el panel.
+    await userEvent.selectOptions(screen.getByLabelText('Campo 1'), 'stock');
+    await userEvent.selectOptions(screen.getByLabelText('Comparador 1'), '<');
+    await userEvent.type(screen.getByLabelText('Valor 1'), '5');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    await waitFor(() =>
+      expect(backend.createRuleCalls).toEqual([
+        {
+          name: 'Stock por debajo de 5',
+          rule_type: 'CONDITION',
+          severity: 'HIGH',
+          params: {
+            subject: 'PRODUCT',
+            conditions: [{ field: 'stock', operator: '<', value: 5 }],
+          },
+        },
+      ]),
+    );
   });
 });

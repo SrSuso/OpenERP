@@ -14,10 +14,12 @@ from app.notifications import service
 from app.notifications.presenters import incident_to_read as _incident_to_read
 from app.notifications.presenters import rule_to_read as _rule_to_read
 from app.notifications.schemas import (
+    ConditionCatalogueRead,
     IncidentRead,
     NotificationRuleCreate,
     NotificationRuleRead,
     NotificationRuleUpdate,
+    condition_catalogue,
 )
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import NOTIFICATION_MANAGE, NOTIFICATION_READ
@@ -26,6 +28,16 @@ router = APIRouter(tags=["notifications"])
 
 _require_read = Depends(require_permission(NOTIFICATION_READ))
 _require_manage = Depends(require_permission(NOTIFICATION_MANAGE))
+
+
+@router.get(
+    "/notification-fields", response_model=ConditionCatalogueRead, dependencies=[_require_read]
+)
+async def list_condition_fields() -> ConditionCatalogueRead:
+    """Sobre qué se puede escribir una regla, con qué campos y qué
+    comparadores — el panel construye el formulario a partir de esto, sin
+    llevar escrita ni una clave (ver `app.notifications.conditions`)."""
+    return condition_catalogue()
 
 
 @router.get(

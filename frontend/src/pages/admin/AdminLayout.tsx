@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet } from 'react-router';
 
 import { useAuth } from '@/features/auth/AuthContext';
+import { SEVERITY_STYLES, incidentsQuery, type Severity } from '@/features/notifications/api';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 
 const linkClassName = ({ isActive }: { isActive: boolean }) =>
@@ -82,9 +84,28 @@ const SECTIONS: NavSection[] = [
  * routes.tsx is the second line of defence if someone navigates there
  * directly.
  */
+/** La más alta de las criticidades abiertas, para el contador del menú.
+ * Ordenadas de menos a más: la última que aparezca gana. */
+const SEVERITY_ORDER: Severity[] = ['LOW', 'MEDIUM_LOW', 'MEDIUM_HIGH', 'HIGH'];
+
 export function AdminLayout() {
   const { user, hasPermission, logout } = useAuth();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
+
+  // Un aviso abierto tiene que verse desde cualquier pantalla, no sólo si
+  // alguien entra en Avisos — es justo lo que hacía que se olvidaran.
+  const canSeeIncidents = hasPermission('notification.read');
+  const openIncidents = useQuery({
+    ...incidentsQuery({ status: 'OPEN' }),
+    enabled: canSeeIncidents,
+    // El menú está siempre en pantalla: se refresca solo cada minuto para
+    // que un aviso nuevo aparezca sin tener que recargar.
+    refetchInterval: 60_000,
+  });
+  const incidents = openIncidents.data ?? [];
+  const worst = SEVERITY_ORDER.filter((level) =>
+    incidents.some((incident) => incident.severity === level),
+  ).at(-1);
 
   const visible = SECTIONS.map((section) => ({
     ...section,
@@ -112,7 +133,19 @@ export function AdminLayout() {
                   end={entry.to === '/admin'}
                   className={linkClassName}
                 >
-                  {entry.label}
+                  <span className="flex items-center justify-between gap-2">
+                    {entry.label}
+                    {entry.to === '/admin/notifications' && worst && (
+                      <span
+                        aria-label={`${incidents.length} avisos sin resolver`}
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          SEVERITY_STYLES[worst].badge
+                        } ${SEVERITY_STYLES[worst].blink ? 'animate-pulse' : ''}`}
+                      >
+                        {incidents.length}
+                      </span>
+                    )}
+                  </span>
                 </NavLink>
               ))}
             </div>

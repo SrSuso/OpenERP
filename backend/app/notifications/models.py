@@ -36,6 +36,11 @@ class NotificationRule(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: One of ``app.notifications.rules.RuleType``.
     rule_type: Mapped[str] = mapped_column(String(30))
     params: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    #: Cuánto corre. Sólo cambia cómo se presenta el aviso (color, y si
+    #: parpadea en el menú) — ver `app.notifications.rules.Severity`.
+    severity: Mapped[str] = mapped_column(
+        String(20), default="MEDIUM_LOW", server_default="MEDIUM_LOW"
+    )
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
     incidents: Mapped[list[Incident]] = relationship(back_populates="rule")

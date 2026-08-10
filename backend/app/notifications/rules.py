@@ -24,11 +24,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.catalog.models import Product
 from app.inventory.models import StockBalance
 from app.lots.models import Lot
+from app.notifications import conditions
+
+
+class Severity(StrEnum):
+    """Cuatro niveles, pedidos así: el panel pinta cada uno de un color y
+    hace parpadear los dos altos para que no pasen desapercibidos."""
+
+    LOW = "LOW"
+    MEDIUM_LOW = "MEDIUM_LOW"
+    MEDIUM_HIGH = "MEDIUM_HIGH"
+    HIGH = "HIGH"
 
 
 class RuleType(StrEnum):
     LOW_STOCK = "LOW_STOCK"
     EXPIRING_LOT = "EXPIRING_LOT"
+    #: Regla escrita por el usuario con campos y comparadores — ver
+    #: `app.notifications.conditions`. Los dos de arriba se quedan por
+    #: compatibilidad con las reglas ya creadas.
+    CONDITION = "CONDITION"
+
+
+class ConditionParams(BaseModel):
+    subject: str
+    #: `[{"field": ..., "operator": ..., "value": ...}]`; se valida contra
+    #: la lista blanca en `app.notifications.conditions.apply_conditions`.
+    conditions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LowStockParams(BaseModel):
@@ -42,6 +64,7 @@ class ExpiringLotParams(BaseModel):
 PARAMS_BY_RULE_TYPE: dict[RuleType, type[BaseModel]] = {
     RuleType.LOW_STOCK: LowStockParams,
     RuleType.EXPIRING_LOT: ExpiringLotParams,
+    RuleType.CONDITION: ConditionParams,
 }
 
 
@@ -128,6 +151,14 @@ async def detect(
     session: AsyncSession, rule_type: RuleType, raw_params: dict[str, Any]
 ) -> list[Detection]:
     params = validate_params(rule_type, raw_params)
+    if rule_type == RuleType.CONDITION:
+        assert isinstance(params, ConditionParams)
+        return [
+            Detection(subject_type=subject_type, subject_id=subject_id, message=message)
+            for subject_type, subject_id, message in await conditions.detect(
+                session, params.subject, params.conditions
+            )
+        ]
     if rule_type == RuleType.LOW_STOCK:
         assert isinstance(params, LowStockParams)
         return await _detect_low_stock(session, params)

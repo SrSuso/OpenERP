@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.notifications.models import Incident, NotificationRule
-from app.notifications.rules import RuleType
+from app.notifications.rules import RuleType, Severity
 from app.notifications.schemas import IncidentRead, NotificationRuleRead
 
 
@@ -13,6 +13,7 @@ def rule_to_read(rule: NotificationRule) -> NotificationRuleRead:
         name=rule.name,
         rule_type=RuleType(rule.rule_type),
         params=rule.params,
+        severity=Severity(rule.severity),
         is_active=rule.is_active,
     )
 
@@ -22,6 +23,7 @@ def incident_to_read(incident: Incident) -> IncidentRead:
         id=incident.id,
         rule_id=incident.rule_id,
         rule_name=incident.rule.name,
+        severity=Severity(incident.rule.severity),
         subject_type=incident.subject_type,
         subject_id=incident.subject_id,
         message=incident.message,
