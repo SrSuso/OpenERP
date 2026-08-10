@@ -58,7 +58,9 @@ function stubBackend() {
           ...settings,
           ...(b['smtp_host'] !== undefined ? { smtp_host: b['smtp_host'] as string } : {}),
           ...(b['smtp_port'] !== undefined ? { smtp_port: b['smtp_port'] as number } : {}),
-          ...(b['smtp_use_tls'] !== undefined ? { smtp_use_tls: b['smtp_use_tls'] as boolean } : {}),
+          ...(b['smtp_use_tls'] !== undefined
+            ? { smtp_use_tls: b['smtp_use_tls'] as boolean }
+            : {}),
           ...(b['smtp_password'] ? { smtp_password_set: true } : {}),
           updated_at: '2026-08-10T12:00:00Z',
         };
@@ -121,10 +123,7 @@ describe('SettingsPage', () => {
     renderPage();
 
     await screen.findByDisplayValue('127.0.0.1');
-    await userEvent.type(
-      screen.getByLabelText('Enviar correo de prueba a'),
-      'destino@example.com',
-    );
+    await userEvent.type(screen.getByLabelText('Enviar correo de prueba a'), 'destino@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Enviar correo de prueba' }));
 
     await screen.findByText('Correo de prueba enviado.');

@@ -16,7 +16,10 @@ const fieldsSchema = z.object({
   smtp_port: z
     .string()
     .regex(/^\d+$/, 'Introduce un puerto numérico.')
-    .refine((value) => Number(value) >= 1 && Number(value) <= 65535, 'El puerto debe estar entre 1 y 65535.'),
+    .refine(
+      (value) => Number(value) >= 1 && Number(value) <= 65535,
+      'El puerto debe estar entre 1 y 65535.',
+    ),
   smtp_use_tls: z.boolean(),
   smtp_username: z.string().max(255),
   smtp_password: z.string().max(255),
@@ -123,7 +126,9 @@ export function SmtpSettingsForm({
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('smtp_host')}
           />
-          {errors.smtp_host && <p className="mt-1 text-sm text-red-600">{errors.smtp_host.message}</p>}
+          {errors.smtp_host && (
+            <p className="mt-1 text-sm text-red-600">{errors.smtp_host.message}</p>
+          )}
         </label>
 
         <label className="text-sm text-slate-600">
@@ -134,7 +139,9 @@ export function SmtpSettingsForm({
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('smtp_port')}
           />
-          {errors.smtp_port && <p className="mt-1 text-sm text-red-600">{errors.smtp_port.message}</p>}
+          {errors.smtp_port && (
+            <p className="mt-1 text-sm text-red-600">{errors.smtp_port.message}</p>
+          )}
         </label>
 
         <label className="text-sm text-slate-600">
@@ -221,7 +228,9 @@ export function SmtpSettingsForm({
             {testState === 'sending' ? 'Enviando…' : 'Enviar correo de prueba'}
           </button>
         </div>
-        {testState === 'ok' && <p className="mt-2 text-sm text-green-700">Correo de prueba enviado.</p>}
+        {testState === 'ok' && (
+          <p className="mt-2 text-sm text-green-700">Correo de prueba enviado.</p>
+        )}
         {testState === 'error' && <p className="mt-2 text-sm text-red-600">{testMessage}</p>}
       </div>
     </form>

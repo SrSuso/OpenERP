@@ -2,7 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { SmtpSettingsForm } from '@/features/settings/SmtpSettingsForm';
-import { smtpSettingsQuery, updateSmtpSettings, type SystemSettingsUpdate } from '@/features/settings/api';
+import {
+  smtpSettingsQuery,
+  updateSmtpSettings,
+  type SystemSettingsUpdate,
+} from '@/features/settings/api';
 
 /** `/admin/settings` — gated por `settings.read`/`settings.manage`
  * (`ADMIN` únicamente, ver la migración de la fase 21). El único ajuste
