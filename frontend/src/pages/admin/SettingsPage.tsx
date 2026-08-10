@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { useAuth } from '@/features/auth/AuthContext';
+import { SettingsOptionsPanel } from '@/features/settings/SettingsOptionsPanel';
 import { SmtpSettingsForm } from '@/features/settings/SmtpSettingsForm';
 import {
   smtpSettingsQuery,
@@ -9,11 +11,15 @@ import {
 } from '@/features/settings/api';
 
 /** `/admin/settings` — gated por `settings.read`/`settings.manage`
- * (`ADMIN` únicamente, ver la migración de la fase 21). El único ajuste
- * hoy es el servidor SMTP saliente que usa `app.jobs.worker`; un cambio
- * guardado aquí se aplica en el siguiente sondeo del outbox, sin
- * redepliegue (backend/app/settings/service.py). */
+ * (`ADMIN` únicamente, ver la migración de la fase 21). Dos bloques muy
+ * distintos: los ajustes de negocio del registro (que se pintan solos a
+ * partir de `GET /settings/options`, ver `SettingsOptionsPanel`) y el
+ * servidor SMTP saliente que usa `app.jobs.worker` — un cambio guardado
+ * aquí se aplica en el siguiente sondeo del outbox, sin redepliegue
+ * (backend/app/settings/service.py). */
 export function SettingsPage() {
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('settings.manage');
   const settings = useQuery(smtpSettingsQuery);
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +40,15 @@ export function SettingsPage() {
 
   return (
     <section>
-      <h1 className="mb-4 text-2xl font-semibold">Configuración</h1>
+      <h1 className="mb-1 text-2xl font-semibold">Configuración</h1>
+      <p className="mb-4 text-sm text-slate-500">
+        Cada apartado se guarda por separado: cambia lo que necesites y pulsa «Guardar cambios» en
+        esa tarjeta.
+      </p>
+
+      <SettingsOptionsPanel canManage={canManage} />
+
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-slate-800">Avanzado</h2>
 
       {settings.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
       {settings.isError && (

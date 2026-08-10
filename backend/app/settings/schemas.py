@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
+
+from app.settings.registry import SettingType
 
 
 class SystemSettingsRead(BaseModel):
@@ -56,3 +59,43 @@ class SmtpTestRequest(BaseModel):
     smtp_username: str | None = Field(default=None, max_length=255)
     smtp_password: str | None = Field(default=None, max_length=255)
     smtp_from_email: str | None = Field(default=None, max_length=255)
+
+
+# --- ajustes de negocio (app.settings.registry) ----------------------------
+
+
+class SettingChoiceRead(BaseModel):
+    value: str
+    label: str
+
+
+class SettingDefinitionRead(BaseModel):
+    """Una opción con todo lo que el panel necesita para pintarla sola: qué
+    es, cómo se llama en castellano, de qué tipo, qué vale ahora y entre qué
+    límites. Ver app.settings.registry."""
+
+    key: str
+    group: str
+    label: str
+    help: str
+    type: SettingType
+    #: Siempre en forma de texto; el panel lo interpreta según `type`.
+    value: str
+    default: str
+    choices: list[SettingChoiceRead]
+    minimum: Decimal | None
+    maximum: Decimal | None
+    caution: str | None
+
+
+class SettingsOptionsRead(BaseModel):
+    #: Orden en que se pintan las tarjetas.
+    groups: list[str]
+    settings: list[SettingDefinitionRead]
+
+
+class SettingsUpdate(BaseModel):
+    """Sólo las claves presentes se tocan — el panel puede guardar una
+    tarjeta sin mandar el resto de la pantalla."""
+
+    values: dict[str, str]

@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from app.catalog.models import Product
 from app.sales.models import Payment, Sale, SaleLine, SaleStatus
+from app.settings.registry import SETTINGS
 from app.tickets.models import TicketTaxDisplay, TicketTemplate
 from app.tickets.render import CHARS_PER_WIDTH, render_ticket
 
@@ -36,8 +37,26 @@ def _sale(lines: list[SaleLine], payments: list[Payment]) -> Sale:
     return sale
 
 
-def _render(sale: Sale, template: TicketTemplate, *, prices_include_tax: bool = False) -> str:
-    return render_ticket(sale, template, prices_include_tax=prices_include_tax)
+#: Lo que ve una tienda que no ha tocado nada — construido del registro
+#: en vez de a mano, para que un default nuevo entre solo aquí también.
+DEFAULT_SETTINGS = {d.key: d.default for d in SETTINGS}
+
+
+def _render(
+    sale: Sale,
+    template: TicketTemplate,
+    *,
+    prices_include_tax: bool = False,
+    cashier_name: str | None = None,
+    overrides: dict[str, object] | None = None,
+) -> str:
+    return render_ticket(
+        sale,
+        template,
+        prices_include_tax=prices_include_tax,
+        settings={**DEFAULT_SETTINGS, **(overrides or {})},
+        cashier_name=cashier_name,
+    )
 
 
 def _template(**overrides: object) -> TicketTemplate:
@@ -301,3 +320,77 @@ def test_quantity_of_a_whole_number_does_not_use_scientific_notation() -> None:
 
     assert "100 x 0.10" in text
     assert "E+" not in text
+
+
+def test_shop_settings_replace_the_wording_and_the_date_format() -> None:
+    """Todo lo que el dueño puede cambiar en Configuración → Ticket llega
+    de verdad al papel (`app.settings.registry`)."""
+    sale = _sale(
+        [_line("Leche", "1", "10.00", tax="0")], [Payment(method="CASH", amount=Decimal("20.00"))]
+    )
+
+    text = _render(
+        sale,
+        _template(),
+        overrides={
+            "ticket.sale_number_prefix": "Ticket nº ",
+            "ticket.date_format": "%d/%m/%Y",
+            "ticket.label_total": "A PAGAR",
+            "ticket.label_change": "Su cambio",
+            "ticket.label_cash": "Metálico",
+        },
+    )
+
+    assert "Ticket nº 42" in text
+    assert "08/08/2026" in text
+    assert "A PAGAR" in text
+    assert "Su cambio" in text
+    assert "Metálico" in text
+    # Y lo que sustituyen ya no aparece.
+    assert "Venta #" not in text
+    assert "TOTAL" not in text
+    assert "Efectivo" not in text
+
+
+def test_store_details_print_above_the_template_header() -> None:
+    sale = _sale([_line("Leche", "1", "1.00")], [Payment(method="CASH", amount=Decimal("1.00"))])
+
+    text = _render(
+        sale,
+        _template(header_text="Gracias por su visita"),
+        overrides={
+            "store.name": "ALIMENTACION PEPE",
+            "store.tax_id": "12345678Z",
+            "store.address": "C/ Mayor 3\n28001 Madrid",
+            "store.phone": "911234567",
+        },
+    )
+
+    lines = [line.strip() for line in text.splitlines()]
+    assert lines[0] == "ALIMENTACION PEPE"
+    assert lines[1] == "12345678Z"
+    assert lines[2] == "C/ Mayor 3"
+    assert lines[3] == "28001 Madrid"
+    assert lines[4] == "911234567"
+    assert lines[5] == "Gracias por su visita"
+
+
+def test_unit_price_line_can_be_turned_off() -> None:
+    sale = _sale([_line("Leche", "2", "1.20")], [Payment(method="CASH", amount=Decimal("2.40"))])
+
+    with_line = _render(sale, _template())
+    without = _render(sale, _template(), overrides={"ticket.show_unit_price": False})
+
+    assert "2 x 1.20" in with_line
+    assert "2 x 1.20" not in without
+    assert "Leche" in without  # el producto sigue, sólo se va el detalle
+
+
+def test_cashier_shown_only_when_asked_for() -> None:
+    sale = _sale([_line("Leche", "1", "1.00")], [Payment(method="CASH", amount=Decimal("1.00"))])
+
+    off = _render(sale, _template(), cashier_name="Ana")
+    on = _render(sale, _template(), cashier_name="Ana", overrides={"ticket.show_cashier": True})
+
+    assert "Ana" not in off
+    assert "Ana" in on

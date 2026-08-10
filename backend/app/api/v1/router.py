@@ -22,6 +22,7 @@ from app.rbac.router import router as rbac_router
 from app.reports.router import router as reports_router
 from app.returns.router import router as returns_router
 from app.sales.router import router as sales_router
+from app.settings.options_router import router as settings_options_router
 from app.settings.router import router as settings_router
 from app.suppliers.router import router as suppliers_router
 from app.tickets.router import router as tickets_router
@@ -47,6 +48,7 @@ api_router.include_router(notifications_router)
 api_router.include_router(jobs_router)
 api_router.include_router(reports_router)
 api_router.include_router(settings_router)
+api_router.include_router(settings_options_router)
 # Phase 9 (receiving) added its endpoints to purchasing_router directly —
 # see app.purchasing's own module docstring for why.
 

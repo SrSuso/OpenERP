@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { type PaymentMethod, type Sale, type Tender } from '@/features/pos/api';
+import { useShopFlag, useShopSetting } from '@/features/settings/useShopSettings';
 import { formatMoney } from '@/lib/format';
 
 interface CheckoutProps {
@@ -26,7 +27,16 @@ function totalAsInput(sale: Sale): string {
  * previewed live from it.
  */
 export function Checkout({ sale, isPending, error, onConfirm, onBack }: CheckoutProps) {
-  const [method, setMethod] = useState<PaymentMethod>('CASH');
+  // Configurables por la tienda (app.settings.registry): con qué forma de
+  // pago arranca la caja y si el tercer botón está a la vista. El nombre de
+  // ese tercero también es suyo — "Bizum", "Vale"…
+  const defaultMethod = useShopSetting('pos.default_payment_method', 'CASH') as PaymentMethod;
+  const showOther = useShopFlag('pos.show_other_payment', false);
+  const cashLabel = useShopSetting('ticket.label_cash', 'Efectivo');
+  const cardLabel = useShopSetting('ticket.label_card', 'Tarjeta');
+  const otherLabel = useShopSetting('ticket.label_other', 'Otro');
+
+  const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
   const [tendered, setTendered] = useState(() => totalAsInput(sale));
 
   const total = Number(sale.total);
@@ -37,8 +47,8 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
 
   function selectMethod(next: PaymentMethod) {
     setMethod(next);
-    // A card payment is always exact — there is no "change" on a card.
-    if (next === 'CARD') {
+    // Sólo el efectivo admite entregar de más y devolver cambio.
+    if (next !== 'CASH') {
       setTendered(totalAsInput(sale));
     }
   }
@@ -70,31 +80,28 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
           <p className="text-3xl font-bold text-emerald-400">{formatMoney(sale.total)}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => selectMethod('CASH')}
-            disabled={isPending}
-            className={`rounded-lg py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-              method === 'CASH'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-            }`}
-          >
-            Efectivo
-          </button>
-          <button
-            type="button"
-            onClick={() => selectMethod('CARD')}
-            disabled={isPending}
-            className={`rounded-lg py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-              method === 'CARD'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-            }`}
-          >
-            Tarjeta
-          </button>
+        <div className={`grid gap-3 ${showOther ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {(
+            [
+              ['CASH', cashLabel],
+              ['CARD', cardLabel],
+              ...(showOther ? ([['OTHER', otherLabel]] as const) : []),
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => selectMethod(value)}
+              disabled={isPending}
+              className={`rounded-lg py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                method === value
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div>

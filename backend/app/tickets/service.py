@@ -17,9 +17,11 @@ from app.audit import service as audit
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.pricing import service as pricing_service
 from app.sales.models import Sale, SaleLine, SaleStatus
+from app.settings import store as settings_store
 from app.tickets.models import Ticket, TicketTemplate
 from app.tickets.render import render_ticket
 from app.tickets.schemas import TicketTemplateCreate, TicketTemplateRevise
+from app.users.models import User
 
 _SALE_OPTIONS = (
     selectinload(Sale.lines).selectinload(SaleLine.product),
@@ -142,7 +144,18 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
 
     template = await get_active_template(session)
     prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
-    rendered_text = render_ticket(sale, template, prices_include_tax=prices_include_tax)
+    settings = await settings_store.get_values(session)
+    cashier_name: str | None = None
+    if settings["ticket.show_cashier"] and sale.cashier_user_id is not None:
+        cashier = await session.get(User, sale.cashier_user_id)
+        cashier_name = cashier.full_name if cashier is not None else None
+    rendered_text = render_ticket(
+        sale,
+        template,
+        prices_include_tax=prices_include_tax,
+        settings=settings,
+        cashier_name=cashier_name,
+    )
 
     ticket = Ticket(
         sale_id=sale_id,

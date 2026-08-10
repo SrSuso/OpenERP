@@ -41,6 +41,21 @@ SELF_SERVICE_ROUTES = {
     ("POST", "/users/me/password"),
 }
 
+#: Authenticated, no specific permission, and *not* self-service either:
+#: shop-wide display configuration that any member of staff needs simply to
+#: use the app. Deliberately its own category rather than stretching
+#: `SELF_SERVICE_ROUTES`, which means something narrower.
+#:
+#: The bar for this set: nothing behind it may be a secret or let the
+#: caller change anything. `/settings/values` is read-only and returns
+#: labels, formats and on/off switches — most of them literally printed on
+#: the customer's receipt — which the till has to read while a cashier does
+#: not (and should not) hold `settings.read`. Credentials live behind the
+#: SMTP endpoints, which stay permission-gated.
+STAFF_WIDE_READONLY_ROUTES = {
+    ("GET", "/settings/values"),
+}
+
 
 def _collect_api_routes() -> list[APIRoute]:
     """FastAPI routers nest by way of an internal wrapper, not a flat
@@ -101,7 +116,11 @@ def test_every_authenticated_route_checks_a_permission_unless_self_service() -> 
     for route in _collect_api_routes():
         for method in sorted(_methods(route)):
             key = (method, route.path)
-            if key in PUBLIC_ROUTES or key in SELF_SERVICE_ROUTES:
+            if (
+                key in PUBLIC_ROUTES
+                or key in SELF_SERVICE_ROUTES
+                or key in STAFF_WIDE_READONLY_ROUTES
+            ):
                 continue
             names = _dependency_names(route)
             # require_any_permission's inner closure is also named "_check"
@@ -127,5 +146,5 @@ def test_the_allowlists_do_not_drift_from_the_actual_route_table() -> None:
     all_routes = {
         (method, route.path) for route in _collect_api_routes() for method in _methods(route)
     }
-    stale = (PUBLIC_ROUTES | SELF_SERVICE_ROUTES) - all_routes
+    stale = (PUBLIC_ROUTES | SELF_SERVICE_ROUTES | STAFF_WIDE_READONLY_ROUTES) - all_routes
     assert not stale, f"Allowlisted routes that no longer exist: {stale}"

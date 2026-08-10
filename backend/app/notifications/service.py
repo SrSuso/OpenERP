@@ -15,6 +15,7 @@ from app.jobs import service as outbox
 from app.notifications import rules as rule_engine
 from app.notifications.models import Incident, NotificationRule
 from app.notifications.schemas import NotificationRuleCreate, NotificationRuleUpdate
+from app.settings import store as settings_store
 from app.settings.service import get_effective_settings
 
 # --- rules ---------------------------------------------------------------------
@@ -35,7 +36,19 @@ async def get_rule(session: AsyncSession, rule_id: int) -> NotificationRule:
 
 
 async def create_rule(session: AsyncSession, payload: NotificationRuleCreate) -> NotificationRule:
-    rule = NotificationRule(name=payload.name, rule_type=payload.rule_type, params=payload.params)
+    params = dict(payload.params)
+    # `notifications.default_expiration_days` (app.settings.registry): la
+    # antelación que la tienda quiere por defecto. Sólo se aplica si quien
+    # crea la regla no ha dicho la suya — cada regla puede llevar otra.
+    if payload.rule_type == rule_engine.RuleType.EXPIRING_LOT and (
+        "days_before_expiration" not in params
+    ):
+        params["days_before_expiration"] = await settings_store.get_value(
+            session, "notifications.default_expiration_days"
+        )
+        rule_engine.validate_params(rule_engine.RuleType(payload.rule_type), params)
+
+    rule = NotificationRule(name=payload.name, rule_type=payload.rule_type, params=params)
     session.add(rule)
     await session.flush()
     await audit.record(
@@ -145,6 +158,11 @@ async def evaluate_rules(session: AsyncSession) -> list[Incident]:
     touched: list[Incident] = []
     new_incidents: list[Incident] = []
     recipient = (await get_effective_settings(session)).notification_recipient_email
+    # `notifications.email_subject_prefix` (app.settings.registry) — la
+    # etiqueta con la que llegan los avisos al correo del dueño.
+    subject_prefix = str(
+        await settings_store.get_value(session, "notifications.email_subject_prefix")
+    )
 
     for rule in await list_rules(session, active_only=True):
         detections = await rule_engine.detect(
@@ -195,7 +213,7 @@ async def evaluate_rules(session: AsyncSession) -> list[Incident]:
             await outbox.enqueue_email(
                 session,
                 to_email=recipient,
-                subject=f"[OpenERP] {incident.rule.name}",
+                subject=f"{subject_prefix} {incident.rule.name}".strip(),
                 body_text=incident.message,
                 reference_type="incident",
                 reference_id=incident.id,

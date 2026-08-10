@@ -7,7 +7,9 @@ that decides *when* a ticket gets generated (once, ever, per sale).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from app.sales.models import Sale, SaleLine
 from app.tickets.models import TicketTaxDisplay, TicketTemplate
@@ -105,18 +107,42 @@ def _line_amounts(line: SaleLine, *, prices_include_tax: bool) -> tuple[Decimal,
     return remaining, tax_amount, remaining + tax_amount
 
 
-def render_ticket(sale: Sale, template: TicketTemplate, *, prices_include_tax: bool) -> str:
+def render_ticket(
+    sale: Sale,
+    template: TicketTemplate,
+    *,
+    prices_include_tax: bool,
+    settings: Mapping[str, Any],
+    cashier_name: str | None = None,
+) -> str:
+    """``settings`` is `app.settings.store.get_values`' output — the shop's
+    own wording, formats and on/off switches (see
+    `app.settings.registry`). Kept as a plain mapping rather than a typed
+    object on purpose: a new option is then one registry entry and one
+    lookup here, with nothing in between to keep in step."""
     width = CHARS_PER_WIDTH[template.width_mm]
     rows: list[str] = []
 
+    # Datos de la tienda antes de la cabecera libre de la plantilla: quien
+    # los rellena en Configuración no debería tener que repetirlos ahí.
+    store_lines = [
+        *str(settings["store.name"]).splitlines(),
+        *str(settings["store.tax_id"]).splitlines(),
+        *str(settings["store.address"]).splitlines(),
+        *str(settings["store.phone"]).splitlines(),
+    ]
+    for store_line in (line for line in store_lines if line.strip()):
+        rows.append(_center(store_line, width))
     for header_line in (line for line in template.header_text.splitlines() if line.strip()):
         rows.append(_center(header_line, width))
-    if template.header_text.strip():
+    if rows:
         rows.append(_rule(width))
 
-    rows.append(f"Venta #{sale.id}")
+    rows.append(f"{settings['ticket.sale_number_prefix']}{sale.id}")
     when = sale.completed_at or sale.created_at
-    rows.append(when.strftime("%Y-%m-%d %H:%M"))
+    rows.append(when.strftime(str(settings["ticket.date_format"])))
+    if settings["ticket.show_cashier"] and cashier_name:
+        rows.append(f"Le atendió: {cashier_name}")
     rows.append(_rule(width))
 
     subtotal = Decimal(0)
@@ -132,27 +158,30 @@ def render_ticket(sale: Sale, template: TicketTemplate, *, prices_include_tax: b
         tax_by_rate[line.tax_rate] = tax_by_rate.get(line.tax_rate, Decimal(0)) + tax_amount
         subtotal += net
         rows.extend(_two_column(line.product.name, _money(total), width))
-        qty = f"{_quantity(line.quantity_packages)} x {_money(line.unit_price)}"
-        rows.append(qty)
+        if settings["ticket.show_unit_price"]:
+            rows.append(f"{_quantity(line.quantity_packages)} x {_money(line.unit_price)}")
         if template.show_line_discounts and line.discount_rate > 0:
             rows.extend(
                 _two_column(
-                    f"Dto. {_rate_label(line.discount_rate)}%", f"-{_money(discount_amount)}", width
+                    f"{settings['ticket.label_discount']} {_rate_label(line.discount_rate)}%",
+                    f"-{_money(discount_amount)}",
+                    width,
                 )
             )
 
     tax_total = sum(tax_by_rate.values(), start=Decimal(0))
     total = subtotal + tax_total
+    tax_note = str(settings["ticket.tax_note"])
     rows.append(_rule(width))
-    rows.extend(_two_column("TOTAL", _money(total), width))
+    rows.extend(_two_column(str(settings["ticket.label_total"]), _money(total), width))
 
     # The tax block goes *after* the total, the way a Spanish factura
     # simplificada reads — see ``TicketTaxDisplay``.
     if template.tax_display == TicketTaxDisplay.NOTE:
-        rows.append(_center("IVA incluido", width))
+        rows.append(_center(tax_note, width))
     elif template.tax_display == TicketTaxDisplay.BREAKDOWN:
         rows.append(_rule(width))
-        rows.append("IVA incluido")
+        rows.append(tax_note)
         rows.append(_three_column("Tipo", "Base", "Cuota", width))
         for rate in sorted(net_by_rate):
             rows.append(
@@ -165,15 +194,18 @@ def render_ticket(sale: Sale, template: TicketTemplate, *, prices_include_tax: b
             )
     rows.append(_rule(width))
 
+    method_labels = {
+        "CASH": str(settings["ticket.label_cash"]),
+        "CARD": str(settings["ticket.label_card"]),
+        "OTHER": str(settings["ticket.label_other"]),
+    }
     for payment in sale.payments:
-        method = {"CASH": "Efectivo", "CARD": "Tarjeta", "OTHER": "Otro"}.get(
-            payment.method, payment.method
-        )
+        method = method_labels.get(payment.method, payment.method)
         rows.extend(_two_column(method, _money(payment.amount), width))
     tendered = sum((p.amount for p in sale.payments), start=Decimal(0))
     change = tendered - total
     if change > 0:
-        rows.extend(_two_column("Cambio", _money(change), width))
+        rows.extend(_two_column(str(settings["ticket.label_change"]), _money(change), width))
 
     if template.footer_text.strip():
         rows.append(_rule(width))

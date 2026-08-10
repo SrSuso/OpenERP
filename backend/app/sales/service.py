@@ -40,6 +40,7 @@ from app.sales.schemas import (
     SaleLineByBarcodeCreate,
     SaleLineCreate,
 )
+from app.settings import store as settings_store
 
 _SALE_OPTIONS = (
     selectinload(Sale.lines).selectinload(SaleLine.product),
@@ -236,12 +237,26 @@ def _new_line(
     )
 
 
+async def _assert_discount_allowed(session: AsyncSession, discount_rate: Decimal) -> None:
+    """`sales.max_discount_rate` (app.settings.registry) — a ceiling on what
+    one line can be discounted by, so a mistyped discount at the till can't
+    give the shop away. Enforced here rather than in the schema because the
+    limit belongs to the shop, not to the API."""
+    maximum = Decimal(str(await settings_store.get_value(session, "sales.max_discount_rate")))
+    if discount_rate > maximum:
+        raise ValidationError(
+            f"El descuento máximo por línea es del {maximum}% (se ha pedido "
+            f"{discount_rate}%). Se cambia en Configuración → Ventas."
+        )
+
+
 async def add_line(session: AsyncSession, sale_id: int, payload: SaleLineCreate) -> Sale:
     sale = await get_sale(session, sale_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError("Lines can only be added to a draft sale.")
     product = await _sellable_product_or_422(session, payload.product_id)
     package = await _package_or_422(session, payload.product_id, payload.package_id)
+    await _assert_discount_allowed(session, payload.discount_rate)
 
     line = _new_line(
         sale_id=sale_id,
@@ -275,6 +290,7 @@ async def add_line_by_barcode(
         raise ConflictError("Lines can only be added to a draft sale.")
 
     product, package = await catalog_service.get_product_by_barcode(session, payload.barcode)
+    await _assert_discount_allowed(session, payload.discount_rate)
     if not product.is_active:
         raise ValidationError(f"Product {product.id} is deactivated and cannot be sold.")
 
@@ -379,6 +395,15 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
                 "exact (no overpayment without a cash tender to cover the change)."
             )
 
+    # `sales.allow_negative_stock` (app.settings.registry): a shop whose
+    # inventory is not always up to date would rather sell and reconcile
+    # afterwards than have the till refuse a customer. Off by default —
+    # the ledger stays the source of truth either way, the balance simply
+    # goes negative and says so.
+    allow_negative_stock = bool(
+        await settings_store.get_value(session, "sales.allow_negative_stock")
+    )
+
     # Rule 5: lock, check and decrement every line's stock *before* the sale
     # is marked COMPLETED — any ConflictError below rolls back this whole
     # request (nothing partially deducted), and nothing here has mutated
@@ -392,7 +417,7 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
             warehouse_id=sale.warehouse_id,
             location_id=sale.location_id,
         )
-        if available < line.quantity_base:
+        if available < line.quantity_base and not allow_negative_stock:
             raise ConflictError(
                 f"Not enough stock for {product.sku}: needs {line.quantity_base}, "
                 f"only {available} available at this location."

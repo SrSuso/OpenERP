@@ -32,6 +32,7 @@ from app.catalog.schemas import (
     UnitMoveDirection,
 )
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.settings import store as settings_store
 
 
 # Built by a function, not a module-level tuple: `Product.taxes`/
@@ -384,6 +385,9 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         await _pos_category_or_422(session, payload.pos_category_id)
     if payload.base_barcode is not None:
         await _assert_barcode_free(session, payload.base_barcode)
+    # `catalog.sku_prefix`/`catalog.default_min_stock` (app.settings.registry).
+    shop = await settings_store.get_values(session)
+    sku_prefix = str(shop["catalog.sku_prefix"])
 
     # No SKU given (the normal case from the admin panel, see ProductCreate's
     # own docstring): insert with a throwaway-unique placeholder, then
@@ -403,14 +407,16 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         tax_rate=payload.tax_rate,
         surcharge_rate=payload.surcharge_rate,
         margin_rate=payload.margin_rate,
-        min_stock=payload.min_stock,
+        min_stock=payload.min_stock
+        if "min_stock" in payload.model_fields_set
+        else Decimal(str(shop["catalog.default_min_stock"])),
         track_lots=payload.track_lots,
         track_expiration=payload.track_expiration,
     )
     session.add(product)
     await session.flush()
     if payload.sku is None:
-        product.sku = f"P{product.id:06d}"
+        product.sku = f"{sku_prefix}{product.id:06d}"
         await session.flush()
 
     # Rule 3/4: every product gets exactly one base package (factor=1),

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -17,16 +18,34 @@ const SALE: Sale = {
   change_due: '0.000000',
 };
 
-function renderCheckout(overrides: Partial<Parameters<typeof Checkout>[0]> = {}) {
+/** Igual que `renderCheckout`, pero con los ajustes de tienda ya en caché:
+ * evita depender de la red y deja el test centrado en el efecto. */
+function renderCheckoutWithSettings(values: Record<string, string>) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(['settings', 'values'], values);
   return render(
-    <Checkout
-      sale={SALE}
-      isPending={false}
-      error={null}
-      onConfirm={vi.fn()}
-      onBack={vi.fn()}
-      {...overrides}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <Checkout sale={SALE} isPending={false} error={null} onConfirm={vi.fn()} onBack={vi.fn()} />
+    </QueryClientProvider>,
+  );
+}
+
+function renderCheckout(overrides: Partial<Parameters<typeof Checkout>[0]> = {}) {
+  // La caja lee los ajustes de tienda (nombre de cada forma de pago, cuál
+  // sale marcada) — sin red en el test, así que cae a los valores por
+  // defecto, que es justo lo que estas pruebas dan por supuesto.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Checkout
+        sale={SALE}
+        isPending={false}
+        error={null}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+        {...overrides}
+      />
+    </QueryClientProvider>,
   );
 }
 
@@ -101,5 +120,25 @@ describe('Checkout', () => {
     renderCheckout({ isPending: true });
 
     expect(screen.getByRole('button', { name: /cobrando/i })).toBeDisabled();
+  });
+  it("uses the shop's own payment wording, third button and default method", () => {
+    renderCheckoutWithSettings({
+      'pos.default_payment_method': 'CARD',
+      'pos.show_other_payment': 'true',
+      'ticket.label_cash': 'Metálico',
+      'ticket.label_card': 'Tarjeta',
+      'ticket.label_other': 'Bizum',
+    });
+
+    expect(screen.getByRole('button', { name: 'Metálico' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bizum' })).toBeInTheDocument();
+    // Arranca en tarjeta, así que el importe queda clavado al total.
+    expect(screen.getByLabelText('Importe')).toHaveValue('20.00');
+  });
+
+  it('hides the third payment button unless the shop turns it on', () => {
+    renderCheckoutWithSettings({ 'pos.show_other_payment': 'false' });
+
+    expect(screen.queryByRole('button', { name: 'Otro' })).not.toBeInTheDocument();
   });
 });
