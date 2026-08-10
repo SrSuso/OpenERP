@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
-import { createTax, taxesQuery, updateTax, type Tax } from '@/features/pricing/api';
+import {
+  activateTax,
+  createTax,
+  deactivateTax,
+  taxesQuery,
+  updateTax,
+  type Tax,
+} from '@/features/pricing/api';
 import { ApiError } from '@/lib/api';
 import { decimalString } from '@/lib/decimal';
 import { formatRate } from '@/lib/format';
@@ -44,6 +51,19 @@ export function TaxesPanel({ canManage }: { canManage: boolean }) {
     },
   });
 
+  const activeMutation = useMutation({
+    mutationFn: (tax: Tax) => (tax.is_active ? deactivateTax(tax.id) : activateTax(tax.id)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: taxesQuery.queryKey });
+      // Un impuesto deja (o vuelve) a contar en el cálculo al momento, así
+      // que el backend recalcula los PVP afectados — sin esto la lista de
+      // productos se queda con el precio viejo hasta recargar.
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      setError(null);
+    },
+    onError: () => setError('No se ha podido cambiar el estado del impuesto.'),
+  });
+
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim() || !rate.trim()) return;
@@ -63,9 +83,14 @@ export function TaxesPanel({ canManage }: { canManage: boolean }) {
           ) : (
             <li
               key={tax.id}
-              className="flex items-center justify-between rounded border border-slate-200 px-3 py-1.5 text-sm"
+              className={`flex items-center justify-between rounded border px-3 py-1.5 text-sm ${
+                tax.is_active ? 'border-slate-200' : 'border-slate-200 bg-slate-50 text-slate-400'
+              }`}
             >
-              <span>{tax.name}</span>
+              <span>
+                {tax.name}
+                {!tax.is_active && <span className="ml-2 text-xs">(desactivado)</span>}
+              </span>
               <span className="flex items-center gap-3">
                 <span className="text-slate-500">
                   {formatRate(tax.rate)}%
@@ -76,13 +101,25 @@ export function TaxesPanel({ canManage }: { canManage: boolean }) {
                   )}
                 </span>
                 {canManage && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingId(tax.id)}
-                    className="text-xs font-medium text-brand-700 hover:underline"
-                  >
-                    Editar
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(tax.id)}
+                      className="text-xs font-medium text-brand-700 hover:underline"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={activeMutation.isPending}
+                      onClick={() => activeMutation.mutate(tax)}
+                      className={`text-xs font-medium hover:underline disabled:opacity-50 ${
+                        tax.is_active ? 'text-red-600' : 'text-brand-700'
+                      }`}
+                    >
+                      {tax.is_active ? 'Desactivar' : 'Reactivar'}
+                    </button>
+                  </>
                 )}
               </span>
             </li>

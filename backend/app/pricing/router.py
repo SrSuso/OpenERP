@@ -137,6 +137,16 @@ async def update_tax(tax_id: int, payload: TaxUpdate, session: SessionDep) -> Ta
     return _tax_to_read(await service.update_tax(session, tax_id, payload))
 
 
+@router.post("/taxes/{tax_id}/deactivate", response_model=TaxRead, dependencies=[_require_manage])
+async def deactivate_tax(tax_id: int, session: SessionDep) -> TaxRead:
+    return _tax_to_read(await service.deactivate_tax(session, tax_id))
+
+
+@router.post("/taxes/{tax_id}/activate", response_model=TaxRead, dependencies=[_require_manage])
+async def activate_tax(tax_id: int, session: SessionDep) -> TaxRead:
+    return _tax_to_read(await service.activate_tax(session, tax_id))
+
+
 # --- category-level pricing defaults ----------------------------------------
 
 

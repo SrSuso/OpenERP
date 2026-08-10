@@ -48,6 +48,18 @@ export async function updateTax(
   });
 }
 
+/** Regla 14, igual que productos y categorías de TPV: un impuesto no se
+ * borra, se desactiva — lo que ya se vendió con él tiene que seguir siendo
+ * legible. Deja de contar en el cálculo al momento, así que el backend
+ * recalcula los precios afectados. */
+export async function deactivateTax(id: number): Promise<Tax> {
+  return apiFetch(`${API_V1}/taxes/${id}/deactivate`, { method: 'POST', schema: taxSchema });
+}
+
+export async function activateTax(id: number): Promise<Tax> {
+  return apiFetch(`${API_V1}/taxes/${id}/activate`, { method: 'POST', schema: taxSchema });
+}
+
 // --- fórmula del PVP, configurable, un único valor para toda la tienda ----
 
 export const pricingSettingsSchema = z.object({

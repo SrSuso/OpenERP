@@ -12,13 +12,19 @@ interface TaxChipsProps {
  * producto como al editar el precio de uno ya creado o el de una
  * categoría, siempre el mismo componente y el mismo gesto. */
 export function TaxChips({ taxes, selected, onToggle }: TaxChipsProps) {
-  if (taxes.length === 0) {
+  // Uno desactivado ya no cuenta en el cálculo (backend:
+  // `effective_tax_rate`), así que ofrecerlo aquí sería mentir. Se sigue
+  // mostrando si el producto ya lo tenía puesto, para no ocultar por qué
+  // su precio es el que es.
+  const selectable = taxes.filter((tax) => tax.is_active || selected.has(tax.id));
+
+  if (selectable.length === 0) {
     return <span className="text-xs text-slate-400">No hay impuestos creados todavía.</span>;
   }
 
   return (
     <div className="flex flex-wrap gap-1.5">
-      {taxes.map((tax) => {
+      {selectable.map((tax) => {
         const isSelected = selected.has(tax.id);
         return (
           <button

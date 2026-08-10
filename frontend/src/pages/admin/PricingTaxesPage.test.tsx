@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -56,6 +56,12 @@ function stubBackend() {
         };
         taxes.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      const activeMatch = /\/taxes\/(\d+)\/(deactivate|activate)$/.exec(url);
+      if (method === 'POST' && activeMatch) {
+        const target = taxes.find((t) => t.id === Number(activeMatch[1]))!;
+        target.is_active = activeMatch[2] === 'activate';
+        return Promise.resolve(jsonResponse(target));
       }
       if (method === 'PATCH' && /\/taxes\/(\d+)$/.test(url)) {
         const id = Number(/\/taxes\/(\d+)$/.exec(url)![1]);
@@ -155,5 +161,22 @@ describe('PricingTaxesPage', () => {
 
     expect(screen.getByText('IVA general')).toBeInTheDocument();
     expect(backend.updateCalls).toEqual([]);
+  });
+
+  it('deactivates a tax instead of deleting it, and can bring it back', async () => {
+    stubBackend();
+    renderPage();
+    await screen.findByText('IVA general');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
+
+    // Sigue en la lista — lo que ya se vendió con él tiene que seguir
+    // siendo legible — pero marcado como retirado.
+    expect(await screen.findByText('(desactivado)')).toBeInTheDocument();
+    expect(screen.getByText('IVA general')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
+
+    await waitFor(() => expect(screen.queryByText('(desactivado)')).not.toBeInTheDocument());
   });
 });

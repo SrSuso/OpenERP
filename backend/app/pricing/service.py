@@ -345,6 +345,58 @@ async def create_tax(session: AsyncSession, payload: TaxCreate) -> Tax:
     return tax
 
 
+async def _recompute_every_product(session: AsyncSession) -> None:
+    """Anything that changes what a tax *means* can move the price of any
+    product that uses it — propio o heredado de su categoría — así que se
+    recalcula la lista entera en vez de averiguar cuáles exactamente lo
+    usan (más simple, y tan correcto como el recálculo al cambiar la
+    fórmula de la tienda)."""
+    settings = await get_settings(session)
+    stmt = select(Product).options(*_PRODUCT_PRICING_OPTIONS)
+    for product in list((await session.execute(stmt)).scalars()):
+        _recompute_with(product, settings)
+        await _record_history(session, product)
+    await session.flush()
+
+
+async def _set_tax_active(session: AsyncSession, tax_id: int, *, is_active: bool) -> Tax:
+    """Rule 14, igual que productos y categorías de TPV: un impuesto no se
+    borra nunca, se desactiva — las ventas y el histórico de precios que ya
+    lo aplicaron tienen que seguir siendo legibles.
+
+    Desactivarlo lo saca del cálculo (`effective_tax_rate` sólo suma los
+    activos), así que recalcula precios exactamente igual que un cambio de
+    tasa: un producto al 21% que se queda sin ese impuesto baja de precio
+    en el momento, no la próxima vez que alguien lo toque."""
+    tax = await session.get(Tax, tax_id)
+    if tax is None:
+        raise NotFoundError(f"Tax {tax_id} not found.")
+    if tax.is_active == is_active:
+        return tax
+
+    tax.is_active = is_active
+    await session.flush()
+    await audit.record(
+        session,
+        action="activated" if is_active else "deactivated",
+        entity_type="tax",
+        entity_id=tax_id,
+        before={"is_active": not is_active},
+        after={"is_active": is_active},
+    )
+    await _recompute_every_product(session)
+    await session.refresh(tax)
+    return tax
+
+
+async def deactivate_tax(session: AsyncSession, tax_id: int) -> Tax:
+    return await _set_tax_active(session, tax_id, is_active=False)
+
+
+async def activate_tax(session: AsyncSession, tax_id: int) -> Tax:
+    return await _set_tax_active(session, tax_id, is_active=True)
+
+
 async def update_tax(session: AsyncSession, tax_id: int, payload: TaxUpdate) -> Tax:
     """Editar nombre y/o tasa de un impuesto ya creado. Un cambio de tasa
     puede afectar a cualquier producto que lo tenga aplicado — propio o
@@ -384,13 +436,7 @@ async def update_tax(session: AsyncSession, tax_id: int, payload: TaxUpdate) -> 
     )
 
     if rate_changed:
-        settings = await get_settings(session)
-        stmt = select(Product).options(*_PRODUCT_PRICING_OPTIONS)
-        products = list((await session.execute(stmt)).scalars())
-        for product in products:
-            _recompute_with(product, settings)
-            await _record_history(session, product)
-        await session.flush()
+        await _recompute_every_product(session)
 
     # Sin esto, `tax.rate` se queda con el Decimal crudo tal y como llegó
     # en el JSON en vez del valor NUMERIC(18,6) normalizado que Postgres

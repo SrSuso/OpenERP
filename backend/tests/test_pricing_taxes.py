@@ -450,3 +450,65 @@ async def test_a_price_built_with_tax_in_the_formula_is_charged_as_the_shelf_pri
     ).json()
 
     assert Decimal(sale["total"]) == shelf_price
+
+
+async def test_a_tax_can_be_deactivated_and_reactivated(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Regla 14: un impuesto creado por error no se borra, se desactiva —
+    y al dejar de contar, los precios que lo aplicaban se recalculan solos."""
+    await login(role_name="ADMIN")
+    tax_id = await _create_tax(client, "IVA a retirar", "21")
+    product_id = (await client.post("/api/v1/products", json=_product_payload(cost="10"))).json()[
+        "id"
+    ]
+    await client.patch(
+        f"/api/v1/products/{product_id}/pricing",
+        json={"margin_rate": "0", "tax_ids": [tax_id]},
+    )
+    # (10 + 10*21%) * 1 = 12.10
+    assert Decimal(
+        (await client.get(f"/api/v1/products/{product_id}")).json()["list_price"]
+    ) == Decimal("12.100000")
+
+    response = await client.post(f"/api/v1/taxes/{tax_id}/deactivate")
+
+    assert response.status_code == 200
+    assert response.json()["is_active"] is False
+    # Sin ese impuesto el PVP baja al coste: 10.
+    assert Decimal(
+        (await client.get(f"/api/v1/products/{product_id}")).json()["list_price"]
+    ) == Decimal("10.000000")
+
+    reactivated = await client.post(f"/api/v1/taxes/{tax_id}/activate")
+
+    assert reactivated.status_code == 200
+    assert reactivated.json()["is_active"] is True
+    assert Decimal(
+        (await client.get(f"/api/v1/products/{product_id}")).json()["list_price"]
+    ) == Decimal("12.100000")
+
+
+async def test_deactivating_a_tax_keeps_it_listed_rather_than_deleting_it(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Lo que ya se vendió con él tiene que seguir siendo legible."""
+    await login(role_name="ADMIN")
+    tax_id = await _create_tax(client, "IVA histórico", "4")
+
+    await client.post(f"/api/v1/taxes/{tax_id}/deactivate")
+
+    listed = {t["id"]: t for t in (await client.get("/api/v1/taxes")).json()}
+    assert tax_id in listed
+    assert listed[tax_id]["is_active"] is False
+
+
+async def test_cashier_cannot_deactivate_a_tax(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    tax_id = await _create_tax(client, "IVA protegido", "21")
+
+    await login(role_name="CASHIER")
+
+    assert (await client.post(f"/api/v1/taxes/{tax_id}/deactivate")).status_code == 403
