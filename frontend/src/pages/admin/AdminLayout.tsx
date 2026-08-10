@@ -80,6 +80,11 @@ export function AdminLayout() {
               Configuración
             </NavLink>
           )}
+          {hasPermission('audit.read') && (
+            <NavLink to="/admin/audit-log" className={linkClassName}>
+              Auditoría
+            </NavLink>
+          )}
           <NavLink to="/admin/account" className={linkClassName}>
             Mi cuenta
           </NavLink>

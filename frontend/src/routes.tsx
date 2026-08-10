@@ -11,6 +11,7 @@ import { AccessIndexRedirect, AccessPage } from '@/pages/admin/AccessPage';
 import { AccountPage } from '@/pages/admin/AccountPage';
 import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { AdminLayout } from '@/pages/admin/AdminLayout';
+import { AuditLogPage } from '@/pages/admin/AuditLogPage';
 import { CatalogProductRedirect } from '@/pages/admin/CatalogProductRedirect';
 import { CategoriesPage } from '@/pages/admin/CategoriesPage';
 import { InventoryBalancesPage } from '@/pages/admin/InventoryBalancesPage';
@@ -202,6 +203,11 @@ export const routes: RouteObject[] = [
                 path: 'settings',
                 element: <RequirePermission permission="settings.read" />,
                 children: [{ index: true, element: <SettingsPage /> }],
+              },
+              {
+                path: 'audit-log',
+                element: <RequirePermission permission="audit.read" />,
+                children: [{ index: true, element: <AuditLogPage /> }],
               },
             ],
           },
