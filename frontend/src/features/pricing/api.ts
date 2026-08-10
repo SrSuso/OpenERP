@@ -113,3 +113,61 @@ export async function setCategoryPricing(
     body: input,
   });
 }
+
+// --- fórmula propia de un producto, precio manual, e histórico ------------
+
+/** Fija una fórmula que sólo aplica a este producto (pisa la de la tienda
+ * mientras esté puesta) — recalcula `list_price` al momento. */
+export async function setProductFormula(productId: number, priceFormula: string): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${productId}/pricing/formula`, {
+    method: 'PUT',
+    schema: productSchema,
+    body: { price_formula: priceFormula },
+  });
+}
+
+/** Quita la fórmula propia — vuelve a heredar la de la tienda en el
+ * siguiente recálculo (un cambio de coste/margen/impuestos, o de la propia
+ * fórmula de la tienda). El PVP actual no cambia por sí solo al limpiarla. */
+export async function clearProductFormula(productId: number): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${productId}/pricing/formula`, {
+    method: 'DELETE',
+    schema: productSchema,
+  });
+}
+
+/** Fija un precio fijo, saltándose la fórmula — y quita la fórmula propia
+ * si el producto tenía una (backend: app.pricing.service.set_manual_price),
+ * para que un cambio posterior de coste/margen no la recalcule por
+ * sorpresa. */
+export async function setManualPrice(productId: number, listPrice: string): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${productId}/pricing/manual-price`, {
+    method: 'PUT',
+    schema: productSchema,
+    body: { list_price: listPrice },
+  });
+}
+
+export const priceHistoryEntrySchema = z.object({
+  id: z.number(),
+  product_id: z.number(),
+  cost: z.string(),
+  tax_rate: z.string(),
+  surcharge_rate: z.string(),
+  margin_rate: z.string(),
+  price_formula: z.string().nullable(),
+  list_price: z.string(),
+  created_at: z.string(),
+});
+export type PriceHistoryEntry = z.infer<typeof priceHistoryEntrySchema>;
+
+export function productPriceHistoryQuery(productId: number) {
+  return queryOptions({
+    queryKey: ['pricing', 'history', productId] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/products/${productId}/pricing/history`, {
+        schema: z.array(priceHistoryEntrySchema),
+        signal,
+      }),
+  });
+}

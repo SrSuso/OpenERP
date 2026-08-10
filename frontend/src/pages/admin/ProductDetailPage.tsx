@@ -26,6 +26,7 @@ import { LotBalancesPanel } from '@/features/lots/LotBalancesPanel';
 import { LotsTable } from '@/features/lots/LotsTable';
 import { createLot, lotsQuery, type LotCreateInput } from '@/features/lots/api';
 import { setProductPricing, taxesQuery, type PricingOverrideInput } from '@/features/pricing/api';
+import { ProductFormulaPanel } from '@/features/pricing/ProductFormulaPanel';
 import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
 import { productPurchaseHistoryQuery } from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
@@ -286,6 +287,12 @@ export function ProductDetailPage() {
             taxes={taxes.data ?? []}
             isSaving={savePricingMutation.isPending}
             onSave={(input) => savePricingMutation.mutate(input)}
+          />
+          <ProductFormulaPanel
+            product={data}
+            category={categories.data?.find((c) => c.id === data.category_id)}
+            taxes={taxes.data ?? []}
+            canManage={canManagePricing}
           />
         </div>
       )}

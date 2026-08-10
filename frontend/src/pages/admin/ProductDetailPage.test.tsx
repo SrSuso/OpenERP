@@ -116,6 +116,9 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
   const updateCalls: Record<string, unknown>[] = [];
   const pricingCalls: Record<string, unknown>[] = [];
   const addPackageCalls: Record<string, unknown>[] = [];
+  const formulaCalls: Record<string, unknown>[] = [];
+  const clearFormulaCalls: true[] = [];
+  const manualPriceCalls: Record<string, unknown>[] = [];
   const editBarcodeCalls: { barcodeId: number; body: Record<string, unknown> }[] = [];
   const deleteBarcodeCalls: number[] = [];
   const deactivateCalls: number[] = [];
@@ -156,6 +159,45 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
         }
         product.list_price = '9.990000';
         return Promise.resolve(jsonResponse(product));
+      }
+      if (method === 'POST' && /\/pricing\/preview$/.test(url)) {
+        return Promise.resolve(jsonResponse({ result: '12.100000' }));
+      }
+      if (method === 'PUT' && /\/products\/1\/pricing\/formula$/.test(url)) {
+        const b = body();
+        formulaCalls.push(b);
+        product.price_formula = b['price_formula'] as string;
+        product.list_price = '12.100000';
+        return Promise.resolve(jsonResponse(product));
+      }
+      if (method === 'DELETE' && /\/products\/1\/pricing\/formula$/.test(url)) {
+        clearFormulaCalls.push(true);
+        product.price_formula = null;
+        return Promise.resolve(jsonResponse(product));
+      }
+      if (method === 'PUT' && /\/products\/1\/pricing\/manual-price$/.test(url)) {
+        const b = body();
+        manualPriceCalls.push(b);
+        product.price_formula = null;
+        product.list_price = b['list_price'] as string;
+        return Promise.resolve(jsonResponse(product));
+      }
+      if (method === 'GET' && /\/products\/1\/pricing\/history$/.test(url)) {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              id: 1,
+              product_id: 1,
+              cost: '0.300000',
+              tax_rate: '0.000000',
+              surcharge_rate: '0.000000',
+              margin_rate: '30.000000',
+              price_formula: null,
+              list_price: '0.600000',
+              created_at: new Date().toISOString(),
+            },
+          ]),
+        );
       }
       if (method === 'PATCH' && /\/products\/1$/.test(url)) {
         const b = body();
@@ -211,6 +253,9 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
     updateCalls,
     pricingCalls,
     addPackageCalls,
+    formulaCalls,
+    clearFormulaCalls,
+    manualPriceCalls,
     editBarcodeCalls,
     deleteBarcodeCalls,
     deactivateCalls,
@@ -307,6 +352,39 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
     expect(backend.activateCalls).toEqual([1]);
     await screen.findByText(/Activo/);
+  });
+
+  it('sets a per-product formula, previews it, then switches to a manual price and checks the history', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+
+    const formulaInput = screen.getByPlaceholderText(
+      'p.ej. cost * (1 + margin_rate / 100) * (1 + tax_rate / 100)',
+    );
+    await userEvent.type(formulaInput, 'cost * 1.1');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Probar' }));
+    await screen.findByText(/PVP: 12,10/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar fórmula' }));
+    await screen.findByText('12,10 €');
+    expect(backend.formulaCalls).toEqual([{ price_formula: 'cost * 1.1' }]);
+    await screen.findByRole('button', { name: 'Quitar fórmula propia' });
+
+    // Un precio manual quita la fórmula propia sin más.
+    const manualInput = screen.getByPlaceholderText('12.100000');
+    await userEvent.type(manualInput, '15');
+    await userEvent.click(screen.getByRole('button', { name: 'Fijar precio manual' }));
+    await screen.findByText('15,00 €');
+    expect(backend.manualPriceCalls).toEqual([{ list_price: '15' }]);
+    expect(screen.queryByRole('button', { name: 'Quitar fórmula propia' })).not.toBeInTheDocument();
+
+    // Histórico de precios, cargado sólo al desplegarlo.
+    await userEvent.click(screen.getByRole('button', { name: 'Ver histórico de precios' }));
+    await screen.findByText('0,30 €');
   });
 
   it('edits and deletes a barcode from the Formatos tab', async () => {
