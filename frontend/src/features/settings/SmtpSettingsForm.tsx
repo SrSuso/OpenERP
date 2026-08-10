@@ -87,11 +87,14 @@ export function SmtpSettingsForm({
     const payload: SmtpTestPayload = {
       to_email: testEmail,
       smtp_host: values.smtp_host,
-      smtp_port: /^\d+$/.test(values.smtp_port) ? Number(values.smtp_port) : undefined,
       smtp_use_tls: values.smtp_use_tls,
       smtp_username: values.smtp_username,
       smtp_from_email: values.smtp_from_email,
     };
+    // `exactOptionalPropertyTypes` no permite asignar `undefined`
+    // explícitamente a una propiedad opcional — se omite la clave en vez de
+    // ponerla a `undefined` cuando el puerto todavía no es válido.
+    if (/^\d+$/.test(values.smtp_port)) payload.smtp_port = Number(values.smtp_port);
     if (values.smtp_password) payload.smtp_password = values.smtp_password;
     try {
       await testSmtpSettings(payload);
