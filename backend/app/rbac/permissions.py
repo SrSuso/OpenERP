@@ -312,6 +312,23 @@ PHASE_19_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "MANAGER": (REPORT_READ, REPORT_MANAGE),
 }
 
+# --- phase 21: configuración del sistema ---------------------------------------
+SETTINGS_READ = "settings.read"
+SETTINGS_MANAGE = "settings.manage"
+
+PHASE_21_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(SETTINGS_READ, "View the system settings (e.g. SMTP configuration)."),
+    PermissionDef(SETTINGS_MANAGE, "Change system settings (e.g. SMTP configuration)."),
+)
+
+#: Frozen grants for the phase 21 migration only. Unlike most other
+#: `.manage` permissions, MANAGER does not get this by default — SMTP
+#: credentials are an infrastructure secret, closer to `audit.read`
+#: (ADMIN-only since phase 2) than to a store-management concern.
+PHASE_21_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (SETTINGS_READ, SETTINGS_MANAGE),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -333,4 +350,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_17_PERMISSIONS
     + PHASE_18_PERMISSIONS
     + PHASE_19_PERMISSIONS
+    + PHASE_21_PERMISSIONS
 )

@@ -75,6 +75,11 @@ export function AdminLayout() {
               Usuarios y roles
             </NavLink>
           )}
+          {hasPermission('settings.read') && (
+            <NavLink to="/admin/settings" className={linkClassName}>
+              Configuración
+            </NavLink>
+          )}
           <NavLink to="/admin/account" className={linkClassName}>
             Mi cuenta
           </NavLink>

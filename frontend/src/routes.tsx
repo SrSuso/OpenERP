@@ -23,6 +23,7 @@ import { OutboxPage } from '@/pages/admin/OutboxPage';
 import { ProductDetailPage } from '@/pages/admin/ProductDetailPage';
 import { ReportsPage } from '@/pages/admin/ReportsPage';
 import { ReturnsPage } from '@/pages/admin/ReturnsPage';
+import { SettingsPage } from '@/pages/admin/SettingsPage';
 import { TicketTemplatesPage } from '@/pages/admin/TicketTemplatesPage';
 import { PricingFormulaPage } from '@/pages/admin/PricingFormulaPage';
 import { PricingPage } from '@/pages/admin/PricingPage';
@@ -196,6 +197,11 @@ export const routes: RouteObject[] = [
                 path: 'reports',
                 element: <RequirePermission permission="report.read" />,
                 children: [{ index: true, element: <ReportsPage /> }],
+              },
+              {
+                path: 'settings',
+                element: <RequirePermission permission="settings.read" />,
+                children: [{ index: true, element: <SettingsPage /> }],
               },
             ],
           },

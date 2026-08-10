@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
-from app.core.config import get_settings
 from app.core.errors import NotFoundError
 from app.jobs import service as outbox
 from app.notifications import rules as rule_engine
 from app.notifications.models import Incident, NotificationRule
 from app.notifications.schemas import NotificationRuleCreate, NotificationRuleUpdate
+from app.settings.service import get_effective_settings
 
 # --- rules ---------------------------------------------------------------------
 
@@ -144,7 +144,7 @@ async def evaluate_rules(session: AsyncSession) -> list[Incident]:
     now = datetime.now(UTC)
     touched: list[Incident] = []
     new_incidents: list[Incident] = []
-    recipient = get_settings().notification_recipient_email
+    recipient = (await get_effective_settings(session)).notification_recipient_email
 
     for rule in await list_rules(session, active_only=True):
         detections = await rule_engine.detect(

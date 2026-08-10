@@ -8,11 +8,7 @@ from datetime import date, timedelta
 from typing import Any
 
 import httpx
-import pytest
 from httpx import AsyncClient
-
-from app.core.config import Settings
-from app.notifications import service as notifications_service
 
 MAILPIT_API = "http://127.0.0.1:8025/api/v1"
 
@@ -339,21 +335,17 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
 async def test_a_brand_new_incident_queues_and_delivers_an_email(
     client: AsyncClient,
     login: Callable[..., Awaitable[dict[str, Any]]],
-    settings: Settings,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The phase 18 wiring: evaluate_rules queues one email per brand-new
-    incident to `notification_recipient_email`, if configured — verified
-    end to end, through a real send via Mailpit, not just "a row exists"."""
+    incident to `notification_recipient_email`, if configured (phase 21:
+    through `app.settings.service.get_effective_settings`, an admin-set
+    override on top of the environment's own value) — verified end to end,
+    through a real send via Mailpit, not just "a row exists"."""
     to_email = "notify-test@example.invalid"
     async with httpx.AsyncClient() as http:
         await http.delete(f"{MAILPIT_API}/messages")
-    monkeypatch.setattr(
-        notifications_service,
-        "get_settings",
-        lambda: settings.model_copy(update={"notification_recipient_email": to_email}),
-    )
     await login(role_name="ADMIN")
+    await client.put("/api/v1/settings/smtp", json={"notification_recipient_email": to_email})
     product = await _create_product(client, sku="NOTIF-EMAIL", min_stock="10")
     warehouse_id, location_id = await _default_location(client)
     await _stock(

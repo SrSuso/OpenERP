@@ -28,6 +28,7 @@ from app.rbac import models as rbac_models
 from app.reports import models as report_models
 from app.returns import models as return_models
 from app.sales import models as sales_models
+from app.settings import models as settings_models
 from app.suppliers import models as supplier_models
 from app.tickets import models as ticket_models
 from app.users import models as user_models
@@ -50,6 +51,7 @@ __all__ = [
     "report_models",
     "return_models",
     "sales_models",
+    "settings_models",
     "supplier_models",
     "ticket_models",
     "user_models",

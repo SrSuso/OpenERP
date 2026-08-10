@@ -308,6 +308,27 @@ propio equipo) — suficiente para verificar que las notificaciones se
 generan sin depender del servidor de correo de la empresa desde el primer
 día. Cuando quieras enviar correo de verdad:
 
+### 6.1. Desde el panel de administración (recomendado)
+
+Con un usuario `ADMIN`, entra en **Configuración** (`/admin/settings`,
+permiso `settings.manage` — sólo `ADMIN` lo tiene por defecto) y rellena
+host, puerto, usuario/contraseña, remitente y, si quieres, TLS. El botón
+**"Enviar correo de prueba"** manda un correo real con lo que hay en el
+formulario ahora mismo, sin necesidad de guardarlo antes ni de reiniciar
+nada — así confirmas que las credenciales funcionan antes de darle a
+Guardar. Al guardar, el cambio se aplica en el siguiente sondeo del
+worker (`app/jobs/worker.py`, cada pocos segundos), sin `make
+prod-restart` ni tocar `.env.production`. La contraseña nunca se vuelve
+a mostrar una vez guardada (sólo indica si hay una guardada); dejar el
+campo en blanco al editar el resto de campos la deja como estaba.
+
+### 6.2. Por variables de entorno (arranque inicial / infra-as-code)
+
+Sigue siendo la base que usa la app cuando no hay nada guardado desde el
+panel (`app/settings/service.py` sólo sobreescribe lo que se ha
+configurado ahí — un despliegue nuevo, sin nada guardado todavía, se
+comporta exactamente igual que antes de la fase 21):
+
 1. En `.env.production`, cambia:
    ```
    OPENERP_SMTP_HOST=<host del SMTP corporativo>
