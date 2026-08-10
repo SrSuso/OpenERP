@@ -10,10 +10,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import SessionDep
+from app.pricing.dependencies import PricingSettingsDep
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import SALE_MANAGE, SALE_READ
 from app.sales import service
-from app.sales.presenters import sale_to_read as _to_read
+from app.sales.models import Sale
+from app.sales.presenters import sale_to_read as _sale_to_read
 from app.sales.schemas import (
     CheckoutRequest,
     SaleCreate,
@@ -28,9 +30,14 @@ _require_read = Depends(require_permission(SALE_READ))
 _require_manage = Depends(require_permission(SALE_MANAGE))
 
 
+def _to_read(sale: Sale, pricing: PricingSettingsDep) -> SaleRead:
+    return _sale_to_read(sale, prices_include_tax=pricing.prices_include_tax)
+
+
 @router.get("/sales", response_model=list[SaleRead], dependencies=[_require_read])
 async def list_sales(
     session: SessionDep,
+    pricing: PricingSettingsDep,
     status: Annotated[str | None, Query()] = None,
     warehouse_id: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
@@ -39,17 +46,19 @@ async def list_sales(
     sales = await service.list_sales(
         session, status=status, warehouse_id=warehouse_id, limit=limit, offset=offset
     )
-    return [_to_read(s) for s in sales]
+    return [_to_read(s, pricing) for s in sales]
 
 
 @router.post("/sales", response_model=SaleRead, status_code=201, dependencies=[_require_manage])
-async def create_sale(payload: SaleCreate, session: SessionDep) -> SaleRead:
-    return _to_read(await service.create_sale(session, payload))
+async def create_sale(
+    payload: SaleCreate, session: SessionDep, pricing: PricingSettingsDep
+) -> SaleRead:
+    return _to_read(await service.create_sale(session, payload), pricing)
 
 
 @router.get("/sales/{sale_id}", response_model=SaleRead, dependencies=[_require_read])
-async def get_sale(sale_id: int, session: SessionDep) -> SaleRead:
-    return _to_read(await service.get_sale(session, sale_id))
+async def get_sale(sale_id: int, session: SessionDep, pricing: PricingSettingsDep) -> SaleRead:
+    return _to_read(await service.get_sale(session, sale_id), pricing)
 
 
 @router.post(
@@ -58,8 +67,10 @@ async def get_sale(sale_id: int, session: SessionDep) -> SaleRead:
     status_code=201,
     dependencies=[_require_manage],
 )
-async def add_line(sale_id: int, payload: SaleLineCreate, session: SessionDep) -> SaleRead:
-    return _to_read(await service.add_line(session, sale_id, payload))
+async def add_line(
+    sale_id: int, payload: SaleLineCreate, session: SessionDep, pricing: PricingSettingsDep
+) -> SaleRead:
+    return _to_read(await service.add_line(session, sale_id, payload), pricing)
 
 
 @router.post(
@@ -69,23 +80,30 @@ async def add_line(sale_id: int, payload: SaleLineCreate, session: SessionDep) -
     dependencies=[_require_manage],
 )
 async def add_line_by_barcode(
-    sale_id: int, payload: SaleLineByBarcodeCreate, session: SessionDep
+    sale_id: int,
+    payload: SaleLineByBarcodeCreate,
+    session: SessionDep,
+    pricing: PricingSettingsDep,
 ) -> SaleRead:
-    return _to_read(await service.add_line_by_barcode(session, sale_id, payload))
+    return _to_read(await service.add_line_by_barcode(session, sale_id, payload), pricing)
 
 
 @router.delete(
     "/sales/{sale_id}/lines/{line_id}", response_model=SaleRead, dependencies=[_require_manage]
 )
-async def remove_line(sale_id: int, line_id: int, session: SessionDep) -> SaleRead:
-    return _to_read(await service.remove_line(session, sale_id, line_id))
+async def remove_line(
+    sale_id: int, line_id: int, session: SessionDep, pricing: PricingSettingsDep
+) -> SaleRead:
+    return _to_read(await service.remove_line(session, sale_id, line_id), pricing)
 
 
 @router.post("/sales/{sale_id}/cancel", response_model=SaleRead, dependencies=[_require_manage])
-async def cancel_sale(sale_id: int, session: SessionDep) -> SaleRead:
-    return _to_read(await service.cancel_sale(session, sale_id))
+async def cancel_sale(sale_id: int, session: SessionDep, pricing: PricingSettingsDep) -> SaleRead:
+    return _to_read(await service.cancel_sale(session, sale_id), pricing)
 
 
 @router.post("/sales/{sale_id}/checkout", response_model=SaleRead, dependencies=[_require_manage])
-async def checkout(sale_id: int, payload: CheckoutRequest, session: SessionDep) -> SaleRead:
-    return _to_read(await service.checkout(session, sale_id, payload))
+async def checkout(
+    sale_id: int, payload: CheckoutRequest, session: SessionDep, pricing: PricingSettingsDep
+) -> SaleRead:
+    return _to_read(await service.checkout(session, sale_id, payload), pricing)

@@ -454,8 +454,9 @@ async def update_settings(session: AsyncSession, payload: PricingSettingsUpdate)
         raise ValidationError(str(exc)) from exc
 
     settings = await get_settings(session)
-    before = {"formula": settings.formula}
+    before = {"formula": settings.formula, "prices_include_tax": settings.prices_include_tax}
     settings.formula = payload.formula
+    settings.prices_include_tax = payload.prices_include_tax
     await session.flush()
     await audit.record(
         session,
@@ -463,7 +464,7 @@ async def update_settings(session: AsyncSession, payload: PricingSettingsUpdate)
         entity_type="pricing_settings",
         entity_id=settings.id,
         before=before,
-        after={"formula": settings.formula},
+        after={"formula": settings.formula, "prices_include_tax": settings.prices_include_tax},
     )
 
     # Every product that relies on the store default (no formula of its

@@ -151,7 +151,9 @@ async def set_category_pricing(
 @router.get("/pricing/settings", response_model=PricingSettingsRead, dependencies=[_require_read])
 async def get_pricing_settings(session: SessionDep) -> PricingSettingsRead:
     settings = await service.get_settings(session)
-    return PricingSettingsRead(formula=settings.formula)
+    return PricingSettingsRead(
+        formula=settings.formula, prices_include_tax=settings.prices_include_tax
+    )
 
 
 @router.put("/pricing/settings", response_model=PricingSettingsRead, dependencies=[_require_manage])
@@ -159,4 +161,6 @@ async def set_pricing_settings(
     payload: PricingSettingsUpdate, session: SessionDep
 ) -> PricingSettingsRead:
     settings = await service.update_settings(session, payload)
-    return PricingSettingsRead(formula=settings.formula)
+    return PricingSettingsRead(
+        formula=settings.formula, prices_include_tax=settings.prices_include_tax
+    )

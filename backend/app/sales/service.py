@@ -32,6 +32,7 @@ from app.db.types import NUMERIC_EPSILON
 from app.inventory import service as inventory_service
 from app.inventory.models import Location, MovementType, Warehouse
 from app.lots import service as lots_service
+from app.pricing import service as pricing_service
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus
 from app.sales.schemas import (
     CheckoutRequest,
@@ -62,18 +63,54 @@ def _q(value: Decimal) -> Decimal:
     return value.quantize(NUMERIC_EPSILON)
 
 
-def compute_line_totals(line: SaleLine) -> LineTotals:
+def compute_amounts(
+    quantity_base: Decimal,
+    unit_price: Decimal,
+    discount_rate: Decimal,
+    tax_rate: Decimal,
+    *,
+    prices_include_tax: bool,
+) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """``(subtotal, discount_amount, tax_amount, total)``, quantized — the
+    one place that branches on ``PricingSettings.prices_include_tax``
+    (app.pricing.models). Shared by ``compute_line_totals`` below (a whole
+    ``SaleLine``) and ``app.returns.service`` (an arbitrary partial
+    quantity of one), so "IVA incluido en el precio" behaves identically
+    everywhere a line's money is computed from its snapshotted rates —
+    not just cosmetically on the ticket.
+
+    ``prices_include_tax=False`` (the historical default): ``unit_price``
+    is net of tax, so tax is *added* on top after the discount.
+    ``prices_include_tax=True``: ``unit_price`` already is the final price
+    the customer pays, so tax is *extracted* from it instead — ``total``
+    is the same "what was charged" figure either way, only how much of it
+    counts as ``tax_amount`` vs. net changes.
+    """
+    subtotal = quantity_base * unit_price
+    discount_amount = subtotal * discount_rate / Decimal(100)
+    remaining = subtotal - discount_amount
+    if prices_include_tax:
+        net = remaining / (Decimal(1) + tax_rate / Decimal(100))
+        tax_amount = remaining - net
+        total = remaining
+    else:
+        tax_amount = remaining * tax_rate / Decimal(100)
+        total = remaining + tax_amount
+    return _q(subtotal), _q(discount_amount), _q(tax_amount), _q(total)
+
+
+def compute_line_totals(line: SaleLine, *, prices_include_tax: bool) -> LineTotals:
     """Deterministic from the line's own snapshots — never stored, so there
     is nothing that could drift out of sync with them."""
-    subtotal = line.quantity_base * line.unit_price
-    discount_amount = subtotal * line.discount_rate / Decimal(100)
-    net = subtotal - discount_amount
-    tax_amount = net * line.tax_rate / Decimal(100)
+    subtotal, discount_amount, tax_amount, total = compute_amounts(
+        line.quantity_base,
+        line.unit_price,
+        line.discount_rate,
+        line.tax_rate,
+        prices_include_tax=prices_include_tax,
+    )
     return LineTotals(
-        subtotal=_q(subtotal),
-        discount_amount=_q(discount_amount),
-        tax_amount=_q(tax_amount),
-        total=_q(net + tax_amount),
+        subtotal=subtotal, discount_amount=discount_amount, tax_amount=tax_amount, total=total
     )
 
 
@@ -302,7 +339,16 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
     if not sale.lines:
         raise ValidationError("Cannot check out a sale with no lines.")
 
-    sale_total = _q(sum((compute_line_totals(line).total for line in sale.lines), start=Decimal(0)))
+    prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
+    sale_total = _q(
+        sum(
+            (
+                compute_line_totals(line, prices_include_tax=prices_include_tax).total
+                for line in sale.lines
+            ),
+            start=Decimal(0),
+        )
+    )
     tendered_total = _q(sum((p.amount for p in payload.payments), start=Decimal(0)))
     if tendered_total < sale_total:
         raise ValidationError(

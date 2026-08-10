@@ -253,6 +253,64 @@ async def test_sales_over_time_aggregates_completed_sales_by_day(
     assert rows[0]["total"] == "50.000000"  # (2 + 3) * 10.00
 
 
+async def test_sales_over_time_respects_prices_include_tax(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """``PricingSettings.prices_include_tax`` (app.pricing.models) is read
+    live by ``app.dashboards.metrics._line_total_expr``'s scalar subquery
+    — revenue here has to match what checkout actually charged, not
+    12.10€ plus 21% tax on top of it."""
+    await login(role_name="ADMIN")
+    default_formula = (await client.get("/api/v1/pricing/settings")).json()["formula"]
+    assert (
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={"formula": default_formula, "prices_include_tax": True},
+        )
+    ).status_code == 200
+    try:
+        warehouse_id, location_id = await _new_warehouse(client)
+        product = await _create_product(
+            client, sku="DASH-TAX-INCL", list_price="12.10", tax_rate="21"
+        )
+        await _completed_sale(
+            client, product=product, quantity="1", location=(warehouse_id, location_id)
+        )
+        dashboard = await _create_dashboard(client)
+        widget = (
+            await client.post(
+                f"/api/v1/dashboards/{dashboard['id']}/widgets",
+                json={
+                    "metric": "sales_over_time",
+                    "title": "Ventas",
+                    "params": {
+                        "date_from": TODAY,
+                        "date_to": TODAY,
+                        "warehouse_id": warehouse_id,
+                    },
+                    "chart_type": "line",
+                },
+            )
+        ).json()["widgets"][0]
+
+        response = await client.get(
+            f"/api/v1/dashboards/{dashboard['id']}/widgets/{widget['id']}/data"
+        )
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        assert rows[0]["total"] == "12.100000"
+    finally:
+        await login(role_name="ADMIN")
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={
+                "formula": (await client.get("/api/v1/pricing/settings")).json()["formula"],
+                "prices_include_tax": False,
+            },
+        )
+
+
 async def test_top_products_orders_by_revenue_by_default(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -14,15 +14,21 @@ import { formatMoney } from '@/lib/format';
  * mismas cuatro variables que ya validaba el motor de fórmulas por
  * producto (fase 4): cost, tax_rate, surcharge_rate, margin_rate — aquí
  * tax_rate/margin_rate son los *efectivos* (el propio valor del producto,
- * o si no tiene, el de su categoría). */
+ * o si no tiene, el de su categoría). También vive aquí "los precios ya
+ * incluyen el IVA" — es del mismo tipo de decisión (cómo se calcula el
+ * dinero en toda la tienda, no algo por producto o por plantilla de
+ * ticket), aunque no cambia la fórmula en sí (ver
+ * backend/app/pricing/models.py's PricingSettings.prices_include_tax). */
 export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
   const settings = useQuery(pricingSettingsQuery);
   const queryClient = useQueryClient();
   const [formulaInput, setFormulaInput] = useState<string | null>(null);
+  const [pricesIncludeTaxInput, setPricesIncludeTaxInput] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   const formula = formulaInput ?? settings.data?.formula ?? '';
+  const pricesIncludeTax = pricesIncludeTaxInput ?? settings.data?.prices_include_tax ?? false;
 
   const previewMutation = useMutation({
     mutationFn: () =>
@@ -36,7 +42,7 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
   });
 
   const saveMutation = useMutation({
-    mutationFn: () => updatePricingSettings(formula),
+    mutationFn: () => updatePricingSettings(formula, pricesIncludeTax),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: pricingSettingsQuery.queryKey });
       // Guardar recalcula el PVP de todo producto sin fórmula propia
@@ -45,6 +51,7 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
       // recargar la página.
       void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
       setFormulaInput(null);
+      setPricesIncludeTaxInput(null);
       setError(null);
       setSaved(true);
     },
@@ -53,6 +60,11 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
       setError('Fórmula no válida — revisa la sintaxis (sólo +, -, *, /, round/ceil/floor).');
     },
   });
+
+  const unchanged =
+    settings.data !== undefined &&
+    formula === settings.data.formula &&
+    pricesIncludeTax === settings.data.prices_include_tax;
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -96,14 +108,40 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
             )}
           </div>
 
+          <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={pricesIncludeTax}
+              disabled={!canManage}
+              onChange={(event) => {
+                setPricesIncludeTaxInput(event.target.checked);
+                setSaved(false);
+              }}
+              className="mt-0.5"
+            />
+            <span>
+              El PVP ya incluye el IVA
+              <span className="mt-0.5 block text-xs text-slate-400">
+                Actívalo si estás en <strong>recargo de equivalencia</strong>: el IVA y el recargo
+                se los pagas al proveedor, van dentro del coste (y por tanto del PVP), y en caja no
+                se vuelve a sumar nada — se cobra el precio de la etiqueta tal cual. El ticket
+                seguirá pudiendo desglosar cuánto IVA lleva dentro (se configura en la plantilla de
+                ticket).
+                <br />
+                Déjalo desactivado en régimen general, donde el PVP es sin IVA y la caja lo suma
+                encima.
+              </span>
+            </span>
+          </label>
+
           {canManage && (
             <button
               type="button"
               onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending || formula === settings.data.formula}
+              disabled={saveMutation.isPending || unchanged}
               className="mt-3 rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {saveMutation.isPending ? 'Guardando…' : 'Guardar fórmula'}
+              {saveMutation.isPending ? 'Guardando…' : 'Guardar'}
             </button>
           )}
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

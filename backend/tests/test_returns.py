@@ -533,6 +533,65 @@ async def test_list_and_get_return(
     assert fetched.json()["id"] == created["id"]
 
 
+async def test_refund_with_prices_include_tax_matches_what_was_actually_charged(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """``PricingSettings.prices_include_tax`` (app.pricing.models): the
+    refund for one unit of a 12.10€ tax-included product is exactly
+    12.10€ — not 12.10 plus tax on top, which is what the historical
+    (``False``) behaviour would have refunded."""
+    await login(role_name="ADMIN")
+    default_formula = (await client.get("/api/v1/pricing/settings")).json()["formula"]
+    assert (
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={"formula": default_formula, "prices_include_tax": True},
+        )
+    ).status_code == 200
+    try:
+        # Created *after* flipping the setting — see the identical caveat
+        # in tests/test_checkout.py's own version of this test.
+        product = await _create_product(
+            client, sku="RETURN-TAX-INCL", list_price="12.10", tax_rate="21"
+        )
+        warehouse_id, location_id = await _default_location(client)
+        await _stock(
+            client,
+            product_id=product["id"],
+            warehouse_id=warehouse_id,
+            location_id=location_id,
+            quantity="10",
+        )
+        sale = await _completed_sale(client, product=product, quantity="1")
+        sale_line_id = sale["lines"][0]["id"]
+
+        response = await client.post(
+            f"/api/v1/sales/{sale['id']}/returns",
+            json={
+                "lines": [
+                    {
+                        "sale_line_id": sale_line_id,
+                        "quantity_packages": "1",
+                        "economic": True,
+                        "physical": False,
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == 201
+        assert response.json()["lines"][0]["refund_amount"] == "12.100000"
+    finally:
+        await login(role_name="ADMIN")
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={
+                "formula": (await client.get("/api/v1/pricing/settings")).json()["formula"],
+                "prices_include_tax": False,
+            },
+        )
+
+
 async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/returns")
 

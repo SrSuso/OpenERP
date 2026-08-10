@@ -76,15 +76,27 @@ def _two_column(left: str, right: str, width: int) -> list[str]:
     return lines
 
 
-def _line_total(line: SaleLine) -> Decimal:
+def _line_amounts(line: SaleLine, *, prices_include_tax: bool) -> tuple[Decimal, Decimal, Decimal]:
+    """``(net, tax_amount, total)`` — same formula as
+    ``app.sales.service.compute_amounts`` (duplicated rather than
+    imported, same as ``app.returns.service``/``app.dashboards.metrics``:
+    each module stays self-contained). ``prices_include_tax``
+    (``app.pricing.models.PricingSettings``): ``False`` adds tax on top of
+    ``unit_price``; ``True`` treats it as already tax-included and
+    extracts the tax from it instead — ``total`` is what was actually
+    charged either way."""
     subtotal = line.quantity_base * line.unit_price
     discount_amount = subtotal * line.discount_rate / Decimal(100)
-    net = subtotal - discount_amount
-    tax_amount = net * line.tax_rate / Decimal(100)
-    return net + tax_amount
+    remaining = subtotal - discount_amount
+    if prices_include_tax:
+        net = remaining / (Decimal(1) + line.tax_rate / Decimal(100))
+        tax_amount = remaining - net
+        return net, tax_amount, remaining
+    tax_amount = remaining * line.tax_rate / Decimal(100)
+    return remaining, tax_amount, remaining + tax_amount
 
 
-def render_ticket(sale: Sale, template: TicketTemplate) -> str:
+def render_ticket(sale: Sale, template: TicketTemplate, *, prices_include_tax: bool) -> str:
     width = CHARS_PER_WIDTH[template.width_mm]
     rows: list[str] = []
 
@@ -104,13 +116,9 @@ def render_ticket(sale: Sale, template: TicketTemplate) -> str:
     #: breakdown below possible when ``show_tax_breakdown`` is on.
     tax_by_rate: dict[Decimal, Decimal] = {}
     for line in sale.lines:
-        total = _line_total(line)
-        subtotal_line = line.quantity_base * line.unit_price
-        discount_amount = subtotal_line * line.discount_rate / Decimal(100)
-        net = subtotal_line - discount_amount
-        tax_by_rate[line.tax_rate] = tax_by_rate.get(
-            line.tax_rate, Decimal(0)
-        ) + net * line.tax_rate / Decimal(100)
+        net, tax_amount, total = _line_amounts(line, prices_include_tax=prices_include_tax)
+        discount_amount = line.quantity_base * line.unit_price * line.discount_rate / Decimal(100)
+        tax_by_rate[line.tax_rate] = tax_by_rate.get(line.tax_rate, Decimal(0)) + tax_amount
         subtotal += net
         rows.extend(_two_column(line.product.name, _money(total), width))
         qty = f"{_quantity(line.quantity_packages)} x {_money(line.unit_price)}"
@@ -128,6 +136,8 @@ def render_ticket(sale: Sale, template: TicketTemplate) -> str:
         rows.extend(_two_column("Base imponible", _money(subtotal), width))
         for rate in sorted(rate for rate in tax_by_rate if rate > 0):
             rows.extend(_two_column(f"IVA {_rate_label(rate)}%", _money(tax_by_rate[rate]), width))
+    if prices_include_tax:
+        rows.append(_center("Precios con IVA incluido", width))
     total = subtotal + tax_total
     rows.extend(_two_column("TOTAL", _money(total), width))
     rows.append(_rule(width))

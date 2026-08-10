@@ -94,3 +94,15 @@ class PricingSettings(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "pricing_settings"
 
     formula: Mapped[str] = mapped_column(Text)
+    #: ``False`` (the historical behaviour): a `SaleLine.unit_price` is net
+    #: of tax, and every total (checkout amount, ticket, dashboards,
+    #: reports) adds tax on top of it. ``True``: `unit_price` is already
+    #: the final, tax-included price the customer pays — the same total is
+    #: still charged, but tax is *extracted* from it instead of added, so a
+    #: product's shelf price never silently changes when this flips.
+    #: `app.sales.service.compute_amounts` is the one place that branches
+    #: on this — everything that shows money for a sale (checkout,
+    #: tickets, `app.returns`, `app.dashboards`, `app.reports`) either
+    #: calls it directly or mirrors it exactly, so flipping this is
+    #: consistent everywhere at once, not just cosmetic on one screen.
+    prices_include_tax: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
