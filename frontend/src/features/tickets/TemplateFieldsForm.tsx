@@ -83,7 +83,7 @@ export function TemplateFieldsForm({
       </h3>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <div className="grid gap-3 sm:max-w-sm sm:grid-cols-2">
+        <div className="grid flex-1 gap-3 sm:grid-cols-2">
           {mode === 'create' && (
             <label className="text-sm text-slate-600 sm:col-span-2">
               Nombre
@@ -99,7 +99,7 @@ export function TemplateFieldsForm({
           <label className="text-sm text-slate-600 sm:col-span-2">
             Ancho del papel
             <select
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              className="mt-1 w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('width_mm')}
             >
               <option value="58">58 mm</option>
@@ -110,7 +110,7 @@ export function TemplateFieldsForm({
           <label className="text-sm text-slate-600 sm:col-span-2">
             Cabecera
             <textarea
-              rows={3}
+              rows={8}
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('header_text')}
             />
@@ -119,7 +119,7 @@ export function TemplateFieldsForm({
           <label className="text-sm text-slate-600 sm:col-span-2">
             Pie
             <textarea
-              rows={3}
+              rows={8}
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('footer_text')}
             />
