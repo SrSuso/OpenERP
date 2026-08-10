@@ -48,3 +48,28 @@ export async function login(email: string, password: string): Promise<Me> {
 export async function logout(): Promise<void> {
   await apiFetch(`${API_V1}/auth/logout`, { method: 'POST', schema: z.null() });
 }
+
+// --- sesiones activas del usuario que ha iniciado sesión — nunca las de
+// otro usuario (ver backend/app/auth/router.py's list_my_sessions/
+// revoke_my_session, ambas ancladas a auth_session.user_id) -----------------
+
+export const sessionSchema = z.object({
+  id: z.number(),
+  created_at: z.string(),
+  last_seen_at: z.string(),
+  expires_at: z.string(),
+  user_agent: z.string().nullable(),
+  ip: z.string().nullable(),
+  is_current: z.boolean(),
+});
+export type Session = z.infer<typeof sessionSchema>;
+
+export const mySessionsQuery = queryOptions({
+  queryKey: ['auth', 'sessions'] as const,
+  queryFn: ({ signal }) =>
+    apiFetch(`${API_V1}/auth/sessions`, { schema: z.array(sessionSchema), signal }),
+});
+
+export async function revokeSession(sessionId: number): Promise<void> {
+  await apiFetch(`${API_V1}/auth/sessions/${sessionId}`, { method: 'DELETE', schema: z.null() });
+}

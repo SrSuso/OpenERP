@@ -168,3 +168,20 @@ export async function recordTransfer(payload: TransferInput): Promise<TransferRe
     body: payload,
   });
 }
+
+// --- reconstruir stock_balance desde el histórico de movimientos ----------
+
+const rebuildResultSchema = z.object({ rows: z.number() });
+
+/** Borra y recalcula `stock_balance` desde cero sumando `stock_movements`
+ * (backend/app/inventory/service.py's `rebuild_stock_balance`) — la
+ * proyección siempre tiene que poder reconstruirse íntegra desde el
+ * histórico (regla 2); esto es el botón de "algo no cuadra, recalcúlalo"
+ * para cuando hiciera falta, no algo que se llame en el día a día. */
+export async function rebuildStockBalance(): Promise<number> {
+  const result = await apiFetch(`${API_V1}/stock-balance/rebuild`, {
+    method: 'POST',
+    schema: rebuildResultSchema,
+  });
+  return result.rows;
+}

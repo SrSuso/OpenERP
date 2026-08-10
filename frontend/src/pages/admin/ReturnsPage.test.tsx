@@ -63,6 +63,21 @@ function stubBackend() {
       if (method === 'GET' && /\/sales\/42\/returns$/.test(url)) {
         return Promise.resolve(jsonResponse(returns));
       }
+      if (method === 'POST' && /\/sales\/42\/tickets$/.test(url)) {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              id: 1,
+              sale_id: 42,
+              template_id: 1,
+              width_mm: 58,
+              rendered_text: 'Venta #42\nTOTAL 10.00\n',
+              created_at: new Date().toISOString(),
+            },
+            { status: 201 },
+          ),
+        );
+      }
       if (method === 'POST' && /\/sales\/42\/returns$/.test(url)) {
         const b = body();
         createCalls.push(b);
@@ -159,5 +174,24 @@ describe('ReturnsPage', () => {
         ],
       },
     ]);
+  });
+
+  it('reprints the frozen ticket of a completed sale and triggers window.print()', async () => {
+    stubBackend();
+    const printMock = vi.fn();
+    vi.stubGlobal('print', printMock);
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText('Nº de venta'), '42');
+    await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+    await screen.findByText(/Venta #42/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reimprimir ticket' }));
+
+    await screen.findByText(/TOTAL 10\.00/);
+    expect(printMock).toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByText(/TOTAL 10\.00/)).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import { AdjustmentForm } from '@/features/inventory/AdjustmentForm';
 import { StockBalanceTable } from '@/features/inventory/StockBalanceTable';
 import { TransferForm } from '@/features/inventory/TransferForm';
 import {
+  rebuildStockBalance,
   recordAdjustment,
   recordTransfer,
   stockBalanceQuery,
@@ -25,6 +26,7 @@ export function InventoryBalancesPage() {
   const [showTransferForm, setShowTransferForm] = useState(false);
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [rebuildMessage, setRebuildMessage] = useState<string | null>(null);
 
   const warehouses = useQuery(warehousesQuery);
   const products = useQuery(productsQuery({ activeOnly: true }));
@@ -62,6 +64,15 @@ export function InventoryBalancesPage() {
       setTransferError(
         error instanceof ApiError ? error.message : 'No se ha podido registrar la transferencia.',
       ),
+  });
+
+  const rebuildMutation = useMutation({
+    mutationFn: () => rebuildStockBalance(),
+    onSuccess: (rows) => {
+      invalidate();
+      setRebuildMessage(`Inventario reconstruido: ${rows} saldos recalculados.`);
+    },
+    onError: () => setRebuildMessage('No se ha podido reconstruir el inventario.'),
   });
 
   return (
@@ -103,9 +114,28 @@ export function InventoryBalancesPage() {
                 Nueva transferencia
               </button>
             )}
+            <button
+              type="button"
+              disabled={rebuildMutation.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    '¿Reconstruir el inventario? Recalcula todos los saldos desde el histórico de movimientos — úsalo sólo si algo no cuadra.',
+                  )
+                ) {
+                  setRebuildMessage(null);
+                  rebuildMutation.mutate();
+                }
+              }}
+              className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+            >
+              {rebuildMutation.isPending ? 'Reconstruyendo…' : 'Reconstruir inventario'}
+            </button>
           </div>
         )}
       </div>
+
+      {rebuildMessage && <p className="mb-4 text-sm text-slate-600">{rebuildMessage}</p>}
 
       {showAdjustmentForm && (
         <AdjustmentForm

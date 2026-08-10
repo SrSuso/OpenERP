@@ -5,6 +5,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { CreateReturnForm } from '@/features/returns/CreateReturnForm';
 import { ReturnsHistory } from '@/features/returns/ReturnsHistory';
 import { createReturn, saleQuery, type ReturnLineInput } from '@/features/returns/api';
+import { TicketReprintButton } from '@/features/tickets/TicketReprintButton';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
@@ -87,6 +88,9 @@ export function ReturnsPage() {
 
           {sale.data.status === 'COMPLETED' && (
             <>
+              <div className="mb-4">
+                <TicketReprintButton saleId={sale.data.id} />
+              </div>
               {canManage && (
                 <CreateReturnForm
                   sale={sale.data}

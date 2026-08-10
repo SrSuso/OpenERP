@@ -70,6 +70,7 @@ function stubBackend() {
   const createWarehouseCalls: string[] = [];
   const createLocationCalls: { warehouseId: number; name: string }[] = [];
   const adjustmentCalls: Record<string, unknown>[] = [];
+  const rebuildCalls: true[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -128,12 +129,16 @@ function stubBackend() {
         };
         return Promise.resolve(jsonResponse(movement, { status: 201 }));
       }
+      if (method === 'POST' && /\/stock-balance\/rebuild$/.test(url)) {
+        rebuildCalls.push(true);
+        return Promise.resolve(jsonResponse({ rows: balances.length }));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createWarehouseCalls, createLocationCalls, adjustmentCalls };
+  return { createWarehouseCalls, createLocationCalls, adjustmentCalls, rebuildCalls };
 }
 
 function renderComponent(children: React.ReactNode) {
@@ -196,5 +201,29 @@ describe('InventoryBalancesPage', () => {
         reason: '',
       },
     ]);
+  });
+
+  it('rebuilds the stock balance projection after confirming', async () => {
+    const backend = stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderComponent(<InventoryBalancesPage />);
+
+    await screen.findByText('P000010');
+    await userEvent.click(screen.getByRole('button', { name: 'Reconstruir inventario' }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    await screen.findByText(/Inventario reconstruido: 1 saldos recalculados\./);
+    expect(backend.rebuildCalls).toEqual([true]);
+  });
+
+  it('does nothing when the rebuild confirmation is cancelled', async () => {
+    const backend = stubBackend();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderComponent(<InventoryBalancesPage />);
+
+    await screen.findByText('P000010');
+    await userEvent.click(screen.getByRole('button', { name: 'Reconstruir inventario' }));
+
+    expect(backend.rebuildCalls).toEqual([]);
   });
 });

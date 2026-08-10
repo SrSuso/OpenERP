@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { useAuth } from '@/features/auth/AuthContext';
+import { SessionsPanel } from '@/features/auth/SessionsPanel';
 import { ChangePasswordForm } from '@/features/users/ChangePasswordForm';
 import { changeMyPassword } from '@/features/users/api';
 import { ApiError } from '@/lib/api';
@@ -52,6 +53,15 @@ export function AccountPage() {
             mutation.mutate({ current, next });
           }}
         />
+      </div>
+
+      <div className="mt-8">
+        <h2 className="mb-2 text-lg font-semibold text-slate-800">Sesiones activas</h2>
+        <p className="mb-3 text-sm text-slate-500">
+          Todos los terminales en los que sigues con la sesión iniciada. Si te dejaste una abierta
+          en otro puesto, ciérrala desde aquí.
+        </p>
+        <SessionsPanel />
       </div>
     </section>
   );
