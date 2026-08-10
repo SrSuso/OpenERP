@@ -18,6 +18,7 @@ it has one) overrides — see ``app.pricing.service.effective_tax_rate``/
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
@@ -33,7 +34,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
-from app.db.types import Money, Rate
+from app.db.types import Money, Rate, numeric
 
 
 class ProductPriceHistory(IntPrimaryKeyMixin, Base):
@@ -52,15 +53,25 @@ class ProductPriceHistory(IntPrimaryKeyMixin, Base):
 
 
 class Tax(IntPrimaryKeyMixin, TimestampMixin, Base):
-    """A named tax/surcharge rate ("IVA general 21%", "Recargo de
-    equivalencia 5.2%"), managed on its own — never typed as a raw number
-    on a product. Assigned to products/categories via the association
-    tables below; several can apply to the same product at once."""
+    """A named tax ("IVA general 21%"), managed on its own — never typed
+    as a raw number on a product. Assigned to products/categories via the
+    association tables below; several can apply to the same product at
+    once."""
 
     __tablename__ = "taxes"
 
     name: Mapped[str] = mapped_column(String(100), unique=True)
     rate: Mapped[Rate]
+    #: *Recargo de equivalencia* that goes with this rate (5.2 with IVA
+    #: 21, 1.4 with IVA 10, 0.5 with IVA 4, 0 for a shop not under the
+    #: regime). Deliberately a column on the tax rather than a `Tax` of
+    #: its own: the two always travel together, and they are not
+    #: interchangeable — the surcharge is a *purchase cost* the shop pays
+    #: its supplier and never charges the customer, so it feeds the
+    #: pricing formula's ``surcharge_rate`` variable (see
+    #: `app.pricing.service.effective_surcharge_rate`) and is deliberately
+    #: absent from `SaleLine.tax_rate` and from the receipt.
+    surcharge_rate: Mapped[Decimal] = mapped_column(numeric(), default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 

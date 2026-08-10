@@ -30,7 +30,9 @@ const ME = {
   permissions: ['admin.access', 'product.read', 'product.manage', 'pricing.manage'],
 };
 
-const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
+const TAXES: Tax[] = [
+  { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
+];
 // La categoría ya trae un impuesto propio — así una prueba puede comprobar
 // que se muestra heredado (marcado) al elegirla, sin tocar nada más.
 const CATEGORIES: ProductCategory[] = [

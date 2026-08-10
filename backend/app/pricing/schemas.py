@@ -52,6 +52,8 @@ class SetPricingInputsRequest(BaseModel):
 class TaxCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     rate: Decimal = Field(ge=0)
+    #: Recargo de equivalencia que acompaña a esta tasa — ver `Tax`.
+    surcharge_rate: Decimal = Field(default=Decimal(0), ge=0)
 
 
 class TaxUpdate(BaseModel):
@@ -62,12 +64,14 @@ class TaxUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     rate: Decimal | None = Field(default=None, ge=0)
+    surcharge_rate: Decimal | None = Field(default=None, ge=0)
 
 
 class TaxRead(BaseModel):
     id: int
     name: str
     rate: Decimal
+    surcharge_rate: Decimal
     is_active: bool
 
 

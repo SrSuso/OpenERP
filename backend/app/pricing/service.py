@@ -46,6 +46,30 @@ def effective_tax_rate(product: Product) -> Decimal:
     return product.tax_rate
 
 
+def effective_surcharge_rate(product: Product) -> Decimal:
+    """The *recargo de equivalencia* that goes with the product's taxes —
+    same own-then-category-then-legacy-column priority as
+    `effective_tax_rate`, so assigning "IVA 21%" also brings its 5.2%
+    surcharge into the price without a second thing to remember.
+
+    Only ever a **cost** input to the pricing formula: it is what the shop
+    pays its supplier, never what it charges the customer, so it stays out
+    of `SaleLine.tax_rate` and out of the receipt (see `Tax`)."""
+    if product.taxes:
+        return sum((t.surcharge_rate for t in product.taxes if t.is_active), Decimal(0))
+    if product.category is not None and product.category.taxes:
+        return sum((t.surcharge_rate for t in product.category.taxes if t.is_active), Decimal(0))
+    return product.surcharge_rate
+
+
+async def effective_tax_rate_for(session: AsyncSession, product_id: int) -> Decimal:
+    """`effective_tax_rate` for a product this caller hasn't loaded with
+    the relationships it needs — `app.sales.service` snapshotting the rate
+    onto a new line, in practice. Loads through `_product_or_404` so the
+    "what has to be eager-loaded" answer lives in one place."""
+    return effective_tax_rate(await _product_or_404(session, product_id))
+
+
 def effective_margin_rate(product: Product) -> Decimal:
     """``None`` = inherit — see `Product.margin_rate`'s own docstring."""
     if product.margin_rate is not None:
@@ -59,7 +83,7 @@ def _variables(product: Product) -> dict[str, Decimal]:
     return {
         "cost": product.cost,
         "tax_rate": effective_tax_rate(product),
-        "surcharge_rate": product.surcharge_rate,
+        "surcharge_rate": effective_surcharge_rate(product),
         "margin_rate": effective_margin_rate(product),
     }
 
@@ -136,7 +160,7 @@ async def _record_history(session: AsyncSession, product: Product) -> None:
             product_id=product.id,
             cost=product.cost,
             tax_rate=effective_tax_rate(product),
-            surcharge_rate=product.surcharge_rate,
+            surcharge_rate=effective_surcharge_rate(product),
             margin_rate=effective_margin_rate(product),
             price_formula=product.price_formula,
             list_price=product.list_price,
@@ -305,7 +329,7 @@ async def create_tax(session: AsyncSession, payload: TaxCreate) -> Tax:
     if existing is not None:
         raise ConflictError("A tax with this name already exists.")
 
-    tax = Tax(name=payload.name, rate=payload.rate)
+    tax = Tax(name=payload.name, rate=payload.rate, surcharge_rate=payload.surcharge_rate)
     session.add(tax)
     await session.flush()
     await audit.record(
@@ -313,7 +337,7 @@ async def create_tax(session: AsyncSession, payload: TaxCreate) -> Tax:
         action="created",
         entity_type="tax",
         entity_id=tax.id,
-        after={"name": tax.name, "rate": str(tax.rate)},
+        after={"name": tax.name, "rate": str(tax.rate), "surcharge": str(tax.surcharge_rate)},
     )
     # Ver el mismo `session.refresh` en update_tax: sin esto, `tax.rate`
     # trae el Decimal crudo del JSON en vez del NUMERIC(18,6) normalizado.
@@ -330,7 +354,7 @@ async def update_tax(session: AsyncSession, tax_id: int, payload: TaxUpdate) -> 
     tax = await session.get(Tax, tax_id)
     if tax is None:
         raise NotFoundError(f"Tax {tax_id} not found.")
-    before = {"name": tax.name, "rate": str(tax.rate)}
+    before = {"name": tax.name, "rate": str(tax.rate), "surcharge": str(tax.surcharge_rate)}
 
     if payload.name is not None and payload.name != tax.name:
         existing = (
@@ -343,6 +367,11 @@ async def update_tax(session: AsyncSession, tax_id: int, payload: TaxUpdate) -> 
     rate_changed = payload.rate is not None and payload.rate != tax.rate
     if payload.rate is not None:
         tax.rate = payload.rate
+    # El recargo también entra en el precio (por la fórmula), así que
+    # cambiarlo tiene que recalcular igual que cambiar la tasa.
+    if payload.surcharge_rate is not None and payload.surcharge_rate != tax.surcharge_rate:
+        tax.surcharge_rate = payload.surcharge_rate
+        rate_changed = True
 
     await session.flush()
     await audit.record(
@@ -351,7 +380,7 @@ async def update_tax(session: AsyncSession, tax_id: int, payload: TaxUpdate) -> 
         entity_type="tax",
         entity_id=tax_id,
         before=before,
-        after={"name": tax.name, "rate": str(tax.rate)},
+        after={"name": tax.name, "rate": str(tax.rate), "surcharge": str(tax.surcharge_rate)},
     )
 
     if rate_changed:

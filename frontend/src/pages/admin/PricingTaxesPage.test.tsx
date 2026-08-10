@@ -24,8 +24,10 @@ const ME = {
 };
 
 function stubBackend() {
-  const taxes: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
-  const createCalls: { name: string; rate: string }[] = [];
+  const taxes: Tax[] = [
+    { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
+  ];
+  const createCalls: { name: string; rate: string; surcharge_rate: string }[] = [];
   const updateCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
@@ -38,10 +40,20 @@ function stubBackend() {
       if (method === 'GET' && url.includes('/taxes')) return Promise.resolve(jsonResponse(taxes));
       if (method === 'POST' && /\/taxes$/.test(url)) {
         const body = init?.body
-          ? (JSON.parse(init.body as string) as { name: string; rate: string })
-          : { name: '', rate: '' };
+          ? (JSON.parse(init.body as string) as {
+              name: string;
+              rate: string;
+              surcharge_rate: string;
+            })
+          : { name: '', rate: '', surcharge_rate: '0' };
         createCalls.push(body);
-        const created: Tax = { id: 2, name: body.name, rate: body.rate, is_active: true };
+        const created: Tax = {
+          id: 2,
+          name: body.name,
+          rate: body.rate,
+          surcharge_rate: body.surcharge_rate,
+          is_active: true,
+        };
         taxes.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
@@ -92,7 +104,25 @@ describe('PricingTaxesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Añadir' }));
 
     expect(await screen.findByText('Recargo de equivalencia')).toBeInTheDocument();
-    expect(backend.createCalls).toEqual([{ name: 'Recargo de equivalencia', rate: '5.2' }]);
+    expect(backend.createCalls).toEqual([
+      { name: 'Recargo de equivalencia', rate: '5.2', surcharge_rate: '0' },
+    ]);
+  });
+
+  it('creates an IVA carrying its recargo de equivalencia', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('IVA general');
+
+    await userEvent.type(screen.getByLabelText('Nombre'), 'IVA 21');
+    await userEvent.type(screen.getByLabelText('Tasa (%)'), '21');
+    await userEvent.type(screen.getByLabelText('Recargo eq. (%)'), '5.2');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+
+    await screen.findByText('IVA 21');
+    expect(backend.createCalls).toEqual([{ name: 'IVA 21', rate: '21', surcharge_rate: '5.2' }]);
+    // La fila lo muestra junto a la tasa, para no tener que abrir la edición.
+    expect(screen.getByText(/\+ RE 5,2%/)).toBeInTheDocument();
   });
 
   it('edits a tax name and rate inline', async () => {
@@ -110,7 +140,9 @@ describe('PricingTaxesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(await screen.findByText('IVA reducido')).toBeInTheDocument();
-    expect(backend.updateCalls).toEqual([{ id: 1, body: { name: 'IVA reducido', rate: '10' } }]);
+    expect(backend.updateCalls).toEqual([
+      { id: 1, body: { name: 'IVA reducido', rate: '10', surcharge_rate: '0' } },
+    ]);
   });
 
   it('cancels an edit without saving', async () => {

@@ -17,7 +17,7 @@ const VARIABLES: { name: string; description: string }[] = [
   {
     name: 'surcharge_rate',
     description:
-      'Un recargo adicional, aparte de los impuestos. Todavía no tiene pantalla propia para editarlo — vale 0 salvo que se cambie directamente por la API.',
+      'El recargo de equivalencia que acompaña a los impuestos aplicados (se configura junto a cada impuesto, en la lista de arriba: 5,2 con IVA 21, 1,4 con IVA 10, 0,5 con IVA 4). Es coste de compra —lo pagas tú al proveedor—, así que entra en el precio pero nunca se le repercute al cliente ni sale en el ticket. Vale 0 si no estás en ese régimen.',
   },
 ];
 

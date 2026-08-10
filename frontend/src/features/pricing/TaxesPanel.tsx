@@ -17,15 +17,22 @@ export function TaxesPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [rate, setRate] = useState('');
+  const [surcharge, setSurcharge] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const createMutation = useMutation({
-    mutationFn: () => createTax(name.trim(), decimalString({ min: 0 }).parse(rate)),
+    mutationFn: () =>
+      createTax(
+        name.trim(),
+        decimalString({ min: 0 }).parse(rate),
+        decimalString({ min: 0 }).parse(surcharge.trim() || '0'),
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taxesQuery.queryKey });
       setName('');
       setRate('');
+      setSurcharge('');
       setError(null);
     },
     onError: (err: unknown) => {
@@ -60,7 +67,14 @@ export function TaxesPanel({ canManage }: { canManage: boolean }) {
             >
               <span>{tax.name}</span>
               <span className="flex items-center gap-3">
-                <span className="text-slate-500">{formatRate(tax.rate)}%</span>
+                <span className="text-slate-500">
+                  {formatRate(tax.rate)}%
+                  {Number(tax.surcharge_rate) > 0 && (
+                    <span className="ml-1 text-xs text-slate-400">
+                      + RE {formatRate(tax.surcharge_rate)}%
+                    </span>
+                  )}
+                </span>
                 {canManage && (
                   <button
                     type="button"
@@ -102,6 +116,17 @@ export function TaxesPanel({ canManage }: { canManage: boolean }) {
               className="mt-1 block w-24 rounded border border-slate-300 px-2 py-1 text-sm"
             />
           </label>
+          <label className="text-xs text-slate-600">
+            Recargo eq. (%)
+            <input
+              type="text"
+              inputMode="decimal"
+              value={surcharge}
+              onChange={(event) => setSurcharge(event.target.value)}
+              placeholder="5.2"
+              className="mt-1 block w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+            />
+          </label>
           <button
             type="submit"
             disabled={createMutation.isPending}
@@ -120,6 +145,7 @@ function EditTaxRow({ tax, onDone }: { tax: Tax; onDone: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(tax.name);
   const [rate, setRate] = useState(tax.rate);
+  const [surcharge, setSurcharge] = useState(tax.surcharge_rate);
   const [error, setError] = useState<string | null>(null);
 
   const saveMutation = useMutation({
@@ -128,7 +154,15 @@ function EditTaxRow({ tax, onDone }: { tax: Tax; onDone: () => void }) {
       if (!parsedRate.success) {
         throw new Error(parsedRate.error.issues[0]?.message ?? 'Tasa no válida.');
       }
-      return updateTax(tax.id, { name: name.trim(), rate: parsedRate.data });
+      const parsedSurcharge = decimalString({ min: 0 }).safeParse(surcharge.trim() || '0');
+      if (!parsedSurcharge.success) {
+        throw new Error(parsedSurcharge.error.issues[0]?.message ?? 'Recargo no válido.');
+      }
+      return updateTax(tax.id, {
+        name: name.trim(),
+        rate: parsedRate.data,
+        surcharge_rate: parsedSurcharge.data,
+      });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taxesQuery.queryKey });
@@ -168,6 +202,16 @@ function EditTaxRow({ tax, onDone }: { tax: Tax; onDone: () => void }) {
             inputMode="decimal"
             value={rate}
             onChange={(event) => setRate(event.target.value)}
+            className="mt-1 block w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="text-xs text-slate-600">
+          Recargo eq. (%)
+          <input
+            type="text"
+            inputMode="decimal"
+            value={surcharge}
+            onChange={(event) => setSurcharge(event.target.value)}
             className="mt-1 block w-24 rounded border border-slate-300 px-2 py-1 text-sm"
           />
         </label>

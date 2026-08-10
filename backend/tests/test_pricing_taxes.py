@@ -282,3 +282,96 @@ async def test_cashier_gets_403_managing_taxes(
     response = await client.post("/api/v1/taxes", json={"name": "X", "rate": "1"})
 
     assert response.status_code == 403
+
+
+async def test_recargo_de_equivalencia_end_to_end(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """El caso completo de una tienda minorista en recargo de equivalencia:
+    el IVA y el recargo que paga al proveedor van dentro del PVP, en caja se
+    cobra la etiqueta tal cual, y el ticket puede desglosar el IVA que
+    lleva dentro."""
+    await login(role_name="ADMIN")
+    default_formula = (await client.get("/api/v1/pricing/settings")).json()["formula"]
+    assert (
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={"formula": default_formula, "prices_include_tax": True},
+        )
+    ).status_code == 200
+    try:
+        # IVA 21% con su recargo de equivalencia del 5,2%.
+        tax = (
+            await client.post(
+                "/api/v1/taxes", json={"name": "IVA 21 RE", "rate": "21", "surcharge_rate": "5.2"}
+            )
+        ).json()
+        assert tax["surcharge_rate"] == "5.200000"
+
+        product = (
+            await client.post(
+                "/api/v1/products",
+                json={
+                    "sku": "RE-TEST",
+                    "name": "Detergente",
+                    "base_unit_name": "UD",
+                    "cost": "10.00",
+                    "list_price": "0",
+                },
+            )
+        ).json()
+        product = (
+            await client.patch(
+                f"/api/v1/products/{product['id']}/pricing",
+                json={"margin_rate": "20", "tax_ids": [tax["id"]]},
+            )
+        ).json()
+
+        # (10 + 10*21% + 10*5,2%) * 1,20 = 12,62 * 1,20 = 15,14
+        assert Decimal(product["list_price"]) == Decimal("15.140000")
+
+        # En caja se cobra la etiqueta, sin volver a sumar IVA.
+        warehouses = (await client.get("/api/v1/warehouses")).json()
+        wh = next(w for w in warehouses if w["name"] == "Tienda principal")
+        locs = (await client.get(f"/api/v1/warehouses/{wh['id']}/locations")).json()
+        loc = next(location for location in locs if location["name"] == "Almacén")
+        await client.post(
+            "/api/v1/stock-movements/adjustments",
+            json={
+                "product_id": product["id"],
+                "warehouse_id": wh["id"],
+                "location_id": loc["id"],
+                "movement_type": "ADJUSTMENT",
+                "quantity": "5",
+                "unit_cost": "12.62",
+            },
+        )
+        sale = (
+            await client.post(
+                "/api/v1/sales", json={"warehouse_id": wh["id"], "location_id": loc["id"]}
+            )
+        ).json()
+        base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+        sale = (
+            await client.post(
+                f"/api/v1/sales/{sale['id']}/lines",
+                json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
+            )
+        ).json()
+
+        assert Decimal(sale["total"]) == Decimal("15.140000")
+        line = sale["lines"][0]
+        # La línea guarda el IVA efectivo (21), no el recargo: el recargo es
+        # coste de compra, nunca se le repercute al cliente.
+        assert Decimal(line["tax_rate"]) == Decimal("21.000000")
+        # 15,14 / 1,21 = 12,512397 de base; el resto es cuota. La API guarda
+        # los 6 decimales del NUMERIC y es el ticket quien redondea a 2.
+        assert Decimal(line["tax_amount"]).quantize(Decimal("0.01")) == Decimal("2.63")
+    finally:
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={
+                "formula": (await client.get("/api/v1/pricing/settings")).json()["formula"],
+                "prices_include_tax": False,
+            },
+        )

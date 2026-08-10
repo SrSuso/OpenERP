@@ -36,7 +36,9 @@ const ME = {
   ],
 };
 
-const TAXES: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
+const TAXES: Tax[] = [
+  { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
+];
 const CATEGORIES_WITH_INHERITED_TAX: ProductCategory[] = [
   { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [TAXES[0]!] },
 ];

@@ -16,6 +16,10 @@ export const taxSchema = z.object({
   id: z.number(),
   name: z.string(),
   rate: z.string(),
+  // Recargo de equivalencia que acompaña a esta tasa. Sólo entra en el
+  // coste (y por tanto en el PVP, vía la fórmula); nunca se le repercute
+  // al cliente ni sale en el ticket — ver backend/app/pricing/models.py.
+  surcharge_rate: z.string(),
   is_active: z.boolean(),
 });
 export type Tax = z.infer<typeof taxSchema>;
@@ -25,15 +29,18 @@ export const taxesQuery = queryOptions({
   queryFn: ({ signal }) => apiFetch(`${API_V1}/taxes`, { schema: z.array(taxSchema), signal }),
 });
 
-export async function createTax(name: string, rate: string): Promise<Tax> {
+export async function createTax(name: string, rate: string, surchargeRate: string): Promise<Tax> {
   return apiFetch(`${API_V1}/taxes`, {
     method: 'POST',
     schema: taxSchema,
-    body: { name, rate },
+    body: { name, rate, surcharge_rate: surchargeRate },
   });
 }
 
-export async function updateTax(id: number, input: { name?: string; rate?: string }): Promise<Tax> {
+export async function updateTax(
+  id: number,
+  input: { name?: string; rate?: string; surcharge_rate?: string },
+): Promise<Tax> {
   return apiFetch(`${API_V1}/taxes/${id}`, {
     method: 'PATCH',
     schema: taxSchema,

@@ -211,6 +211,7 @@ def _new_line(
     package: ProductPackage,
     quantity_packages: Decimal,
     discount_rate: Decimal,
+    tax_rate: Decimal,
 ) -> SaleLine:
     return SaleLine(
         sale_id=sale_id,
@@ -221,9 +222,16 @@ def _new_line(
         quantity_packages=quantity_packages,
         quantity_base=quantity_packages * package.factor,
         # Price snapshot (rule 7): the product's current list price/tax,
-        # copied now — never re-read from the product again.
+        # copied now — never re-read from the product again. ``tax_rate``
+        # is the *effective* rate resolved by
+        # `app.pricing.service.effective_tax_rate` (the product's own
+        # taxes, else its category's, else the legacy scalar column), not
+        # `Product.tax_rate` on its own: nothing keeps that column in sync
+        # with the `Tax` entities, so a product priced from the admin
+        # panel carries 0 there and its line would land on the receipt
+        # with no tax to report at all.
         unit_price=product.list_price,
-        tax_rate=product.tax_rate,
+        tax_rate=tax_rate,
         discount_rate=discount_rate,
     )
 
@@ -241,6 +249,7 @@ async def add_line(session: AsyncSession, sale_id: int, payload: SaleLineCreate)
         package=package,
         quantity_packages=payload.quantity_packages,
         discount_rate=payload.discount_rate,
+        tax_rate=await pricing_service.effective_tax_rate_for(session, product.id),
     )
     session.add(line)
     await session.flush()
@@ -275,6 +284,7 @@ async def add_line_by_barcode(
         package=package,
         quantity_packages=payload.quantity_packages,
         discount_rate=payload.discount_rate,
+        tax_rate=await pricing_service.effective_tax_rate_for(session, product.id),
     )
     session.add(line)
     await session.flush()

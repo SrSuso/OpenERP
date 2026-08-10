@@ -39,7 +39,13 @@ _require_manage = Depends(require_permission(PRICING_MANAGE))
 
 
 def _tax_to_read(tax: Tax) -> TaxRead:
-    return TaxRead(id=tax.id, name=tax.name, rate=tax.rate, is_active=tax.is_active)
+    return TaxRead(
+        id=tax.id,
+        name=tax.name,
+        rate=tax.rate,
+        surcharge_rate=tax.surcharge_rate,
+        is_active=tax.is_active,
+    )
 
 
 def _history_to_read(entry: ProductPriceHistory) -> PriceHistoryEntryRead:

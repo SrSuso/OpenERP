@@ -38,7 +38,9 @@ function stubBackend() {
     { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
   ];
   const units: Unit[] = [{ id: 1, name: 'UNIT', display_order: 0 }];
-  const taxes: Tax[] = [{ id: 1, name: 'IVA general', rate: '21', is_active: true }];
+  const taxes: Tax[] = [
+    { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
+  ];
   const createCategoryCalls: string[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
