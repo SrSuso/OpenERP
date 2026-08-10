@@ -22,9 +22,12 @@ export function AuditLogPage() {
 
   const entries = useQuery(
     auditLogQuery({
-      entityType: entityType.trim() || undefined,
-      entityId: entityId.trim() ? Number(entityId) : undefined,
-      userId: userId ? Number(userId) : undefined,
+      // `exactOptionalPropertyTypes` no admite asignar `undefined`
+      // explícitamente a una propiedad opcional — se omite la clave en
+      // vez de ponerla a `undefined` cuando el filtro está vacío.
+      ...(entityType.trim() ? { entityType: entityType.trim() } : {}),
+      ...(entityId.trim() ? { entityId: Number(entityId) } : {}),
+      ...(userId ? { userId: Number(userId) } : {}),
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }),
