@@ -63,6 +63,16 @@ export async function createTemplate(
   });
 }
 
+/** Pone una plantilla guardada en uso. Sigue habiendo exactamente una
+ * activa: activar una retira la anterior, que se queda para poder volver.
+ * Ver backend/app/tickets/service.py's `activate_template`. */
+export async function activateTemplate(templateId: number): Promise<TicketTemplate> {
+  return apiFetch(`${API_V1}/ticket-templates/${templateId}/activate`, {
+    method: 'POST',
+    schema: ticketTemplateSchema,
+  });
+}
+
 export async function reviseTemplate(
   templateId: number,
   payload: TemplateFields,

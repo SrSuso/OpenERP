@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -78,12 +78,19 @@ function stubBackend() {
         templates.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
+      const activateMatch = /\/ticket-templates\/(\d+)\/activate$/.exec(url);
+      if (method === 'POST' && activateMatch) {
+        const id = Number(activateMatch[1]);
+        templates = templates.map((t) => ({ ...t, is_active: t.id === id }));
+        return Promise.resolve(jsonResponse(templates.find((t) => t.id === id)!));
+      }
       const reviseMatch = /\/ticket-templates\/(\d+)\/revise$/.exec(url);
       if (method === 'POST' && reviseMatch) {
         const id = Number(reviseMatch[1]);
         const b = body();
         reviseCalls.push({ id, body: b });
         const current = templates.find((t) => t.id === id)!;
+        const wasActive = current.is_active;
         current.is_active = false;
         const revised: TicketTemplate = {
           id: templates.length + 1,
@@ -94,7 +101,8 @@ function stubBackend() {
           footer_text: (b['footer_text'] as string) ?? '',
           tax_display: b['tax_display'] as TicketTemplate['tax_display'],
           show_line_discounts: b['show_line_discounts'] as boolean,
-          is_active: true,
+          // El backend conserva si estaba en uso o no.
+          is_active: wasActive,
         };
         templates.push(revised);
         return Promise.resolve(jsonResponse(revised));
@@ -190,5 +198,35 @@ describe('TicketTemplatesPage', () => {
     await screen.findByText(/Activa: Tienda/);
     expect(backend.createCalls[0]).toMatchObject({ tax_display: 'NOTE' });
     expect(screen.getByText(/Sólo la nota «IVA incluido»/)).toBeInTheDocument();
+  });
+
+  it('switches which template the till prints, and edits one that is not in use', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByText('Todavía no hay ninguna plantilla activa.');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Antigua');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    await screen.findByText(/Activa: Antigua/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva plantilla (otro nombre)' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Nueva');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    await screen.findByText(/Activa: Nueva/);
+
+    // Volver a la primera desde la lista.
+    await userEvent.click(screen.getAllByRole('button', { name: 'Usar esta' })[0]!);
+    await screen.findByText(/Activa: Antigua/);
+
+    // Y editar la que NO está en uso no cambia con cuál se imprime.
+    const rows = screen.getAllByRole('row');
+    const notInUse = rows.find((row) => row.textContent?.includes('Nueva'))!;
+    await userEvent.click(within(notInUse).getByRole('button', { name: 'Editar' }));
+    await userEvent.type(screen.getByLabelText('Pie'), 'Corregido');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar nueva versión' }));
+
+    await screen.findByText(/Activa: Antigua/);
+    expect(backend.reviseCalls).toHaveLength(1);
   });
 });

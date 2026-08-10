@@ -1,10 +1,13 @@
 """Ticket template management and per-sale ticket generation.
 
-Only one template is active store-wide at a time — simpler than several
-named families active in parallel, and matches the real constraint (a
-till prints one receipt layout). ``revise_template`` is the only way to
-change what a *new* ticket looks like; it never mutates a past version
-(see ``app.tickets.models`` for why).
+Only one template is active store-wide at a time — the till prints one
+receipt layout — but a shop can keep as many as it likes and switch
+between them with ``activate_template``.
+
+``revise_template`` is the only way to change what a *new* ticket looks
+like; it never mutates a past version (see ``app.tickets.models`` for
+why), and revising one that is not in use leaves it that way, so an
+alternative can be corrected without changing what the till prints.
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import NotFoundError, ValidationError
 from app.pricing import service as pricing_service
 from app.sales.models import Sale, SaleLine, SaleStatus
 from app.settings import store as settings_store
@@ -83,11 +86,7 @@ async def revise_template(
     session: AsyncSession, template_id: int, payload: TicketTemplateRevise
 ) -> TicketTemplate:
     current = await get_template(session, template_id)
-    if not current.is_active:
-        raise ConflictError(
-            f"Template {template_id} is not the active version — revise the active one instead."
-        )
-
+    was_active = current.is_active
     current.is_active = False
     await session.flush()
 
@@ -99,7 +98,10 @@ async def revise_template(
         footer_text=payload.footer_text,
         tax_display=payload.tax_display,
         show_line_discounts=payload.show_line_discounts,
-        is_active=True,
+        # Editar una plantilla que no estaba en uso no cambia con cuál se
+        # imprime: se corrige una alternativa guardada sin tocar la caja.
+        # Para cambiar de plantilla está `activate_template`.
+        is_active=was_active,
     )
     session.add(revised)
     await session.flush()
@@ -112,6 +114,27 @@ async def revise_template(
         after={"template_id": revised.id, "version": revised.version},
     )
     return revised
+
+
+async def activate_template(session: AsyncSession, template_id: int) -> TicketTemplate:
+    """Pone en uso una plantilla concreta. Sigue habiendo exactamente una
+    activa (ver el docstring del módulo): activar una retira la anterior,
+    que se queda guardada para poder volver a ella."""
+    template = await get_template(session, template_id)
+    if template.is_active:
+        return template
+
+    await _deactivate_all(session)
+    template.is_active = True
+    await session.flush()
+    await audit.record(
+        session,
+        action="activated",
+        entity_type="ticket_template",
+        entity_id=template_id,
+        after={"name": template.name, "version": template.version},
+    )
+    return template
 
 
 async def get_ticket(session: AsyncSession, sale_id: int) -> Ticket:

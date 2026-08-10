@@ -1,6 +1,19 @@
 import { type TicketTemplate } from '@/features/tickets/api';
 
-export function TemplateHistoryTable({ templates }: { templates: TicketTemplate[] }) {
+interface TemplateHistoryTableProps {
+  templates: TicketTemplate[];
+  /** Poner en uso la plantilla de esa fila, o editarla sin ponerla en uso. */
+  onActivate: (template: TicketTemplate) => void;
+  onEdit: (template: TicketTemplate) => void;
+  isActivating: boolean;
+}
+
+export function TemplateHistoryTable({
+  templates,
+  onActivate,
+  onEdit,
+  isActivating,
+}: TemplateHistoryTableProps) {
   if (templates.length === 0) {
     return <p className="text-sm text-slate-500">Todavía no hay ninguna plantilla.</p>;
   }
@@ -14,6 +27,7 @@ export function TemplateHistoryTable({ templates }: { templates: TicketTemplate[
             <th className="px-4 py-2 font-medium">Versión</th>
             <th className="px-4 py-2 font-medium">Ancho</th>
             <th className="px-4 py-2 font-medium">Estado</th>
+            <th className="px-4 py-2 font-medium" />
           </tr>
         </thead>
         <tbody>
@@ -32,6 +46,27 @@ export function TemplateHistoryTable({ templates }: { templates: TicketTemplate[
                     Retirada
                   </span>
                 )}
+              </td>
+              <td className="px-4 py-2 text-right">
+                <span className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(template)}
+                    className="text-xs font-medium text-brand-700 hover:underline"
+                  >
+                    Editar
+                  </button>
+                  {!template.is_active && (
+                    <button
+                      type="button"
+                      disabled={isActivating}
+                      onClick={() => onActivate(template)}
+                      className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50"
+                    >
+                      Usar esta
+                    </button>
+                  )}
+                </span>
               </td>
             </tr>
           ))}

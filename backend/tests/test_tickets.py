@@ -132,22 +132,45 @@ async def test_revising_the_active_template_creates_a_new_version(
     assert original_now["is_active"] is False
 
 
-async def test_revising_an_already_superseded_template_is_rejected(
+async def test_revising_a_template_that_is_not_in_use_leaves_it_out_of_use(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Se puede corregir una plantilla guardada sin cambiar con cuál
+    imprime la caja — para cambiarla está `activate`."""
+    await login(role_name="ADMIN")
+    retired = await _create_template(client, name="Antigua")
+    in_use = await _create_template(client, name="En uso")
+
+    response = await client.post(
+        f"/api/v1/ticket-templates/{retired['id']}/revise",
+        json={"width_mm": 80, "header_text": "Corregida", "footer_text": ""},
+    )
+
+    assert response.status_code == 200
+    revised = response.json()
+    assert revised["version"] == 2
+    assert revised["header_text"] == "Corregida"
+    assert revised["is_active"] is False
+    # La que estaba en uso sigue estándolo.
+    assert (await client.get("/api/v1/ticket-templates/active")).json()["id"] == in_use["id"]
+
+
+async def test_activating_a_template_switches_which_one_the_till_prints(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
-    template = await _create_template(client)
-    await client.post(
-        f"/api/v1/ticket-templates/{template['id']}/revise",
-        json={"width_mm": 58, "header_text": "", "footer_text": ""},
-    )
+    first = await _create_template(client, name="Recibo A")
+    second = await _create_template(client, name="Recibo B")
+    assert (await client.get("/api/v1/ticket-templates/active")).json()["id"] == second["id"]
 
-    response = await client.post(
-        f"/api/v1/ticket-templates/{template['id']}/revise",
-        json={"width_mm": 58, "header_text": "", "footer_text": ""},
-    )
+    response = await client.post(f"/api/v1/ticket-templates/{first['id']}/activate")
 
-    assert response.status_code == 409
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+    assert (await client.get("/api/v1/ticket-templates/active")).json()["id"] == first["id"]
+    # Sigue habiendo exactamente una activa.
+    templates = (await client.get("/api/v1/ticket-templates")).json()
+    assert [t["id"] for t in templates if t["is_active"]] == [first["id"]]
 
 
 async def test_generating_a_ticket_for_a_completed_sale(

@@ -68,6 +68,15 @@ async def revise_template(
 
 
 @router.post(
+    "/ticket-templates/{template_id}/activate",
+    response_model=TicketTemplateRead,
+    dependencies=[_require_manage],
+)
+async def activate_template(template_id: int, session: SessionDep) -> TicketTemplateRead:
+    return _template_to_read(await service.activate_template(session, template_id))
+
+
+@router.post(
     "/sales/{sale_id}/tickets",
     response_model=TicketRead,
     status_code=201,
