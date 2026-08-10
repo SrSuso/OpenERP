@@ -16,14 +16,13 @@ from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Date, case, cast, func, select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import Product
 from app.core.errors import ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.inventory.models import StockBalance
-from app.pricing.models import PricingSettings
 from app.sales.models import Sale, SaleLine, SaleStatus
 
 
@@ -86,20 +85,9 @@ def _line_total_expr() -> Any:
     """Same formula as ``app.sales.service.compute_line_totals``, expressed
     as a SQL arithmetic expression over ``sale_lines`` columns instead of
     Python — so it can be summed/grouped in the database without pulling
-    every line into memory first.
-
-    ``prices_include_tax`` (``app.pricing.models.PricingSettings``) is read
-    live via a scalar subquery rather than threaded in as a Python
-    argument — same technique ``app.reports.rules._sales_line_total`` needs
-    (its subject definitions *are* frozen at import time, see that
-    module's docstring), kept identical here rather than two different
-    ways of reading the same setting."""
-    remaining = SaleLine.quantity_base * SaleLine.unit_price * (1 - SaleLine.discount_rate / 100)
-    prices_include_tax = select(PricingSettings.prices_include_tax).limit(1).scalar_subquery()
-    return case(
-        (prices_include_tax.is_(True), remaining),
-        else_=remaining * (1 + SaleLine.tax_rate / 100),
-    )
+    every line into memory first."""
+    net = SaleLine.quantity_base * SaleLine.unit_price * (1 - SaleLine.discount_rate / 100)
+    return net * (1 + SaleLine.tax_rate / 100)
 
 
 # --- metrics -------------------------------------------------------------------

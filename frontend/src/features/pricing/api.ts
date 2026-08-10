@@ -43,13 +43,7 @@ export async function updateTax(id: number, input: { name?: string; rate?: strin
 
 // --- fórmula del PVP, configurable, un único valor para toda la tienda ----
 
-export const pricingSettingsSchema = z.object({
-  formula: z.string(),
-  // Si está a true, `Product.list_price` ya lleva el IVA dentro — el
-  // total de una venta/devolución/ticket lo extrae en vez de sumarlo
-  // encima (ver backend/app/sales/service.py's compute_amounts).
-  prices_include_tax: z.boolean(),
-});
+export const pricingSettingsSchema = z.object({ formula: z.string() });
 export type PricingSettings = z.infer<typeof pricingSettingsSchema>;
 
 export const pricingSettingsQuery = queryOptions({
@@ -58,14 +52,11 @@ export const pricingSettingsQuery = queryOptions({
     apiFetch(`${API_V1}/pricing/settings`, { schema: pricingSettingsSchema, signal }),
 });
 
-export async function updatePricingSettings(
-  formula: string,
-  pricesIncludeTax: boolean,
-): Promise<PricingSettings> {
+export async function updatePricingSettings(formula: string): Promise<PricingSettings> {
   return apiFetch(`${API_V1}/pricing/settings`, {
     method: 'PUT',
     schema: pricingSettingsSchema,
-    body: { formula, prices_include_tax: pricesIncludeTax },
+    body: { formula },
   });
 }
 

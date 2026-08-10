@@ -117,48 +117,6 @@ async def test_run_sales_report_groups_by_product_and_sums_quantity_and_revenue(
     assert row["tickets"] == 1
 
 
-async def test_sales_report_revenue_respects_prices_include_tax(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """``PricingSettings.prices_include_tax`` (app.pricing.models) is read
-    live by ``app.reports.rules._sales_line_total``'s scalar subquery —
-    revenue has to match what checkout actually charged, not 12.10€ plus
-    21% tax on top of it."""
-    await login(role_name="ADMIN")
-    default_formula = (await client.get("/api/v1/pricing/settings")).json()["formula"]
-    assert (
-        await client.put(
-            "/api/v1/pricing/settings",
-            json={"formula": default_formula, "prices_include_tax": True},
-        )
-    ).status_code == 200
-    try:
-        product = await _create_product(client, list_price="12.10", tax_rate="21")
-        await _completed_sale(client, product=product, quantity="1")
-
-        response = await client.post(
-            "/api/v1/reports/run",
-            json={
-                "subject": "SALES",
-                "dimensions": ["product"],
-                "metrics": ["revenue"],
-                "filters": {"product_id": product["id"]},
-            },
-        )
-
-        assert response.status_code == 200
-        assert response.json()["rows"][0]["revenue"] == "12.100000"
-    finally:
-        await login(role_name="ADMIN")
-        await client.put(
-            "/api/v1/pricing/settings",
-            json={
-                "formula": (await client.get("/api/v1/pricing/settings")).json()["formula"],
-                "prices_include_tax": False,
-            },
-        )
-
-
 async def test_run_report_with_no_dimensions_returns_one_aggregate_row(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

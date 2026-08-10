@@ -18,14 +18,13 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import Date, Select, case, cast, func, select
+from sqlalchemy import Date, Select, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import Product, ProductCategory
 from app.core.errors import ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.inventory.models import StockMovement, Warehouse
-from app.pricing.models import PricingSettings
 from app.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus
 from app.sales.models import Sale, SaleLine, SaleStatus
 from app.suppliers.models import Supplier
@@ -95,20 +94,9 @@ def _sales_line_total() -> Any:
     """Same formula as ``app.sales.service.compute_line_totals`` /
     ``app.dashboards.metrics._line_total_expr`` — duplicated rather than
     imported, same as every module's own small ``_q``: each report module
-    stays self-contained.
-
-    ``prices_include_tax`` (``app.pricing.models.PricingSettings``) is read
-    live via a scalar subquery, not a Python argument: this expression is
-    built once, at import time, as part of ``_SALES`` below (see the
-    module docstring — every subject is a fixed constant, never rebuilt
-    per request), so it has to stay correct as the setting changes on its
-    own."""
-    remaining = SaleLine.quantity_base * SaleLine.unit_price * (1 - SaleLine.discount_rate / 100)
-    prices_include_tax = select(PricingSettings.prices_include_tax).limit(1).scalar_subquery()
-    return case(
-        (prices_include_tax.is_(True), remaining),
-        else_=remaining * (1 + SaleLine.tax_rate / 100),
-    )
+    stays self-contained."""
+    net = SaleLine.quantity_base * SaleLine.unit_price * (1 - SaleLine.discount_rate / 100)
+    return net * (1 + SaleLine.tax_rate / 100)
 
 
 def _sales_build_from(stmt: Select[Any]) -> Select[Any]:

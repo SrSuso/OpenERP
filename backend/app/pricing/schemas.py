@@ -83,12 +83,10 @@ class CategoryPricingUpdate(BaseModel):
 
 class PricingSettingsRead(BaseModel):
     formula: str
-    prices_include_tax: bool
 
 
 class PricingSettingsUpdate(BaseModel):
     formula: str = Field(min_length=1, max_length=2000)
-    prices_include_tax: bool
 
 
 class SetFormulaRequest(BaseModel):

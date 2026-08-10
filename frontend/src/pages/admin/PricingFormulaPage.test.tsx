@@ -27,8 +27,7 @@ const DEFAULT_FORMULA =
 
 function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
   let formula = DEFAULT_FORMULA;
-  let pricesIncludeTax = false;
-  const saveCalls: { formula: string; prices_include_tax: boolean }[] = [];
+  const saveCalls: string[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -38,7 +37,7 @@ function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
 
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
       if (method === 'GET' && url.includes('/pricing/settings')) {
-        return Promise.resolve(jsonResponse({ formula, prices_include_tax: pricesIncludeTax }));
+        return Promise.resolve(jsonResponse({ formula }));
       }
       if (method === 'POST' && url.includes('/pricing/preview')) {
         if (options.previewOk === false) {
@@ -53,11 +52,8 @@ function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
       }
       if (method === 'PUT' && url.includes('/pricing/settings')) {
         const body = init?.body
-          ? (JSON.parse(init.body as string) as {
-              formula: string;
-              prices_include_tax: boolean;
-            })
-          : { formula: '', prices_include_tax: false };
+          ? (JSON.parse(init.body as string) as { formula: string })
+          : { formula: '' };
         if (options.saveOk === false) {
           return Promise.resolve(
             jsonResponse(
@@ -66,10 +62,9 @@ function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
             ),
           );
         }
-        saveCalls.push(body);
+        saveCalls.push(body.formula);
         formula = body.formula;
-        pricesIncludeTax = body.prices_include_tax;
-        return Promise.resolve(jsonResponse({ formula, prices_include_tax: pricesIncludeTax }));
+        return Promise.resolve(jsonResponse({ formula }));
       }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
@@ -117,10 +112,10 @@ describe('PricingFormulaPage', () => {
 
     await userEvent.clear(textarea);
     await userEvent.type(textarea, 'cost * 2');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar fórmula' }));
 
     expect(await screen.findByText(/recalculado/)).toBeInTheDocument();
-    expect(backend.saveCalls).toEqual([{ formula: 'cost * 2', prices_include_tax: false }]);
+    expect(backend.saveCalls).toEqual(['cost * 2']);
   });
 
   it('shows an error when the formula is rejected', async () => {
@@ -130,25 +125,8 @@ describe('PricingFormulaPage', () => {
 
     await userEvent.clear(textarea);
     await userEvent.type(textarea, 'cost.__class__');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar fórmula' }));
 
     expect(await screen.findByText(/no válida/)).toBeInTheDocument();
-  });
-
-  it('toggles and saves "prices include tax" independently of the formula', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByDisplayValue(DEFAULT_FORMULA);
-
-    const checkbox = screen.getByRole('checkbox', {
-      name: /ya incluyen el IVA/,
-    });
-    expect(checkbox).not.toBeChecked();
-
-    await userEvent.click(checkbox);
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    expect(await screen.findByText(/recalculado/)).toBeInTheDocument();
-    expect(backend.saveCalls).toEqual([{ formula: DEFAULT_FORMULA, prices_include_tax: true }]);
   });
 });

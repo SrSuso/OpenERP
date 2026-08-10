@@ -244,10 +244,7 @@ async def test_updating_the_store_formula_recomputes_products_without_their_own(
         f"/api/v1/products/{product_id}/pricing", json={"margin_rate": "0", "tax_ids": []}
     )
 
-    response = await client.put(
-        "/api/v1/pricing/settings",
-        json={"formula": "cost * 2", "prices_include_tax": False},
-    )
+    response = await client.put("/api/v1/pricing/settings", json={"formula": "cost * 2"})
 
     assert response.status_code == 200
     product = (await client.get(f"/api/v1/products/{product_id}")).json()
@@ -255,10 +252,7 @@ async def test_updating_the_store_formula_recomputes_products_without_their_own(
 
     # Deja la fórmula por defecto tal y como estaba, para no afectar a
     # otros tests de este módulo que sí cuentan con ella.
-    await client.put(
-        "/api/v1/pricing/settings",
-        json={"formula": DEFAULT_FORMULA, "prices_include_tax": False},
-    )
+    await client.put("/api/v1/pricing/settings", json={"formula": DEFAULT_FORMULA})
 
 
 async def test_an_unsafe_formula_is_rejected(
@@ -266,10 +260,7 @@ async def test_an_unsafe_formula_is_rejected(
 ) -> None:
     await login(role_name="ADMIN")
 
-    response = await client.put(
-        "/api/v1/pricing/settings",
-        json={"formula": "cost.__class__", "prices_include_tax": False},
-    )
+    response = await client.put("/api/v1/pricing/settings", json={"formula": "cost.__class__"})
 
     assert response.status_code == 422
 

@@ -15,7 +15,6 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.pricing import service as pricing_service
 from app.sales.models import Sale, SaleLine, SaleStatus
 from app.tickets.models import Ticket, TicketTemplate
 from app.tickets.render import render_ticket
@@ -141,8 +140,7 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
         )
 
     template = await get_active_template(session)
-    prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
-    rendered_text = render_ticket(sale, template, prices_include_tax=prices_include_tax)
+    rendered_text = render_ticket(sale, template)
 
     ticket = Ticket(
         sale_id=sale_id,

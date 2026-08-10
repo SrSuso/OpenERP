@@ -9,8 +9,8 @@ from app.sales.models import Payment, Sale, SaleLine
 from app.sales.schemas import PaymentRead, SaleLineRead, SaleRead
 
 
-def sale_line_to_read(line: SaleLine, *, prices_include_tax: bool) -> SaleLineRead:
-    totals = service.compute_line_totals(line, prices_include_tax=prices_include_tax)
+def sale_line_to_read(line: SaleLine) -> SaleLineRead:
+    totals = service.compute_line_totals(line)
     return SaleLineRead(
         id=line.id,
         product_id=line.product_id,
@@ -38,8 +38,8 @@ def payment_to_read(payment: Payment) -> PaymentRead:
     )
 
 
-def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
-    lines = [sale_line_to_read(line, prices_include_tax=prices_include_tax) for line in sale.lines]
+def sale_to_read(sale: Sale) -> SaleRead:
+    lines = [sale_line_to_read(line) for line in sale.lines]
     total = sum((line.total for line in lines), start=Decimal(0))
     tendered = sum((p.amount for p in sale.payments), start=Decimal(0))
     return SaleRead(

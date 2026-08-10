@@ -432,58 +432,6 @@ async def test_checkout_consumes_lots_fefo(
     assert balances[lot_b] == "7.000000"
 
 
-async def test_prices_include_tax_extracts_instead_of_adding(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """``PricingSettings.prices_include_tax`` (app.pricing.models): with it
-    on, a 12.10€ shelf price that already carries 21% IVA charges exactly
-    12.10€ — not 12.10 + 21% on top, which is what the historical
-    (``False``) behaviour would have done."""
-    await login(role_name="ADMIN")
-    default_formula = (await client.get("/api/v1/pricing/settings")).json()["formula"]
-    settings_response = await client.put(
-        "/api/v1/pricing/settings",
-        json={"formula": default_formula, "prices_include_tax": True},
-    )
-    assert settings_response.status_code == 200
-    try:
-        # Created *after* flipping the setting: updating pricing/settings
-        # recomputes every formula-less product's price against the store
-        # formula, which would otherwise clobber the explicit list_price
-        # set here (this product never gets its own formula).
-        product = await _create_product(client, sku="CHECKOUT-TAX-INCL", list_price="12.10")
-        warehouse_id, location_id = await _default_location(client)
-        await _stock(
-            client,
-            product_id=product["id"],
-            warehouse_id=warehouse_id,
-            location_id=location_id,
-            quantity="10",
-        )
-
-        await login(role_name="CASHIER")
-        sale = await _ready_sale(client, product=product, quantity="1")
-        assert sale["total"] == "12.100000"
-        assert sale["lines"][0]["tax_amount"] == "2.100000"
-
-        response = await client.post(
-            f"/api/v1/sales/{sale['id']}/checkout",
-            json={"payments": [{"method": "CASH", "amount": "12.10"}]},
-        )
-
-        assert response.status_code == 200
-        assert Decimal(response.json()["change_due"]) == Decimal(0)
-    finally:
-        await login(role_name="ADMIN")
-        await client.put(
-            "/api/v1/pricing/settings",
-            json={
-                "formula": (await client.get("/api/v1/pricing/settings")).json()["formula"],
-                "prices_include_tax": False,
-            },
-        )
-
-
 async def test_unauthenticated_checkout_is_401(client: AsyncClient) -> None:
     response = await client.post("/api/v1/sales/1/checkout", json={"payments": []})
 

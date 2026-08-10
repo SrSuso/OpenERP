@@ -19,7 +19,6 @@ from app.inventory.models import MovementType
 from app.lots import service as lots_service
 from app.lots.models import Lot
 from app.lots.schemas import LotCreate
-from app.pricing import service as pricing_service
 from app.returns.models import Return, ReturnLine
 from app.returns.schemas import ReturnCreate, ReturnLineCreate
 from app.sales.models import Sale, SaleLine, SaleStatus
@@ -98,16 +97,13 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
         )
 
     lines_by_id = {line.id: line for line in sale.lines}
-    prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
 
     ret = Return(sale_id=sale_id, notes=payload.notes, processed_by_user_id=get_user_id())
     session.add(ret)
     await session.flush()
 
     for line_payload in payload.lines:
-        await _apply_return_line(
-            session, ret, sale, lines_by_id, line_payload, prices_include_tax=prices_include_tax
-        )
+        await _apply_return_line(session, ret, sale, lines_by_id, line_payload)
 
     await session.flush()
     await audit.record(
@@ -126,8 +122,6 @@ async def _apply_return_line(
     sale: Sale,
     lines_by_id: dict[int, SaleLine],
     line_payload: ReturnLineCreate,
-    *,
-    prices_include_tax: bool,
 ) -> None:
     sale_line = lines_by_id.get(line_payload.sale_line_id)
     if sale_line is None:
@@ -146,21 +140,15 @@ async def _apply_return_line(
 
     refund_amount = Decimal(0)
     if line_payload.economic:
-        # Same formula as app.sales.service.compute_amounts, scaled to
+        # Same formula as app.sales.service.compute_line_totals, scaled to
         # the returned quantity instead of the full line — reusing the
         # line's own snapshotted rates (rule 6/7), never the product's
-        # current ones. ``prices_include_tax`` (app.pricing.models.
-        # PricingSettings): False adds tax on top of unit_price, True
-        # extracts it — either way the customer gets back exactly what
-        # that quantity was actually charged.
+        # current ones.
         subtotal = quantity_base * sale_line.unit_price
         discount_amount = subtotal * sale_line.discount_rate / Decimal(100)
-        after_discount = subtotal - discount_amount
-        if prices_include_tax:
-            refund_amount = _q(after_discount)
-        else:
-            tax_amount = after_discount * sale_line.tax_rate / Decimal(100)
-            refund_amount = _q(after_discount + tax_amount)
+        net = subtotal - discount_amount
+        tax_amount = net * sale_line.tax_rate / Decimal(100)
+        refund_amount = _q(net + tax_amount)
 
     lot_id: int | None = None
     movement_id: int | None = None
