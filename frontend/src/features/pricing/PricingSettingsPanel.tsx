@@ -66,6 +66,12 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
     formula === settings.data.formula &&
     pricesIncludeTax === settings.data.prices_include_tax;
 
+  // Una fórmula que usa `tax_rate` produce un PVP con el impuesto dentro;
+  // si además la caja lo suma, se cobra dos veces. Es la combinación que
+  // se coló en su día y por la que existe la migración
+  // 5b4760e2a878 — aquí se avisa para que no vuelva a pasar en silencio.
+  const contradictsFormula = formula.includes('tax_rate') && !pricesIncludeTax;
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="mb-3 text-sm font-semibold text-slate-700">Fórmula del PVP</h3>
@@ -133,6 +139,15 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
               </span>
             </span>
           </label>
+
+          {contradictsFormula && (
+            <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <strong>Revisa esto:</strong> tu fórmula usa <code>tax_rate</code>, así que el PVP que
+              calcula <em>ya lleva el IVA dentro</em> — pero con esta casilla desactivada la caja se
+              lo vuelve a sumar, y cobrarías de más. Actívala, o quita <code>tax_rate</code> de la
+              fórmula si tu PVP es sin impuestos.
+            </p>
+          )}
 
           {canManage && (
             <button

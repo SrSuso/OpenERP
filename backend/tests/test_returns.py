@@ -129,10 +129,11 @@ async def test_economic_only_return_refunds_without_touching_stock(
     line = body["lines"][0]
     assert line["is_economic"] is True
     assert line["is_physical"] is False
-    # 1 * 10.00 = 10, + 21% tax = 12.1
-    assert line["refund_amount"] == "12.100000"
+    # Se devuelve exactamente lo que se cobró: el PVP ya lleva el IVA, así
+    # que 1 * 10.00 = 10, no 10 + 21%.
+    assert line["refund_amount"] == "10.000000"
     assert line["stock_movement_id"] is None
-    assert body["total_refund"] == "12.100000"
+    assert body["total_refund"] == "10.000000"
 
     balance_after = (
         await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})

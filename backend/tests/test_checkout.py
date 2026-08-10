@@ -103,12 +103,17 @@ async def test_checkout_with_exact_cash_completes_the_sale_and_moves_stock(
     )
     await login(role_name="CASHIER")
     sale = await _ready_sale(client, product=product, quantity="3")
-    # 3 * 10.00 = 30, + 21% tax = 36.3
-    assert sale["total"] == "36.300000"
+    # Con la fórmula de fábrica el PVP ya lleva el IVA dentro, así que la
+    # caja cobra la etiqueta tal cual: 3 * 10.00 = 30, sin sumar nada
+    # encima (ver la migración 5b4760e2a878 y
+    # `test_pricing_taxes.test_a_price_built_with_tax_in_the_formula_...`).
+    assert sale["total"] == "30.000000"
+    # El IVA sale de dentro de esos 30 €: 30 / 1,21 = 24,79 de base.
+    assert Decimal(sale["lines"][0]["tax_amount"]).quantize(Decimal("0.01")) == Decimal("5.21")
 
     response = await client.post(
         f"/api/v1/sales/{sale['id']}/checkout",
-        json={"payments": [{"method": "CASH", "amount": "36.30"}]},
+        json={"payments": [{"method": "CASH", "amount": "30.00"}]},
     )
 
     assert response.status_code == 200

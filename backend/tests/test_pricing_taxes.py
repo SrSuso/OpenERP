@@ -375,3 +375,78 @@ async def test_recargo_de_equivalencia_end_to_end(
                 "prices_include_tax": False,
             },
         )
+
+
+async def test_a_price_built_with_tax_in_the_formula_is_charged_as_the_shelf_price(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """La regla que se coló una vez y nunca debe volver a colarse: si la
+    fórmula mete el IVA en el PVP, la caja NO lo suma otra vez. Un producto
+    etiquetado a 15,14 € se cobra a 15,14 €, no a 18,32 €.
+
+    La migración 5b4760e2a878 deja `prices_include_tax` activado en toda
+    tienda cuya fórmula use `tax_rate`, que es lo que sostiene este test
+    sin tener que tocar nada a mano."""
+    await login(role_name="ADMIN")
+    settings = (await client.get("/api/v1/pricing/settings")).json()
+    assert "tax_rate" in settings["formula"], "la fórmula de fábrica usa tax_rate"
+    assert settings["prices_include_tax"] is True, (
+        "una fórmula con tax_rate tiene que venir con el ajuste activado; "
+        "si no, la caja cobra el impuesto dos veces"
+    )
+
+    tax = (
+        await client.post(
+            "/api/v1/taxes", json={"name": "IVA doble-cobro", "rate": "21", "surcharge_rate": "5.2"}
+        )
+    ).json()
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json={
+                "sku": "NO-DOUBLE-TAX",
+                "name": "Detergente",
+                "base_unit_name": "UD",
+                "cost": "10.00",
+                "list_price": "0",
+            },
+        )
+    ).json()
+    product = (
+        await client.patch(
+            f"/api/v1/products/{product['id']}/pricing",
+            json={"margin_rate": "20", "tax_ids": [tax["id"]]},
+        )
+    ).json()
+    shelf_price = Decimal(product["list_price"])
+    assert shelf_price == Decimal("15.140000")
+
+    warehouses = (await client.get("/api/v1/warehouses")).json()
+    wh = next(w for w in warehouses if w["name"] == "Tienda principal")
+    locs = (await client.get(f"/api/v1/warehouses/{wh['id']}/locations")).json()
+    loc = next(location for location in locs if location["name"] == "Almacén")
+    await client.post(
+        "/api/v1/stock-movements/adjustments",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": wh["id"],
+            "location_id": loc["id"],
+            "movement_type": "ADJUSTMENT",
+            "quantity": "5",
+            "unit_cost": "12.62",
+        },
+    )
+    sale = (
+        await client.post(
+            "/api/v1/sales", json={"warehouse_id": wh["id"], "location_id": loc["id"]}
+        )
+    ).json()
+    base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    sale = (
+        await client.post(
+            f"/api/v1/sales/{sale['id']}/lines",
+            json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
+        )
+    ).json()
+
+    assert Decimal(sale["total"]) == shelf_price

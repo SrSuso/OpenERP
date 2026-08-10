@@ -116,8 +116,9 @@ async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: Lo
     )
     priced_sale = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
     # Rule 6/7: the sale's price came from the product at the moment it was
-    # rung up, not a live join — 15 * 10.00 = 150, + 21% tax = 181.5.
-    assert priced_sale["total"] == "181.500000"
+    # rung up, not a live join — 15 * 10.00 = 150. El PVP ya lleva el IVA
+    # dentro (fórmula de fábrica), así que no se le suma nada encima.
+    assert priced_sale["total"] == "150.000000"
 
     checkout = await client.post(
         f"/api/v1/sales/{sale['id']}/checkout",
@@ -128,7 +129,7 @@ async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: Lo
     assert completed["status"] == "COMPLETED"
     # Rule 8: Decimal precision preserved through the whole round trip,
     # never float — a naive float total would not land on this exact value.
-    assert Decimal(completed["change_due"]) == Decimal("18.500000")
+    assert Decimal(completed["change_due"]) == Decimal("50.000000")  # 200 - 150
 
     balance_after_sale = (
         await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})

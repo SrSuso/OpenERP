@@ -69,11 +69,13 @@ async def test_cashier_can_open_a_sale_and_add_a_line(
     assert line["quantity_packages"] == "3.000000"
     assert line["quantity_base"] == "3.000000"
     assert line["unit_price"] == "10.000000"
-    # subtotal = 3 * 10 = 30; tax = 30 * 21% = 6.3; total = 36.3
+    # El PVP ya lleva el IVA (fórmula de fábrica), así que se cobra la
+    # etiqueta y el impuesto se extrae de dentro: 3 * 10 = 30 cobrados, de
+    # los cuales 30 - 30/1,21 = 5,21 son IVA.
     assert line["subtotal"] == "30.000000"
-    assert line["tax_amount"] == "6.300000"
-    assert line["total"] == "36.300000"
-    assert body["total"] == "36.300000"
+    assert line["tax_amount"] == "5.206612"
+    assert line["total"] == "30.000000"
+    assert body["total"] == "30.000000"
 
 
 async def test_line_price_is_a_snapshot_and_ignores_later_price_changes(
@@ -143,10 +145,12 @@ async def test_discount_rate_is_applied_before_tax(
     )
 
     line = response.json()["lines"][0]
-    # subtotal 100, discount 10% -> 10, net 90, tax 10% of 90 -> 9, total 99.
+    # El descuento se aplica antes que nada: subtotal 100, descuento 10% ->
+    # 10, quedan 90 a cobrar. Como el PVP ya lleva el IVA dentro, esos 90
+    # son el total, y el 10% de impuesto se extrae: 90 - 90/1,10 = 8,18.
     assert line["discount_amount"] == "10.000000"
-    assert line["tax_amount"] == "9.000000"
-    assert line["total"] == "99.000000"
+    assert line["tax_amount"] == "8.181818"
+    assert line["total"] == "90.000000"
 
 
 async def test_add_line_by_barcode(
