@@ -14,6 +14,7 @@ class TicketTemplateCreate(BaseModel):
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
     show_tax_breakdown: bool = True
+    show_line_discounts: bool = False
 
 
 class TicketTemplateRevise(BaseModel):
@@ -24,6 +25,7 @@ class TicketTemplateRevise(BaseModel):
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
     show_tax_breakdown: bool = True
+    show_line_discounts: bool = False
 
 
 class TicketTemplateRead(BaseModel):
@@ -34,6 +36,7 @@ class TicketTemplateRead(BaseModel):
     header_text: str
     footer_text: str
     show_tax_breakdown: bool
+    show_line_discounts: bool
     is_active: bool
 
 

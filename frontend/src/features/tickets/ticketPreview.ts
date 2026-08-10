@@ -26,9 +26,17 @@ function twoColumn(left: string, right: string, width: number): string[] {
   return [left, ' '.repeat(Math.max(0, width - right.length)) + right];
 }
 
+function eur(value: number): string {
+  return `${value.toFixed(2).replace('.', ',')} €`;
+}
+
+/** Dos líneas de ejemplo con tasas de IVA distintas (10% y 21%) y una con
+ * descuento — para que la vista previa muestre algo real cuando se activan
+ * "IVA desglosado por tipo" y "descuento por línea", en vez de un único
+ * total que no distinguiría nada. */
 const SAMPLE_LINES = [
-  { name: 'Agua mineral 1.5L', qty: '2', unitPrice: '0,95 €', total: '1,90 €' },
-  { name: 'Pan de pueblo', qty: '1', unitPrice: '2,30 €', total: '2,30 €' },
+  { name: 'Agua mineral 1.5L', qty: 2, unitPrice: 0.95, taxRate: 10, discountRate: 0 },
+  { name: 'Detergente', qty: 1, unitPrice: 3.5, taxRate: 21, discountRate: 10 },
 ];
 
 export interface TicketPreviewFields {
@@ -36,6 +44,7 @@ export interface TicketPreviewFields {
   header_text: string;
   footer_text: string;
   show_tax_breakdown: boolean;
+  show_line_discounts: boolean;
 }
 
 export function renderTicketPreview(fields: TicketPreviewFields): string {
@@ -53,20 +62,41 @@ export function renderTicketPreview(fields: TicketPreviewFields): string {
   rows.push(new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }));
   rows.push(rule(width));
 
+  let subtotal = 0;
+  const taxByRate = new Map<number, number>();
+
   for (const line of SAMPLE_LINES) {
-    rows.push(...twoColumn(line.name, line.total, width));
-    rows.push(`${line.qty} x ${line.unitPrice}`);
+    const subtotalLine = line.qty * line.unitPrice;
+    const discountAmount = (subtotalLine * line.discountRate) / 100;
+    const net = subtotalLine - discountAmount;
+    const taxAmount = (net * line.taxRate) / 100;
+    taxByRate.set(line.taxRate, (taxByRate.get(line.taxRate) ?? 0) + taxAmount);
+    subtotal += net;
+
+    rows.push(...twoColumn(line.name, eur(net + taxAmount), width));
+    rows.push(`${line.qty} x ${eur(line.unitPrice)}`);
+    if (fields.show_line_discounts && line.discountRate > 0) {
+      rows.push(...twoColumn(`Dto. ${line.discountRate}%`, `-${eur(discountAmount)}`, width));
+    }
   }
+
+  const taxTotal = [...taxByRate.values()].reduce((sum, amount) => sum + amount, 0);
 
   rows.push(rule(width));
   if (fields.show_tax_breakdown) {
-    rows.push(...twoColumn('Base imponible', '3,47 €', width));
-    rows.push(...twoColumn('Impuestos', '0,73 €', width));
+    rows.push(...twoColumn('Base imponible', eur(subtotal), width));
+    for (const rate of [...taxByRate.keys()].sort((a, b) => a - b)) {
+      if (rate === 0) continue;
+      rows.push(...twoColumn(`IVA ${rate}%`, eur(taxByRate.get(rate) ?? 0), width));
+    }
   }
-  rows.push(...twoColumn('TOTAL', '4,20 €', width));
+  const total = subtotal + taxTotal;
+  rows.push(...twoColumn('TOTAL', eur(total), width));
   rows.push(rule(width));
-  rows.push(...twoColumn('Efectivo', '5,00 €', width));
-  rows.push(...twoColumn('Cambio', '0,80 €', width));
+
+  const tendered = Math.ceil(total);
+  rows.push(...twoColumn('Efectivo', eur(tendered), width));
+  rows.push(...twoColumn('Cambio', eur(tendered - total), width));
 
   const footerLines = fields.footer_text
     .split('\n')

@@ -15,6 +15,7 @@ export const ticketTemplateSchema = z.object({
   header_text: z.string(),
   footer_text: z.string(),
   show_tax_breakdown: z.boolean(),
+  show_line_discounts: z.boolean(),
   is_active: z.boolean(),
 });
 export type TicketTemplate = z.infer<typeof ticketTemplateSchema>;
@@ -36,6 +37,7 @@ export interface TemplateFields {
   header_text: string;
   footer_text: string;
   show_tax_breakdown: boolean;
+  show_line_discounts: boolean;
 }
 
 export async function createTemplate(

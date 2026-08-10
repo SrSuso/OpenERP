@@ -34,6 +34,15 @@ def _quantity(value: Decimal) -> str:
     return text
 
 
+def _rate_label(value: Decimal) -> str:
+    """A tax/discount percentage, trailing zeros trimmed — "21" not
+    "21.00", "10.5" kept as-is. Same trimming idea as ``_quantity``."""
+    text = f"{value.quantize(Decimal('0.01')):f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
 def _rule(width: int, char: str = "-") -> str:
     return char * width
 
@@ -90,22 +99,35 @@ def render_ticket(sale: Sale, template: TicketTemplate) -> str:
     rows.append(_rule(width))
 
     subtotal = Decimal(0)
-    tax_total = Decimal(0)
+    #: One accumulator per distinct rate present on the sale, not a single
+    #: combined figure — what makes the "IVA 21%: …" / "IVA 10%: …"
+    #: breakdown below possible when ``show_tax_breakdown`` is on.
+    tax_by_rate: dict[Decimal, Decimal] = {}
     for line in sale.lines:
         total = _line_total(line)
         subtotal_line = line.quantity_base * line.unit_price
         discount_amount = subtotal_line * line.discount_rate / Decimal(100)
         net = subtotal_line - discount_amount
-        tax_total += net * line.tax_rate / Decimal(100)
+        tax_by_rate[line.tax_rate] = tax_by_rate.get(
+            line.tax_rate, Decimal(0)
+        ) + net * line.tax_rate / Decimal(100)
         subtotal += net
         rows.extend(_two_column(line.product.name, _money(total), width))
         qty = f"{_quantity(line.quantity_packages)} x {_money(line.unit_price)}"
         rows.append(qty)
+        if template.show_line_discounts and line.discount_rate > 0:
+            rows.extend(
+                _two_column(
+                    f"Dto. {_rate_label(line.discount_rate)}%", f"-{_money(discount_amount)}", width
+                )
+            )
 
+    tax_total = sum(tax_by_rate.values(), start=Decimal(0))
     rows.append(_rule(width))
     if template.show_tax_breakdown:
         rows.extend(_two_column("Base imponible", _money(subtotal), width))
-        rows.extend(_two_column("Impuestos", _money(tax_total), width))
+        for rate in sorted(rate for rate in tax_by_rate if rate > 0):
+            rows.extend(_two_column(f"IVA {_rate_label(rate)}%", _money(tax_by_rate[rate]), width))
     total = subtotal + tax_total
     rows.extend(_two_column("TOTAL", _money(total), width))
     rows.append(_rule(width))

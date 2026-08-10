@@ -73,7 +73,8 @@ export function TicketTemplatesPage() {
             {active.data.footer_text || '(sin pie)'}
           </pre>
           <p className="mt-1 text-xs text-slate-500">
-            Desglose de impuestos: {active.data.show_tax_breakdown ? 'sí' : 'no'}
+            IVA desglosado por tipo: {active.data.show_tax_breakdown ? 'sí' : 'no'} · Descuento por
+            línea: {active.data.show_line_discounts ? 'sí' : 'no'}
           </p>
           <div className="mt-3 flex gap-2">
             <button

@@ -7,6 +7,7 @@ const BASE_FIELDS = {
   header_text: '',
   footer_text: '',
   show_tax_breakdown: true,
+  show_line_discounts: false,
 };
 
 describe('renderTicketPreview', () => {
@@ -35,6 +36,21 @@ describe('renderTicketPreview', () => {
 
     expect(withBreakdown).toContain('Base imponible');
     expect(withoutBreakdown).not.toContain('Base imponible');
+  });
+
+  it('breaks the tax breakdown down by rate instead of a single total', () => {
+    const preview = renderTicketPreview({ ...BASE_FIELDS, show_tax_breakdown: true });
+
+    expect(preview).toContain('IVA 10%');
+    expect(preview).toContain('IVA 21%');
+  });
+
+  it('includes a discount line only when requested', () => {
+    const withDiscount = renderTicketPreview({ ...BASE_FIELDS, show_line_discounts: true });
+    const withoutDiscount = renderTicketPreview({ ...BASE_FIELDS, show_line_discounts: false });
+
+    expect(withDiscount).toContain('Dto. 10%');
+    expect(withoutDiscount).not.toContain('Dto.');
   });
 
   it('centres the footer and rules it off from the rest, only when there is footer text', () => {

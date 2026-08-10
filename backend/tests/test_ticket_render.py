@@ -45,6 +45,7 @@ def _template(**overrides: object) -> TicketTemplate:
         "header_text": "Mi Tienda\nCIF B00000000",
         "footer_text": "Gracias por su compra",
         "show_tax_breakdown": True,
+        "show_line_discounts": False,
     }
     defaults.update(overrides)
     return TicketTemplate(**defaults)
@@ -91,7 +92,7 @@ def test_tax_breakdown_present_when_enabled() -> None:
     text = render_ticket(sale, _template(show_tax_breakdown=True))
 
     assert "Base imponible" in text
-    assert "Impuestos" in text
+    assert "IVA 21%" in text
     assert "10.00" in text
     assert "2.10" in text
     assert "TOTAL" in text
@@ -107,8 +108,72 @@ def test_tax_breakdown_absent_when_disabled() -> None:
     text = render_ticket(sale, _template(show_tax_breakdown=False))
 
     assert "Base imponible" not in text
-    assert "Impuestos" not in text
+    assert "IVA 21%" not in text
     assert "TOTAL" in text
+
+
+def test_tax_breakdown_has_one_line_per_distinct_rate() -> None:
+    sale = _sale(
+        [
+            _line("Leche", "1", "10.00", tax="21"),
+            _line("Pan", "1", "10.00", tax="10"),
+        ],
+        [Payment(method="CASH", amount=Decimal("23.10"))],
+    )
+
+    text = render_ticket(sale, _template(show_tax_breakdown=True))
+
+    assert "IVA 21%" in text
+    assert "2.10" in text
+    assert "IVA 10%" in text
+    assert "1.00" in text
+
+
+def test_tax_exempt_lines_get_no_rate_line() -> None:
+    sale = _sale(
+        [_line("Producto exento", "1", "10.00", tax="0")],
+        [Payment(method="CASH", amount=Decimal("10.00"))],
+    )
+
+    text = render_ticket(sale, _template(show_tax_breakdown=True))
+
+    assert "Base imponible" in text
+    assert "IVA 0%" not in text
+    assert "IVA" not in text
+
+
+def test_line_discount_shown_when_enabled_and_present() -> None:
+    sale = _sale(
+        [_line("Leche", "1", "10.00", tax="0", discount="10")],
+        [Payment(method="CASH", amount=Decimal("9.00"))],
+    )
+
+    text = render_ticket(sale, _template(show_line_discounts=True))
+
+    assert "Dto. 10%" in text
+    assert "-1.00" in text
+
+
+def test_line_discount_hidden_when_disabled() -> None:
+    sale = _sale(
+        [_line("Leche", "1", "10.00", tax="0", discount="10")],
+        [Payment(method="CASH", amount=Decimal("9.00"))],
+    )
+
+    text = render_ticket(sale, _template(show_line_discounts=False))
+
+    assert "Dto." not in text
+
+
+def test_line_discount_omitted_for_lines_without_one() -> None:
+    sale = _sale(
+        [_line("Leche", "1", "10.00", tax="0", discount="0")],
+        [Payment(method="CASH", amount=Decimal("10.00"))],
+    )
+
+    text = render_ticket(sale, _template(show_line_discounts=True))
+
+    assert "Dto." not in text
 
 
 def test_change_shown_only_on_cash_overpayment() -> None:

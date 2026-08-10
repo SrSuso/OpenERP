@@ -15,6 +15,7 @@ def template_to_read(template: TicketTemplate) -> TicketTemplateRead:
         header_text=template.header_text,
         footer_text=template.footer_text,
         show_tax_breakdown=template.show_tax_breakdown,
+        show_line_discounts=template.show_line_discounts,
         is_active=template.is_active,
     )
 

@@ -11,6 +11,7 @@ const fieldsSchema = z.object({
   header_text: z.string().max(2000).optional(),
   footer_text: z.string().max(2000).optional(),
   show_tax_breakdown: z.boolean(),
+  show_line_discounts: z.boolean(),
 });
 
 type TemplateFormValues = z.infer<typeof fieldsSchema>;
@@ -48,6 +49,7 @@ export function TemplateFieldsForm({
       header_text: defaults?.header_text ?? '',
       footer_text: defaults?.footer_text ?? '',
       show_tax_breakdown: defaults?.show_tax_breakdown ?? true,
+      show_line_discounts: defaults?.show_line_discounts ?? false,
     },
   });
 
@@ -56,6 +58,7 @@ export function TemplateFieldsForm({
     header_text: watch('header_text') ?? '',
     footer_text: watch('footer_text') ?? '',
     show_tax_breakdown: watch('show_tax_breakdown'),
+    show_line_discounts: watch('show_line_discounts'),
   });
 
   const submit = handleSubmit((values) => {
@@ -69,6 +72,7 @@ export function TemplateFieldsForm({
       header_text: values.header_text ?? '',
       footer_text: values.footer_text ?? '',
       show_tax_breakdown: values.show_tax_breakdown,
+      show_line_discounts: values.show_line_discounts,
     });
   });
 
@@ -127,7 +131,12 @@ export function TemplateFieldsForm({
 
           <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
             <input type="checkbox" {...register('show_tax_breakdown')} />
-            Mostrar desglose de impuestos
+            Mostrar IVA desglosado por tipo (una línea por cada tasa de la venta)
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
+            <input type="checkbox" {...register('show_line_discounts')} />
+            Mostrar el descuento aplicado bajo cada línea con descuento
           </label>
         </div>
 

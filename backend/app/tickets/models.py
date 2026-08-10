@@ -35,7 +35,13 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     width_mm: Mapped[int] = mapped_column(Integer)
     header_text: Mapped[str] = mapped_column(Text, default="")
     footer_text: Mapped[str] = mapped_column(Text, default="")
+    #: When on, the tax block breaks the total down one line per distinct
+    #: tax rate present on the sale (e.g. "IVA 21%: 3,47 €") instead of a
+    #: single combined figure — see ``app.tickets.render``.
     show_tax_breakdown: Mapped[bool] = mapped_column(default=True, server_default="true")
+    #: When on, a line whose ``discount_rate`` is above zero gets an extra
+    #: row underneath it showing the discount applied.
+    show_line_discounts: Mapped[bool] = mapped_column(default=False, server_default="false")
     #: Only one version per ``name`` is active at a time — the one new
     #: tickets render with. Retired versions stay forever, still readable
     #: through whichever ``Ticket`` rows already reference them.

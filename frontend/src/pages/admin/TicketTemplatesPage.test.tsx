@@ -69,6 +69,7 @@ function stubBackend() {
           header_text: (b['header_text'] as string) ?? '',
           footer_text: (b['footer_text'] as string) ?? '',
           show_tax_breakdown: b['show_tax_breakdown'] as boolean,
+          show_line_discounts: b['show_line_discounts'] as boolean,
           is_active: true,
         };
         templates.push(created);
@@ -89,6 +90,7 @@ function stubBackend() {
           header_text: (b['header_text'] as string) ?? '',
           footer_text: (b['footer_text'] as string) ?? '',
           show_tax_breakdown: b['show_tax_breakdown'] as boolean,
+          show_line_discounts: b['show_line_discounts'] as boolean,
           is_active: true,
         };
         templates.push(revised);
@@ -136,6 +138,7 @@ describe('TicketTemplatesPage', () => {
         header_text: 'Gracias por su compra',
         footer_text: '',
         show_tax_breakdown: true,
+        show_line_discounts: false,
       },
     ]);
 
@@ -154,6 +157,7 @@ describe('TicketTemplatesPage', () => {
           header_text: 'Gracias por su compra',
           footer_text: 'Vuelva pronto',
           show_tax_breakdown: true,
+          show_line_discounts: false,
         },
       },
     ]);
