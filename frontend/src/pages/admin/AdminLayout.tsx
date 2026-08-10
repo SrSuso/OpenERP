@@ -6,90 +6,117 @@ import { useShopSetting } from '@/features/settings/useShopSettings';
 const linkClassName = ({ isActive }: { isActive: boolean }) =>
   `rounded px-3 py-2 ${isActive ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-700 hover:bg-slate-100'}`;
 
+interface NavEntry {
+  to: string;
+  label: string;
+  /** Se ve si el usuario tiene *alguno* de estos permisos. Vacío = siempre. */
+  permissions: string[];
+}
+
+interface NavSection {
+  /** `null` para las entradas sueltas de arriba, que no llevan encabezado. */
+  title: string | null;
+  entries: NavEntry[];
+}
+
+/** El menú, por secciones: con 13 entradas seguidas costaba encontrar
+ * dónde se cambia cada cosa. Agrupadas por para qué sirven, igual que
+ * Inventario reunió en un sitio todo lo de productos.
+ *
+ * Declarado como datos y no como JSX suelto para que un encabezado nunca
+ * quede huérfano: una sección cuyas entradas están todas ocultas por
+ * permisos no se pinta. */
+const SECTIONS: NavSection[] = [
+  {
+    title: null,
+    entries: [
+      { to: '/admin', label: 'Inicio', permissions: [] },
+      {
+        to: '/admin/inventory',
+        label: 'Inventario',
+        permissions: ['product.read', 'lot.read', 'inventory.read'],
+      },
+    ],
+  },
+  {
+    title: 'Comprar y vender',
+    entries: [
+      { to: '/admin/suppliers', label: 'Proveedores', permissions: ['supplier.read'] },
+      { to: '/admin/purchasing', label: 'Compras', permissions: ['purchase.read'] },
+      { to: '/admin/returns', label: 'Devoluciones', permissions: ['return.read'] },
+      { to: '/admin/reports', label: 'Informes', permissions: ['report.read'] },
+    ],
+  },
+  {
+    title: 'Configuración de la tienda',
+    entries: [
+      { to: '/admin/settings', label: 'Configuración', permissions: ['settings.read'] },
+      { to: '/admin/pricing', label: 'Precios e impuestos', permissions: ['pricing.manage'] },
+      {
+        to: '/admin/ticket-templates',
+        label: 'Plantillas de ticket',
+        permissions: ['ticket.manage'],
+      },
+      { to: '/admin/notifications', label: 'Avisos', permissions: ['notification.read'] },
+    ],
+  },
+  {
+    title: 'Administración',
+    entries: [
+      {
+        to: '/admin/access',
+        label: 'Usuarios y roles',
+        permissions: ['users.manage', 'roles.manage'],
+      },
+      { to: '/admin/audit-log', label: 'Auditoría', permissions: ['audit.read'] },
+      { to: '/admin/outbox', label: 'Correo enviado', permissions: ['job.read'] },
+      { to: '/admin/account', label: 'Mi cuenta', permissions: [] },
+    ],
+  },
+];
+
 /**
- * Shell for `/admin`. Nav entries beyond "Inicio" are filtered by
- * `hasPermission(...)` — hiding a link is a convenience, the backend
- * re-checks every one of them regardless (rule 11), and `RequirePermission`
- * on the matching route in routes.tsx is the second line of defence if
- * someone navigates there directly.
+ * Shell for `/admin`. Nav entries are filtered by `hasPermission(...)` —
+ * hiding a link is a convenience, the backend re-checks every one of them
+ * regardless (rule 11), and `RequirePermission` on the matching route in
+ * routes.tsx is the second line of defence if someone navigates there
+ * directly.
  */
 export function AdminLayout() {
   const { user, hasPermission, logout } = useAuth();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
+
+  const visible = SECTIONS.map((section) => ({
+    ...section,
+    entries: section.entries.filter(
+      (entry) => entry.permissions.length === 0 || entry.permissions.some(hasPermission),
+    ),
+  })).filter((section) => section.entries.length > 0);
 
   return (
     <div className="flex h-full">
       <aside className="w-56 shrink-0 border-r border-slate-200 bg-white p-4">
         <p className="mb-6 text-lg font-semibold text-brand-700">{shopName}</p>
         <nav className="flex flex-col gap-1 text-sm">
-          <NavLink to="/admin" end className={linkClassName}>
-            Inicio
-          </NavLink>
-          {(hasPermission('product.read') ||
-            hasPermission('lot.read') ||
-            hasPermission('inventory.read')) && (
-            <NavLink to="/admin/inventory" className={linkClassName}>
-              Inventario
-            </NavLink>
-          )}
-          {hasPermission('pricing.manage') && (
-            <NavLink to="/admin/pricing" className={linkClassName}>
-              Impuestos
-            </NavLink>
-          )}
-          {hasPermission('supplier.read') && (
-            <NavLink to="/admin/suppliers" className={linkClassName}>
-              Proveedores
-            </NavLink>
-          )}
-          {hasPermission('purchase.read') && (
-            <NavLink to="/admin/purchasing" className={linkClassName}>
-              Compras
-            </NavLink>
-          )}
-          {hasPermission('return.read') && (
-            <NavLink to="/admin/returns" className={linkClassName}>
-              Devoluciones
-            </NavLink>
-          )}
-          {hasPermission('ticket.manage') && (
-            <NavLink to="/admin/ticket-templates" className={linkClassName}>
-              Plantillas de ticket
-            </NavLink>
-          )}
-          {hasPermission('notification.read') && (
-            <NavLink to="/admin/notifications" className={linkClassName}>
-              Notificaciones
-            </NavLink>
-          )}
-          {hasPermission('job.read') && (
-            <NavLink to="/admin/outbox" className={linkClassName}>
-              Outbox / correo
-            </NavLink>
-          )}
-          {hasPermission('report.read') && (
-            <NavLink to="/admin/reports" className={linkClassName}>
-              Informes
-            </NavLink>
-          )}
-          {(hasPermission('users.manage') || hasPermission('roles.manage')) && (
-            <NavLink to="/admin/access" className={linkClassName}>
-              Usuarios y roles
-            </NavLink>
-          )}
-          {hasPermission('settings.read') && (
-            <NavLink to="/admin/settings" className={linkClassName}>
-              Configuración
-            </NavLink>
-          )}
-          {hasPermission('audit.read') && (
-            <NavLink to="/admin/audit-log" className={linkClassName}>
-              Auditoría
-            </NavLink>
-          )}
-          <NavLink to="/admin/account" className={linkClassName}>
-            Mi cuenta
-          </NavLink>
+          {visible.map((section) => (
+            <div key={section.title ?? 'principal'} className="flex flex-col gap-1">
+              {section.title && (
+                <p className="mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {section.title}
+                </p>
+              )}
+              {section.entries.map((entry) => (
+                <NavLink
+                  key={entry.to}
+                  to={entry.to}
+                  end={entry.to === '/admin'}
+                  className={linkClassName}
+                >
+                  {entry.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
         </nav>
       </aside>
       <div className="flex flex-1 flex-col overflow-auto">
