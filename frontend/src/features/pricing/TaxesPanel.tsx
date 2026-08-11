@@ -17,8 +17,8 @@ import { formatRate } from '@/lib/format';
  * fila (al estilo de la lista de impuestos de Odoo, sin un formulario
  * aparte para cambiar algo que ya existe). Se asignan a productos y/o
  * categorías desde sus propias pantallas (Catálogo → Productos/
- * Categorías) con `TaxChips`; varios pueden aplicar a la vez sobre el
- * mismo producto. */
+ * Categorías) con `TaxChips`, que deja elegir uno como mucho —el recargo
+ * de equivalencia no es un impuesto aparte, va dentro de cada uno. */
 export function TaxesPanel({ canManage }: { canManage: boolean }) {
   const taxes = useQuery(taxesQuery);
   const queryClient = useQueryClient();

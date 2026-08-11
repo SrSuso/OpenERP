@@ -44,14 +44,9 @@ export function ProductPricingPanel({
 
   const inheritsMargin = marginInput.trim() === '';
 
-  function toggleTax(id: number) {
+  function chooseTax(next: Set<number>) {
     setIsOverride(true);
-    setTaxIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setTaxIds(next);
   }
 
   function submit() {
@@ -117,7 +112,7 @@ export function ProductPricingPanel({
               ? 'propios de este producto'
               : `heredados de "${category?.name ?? 'sin categoría'}" (marcados igualmente, para que se vea que sí se aplican)`}
           </span>
-          <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
+          <TaxChips taxes={taxes} selected={taxIds} onChange={chooseTax} />
         </div>
       </div>
 

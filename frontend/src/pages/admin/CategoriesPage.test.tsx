@@ -42,7 +42,8 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   ];
   const units: Unit[] = [{ id: 1, name: 'UNIT', display_order: 0 }];
   const taxes: Tax[] = [
-    { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
+    { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '5.2', is_active: true },
+    { id: 2, name: 'IVA reducido', rate: '10', surcharge_rate: '1.4', is_active: true },
   ];
   const createCategoryCalls: string[] = [];
   const deleteCategoryCalls: number[] = [];
@@ -268,6 +269,31 @@ describe('CategoriesPage', () => {
 
     expect(backend.categoryPricingCalls).toEqual([
       { id: 1, body: { margin_rate: '25', tax_ids: [1] } },
+    ]);
+  });
+
+  it('applies one tax at a time: choosing another replaces the one marked', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Margen/impuestos' }));
+    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
+    await userEvent.click(screen.getByRole('button', { name: /IVA reducido/ }));
+
+    expect(screen.getByRole('button', { name: /IVA general/ })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: /IVA reducido/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(backend.categoryPricingCalls).toEqual([
+      { id: 1, body: { margin_rate: null, tax_ids: [2] } },
     ]);
   });
 

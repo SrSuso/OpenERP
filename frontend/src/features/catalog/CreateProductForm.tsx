@@ -95,14 +95,10 @@ export function CreateProductForm({
   const [isOverride, setIsOverride] = useState(false);
   const [taxIds, setTaxIds] = useState<Set<number>>(new Set());
 
-  function toggleTax(id: number, categoryTaxIds: Set<number>) {
-    setTaxIds((current) => {
-      const base = isOverride ? current : categoryTaxIds;
-      const next = new Set(base);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // Al elegir uno se pasa a "propios de este producto" aunque coincida con
+  // el de la categoría: tocar los chips es un gesto explícito.
+  function chooseTax(next: Set<number>) {
+    setTaxIds(next);
     setIsOverride(true);
   }
   const {
@@ -337,11 +333,7 @@ export function CreateProductForm({
               ? 'propios de este producto'
               : `heredados de "${categories.find((c) => String(c.id) === categoryId)?.name ?? 'sin categoría'}" (marcados igualmente, para que se vea que sí se aplican)`}
           </span>
-          <TaxChips
-            taxes={taxes}
-            selected={displayedTaxIds}
-            onToggle={(id) => toggleTax(id, categoryTaxIds)}
-          />
+          <TaxChips taxes={taxes} selected={displayedTaxIds} onChange={chooseTax} />
         </div>
 
         <div className="text-sm text-slate-600">

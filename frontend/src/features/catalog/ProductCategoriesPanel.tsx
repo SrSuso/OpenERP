@@ -196,15 +196,6 @@ function CategoryPricingRow({ category, taxes }: { category: ProductCategory; ta
     },
   });
 
-  function toggleTax(id: number) {
-    setTaxIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   return (
     <div className="mt-1.5 rounded border border-slate-200 bg-slate-50 p-3">
       <label className="mb-2 block text-xs text-slate-600">
@@ -221,7 +212,7 @@ function CategoryPricingRow({ category, taxes }: { category: ProductCategory; ta
 
       <p className="mb-1 text-xs text-slate-600">Impuestos por defecto</p>
       <div className="mb-2">
-        <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
+        <TaxChips taxes={taxes} selected={taxIds} onChange={setTaxIds} />
       </div>
 
       <button
