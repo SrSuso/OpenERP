@@ -29,6 +29,23 @@ export const ticketTemplateSchema = z.object({
   footer_text: z.string(),
   tax_display: ticketTaxDisplaySchema,
   show_line_discounts: z.boolean(),
+  // Lo que antes vivía en Configuración: el ticket se edita en un solo
+  // sitio, su plantilla (backend/app/tickets/models.py).
+  store_name: z.string(),
+  store_tax_id: z.string(),
+  store_address: z.string(),
+  store_phone: z.string(),
+  sale_number_prefix: z.string(),
+  date_format: z.string(),
+  show_unit_price: z.boolean(),
+  show_cashier: z.boolean(),
+  label_total: z.string(),
+  label_change: z.string(),
+  label_cash: z.string(),
+  label_card: z.string(),
+  label_other: z.string(),
+  label_discount: z.string(),
+  tax_note: z.string(),
   is_active: z.boolean(),
 });
 export type TicketTemplate = z.infer<typeof ticketTemplateSchema>;
@@ -51,7 +68,31 @@ export interface TemplateFields {
   footer_text: string;
   tax_display: TicketTaxDisplay;
   show_line_discounts: boolean;
+  store_name: string;
+  store_tax_id: string;
+  store_address: string;
+  store_phone: string;
+  sale_number_prefix: string;
+  date_format: string;
+  show_unit_price: boolean;
+  show_cashier: boolean;
+  label_total: string;
+  label_change: string;
+  label_cash: string;
+  label_card: string;
+  label_other: string;
+  label_discount: string;
+  tax_note: string;
 }
+
+/** Los formatos de fecha que se ofrecen, con cómo se ven — que es lo único
+ * que le importa a quien elige. */
+export const DATE_FORMATS: { value: string; label: string }[] = [
+  { value: '%d/%m/%Y %H:%M', label: '31/12/2026 14:05' },
+  { value: '%d-%m-%Y %H:%M', label: '31-12-2026 14:05' },
+  { value: '%Y-%m-%d %H:%M', label: '2026-12-31 14:05' },
+  { value: '%d/%m/%Y', label: '31/12/2026 (sin hora)' },
+];
 
 export async function createTemplate(
   payload: TemplateFields & { name: string },

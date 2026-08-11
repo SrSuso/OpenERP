@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import {
+  DATE_FORMATS,
   TAX_DISPLAY_LABELS,
   ticketTaxDisplaySchema,
   type TemplateFields,
@@ -17,6 +18,23 @@ const fieldsSchema = z.object({
   footer_text: z.string().max(2000).optional(),
   tax_display: ticketTaxDisplaySchema,
   show_line_discounts: z.boolean(),
+  // Lo que antes se rellenaba en Configuración y salía impreso desde allí:
+  // ahora vive aquí, que es donde se edita el ticket.
+  store_name: z.string().max(500).optional(),
+  store_tax_id: z.string().max(500).optional(),
+  store_address: z.string().max(1000).optional(),
+  store_phone: z.string().max(200).optional(),
+  sale_number_prefix: z.string().max(50).optional(),
+  date_format: z.string().max(50),
+  show_unit_price: z.boolean(),
+  show_cashier: z.boolean(),
+  label_total: z.string().max(50).optional(),
+  label_change: z.string().max(50).optional(),
+  label_cash: z.string().max(50).optional(),
+  label_card: z.string().max(50).optional(),
+  label_other: z.string().max(50).optional(),
+  label_discount: z.string().max(50).optional(),
+  tax_note: z.string().max(200).optional(),
 });
 
 type TemplateFormValues = z.infer<typeof fieldsSchema>;
@@ -60,6 +78,21 @@ export function TemplateFieldsForm({
       footer_text: defaults?.footer_text ?? '',
       tax_display: defaults?.tax_display ?? 'BREAKDOWN',
       show_line_discounts: defaults?.show_line_discounts ?? false,
+      store_name: defaults?.store_name ?? '',
+      store_tax_id: defaults?.store_tax_id ?? '',
+      store_address: defaults?.store_address ?? '',
+      store_phone: defaults?.store_phone ?? '',
+      sale_number_prefix: defaults?.sale_number_prefix ?? 'Venta #',
+      date_format: defaults?.date_format ?? '%d/%m/%Y %H:%M',
+      show_unit_price: defaults?.show_unit_price ?? true,
+      show_cashier: defaults?.show_cashier ?? false,
+      label_total: defaults?.label_total ?? 'TOTAL',
+      label_change: defaults?.label_change ?? 'Cambio',
+      label_cash: defaults?.label_cash ?? 'Efectivo',
+      label_card: defaults?.label_card ?? 'Tarjeta',
+      label_other: defaults?.label_other ?? 'Otros',
+      label_discount: defaults?.label_discount ?? 'Dto.',
+      tax_note: defaults?.tax_note ?? 'IVA incluido',
     },
   });
 
@@ -70,6 +103,17 @@ export function TemplateFieldsForm({
     tax_display: watch('tax_display'),
     show_line_discounts: watch('show_line_discounts'),
     prices_include_tax: pricesIncludeTax,
+    store_name: watch('store_name') ?? '',
+    store_tax_id: watch('store_tax_id') ?? '',
+    store_address: watch('store_address') ?? '',
+    store_phone: watch('store_phone') ?? '',
+    sale_number_prefix: watch('sale_number_prefix') ?? '',
+    show_unit_price: watch('show_unit_price'),
+    label_total: watch('label_total') ?? '',
+    label_cash: watch('label_cash') ?? '',
+    label_change: watch('label_change') ?? '',
+    label_discount: watch('label_discount') ?? '',
+    tax_note: watch('tax_note') ?? '',
   });
 
   const submit = handleSubmit((values) => {
@@ -84,6 +128,21 @@ export function TemplateFieldsForm({
       footer_text: values.footer_text ?? '',
       tax_display: values.tax_display,
       show_line_discounts: values.show_line_discounts,
+      store_name: values.store_name ?? '',
+      store_tax_id: values.store_tax_id ?? '',
+      store_address: values.store_address ?? '',
+      store_phone: values.store_phone ?? '',
+      sale_number_prefix: values.sale_number_prefix ?? '',
+      date_format: values.date_format,
+      show_unit_price: values.show_unit_price,
+      show_cashier: values.show_cashier,
+      label_total: values.label_total ?? '',
+      label_change: values.label_change ?? '',
+      label_cash: values.label_cash ?? '',
+      label_card: values.label_card ?? '',
+      label_other: values.label_other ?? '',
+      label_discount: values.label_discount ?? '',
+      tax_note: values.tax_note ?? '',
     });
   });
 
@@ -120,6 +179,44 @@ export function TemplateFieldsForm({
               <option value="58">58 mm</option>
               <option value="80">80 mm</option>
             </select>
+          </label>
+
+          {/* Los datos de la tienda: aquí y no en Configuración, para que el
+              ticket se edite en un solo sitio. */}
+          <label className="text-sm text-slate-600">
+            Nombre de la tienda
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('store_name')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            NIF / CIF
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('store_tax_id')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Dirección
+            <textarea
+              rows={2}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('store_address')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Teléfono
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('store_phone')}
+            />
           </label>
 
           <label className="text-sm text-slate-600 sm:col-span-2">
@@ -165,6 +262,104 @@ export function TemplateFieldsForm({
           <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
             <input type="checkbox" {...register('show_line_discounts')} />
             Mostrar el descuento aplicado bajo cada línea con descuento
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
+            <input type="checkbox" {...register('show_unit_price')} />
+            Mostrar la línea «2 x 1,65 €» bajo cada producto
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
+            <input type="checkbox" {...register('show_cashier')} />
+            Mostrar quién ha atendido
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Texto antes del número
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('sale_number_prefix')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Formato de la fecha
+            <select
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('date_format')}
+            >
+              {DATE_FORMATS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {/* Las palabras que se imprimen: cada tienda las dice a su
+              manera, y hay quien las quiere en otro idioma. */}
+          <label className="text-sm text-slate-600">
+            Palabra para el total
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('label_total')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Palabra para el cambio
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('label_change')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Pago en efectivo
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('label_cash')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Pago con tarjeta
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('label_card')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Otras formas de pago
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('label_other')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Palabra para el descuento
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('label_discount')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600 sm:col-span-2">
+            Nota del IVA
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('tax_note')}
+            />
           </label>
         </div>
 

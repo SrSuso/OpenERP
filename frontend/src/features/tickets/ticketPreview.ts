@@ -56,20 +56,37 @@ export interface TicketPreviewFields {
   /** Ajuste de tienda (Precios), no de la plantilla — la vista previa lo
    * necesita porque cambia si el IVA se extrae del precio o se le suma. */
   prices_include_tax: boolean;
+  store_name: string;
+  store_tax_id: string;
+  store_address: string;
+  store_phone: string;
+  sale_number_prefix: string;
+  show_unit_price: boolean;
+  label_total: string;
+  label_cash: string;
+  label_change: string;
+  label_discount: string;
+  tax_note: string;
 }
 
 export function renderTicketPreview(fields: TicketPreviewFields): string {
   const width = CHARS_PER_WIDTH[fields.width_mm];
   const rows: string[] = [];
 
-  const headerLines = fields.header_text
-    .split('\n')
+  const headerLines = [
+    fields.store_name,
+    fields.store_tax_id,
+    fields.store_address,
+    fields.store_phone,
+    fields.header_text,
+  ]
+    .flatMap((block) => block.split('\n'))
     .map((line) => line.trim())
     .filter(Boolean);
   headerLines.forEach((line) => rows.push(center(line, width)));
   if (headerLines.length > 0) rows.push(rule(width));
 
-  rows.push('Venta #0001');
+  rows.push(`${fields.sale_number_prefix}0001`);
   rows.push(new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }));
   rows.push(rule(width));
 
@@ -89,9 +106,15 @@ export function renderTicketPreview(fields: TicketPreviewFields): string {
     subtotal += net;
 
     rows.push(...twoColumn(line.name, eur(net + taxAmount), width));
-    rows.push(`${line.qty} x ${eur(line.unitPrice)}`);
+    if (fields.show_unit_price) rows.push(`${line.qty} x ${eur(line.unitPrice)}`);
     if (fields.show_line_discounts && line.discountRate > 0) {
-      rows.push(...twoColumn(`Dto. ${line.discountRate}%`, `-${eur(discountAmount)}`, width));
+      rows.push(
+        ...twoColumn(
+          `${fields.label_discount} ${line.discountRate}%`,
+          `-${eur(discountAmount)}`,
+          width,
+        ),
+      );
     }
   }
 
@@ -99,12 +122,12 @@ export function renderTicketPreview(fields: TicketPreviewFields): string {
   const total = subtotal + taxTotal;
 
   rows.push(rule(width));
-  rows.push(...twoColumn('TOTAL', eur(total), width));
+  rows.push(...twoColumn(fields.label_total, eur(total), width));
   if (fields.tax_display === 'NOTE') {
-    rows.push(center('IVA incluido', width));
+    rows.push(center(fields.tax_note, width));
   } else if (fields.tax_display === 'BREAKDOWN') {
     rows.push(rule(width));
-    rows.push('IVA incluido');
+    rows.push(fields.tax_note);
     rows.push(threeColumn('Tipo', 'Base', 'Cuota', width));
     for (const rate of [...netByRate.keys()].sort((a, b) => a - b)) {
       rows.push(
@@ -120,8 +143,8 @@ export function renderTicketPreview(fields: TicketPreviewFields): string {
   rows.push(rule(width));
 
   const tendered = Math.ceil(total);
-  rows.push(...twoColumn('Efectivo', eur(tendered), width));
-  rows.push(...twoColumn('Cambio', eur(tendered - total), width));
+  rows.push(...twoColumn(fields.label_cash, eur(tendered), width));
+  rows.push(...twoColumn(fields.label_change, eur(tendered - total), width));
 
   const footerLines = fields.footer_text
     .split('\n')

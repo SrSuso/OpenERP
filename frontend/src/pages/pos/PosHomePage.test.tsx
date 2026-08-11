@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -223,6 +223,11 @@ async function waitForScannerReady() {
   await waitFor(() =>
     expect(screen.getByPlaceholderText('Escanear o introducir código de barras')).toBeEnabled(),
   );
+  // `waitFor` mira el DOM ya pintado, pero quien engancha la escucha del
+  // lector es un efecto, y los efectos corren después de pintar. Sin vaciar
+  // la cola, con la máquina cargada las teclas podían llegar antes que el
+  // oyente y perderse.
+  await act(async () => {});
 }
 
 /** Teclea un código como lo haría un lector, con el reloj congelado.

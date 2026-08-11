@@ -9,6 +9,21 @@ const BASE_FIELDS = {
   tax_display: 'BREAKDOWN' as const,
   show_line_discounts: false,
   prices_include_tax: false,
+  store_name: '',
+  store_tax_id: '',
+  store_address: '',
+  store_phone: '',
+  sale_number_prefix: 'Venta #',
+  date_format: '%d/%m/%Y %H:%M',
+  show_unit_price: true,
+  show_cashier: false,
+  label_total: 'TOTAL',
+  label_change: 'Cambio',
+  label_cash: 'Efectivo',
+  label_card: 'Tarjeta',
+  label_other: 'Otros',
+  label_discount: 'Dto.',
+  tax_note: 'IVA incluido',
 };
 
 describe('renderTicketPreview', () => {

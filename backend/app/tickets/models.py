@@ -66,6 +66,42 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: When on, a line whose ``discount_rate`` is above zero gets an extra
     #: row underneath it showing the discount applied.
     show_line_discounts: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # --- lo que antes vivía en Configuración -------------------------------
+    #
+    # El ticket se edita en un solo sitio: aquí. Tenerlo repartido entre la
+    # plantilla y la pantalla de ajustes hacía que los datos de la tienda
+    # salieran impresos dos veces —una desde cada lado— y que nadie supiera
+    # cuál de los dos mandaba. Además, siendo columnas de la plantilla,
+    # quedan versionadas con ella: una plantilla vieja sigue diciendo cómo
+    # se imprimía entonces.
+    store_name: Mapped[str] = mapped_column(Text, default="", server_default="")
+    store_tax_id: Mapped[str] = mapped_column(Text, default="", server_default="")
+    store_address: Mapped[str] = mapped_column(Text, default="", server_default="")
+    store_phone: Mapped[str] = mapped_column(Text, default="", server_default="")
+
+    sale_number_prefix: Mapped[str] = mapped_column(
+        String(50), default="Venta #", server_default="Venta #"
+    )
+    #: Patrón de `strftime`.
+    date_format: Mapped[str] = mapped_column(
+        String(50), default="%Y-%m-%d %H:%M", server_default="%Y-%m-%d %H:%M"
+    )
+    show_unit_price: Mapped[bool] = mapped_column(default=True, server_default="true")
+    show_cashier: Mapped[bool] = mapped_column(default=False, server_default="false")
+
+    label_total: Mapped[str] = mapped_column(String(50), default="TOTAL", server_default="TOTAL")
+    label_change: Mapped[str] = mapped_column(String(50), default="Cambio", server_default="Cambio")
+    label_cash: Mapped[str] = mapped_column(
+        String(50), default="Efectivo", server_default="Efectivo"
+    )
+    label_card: Mapped[str] = mapped_column(String(50), default="Tarjeta", server_default="Tarjeta")
+    label_other: Mapped[str] = mapped_column(String(50), default="Otros", server_default="Otros")
+    label_discount: Mapped[str] = mapped_column(String(50), default="Dto.", server_default="Dto.")
+    #: La nota que explica el IVA cuando no se desglosa.
+    tax_note: Mapped[str] = mapped_column(
+        String(200), default="IVA incluido", server_default="IVA incluido"
+    )
+
     #: Only one version per ``name`` is active at a time — the one new
     #: tickets render with. Retired versions stay forever, still readable
     #: through whichever ``Ticket`` rows already reference them.

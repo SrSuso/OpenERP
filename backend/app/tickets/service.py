@@ -20,7 +20,6 @@ from app.audit import service as audit
 from app.core.errors import NotFoundError, ValidationError
 from app.pricing import service as pricing_service
 from app.sales.models import Sale, SaleLine, SaleStatus
-from app.settings import store as settings_store
 from app.tickets.models import Ticket, TicketTemplate
 from app.tickets.render import render_ticket
 from app.tickets.schemas import TicketTemplateCreate, TicketTemplateRevise
@@ -61,6 +60,21 @@ async def create_template(session: AsyncSession, payload: TicketTemplateCreate) 
         footer_text=payload.footer_text,
         tax_display=payload.tax_display,
         show_line_discounts=payload.show_line_discounts,
+        store_name=payload.store_name,
+        store_tax_id=payload.store_tax_id,
+        store_address=payload.store_address,
+        store_phone=payload.store_phone,
+        sale_number_prefix=payload.sale_number_prefix,
+        date_format=payload.date_format,
+        show_unit_price=payload.show_unit_price,
+        show_cashier=payload.show_cashier,
+        label_total=payload.label_total,
+        label_change=payload.label_change,
+        label_cash=payload.label_cash,
+        label_card=payload.label_card,
+        label_other=payload.label_other,
+        label_discount=payload.label_discount,
+        tax_note=payload.tax_note,
         is_active=True,
     )
     session.add(template)
@@ -98,6 +112,21 @@ async def revise_template(
         footer_text=payload.footer_text,
         tax_display=payload.tax_display,
         show_line_discounts=payload.show_line_discounts,
+        store_name=payload.store_name,
+        store_tax_id=payload.store_tax_id,
+        store_address=payload.store_address,
+        store_phone=payload.store_phone,
+        sale_number_prefix=payload.sale_number_prefix,
+        date_format=payload.date_format,
+        show_unit_price=payload.show_unit_price,
+        show_cashier=payload.show_cashier,
+        label_total=payload.label_total,
+        label_change=payload.label_change,
+        label_cash=payload.label_cash,
+        label_card=payload.label_card,
+        label_other=payload.label_other,
+        label_discount=payload.label_discount,
+        tax_note=payload.tax_note,
         # Editar una plantilla que no estaba en uso no cambia con cuál se
         # imprime: se corrige una alternativa guardada sin tocar la caja.
         # Para cambiar de plantilla está `activate_template`.
@@ -167,16 +196,14 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
 
     template = await get_active_template(session)
     prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
-    settings = await settings_store.get_values(session)
     cashier_name: str | None = None
-    if settings["ticket.show_cashier"] and sale.cashier_user_id is not None:
+    if template.show_cashier and sale.cashier_user_id is not None:
         cashier = await session.get(User, sale.cashier_user_id)
         cashier_name = cashier.full_name if cashier is not None else None
     rendered_text = render_ticket(
         sale,
         template,
         prices_include_tax=prices_include_tax,
-        settings=settings,
         cashier_name=cashier_name,
     )
 

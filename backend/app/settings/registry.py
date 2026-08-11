@@ -109,7 +109,6 @@ class SettingDef:
 
 
 GROUP_STORE = "Datos de la tienda"
-GROUP_TICKET = "Ticket"
 GROUP_POS = "Caja (TPV)"
 GROUP_SALES = "Ventas"
 GROUP_CATALOG = "Productos"
@@ -121,15 +120,6 @@ GROUP_UI = "Pantalla"
 GROUP_SERVER = "Servidor (avanzado)"
 
 _RESTART = "Hay que reiniciar el servidor para que este cambio surta efecto."
-
-#: Formatos de fecha del ticket. Valor = patrón de `strftime`; etiqueta =
-#: cómo se ve, que es lo único que le importa a quien elige.
-_DATE_FORMATS = (
-    Choice("%d/%m/%Y %H:%M", "31/12/2026 14:05"),
-    Choice("%d-%m-%Y %H:%M", "31-12-2026 14:05"),
-    Choice("%Y-%m-%d %H:%M", "2026-12-31 14:05"),
-    Choice("%d/%m/%Y", "31/12/2026 (sin hora)"),
-)
 
 
 _SERVER_SETTINGS: tuple[SettingDef, ...] = (
@@ -379,135 +369,6 @@ _SERVER_SETTINGS: tuple[SettingDef, ...] = (
 )
 
 SETTINGS: tuple[SettingDef, ...] = (
-    # --- datos de la tienda ------------------------------------------------
-    SettingDef(
-        key="store.name",
-        group=GROUP_STORE,
-        label="Nombre de la tienda",
-        help=(
-            "Se imprime arriba del todo en el ticket. Déjalo vacío si ya lo tienes "
-            "escrito en la cabecera de la plantilla, o saldrá dos veces."
-        ),
-        type=SettingType.STRING,
-        default="",
-    ),
-    SettingDef(
-        key="store.tax_id",
-        group=GROUP_STORE,
-        label="NIF / CIF",
-        help="Se imprime bajo el nombre. Obligatorio en una factura simplificada.",
-        type=SettingType.STRING,
-        default="",
-    ),
-    SettingDef(
-        key="store.address",
-        group=GROUP_STORE,
-        label="Dirección",
-        help="Una línea por renglón. Se imprime bajo el NIF.",
-        type=SettingType.TEXT,
-        default="",
-    ),
-    SettingDef(
-        key="store.phone",
-        group=GROUP_STORE,
-        label="Teléfono",
-        help="Opcional. Se imprime al final de los datos de la tienda.",
-        type=SettingType.STRING,
-        default="",
-    ),
-    # --- ticket ------------------------------------------------------------
-    SettingDef(
-        key="ticket.sale_number_prefix",
-        group=GROUP_TICKET,
-        label="Texto antes del número de venta",
-        help='Lo que va delante del número: "Venta #1043", "Ticket nº 1043"…',
-        type=SettingType.STRING,
-        default="Venta #",
-    ),
-    SettingDef(
-        key="ticket.date_format",
-        group=GROUP_TICKET,
-        label="Formato de la fecha",
-        help="Cómo se escribe la fecha y la hora de la venta.",
-        type=SettingType.ENUM,
-        default="%Y-%m-%d %H:%M",
-        choices=_DATE_FORMATS,
-    ),
-    SettingDef(
-        key="ticket.show_unit_price",
-        group=GROUP_TICKET,
-        label='Mostrar la línea "2 x 1,65 €" bajo cada producto',
-        help="Desactívalo para un ticket más corto, con solo el importe de cada línea.",
-        type=SettingType.BOOL,
-        default=True,
-    ),
-    SettingDef(
-        key="ticket.show_cashier",
-        group=GROUP_TICKET,
-        label="Mostrar quién ha atendido",
-        help="Añade el nombre del cajero o cajera bajo la fecha.",
-        type=SettingType.BOOL,
-        default=False,
-    ),
-    SettingDef(
-        key="ticket.label_total",
-        group=GROUP_TICKET,
-        label="Palabra para el total",
-        help='Lo que se imprime junto al importe final. Por defecto "TOTAL".',
-        type=SettingType.STRING,
-        default="TOTAL",
-    ),
-    SettingDef(
-        key="ticket.label_change",
-        group=GROUP_TICKET,
-        label="Palabra para el cambio",
-        help="Lo que se imprime junto al dinero que se le devuelve al cliente.",
-        type=SettingType.STRING,
-        default="Cambio",
-    ),
-    SettingDef(
-        key="ticket.label_cash",
-        group=GROUP_TICKET,
-        label="Nombre del pago en efectivo",
-        help="Cómo se llama en el ticket a un cobro en efectivo.",
-        type=SettingType.STRING,
-        default="Efectivo",
-    ),
-    SettingDef(
-        key="ticket.label_card",
-        group=GROUP_TICKET,
-        label="Nombre del pago con tarjeta",
-        help="Cómo se llama en el ticket a un cobro con tarjeta.",
-        type=SettingType.STRING,
-        default="Tarjeta",
-    ),
-    SettingDef(
-        key="ticket.label_other",
-        group=GROUP_TICKET,
-        label="Nombre del otro método de pago",
-        help='El tercer método que ofrece el TPV. Cámbialo a "Bizum", "Vale"… según uses.',
-        type=SettingType.STRING,
-        default="Otro",
-    ),
-    SettingDef(
-        key="ticket.tax_note",
-        group=GROUP_TICKET,
-        label="Texto de la nota de IVA",
-        help=(
-            'Se imprime cuando la plantilla tiene el IVA en modo "nota" o "desglose". '
-            "Una factura simplificada necesita esta expresión o el tipo aplicado."
-        ),
-        type=SettingType.STRING,
-        default="IVA incluido",
-    ),
-    SettingDef(
-        key="ticket.label_discount",
-        group=GROUP_TICKET,
-        label="Palabra para el descuento",
-        help='Va delante del porcentaje en las líneas con descuento: "Dto. 10%".',
-        type=SettingType.STRING,
-        default="Dto.",
-    ),
     # --- nombre de la aplicación ------------------------------------------
     SettingDef(
         key="app.display_name",
