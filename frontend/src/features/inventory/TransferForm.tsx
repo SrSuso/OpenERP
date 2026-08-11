@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
+import { useChosenProduct } from '@/features/catalog/useChosenProduct';
 import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
-import { useCostOfChosenProduct } from '@/features/inventory/useCostOfChosenProduct';
 import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
 
@@ -53,7 +53,9 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
   });
 
   const productId = watch('product_id');
-  const chosenProduct = products.find((product) => String(product.id) === productId);
+  const chosenProduct = useChosenProduct(productId, products, (product) =>
+    setValue('unit_cost', decimalInputValue(product.cost)),
+  );
   const productFieldId = useId();
   const { query, setQuery, matches } = useProductSearch(products, {
     onSingleMatch: (id) => setValue('product_id', id),
@@ -78,7 +80,6 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
   useDefaultToFirstOption(toLocationId, toLocations.data, (value) =>
     setValue('to_location_id', value),
   );
-  useCostOfChosenProduct(productId, products, (value) => setValue('unit_cost', value));
 
   const submit = handleSubmit((values) =>
     onSubmit({

@@ -192,6 +192,10 @@ export const productSchema = z.object({
   list_price: z.string(),
   tax_rate: z.string(),
   surcharge_rate: z.string(),
+  // El tipo que de verdad se le aplica, ya resuelto por el backend
+  // (propios → los de su categoría → `tax_rate`): es lo que debe salir por
+  // defecto al comprarlo. `tax_rate` a secas es sólo el valor suelto.
+  effective_tax_rate: z.string(),
   // null = hereda el margen de la categoría (o 0 si tampoco la categoría
   // tiene uno) — ver ProductCategory.margin_rate.
   margin_rate: z.string().nullable(),

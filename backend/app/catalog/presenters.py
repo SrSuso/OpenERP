@@ -4,6 +4,7 @@ every price change)."""
 
 from __future__ import annotations
 
+from app.catalog import taxes
 from app.catalog.models import Product, ProductCategory, ProductPackage
 from app.catalog.schemas import (
     BarcodeRead,
@@ -50,6 +51,7 @@ def product_to_read(product: Product) -> ProductRead:
         list_price=product.list_price,
         tax_rate=product.tax_rate,
         surcharge_rate=product.surcharge_rate,
+        effective_tax_rate=taxes.effective_tax_rate(product),
         margin_rate=product.margin_rate,
         taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in product.taxes],
         price_formula=product.price_formula,

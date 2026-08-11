@@ -512,3 +512,46 @@ async def test_cashier_cannot_deactivate_a_tax(
     await login(role_name="CASHIER")
 
     assert (await client.post(f"/api/v1/taxes/{tax_id}/deactivate")).status_code == 403
+
+
+async def test_a_product_reports_the_tax_rate_that_really_applies(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """`tax_rate` es la columna suelta heredada; `effective_tax_rate` es lo
+    que de verdad se le aplica —sus impuestos, si no los de su categoría—,
+    que es lo que debe salir por defecto al comprarlo o venderlo."""
+    await login(role_name="ADMIN")
+    tax = (await client.post("/api/v1/taxes", json={"name": "IVA general", "rate": "21"})).json()
+    category = (await client.post("/api/v1/product-categories", json={"name": "Bebidas"})).json()
+    await client.patch(
+        f"/api/v1/product-categories/{category['id']}/pricing", json={"tax_ids": [tax["id"]]}
+    )
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json={
+                "sku": "WATER-1L",
+                "name": "Agua 1L",
+                "base_unit_name": "UNIT",
+                "cost": "0.30",
+                "list_price": "0.60",
+                "tax_rate": "0",
+                "category_id": category["id"],
+            },
+        )
+    ).json()
+
+    # Heredado de la categoría: la columna suelta sigue a 0.
+    assert product["tax_rate"] == "0.000000"
+    assert product["effective_tax_rate"] == "21.000000"
+
+    # Y un impuesto propio del producto gana al de la categoría.
+    reduced = (
+        await client.post("/api/v1/taxes", json={"name": "IVA reducido", "rate": "10"})
+    ).json()
+    updated = (
+        await client.patch(
+            f"/api/v1/products/{product['id']}/pricing", json={"tax_ids": [reduced["id"]]}
+        )
+    ).json()
+    assert updated["effective_tax_rate"] == "10.000000"

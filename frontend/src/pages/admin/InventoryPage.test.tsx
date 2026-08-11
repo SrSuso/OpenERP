@@ -47,6 +47,7 @@ function stubBackend() {
     cost: '0.500000',
     list_price: '1.000000',
     tax_rate: '0',
+    effective_tax_rate: '0',
     surcharge_rate: '0',
     margin_rate: null,
     taxes: [],

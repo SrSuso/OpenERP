@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
+import { useChosenProduct } from '@/features/catalog/useChosenProduct';
 import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { type OrderLineInput } from '@/features/purchasing/api';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
@@ -49,11 +50,16 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
   });
 
   const productId = watch('product_id');
-  const selectedProduct = products.find((p) => String(p.id) === productId);
   const productFieldId = useId();
   const { query, setQuery, matches } = useProductSearch(products, {
     onSingleMatch: (id) => setValue('product_id', id),
   });
+  // El IVA sale ya puesto con el del producto (el suyo, o el de su
+  // categoría — el backend lo resuelve en `effective_tax_rate`), pero se
+  // puede cambiar: una factura de compra puede traer otro tipo.
+  const selectedProduct = useChosenProduct(productId, products, (product) =>
+    setValue('tax_rate', decimalInputValue(product.effective_tax_rate)),
+  );
 
   const submit = handleSubmit((values) => {
     onSubmit({

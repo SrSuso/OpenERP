@@ -54,6 +54,9 @@ function stubBackend() {
     cost: '0.500000',
     list_price: '1.000000',
     tax_rate: '0',
+    // Su IVA sale de la categoría, no de la columna suelta: es el caso que
+    // tiene que autocompletar la línea de compra.
+    effective_tax_rate: '21',
     surcharge_rate: '0',
     margin_rate: null,
     taxes: [],
@@ -230,6 +233,8 @@ describe('PurchasingPage', () => {
     // proveedor sin abrir su ficha.
     expect(screen.getByLabelText('Coste actual')).toHaveValue('0,5');
     expect(screen.getByLabelText('PVP actual')).toHaveValue('1');
+    // El IVA sale ya puesto con el del producto, y se puede cambiar.
+    expect(screen.getByLabelText('IVA %')).toHaveValue('21');
     await userEvent.selectOptions(screen.getByLabelText('Formato'), '100');
     const qtyInput = screen.getByLabelText('Cantidad');
     await userEvent.clear(qtyInput);

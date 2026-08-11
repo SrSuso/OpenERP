@@ -49,7 +49,9 @@ from app.settings import store as settings_store
 # `app.api.v1.router` *before* pricing's own line in the same file.
 def _product_options() -> tuple[Any, ...]:
     return (
-        selectinload(Product.category),
+        # La categoría con sus impuestos: la forma de lectura del producto
+        # resuelve con ellos su tipo efectivo (app.catalog.taxes).
+        selectinload(Product.category).selectinload(ProductCategory.taxes),
         selectinload(Product.pos_category),
         selectinload(Product.packages).selectinload(ProductPackage.barcodes),
         selectinload(Product.taxes),

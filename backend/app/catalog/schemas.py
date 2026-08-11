@@ -183,6 +183,11 @@ class ProductRead(BaseModel):
     list_price: Decimal
     tax_rate: Decimal
     surcharge_rate: Decimal
+    #: El tipo que de verdad se le aplica, resuelto ya (impuestos propios,
+    #: si no los de su categoría, si no la columna de arriba) — ver
+    #: `app.catalog.taxes`. Es lo que debe salir por defecto al comprarlo o
+    #: al venderlo; `tax_rate` es sólo el valor suelto heredado.
+    effective_tax_rate: Decimal
     #: ``None`` = inherits the category's margin — see this module's own
     #: `ProductCategoryRead` docstring on the override priority.
     margin_rate: Decimal | None

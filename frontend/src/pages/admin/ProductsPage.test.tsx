@@ -61,6 +61,7 @@ function baseProduct(): Product {
     cost: '0.300000',
     list_price: '0.600000',
     tax_rate: '0.000000',
+    effective_tax_rate: '0.000000',
     surcharge_rate: '0.000000',
     margin_rate: null,
     taxes: [],

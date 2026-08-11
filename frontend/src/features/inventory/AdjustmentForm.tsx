@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
+import { useChosenProduct } from '@/features/catalog/useChosenProduct';
 import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
-import { useCostOfChosenProduct } from '@/features/inventory/useCostOfChosenProduct';
 import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
 
@@ -70,7 +70,9 @@ export function AdjustmentForm({
   const warehouseId = watch('warehouse_id');
   const locationId = watch('location_id');
   const productId = watch('product_id');
-  const chosenProduct = products.find((product) => String(product.id) === productId);
+  const chosenProduct = useChosenProduct(productId, products, (product) =>
+    setValue('unit_cost', decimalInputValue(product.cost)),
+  );
   const productFieldId = useId();
   const { query, setQuery, matches } = useProductSearch(products, {
     onSingleMatch: (id) => setValue('product_id', id),
@@ -80,7 +82,6 @@ export function AdjustmentForm({
 
   useDefaultToFirstOption(warehouseId, warehouses.data, (value) => setValue('warehouse_id', value));
   useDefaultToFirstOption(locationId, locations.data, (value) => setValue('location_id', value));
-  useCostOfChosenProduct(productId, products, (value) => setValue('unit_cost', value));
 
   const submit = handleSubmit((values) =>
     onSubmit({
