@@ -114,6 +114,7 @@ GROUP_POS = "Caja (TPV)"
 GROUP_SALES = "Ventas"
 GROUP_CATALOG = "Productos"
 GROUP_NOTIFICATIONS = "Avisos"
+GROUP_UI = "Pantalla"
 #: Lo que hasta ahora sólo estaba en el `.env`. No se lee en caliente: hace
 #: falta reiniciar para que surta efecto, y así lo dice cada opción. Ver
 #: `app.settings.server`.
@@ -638,6 +639,22 @@ SETTINGS: tuple[SettingDef, ...] = (
         default=7,
         minimum=Decimal(0),
         maximum=Decimal(365),
+    ),
+    # --- pantalla ----------------------------------------------------------
+    SettingDef(
+        key="ui.base_font_px",
+        group=GROUP_UI,
+        label="Tamaño de la letra",
+        help=(
+            "En píxeles. Manda sobre toda la aplicación —la caja y el panel—: al "
+            "subirlo crecen también los botones, las filas y los recuadros, no sólo "
+            "las letras. 16 es lo normal de un navegador; 18 se lee de pie delante "
+            "de la caja, y 20 o 22 desde más lejos."
+        ),
+        type=SettingType.INT,
+        default=18,
+        minimum=Decimal(14),
+        maximum=Decimal(24),
     ),
     # --- servidor ----------------------------------------------------------
     # Al final a propósito: son los que casi nunca se tocan, y así el panel

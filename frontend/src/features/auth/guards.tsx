@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '@/features/auth/AuthContext';
+import { useBaseFontSize } from '@/features/settings/useBaseFontSize';
 
 /**
  * Redirects to `/login` when signed out; renders nothing while the initial
@@ -13,6 +14,10 @@ import { useAuth } from '@/features/auth/AuthContext';
 export function RequireAuth() {
   const { user, isLoading } = useAuth();
   const location = useLocation();
+  // Aquí y no más abajo: es el único punto por el que pasan tanto el panel
+  // como la caja, y el primero en el que ya hay sesión para poder leer los
+  // ajustes de la tienda.
+  useBaseFontSize();
 
   if (isLoading) {
     return null;
