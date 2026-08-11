@@ -4,10 +4,12 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Cart } from '@/features/pos/Cart';
 import { CategoryTabs } from '@/features/pos/CategoryTabs';
 import { Checkout } from '@/features/pos/Checkout';
+import { OpenSalesBar } from '@/features/pos/OpenSalesBar';
 import { ProductGrid } from '@/features/pos/ProductGrid';
 import { QuantityPad } from '@/features/pos/QuantityPad';
 import { Receipt } from '@/features/pos/Receipt';
 import { WeightPrompt } from '@/features/pos/WeightPrompt';
+import { useBarcodeScanner } from '@/features/pos/useBarcodeScanner';
 import {
   addLine,
   addLineByBarcode,
@@ -64,12 +66,16 @@ export function PosHomePage() {
   const openSaleMutation = useMutation({
     mutationFn: () => createSale(warehouseId as number, locationId as number),
     onSuccess: (created) => {
-      // Keep the draft-sales cache in sync with what we just did, rather
-      // than only holding it in local `sale` state — the resume effect
-      // below reads straight from this cache, so a stale entry there would
-      // make it resurrect a sale that no longer reflects the backend.
+      // Se añade a las que ya hay, no se sustituyen: puede haber varias
+      // abiertas a la vez (un cliente que se va a buscar algo y mientras
+      // se cobra a otro). La caché es de donde lee el efecto de más abajo,
+      // así que una entrada obsoleta aquí resucitaría una venta que ya no
+      // existe.
       if (warehouseId !== null) {
-        queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, [created]);
+        queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, (current) => [
+          ...(current ?? []),
+          created,
+        ]);
       }
       setSale(created);
     },
@@ -80,11 +86,11 @@ export function PosHomePage() {
     mutate: openSale,
   } = openSaleMutation;
 
-  // Resume the cashier's own open sale for this till, or open a new one —
-  // a page reload must not orphan an in-progress cart. Runs once per empty
-  // `sale` (guarded by `isOpeningSale`, so the in-flight request itself
-  // blocks re-entry); firing again after a cancel is intentional, since
-  // that is exactly when a fresh sale is needed.
+  // Reanuda una venta abierta de esta caja, o abre la primera — recargar
+  // la página no puede dejar huérfano un carrito a medias. Se ejecuta una
+  // vez por cada `sale` vacío (el propio `isOpeningSale` corta la
+  // reentrada); que vuelva a saltar después de cobrar o cancelar es
+  // justamente lo que hace falta, porque es cuando hay que pasar a otra.
   useEffect(() => {
     if (sale !== null || warehouseId === null || locationId === null) {
       return;
@@ -101,6 +107,20 @@ export function PosHomePage() {
       openSale();
     }
   }, [sale, warehouseId, locationId, draftSales.data, isOpeningSale, failedToOpenSale, openSale]);
+
+  /** Quita de la lista de abiertas la que se acaba de cerrar (cobrada o
+   * cancelada) y deja como activa otra, si queda alguna. Si no queda
+   * ninguna, el efecto de arriba abre una nueva. */
+  function closeSale(closedId: number) {
+    let remaining: Sale[] = [];
+    if (warehouseId !== null) {
+      queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, (current) => {
+        remaining = (current ?? []).filter((candidate) => candidate.id !== closedId);
+        return remaining;
+      });
+    }
+    setSale(remaining[0] ?? null);
+  }
 
   const categories = useQuery(posCategoriesQuery);
   const products = useQuery(
@@ -166,31 +186,17 @@ export function PosHomePage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => cancelSale(sale!.id),
-    // The effect above opens a fresh sale as soon as `sale` goes back to
-    // null — but only once the draft-sales cache no longer lists the one
-    // we just cancelled, or it would resurrect it straight back.
-    onSuccess: () => {
-      if (warehouseId !== null) {
-        queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, []);
-      }
-      setSale(null);
-    },
+    mutationFn: (saleId: number) => cancelSale(saleId),
+    onSuccess: (_result, saleId) => closeSale(saleId),
     onError: (error) => setLineError(describeError(error)),
   });
 
   const checkoutMutation = useMutation({
     mutationFn: (payments: Tender[]) => checkout(sale!.id, payments),
-    // Same cache-sync reasoning as cancel: clear the draft-sales cache so
-    // the resume effect opens a genuinely new sale instead of resurrecting
-    // the one that was just completed.
     onSuccess: (completed) => {
-      if (warehouseId !== null) {
-        queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, []);
-      }
       setCheckoutError(null);
       setReceipt(completed);
-      setSale(null);
+      closeSale(completed.id);
       setView('cart');
     },
     onError: (error) => setCheckoutError(describeError(error)),
@@ -201,6 +207,15 @@ export function PosHomePage() {
     addBarcodeMutation.isPending ||
     removeLineMutation.isPending ||
     cancelMutation.isPending;
+
+  // El lector, sin tener que pinchar antes en ningún recuadro: escanear es
+  // el gesto más repetido de una caja y no puede pedir un clic previo.
+  // Mientras el foco esté en un campo (teclear un código a mano, los gramos
+  // de lo que se pesa) manda el campo — lo decide el propio hook.
+  useBarcodeScanner(
+    (code) => addBarcodeMutation.mutate(code),
+    sale !== null && !busy && view === 'cart' && weighing === null,
+  );
 
   function handleBarcodeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -273,69 +288,81 @@ export function PosHomePage() {
                 />
               ) : (
                 (sale !== null || (!failedToOpenSale && isOpeningSale)) && (
-                  <div className="flex min-h-0 flex-1">
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <form
-                        onSubmit={handleBarcodeSubmit}
-                        className="flex gap-2 border-b border-slate-700 p-3"
-                      >
-                        <label htmlFor="pos-barcode" className="sr-only">
-                          Código de barras
-                        </label>
-                        <input
-                          id="pos-barcode"
-                          type="text"
-                          value={barcode}
-                          onChange={(event) => setBarcode(event.target.value)}
-                          placeholder="Escanear o introducir código de barras"
-                          disabled={sale === null || busy}
-                          className="flex-1 rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 disabled:opacity-50"
-                        />
-                        <button
-                          type="submit"
-                          disabled={sale === null || busy || barcode.trim() === ''}
-                          className="rounded bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Añadir
-                        </button>
-                      </form>
-
-                      {lineError && (
-                        <p
-                          role="alert"
-                          className="border-b border-red-900 bg-red-950/50 px-4 py-2 text-sm text-red-300"
-                        >
-                          {lineError}
-                        </p>
-                      )}
-
-                      <CategoryTabs
-                        categories={categories.data ?? []}
-                        selectedId={selectedCategoryId}
-                        onSelect={setSelectedCategoryId}
-                      />
-                      <ProductGrid
-                        products={products.data ?? []}
-                        isPending={products.isPending}
-                        isError={products.isError}
-                        onPick={pickProduct}
-                        disabled={sale === null || busy}
-                      />
-                      {/* Debajo de la cuadrícula, que es lo que se pulsa
-                          justo después de teclear la cantidad. */}
-                      <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
-                    </div>
-
-                    <Cart
-                      sale={sale}
-                      disabled={busy}
-                      onRemoveLine={(line) => removeLineMutation.mutate(line)}
-                      onCancelSale={() => cancelMutation.mutate()}
-                      onCheckout={() => {
-                        setCheckoutError(null);
-                        setView('checkout');
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <OpenSalesBar
+                      sales={draftSales.data ?? []}
+                      activeId={sale?.id ?? null}
+                      onSelect={(picked) => {
+                        setSale(picked);
+                        setLineError(null);
                       }}
+                      onOpenNew={() => openSale()}
+                      disabled={busy || isOpeningSale}
                     />
+                    <div className="flex min-h-0 flex-1">
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <form
+                          onSubmit={handleBarcodeSubmit}
+                          className="flex gap-2 border-b border-slate-700 p-3"
+                        >
+                          <label htmlFor="pos-barcode" className="sr-only">
+                            Código de barras
+                          </label>
+                          <input
+                            id="pos-barcode"
+                            type="text"
+                            value={barcode}
+                            onChange={(event) => setBarcode(event.target.value)}
+                            placeholder="Escanear o introducir código de barras"
+                            disabled={sale === null || busy}
+                            className="flex-1 rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 disabled:opacity-50"
+                          />
+                          <button
+                            type="submit"
+                            disabled={sale === null || busy || barcode.trim() === ''}
+                            className="rounded bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Añadir
+                          </button>
+                        </form>
+
+                        {lineError && (
+                          <p
+                            role="alert"
+                            className="border-b border-red-900 bg-red-950/50 px-4 py-2 text-sm text-red-300"
+                          >
+                            {lineError}
+                          </p>
+                        )}
+
+                        <CategoryTabs
+                          categories={categories.data ?? []}
+                          selectedId={selectedCategoryId}
+                          onSelect={setSelectedCategoryId}
+                        />
+                        <ProductGrid
+                          products={products.data ?? []}
+                          isPending={products.isPending}
+                          isError={products.isError}
+                          onPick={pickProduct}
+                          disabled={sale === null || busy}
+                        />
+                        {/* Debajo de la cuadrícula, que es lo que se pulsa
+                          justo después de teclear la cantidad. */}
+                        <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
+                      </div>
+
+                      <Cart
+                        sale={sale}
+                        disabled={busy}
+                        onRemoveLine={(line) => removeLineMutation.mutate(line)}
+                        onCancelSale={() => cancelMutation.mutate(sale!.id)}
+                        onCheckout={() => {
+                          setCheckoutError(null);
+                          setView('checkout');
+                        }}
+                      />
+                    </div>
                   </div>
                 )
               )}

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -122,6 +122,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
   let nextSaleId = 5;
   const postSalesCalls = { count: 0 };
   const addLineCalls: Record<string, unknown>[] = [];
+  const barcodeCalls: string[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -171,6 +172,11 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         sale = emptySale(nextSaleId++);
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
+      if (method === 'POST' && /\/sales\/\d+\/lines\/by-barcode$/.test(url)) {
+        barcodeCalls.push((JSON.parse(init!.body as string) as { barcode: string }).barcode);
+        sale = saleWithMilkLine(sale?.id ?? nextSaleId);
+        return Promise.resolve(jsonResponse(sale, { status: 201 }));
+      }
       if (method === 'POST' && /\/sales\/\d+\/lines$/.test(url)) {
         addLineCalls.push(
           init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
@@ -192,7 +198,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
     }),
   );
 
-  return { postSalesCalls, addLineCalls };
+  return { postSalesCalls, addLineCalls, barcodeCalls };
 }
 
 function renderPage() {
@@ -296,6 +302,60 @@ describe('PosHomePage', () => {
     expect(backend.addLineCalls).toEqual([
       { product_id: 2, package_id: 20, quantity_packages: '0.250' },
     ]);
+  });
+
+  it('opens a second sale alongside the one already open', async () => {
+    // Un cliente se deja el pan y se va a por él; detrás hay gente
+    // esperando y hay que cobrarle sin perder el carrito del primero.
+    const backend = stubBackend({ existingDraft: saleWithMilkLine(42) });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+    expect(backend.postSalesCalls.count).toBe(0);
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Venta nueva' }));
+
+    expect(backend.postSalesCalls.count).toBe(1);
+    // Las dos siguen abiertas y se puede volver a la primera.
+    const first = await screen.findByRole('button', { name: /Venta 1/ });
+    const second = screen.getByRole('button', { name: /Venta 2/ });
+    expect(second).toHaveAttribute('aria-current', 'true');
+
+    await userEvent.click(first);
+    expect(first).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('reads a scanned barcode without clicking into the box first', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await screen.findByRole('button', { name: /leche entera 1l/i });
+
+    // Un lector teclea el código entero de golpe y termina con Intro, sin
+    // que nadie haya pinchado en ningún sitio.
+    for (const key of '8410000000010') {
+      fireEvent.keyDown(document, { key });
+    }
+    fireEvent.keyDown(document, { key: 'Enter' });
+
+    await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
+  });
+
+  it('ignores slow typing outside a field: that is not a scanner', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await screen.findByRole('button', { name: /leche entera 1l/i });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      for (const key of '8410') {
+        fireEvent.keyDown(document, { key });
+        vi.advanceTimersByTime(200);
+      }
+      fireEvent.keyDown(document, { key: 'Enter' });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(backend.barcodeCalls).toEqual([]);
   });
 
   it('resumes an existing draft sale instead of opening a new one', async () => {
