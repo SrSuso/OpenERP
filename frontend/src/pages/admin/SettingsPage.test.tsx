@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -39,7 +39,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
  * ajuste de cada tipo: la pantalla no conoce ninguna de estas claves, las
  * pinta a partir de esta respuesta. */
 const DEFAULT_OPTIONS: SettingsOptions = {
-  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Avisos', 'Servidor (avanzado)'],
+  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Avisos', 'Pantalla', 'Servidor (avanzado)'],
   settings: [
     {
       key: 'store.name',
@@ -140,6 +140,20 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       choices: [],
       minimum: '0',
       maximum: '365',
+      caution: null,
+    },
+    {
+      key: 'ui.button_color',
+      group: 'Pantalla',
+      label: 'Color de los botones del panel',
+      help: 'Del color que elijas se toma el tono.',
+      type: 'COLOR',
+      value: '#2b5bb5',
+      is_set: false,
+      default: '#2b5bb5',
+      choices: [],
+      minimum: null,
+      maximum: null,
       caution: null,
     },
     {
@@ -408,6 +422,21 @@ describe('SettingsPage — opciones del registro', () => {
     ).toBeInTheDocument();
     // Lo escrito sigue ahí para corregirlo, no se ha descartado.
     expect(discount).toHaveValue('150');
+  });
+
+  it('picks a colour from a colour box, not by typing a hex code', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Pantalla');
+
+    const field = screen.getByLabelText('Color de los botones del panel');
+    expect(field).toHaveAttribute('type', 'color');
+    expect(field).toHaveValue('#2b5bb5');
+
+    fireEvent.change(field, { target: { value: '#22c55e' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios de Pantalla' }));
+
+    expect(backend.optionsPutCalls).toEqual([{ 'ui.button_color': '#22c55e' }]);
   });
 
   it('lets a secret be written but never shows it', async () => {

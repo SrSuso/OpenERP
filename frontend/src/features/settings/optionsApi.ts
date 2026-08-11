@@ -15,6 +15,9 @@ export const settingTypeSchema = z.enum([
   'STRING',
   'TEXT',
   'ENUM',
+  // Un color: se elige de un cuadro de colores, no tecleando un
+  // hexadecimal.
+  'COLOR',
   // Se escribe pero no se lee: el servidor lo devuelve siempre vacío y
   // sólo dice, en `is_set`, si hay algo guardado.
   'SECRET',

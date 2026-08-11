@@ -23,6 +23,7 @@ Two rules that keep this honest:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -39,6 +40,10 @@ class SettingType(StrEnum):
     TEXT = "TEXT"
     #: One of `SettingDef.choices`.
     ENUM = "ENUM"
+    #: Un color, en hexadecimal (`#22c55e`). El panel lo pinta como un
+    #: cuadro de colores: nadie tiene por qué saberse un hexadecimal para
+    #: elegir el verde que quiere.
+    COLOR = "COLOR"
     #: Como STRING, pero no sale nunca al leer: se puede escribir desde el
     #: panel y ahí se queda (contraseñas, cadenas de conexión). El panel
     #: enseña si hay algo guardado, no el qué.
@@ -89,6 +94,10 @@ class SettingDef:
                 raise ValueError("Tiene que ser un número.") from None
             self._check_range(value_dec)
             return value_dec
+        if self.type is SettingType.COLOR:
+            if not re.fullmatch(r"#[0-9A-Fa-f]{6}", raw):
+                raise ValueError("Tiene que ser un color.")
+            return raw
         if self.type is SettingType.ENUM:
             if raw not in [c.value for c in self.choices]:
                 allowed = ", ".join(c.label for c in self.choices)
@@ -522,12 +531,11 @@ SETTINGS: tuple[SettingDef, ...] = (
         group=GROUP_UI,
         label="Color de los botones del panel",
         help=(
-            "En hexadecimal (#2b5bb5). Del color que elijas se toma el tono: la "
-            "aplicación reconstruye los claros y los oscuros con las mismas "
-            "intensidades de siempre, para que la letra encima del botón se siga "
-            "leyendo elijas lo que elijas."
+            "Del color que elijas se toma el tono: la aplicación reconstruye los "
+            "claros y los oscuros con las mismas intensidades de siempre, para que "
+            "la letra encima del botón se siga leyendo elijas lo que elijas."
         ),
-        type=SettingType.STRING,
+        type=SettingType.COLOR,
         default="#2b5bb5",
     ),
     SettingDef(
@@ -539,7 +547,7 @@ SETTINGS: tuple[SettingDef, ...] = (
             "carrito, aceptar los gramos. Aparte del anterior a propósito, para que "
             "en la caja se distingan de un vistazo."
         ),
-        type=SettingType.STRING,
+        type=SettingType.COLOR,
         default="#059669",
     ),
     # --- servidor ----------------------------------------------------------

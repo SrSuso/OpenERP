@@ -5,6 +5,7 @@ import { formatQuantity } from '@/lib/format';
  * ("Valor por defecto: …") en vez de meterlo en un campo. */
 function describeValue(definition: SettingDefinition, value: string): string {
   if (definition.type === 'BOOL') return value === 'true' ? 'activado' : 'desactivado';
+  if (definition.type === 'COLOR') return value;
   if (definition.type === 'ENUM') {
     return definition.choices.find((choice) => choice.value === value)?.label ?? value;
   }
@@ -90,6 +91,23 @@ export function SettingField({
           onChange={(event) => onChange(event.target.value)}
           className={`${inputClass} sm:w-40`}
         />
+      );
+      break;
+    case 'COLOR':
+      control = (
+        <span className="mt-1 flex items-center gap-2">
+          <input
+            id={inputId}
+            type="color"
+            value={value}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+            className="h-9 w-16 cursor-pointer rounded border border-slate-300 disabled:cursor-not-allowed"
+          />
+          {/* El hexadecimal al lado, en pequeño: no hay que saberlo para
+              elegir, pero ayuda a repetir el mismo color en otro sitio. */}
+          <span className="font-mono text-xs text-slate-400">{value}</span>
+        </span>
       );
       break;
     case 'SECRET':
