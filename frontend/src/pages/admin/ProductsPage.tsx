@@ -5,6 +5,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import {
   createProduct,
   posCategoriesQuery,
+  updateProduct,
   productCategoriesQuery,
   productsQuery,
   unitsQuery,
@@ -40,6 +41,9 @@ export function ProductsPage() {
   // viene entera (`list_products` no pagina) y `base_unit_name` viene en cada
   // producto: un filtro más en la API no aportaría nada.
   const [unitName, setUnitName] = useState('');
+  //: '' = todas; 'none' = las que no están en ningún botón del TPV, que es
+  //: justo lo que se repasa al montar la caja.
+  const [posCategoryFilter, setPosCategoryFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -85,6 +89,12 @@ export function ProductsPage() {
     },
   });
 
+  const posCategoryMutation = useMutation({
+    mutationFn: ({ product, posCategoryId }: { product: Product; posCategoryId: number | null }) =>
+      updateProduct(product.id, { pos_category_id: posCategoryId }),
+    onSuccess: invalidateProducts,
+  });
+
   const [savedPriceId, setSavedPriceId] = useState<number | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   // El cambio tecleado, esperando a que se confirme: el precio nuevo se
@@ -120,7 +130,12 @@ export function ProductsPage() {
     : null;
 
   const visibleProducts = (products.data ?? []).filter(
-    (product) => unitName === '' || product.base_unit_name === unitName,
+    (product) =>
+      (unitName === '' || product.base_unit_name === unitName) &&
+      (posCategoryFilter === '' ||
+        (posCategoryFilter === 'none'
+          ? product.pos_category_id === null
+          : product.pos_category_id === Number(posCategoryFilter))),
   );
 
   return (
@@ -163,6 +178,22 @@ export function ProductsPage() {
               {units.data?.map((unit) => (
                 <option key={unit.id} value={unit.name}>
                   {unit.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-slate-600">
+            Categoría POS
+            <select
+              value={posCategoryFilter}
+              onChange={(event) => setPosCategoryFilter(event.target.value)}
+              className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
+            >
+              <option value="">Todas</option>
+              <option value="none">Sin asignar</option>
+              {posCategories.data?.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
                 </option>
               ))}
             </select>
@@ -238,6 +269,14 @@ export function ProductsPage() {
           canManagePricing={canManagePricing}
           quickPriceUnits={quickPriceUnits}
           stockByProduct={stockByProduct}
+          posCategories={posCategories.data ?? []}
+          canManage={canManage}
+          onSetPosCategory={(product, posCategoryId) =>
+            posCategoryMutation.mutate({ product, posCategoryId })
+          }
+          savingPosCategoryId={
+            posCategoryMutation.isPending ? posCategoryMutation.variables.product.id : null
+          }
           onSetPrice={(product, listPrice) => setProposedPrice({ product, listPrice })}
           savingPriceId={priceMutation.isPending ? priceMutation.variables.id : null}
           savedPriceId={savedPriceId}

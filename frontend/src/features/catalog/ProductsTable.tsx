@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 
-import { type Product } from '@/features/catalog/api';
+import { type PosCategory, type Product } from '@/features/catalog/api';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
 import { formatMoney, formatQuantity } from '@/lib/format';
 
@@ -14,6 +14,13 @@ interface ProductsTableProps {
   /** Cuánto hay de cada producto, por id. Ausente = todavía cargando, o
    * sin permiso para verlo (`inventory.read`). */
   stockByProduct: Map<number, string> | null;
+  /** Para el desplegable de categoría POS de cada fila. */
+  posCategories: PosCategory[];
+  canManage: boolean;
+  /** Cambia el botón del TPV al que pertenece el producto. `null` = lo
+   * saca de todos. */
+  onSetPosCategory: (product: Product, posCategoryId: number | null) => void;
+  savingPosCategoryId: number | null;
   /** Precio de venta tecleado en la propia fila — `listPrice` ya viene
    * normalizado (coma → punto) por `decimalString`. No guarda: la página
    * pregunta antes, porque el precio nuevo se aplica también a lo que ya
@@ -38,6 +45,10 @@ export function ProductsTable({
   canManagePricing,
   quickPriceUnits,
   stockByProduct,
+  posCategories,
+  canManage,
+  onSetPosCategory,
+  savingPosCategoryId,
   onSetPrice,
   savingPriceId,
   savedPriceId,
@@ -67,7 +78,38 @@ export function ProductsTable({
                 </Link>
               </td>
               <td className="px-4 py-2">{product.category_name ?? '—'}</td>
-              <td className="px-4 py-2">{product.pos_category_name ?? '—'}</td>
+              <td className="px-4 py-2">
+                {canManage ? (
+                  <select
+                    aria-label={`Categoría POS de ${product.name}`}
+                    value={product.pos_category_id ?? ''}
+                    disabled={savingPosCategoryId === product.id}
+                    onChange={(event) =>
+                      onSetPosCategory(
+                        product,
+                        event.target.value === '' ? null : Number(event.target.value),
+                      )
+                    }
+                    className="rounded border border-slate-300 px-2 py-1 text-sm disabled:opacity-50"
+                  >
+                    <option value="">Sin categoría</option>
+                    {/* Una oculta deja de ofrecerse, salvo que sea la que
+                        este producto ya tenía: si no, parecería que no
+                        tiene ninguna. */}
+                    {posCategories
+                      .filter(
+                        (category) => category.is_active || category.id === product.pos_category_id,
+                      )
+                      .map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  (product.pos_category_name ?? '—')
+                )}
+              </td>
               <td className="px-4 py-2 whitespace-nowrap">
                 {stockByProduct === null ? (
                   <span className="text-slate-400">—</span>

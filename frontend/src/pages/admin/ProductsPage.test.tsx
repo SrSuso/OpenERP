@@ -87,6 +87,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
   const activateCalls: number[] = [];
   const pricingCalls: { id: number; body: Record<string, unknown> }[] = [];
   const manualPriceCalls: { id: number; listPrice: string }[] = [];
+  const updateCalls: { id: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -169,6 +170,18 @@ function stubBackend(options: { products?: Product[] } = {}) {
         product.list_price = `${Number(body.list_price).toFixed(6)}`;
         return Promise.resolve(jsonResponse(product));
       }
+      if (method === 'PATCH' && /\/products\/(\d+)$/.test(url)) {
+        const id = Number(/\/products\/(\d+)$/.exec(url)![1]);
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        updateCalls.push({ id, body });
+        const product = products.find((p) => p.id === id)!;
+        if ('pos_category_id' in body) {
+          const posId = body['pos_category_id'] as number | null;
+          product.pos_category_id = posId;
+          product.pos_category_name = POS_CATEGORIES.find((c) => c.id === posId)?.name ?? null;
+        }
+        return Promise.resolve(jsonResponse(product));
+      }
       if (method === 'PATCH' && /\/products\/(\d+)\/pricing$/.test(url)) {
         const id = Number(/\/products\/(\d+)\/pricing$/.exec(url)![1]);
         const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
@@ -185,7 +198,14 @@ function stubBackend(options: { products?: Product[] } = {}) {
     }),
   );
 
-  return { createCalls, deactivateCalls, activateCalls, pricingCalls, manualPriceCalls };
+  return {
+    createCalls,
+    deactivateCalls,
+    activateCalls,
+    pricingCalls,
+    manualPriceCalls,
+    updateCalls,
+  };
 }
 
 function renderPage() {
@@ -287,6 +307,47 @@ describe('ProductsPage', () => {
     // Sigue heredando: no hay PATCH .../pricing de más, igual que si no
     // hubiese categoría con impuestos.
     expect(backend.pricingCalls).toEqual([]);
+  });
+
+  it('assigns a product to a POS category from the list itself', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    // Sin categoría POS de partida, que es como nace un producto.
+    const picker = screen.getByLabelText('Categoría POS de Agua 1L');
+    expect(picker).toHaveValue('');
+
+    await userEvent.selectOptions(picker, '1');
+
+    expect(backend.updateCalls).toEqual([{ id: 1, body: { pos_category_id: 1 } }]);
+
+    // Y se puede sacar de todos los botones del TPV.
+    await userEvent.selectOptions(await screen.findByLabelText('Categoría POS de Agua 1L'), '');
+    expect(backend.updateCalls.at(-1)).toEqual({ id: 1, body: { pos_category_id: null } });
+  });
+
+  it('narrows the list to the products still missing a POS category', async () => {
+    stubBackend({
+      products: [
+        baseProduct(),
+        {
+          ...baseProduct(),
+          id: 2,
+          sku: 'P000002',
+          name: 'Tomate',
+          pos_category_id: 1,
+          pos_category_name: 'Ofertas',
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText('Tomate');
+
+    await userEvent.selectOptions(screen.getByLabelText('Categoría POS'), 'none');
+
+    expect(screen.getByText('Agua 1L')).toBeInTheDocument();
+    expect(screen.queryByText('Tomate')).not.toBeInTheDocument();
   });
 
   it('opens the product detail from its own name', async () => {
