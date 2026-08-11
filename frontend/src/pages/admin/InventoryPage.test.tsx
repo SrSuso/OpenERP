@@ -55,7 +55,15 @@ function stubBackend() {
     track_lots: false,
     track_expiration: false,
     is_active: true,
-    packages: [],
+    packages: [
+      {
+        id: 1,
+        name: 'UNIT',
+        factor: '1.000000',
+        is_base: true,
+        barcodes: [{ id: 1, barcode: '8412345678901' }],
+      },
+    ],
   };
   const balances: StockBalance[] = [
     {
@@ -183,7 +191,11 @@ describe('InventoryBalancesPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
-    await userEvent.selectOptions(within(form).getByLabelText('Producto'), '10');
+    // Buscando por el código de barras impreso en el producto, no por el SKU:
+    // queda un único producto y se elige solo (es lo que pasa al pasar el
+    // lector por la etiqueta).
+    await userEvent.type(within(form).getByLabelText('Buscar producto'), '8412345678901');
+    expect(within(form).getByLabelText('Producto')).toHaveValue('10');
     // Almacén y ubicación vienen ya con la primera opción puesta: con un solo
     // almacén no hay nada que elegir, y desplegarlos era un paso de más. El
     // coste se rellena con el que tiene ahora el producto (0,50), sin dejar

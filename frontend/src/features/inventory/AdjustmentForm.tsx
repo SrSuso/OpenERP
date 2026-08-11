@@ -1,9 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
+import { useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
+import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
 import { useCostOfChosenProduct } from '@/features/inventory/useCostOfChosenProduct';
 import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
@@ -69,6 +71,10 @@ export function AdjustmentForm({
   const locationId = watch('location_id');
   const productId = watch('product_id');
   const chosenProduct = products.find((product) => String(product.id) === productId);
+  const productFieldId = useId();
+  const { query, setQuery, matches } = useProductSearch(products, {
+    onSingleMatch: (id) => setValue('product_id', id),
+  });
   const warehouses = useQuery(warehousesQuery);
   const locations = useQuery(locationsQuery(warehouseId ? Number(warehouseId) : null));
 
@@ -98,14 +104,23 @@ export function AdjustmentForm({
       <h3 className="mb-3 text-sm font-semibold text-slate-700">Registrar ajuste</h3>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="text-sm text-slate-600">
-          Producto
+        <div className="text-sm text-slate-600">
+          <label htmlFor={productFieldId}>Producto</label>
+          <input
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Nombre, SKU o código de barras…"
+            aria-label="Buscar producto"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
+          />
           <select
+            id={productFieldId}
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('product_id')}
           >
             <option value="">Elige un producto…</option>
-            {products.map((product) => (
+            {matches.map((product) => (
               <option key={product.id} value={product.id}>
                 {product.sku} — {product.name}
               </option>
@@ -114,7 +129,7 @@ export function AdjustmentForm({
           {errors.product_id && (
             <p className="mt-1 text-sm text-red-600">{errors.product_id.message}</p>
           )}
-        </label>
+        </div>
 
         <label className="text-sm text-slate-600">
           Almacén

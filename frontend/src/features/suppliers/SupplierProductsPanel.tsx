@@ -1,9 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { productsQuery } from '@/features/catalog/api';
+import { useProductSearch } from '@/features/catalog/useProductSearch';
 import {
   removeProductSupplier,
   supplierProductsQuery,
@@ -56,6 +58,7 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<LinkFormValues>({
     resolver: zodResolver(linkSchema),
@@ -75,6 +78,10 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
 
   const linkedProductIds = new Set(links.data?.map((link) => link.product_id));
   const availableProducts = (products.data ?? []).filter((p) => !linkedProductIds.has(p.id));
+  const productFieldId = useId();
+  const { query, setQuery, matches } = useProductSearch(availableProducts, {
+    onSingleMatch: (id) => setValue('product_id', id),
+  });
 
   return (
     <div className="border-t border-slate-100 bg-slate-50 p-4">
@@ -131,14 +138,23 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
           noValidate
           className="flex flex-wrap items-end gap-2"
         >
-          <label className="text-sm text-slate-600">
-            Producto
+          <div className="text-sm text-slate-600">
+            <label htmlFor={productFieldId}>Producto</label>
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nombre, SKU o código de barras…"
+              aria-label="Buscar producto"
+              className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
+            />
             <select
+              id={productFieldId}
               className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
               {...register('product_id')}
             >
               <option value="">Elige un producto…</option>
-              {availableProducts.map((product) => (
+              {matches.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.sku} — {product.name}
                 </option>
@@ -147,7 +163,7 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
             {errors.product_id && (
               <p className="mt-1 text-sm text-red-600">{errors.product_id.message}</p>
             )}
-          </label>
+          </div>
 
           <label className="text-sm text-slate-600">
             SKU del proveedor

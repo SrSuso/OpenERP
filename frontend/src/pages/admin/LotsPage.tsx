@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import { productsQuery } from '@/features/catalog/api';
+import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { CreateLotForm } from '@/features/lots/CreateLotForm';
 import { LotBalancesPanel } from '@/features/lots/LotBalancesPanel';
 import { LotsTable } from '@/features/lots/LotsTable';
@@ -15,10 +16,14 @@ export function LotsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('lot.manage');
 
+  const productFieldId = useId();
   const [productId, setProductId] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
 
   const products = useQuery(productsQuery({ activeOnly: true }));
+  const { query, setQuery, matches } = useProductSearch(products.data ?? [], {
+    onSingleMatch: setProductId,
+  });
   const suppliers = useQuery(suppliersQuery(true));
   const lots = useQuery({
     ...lotsQuery(productId === '' ? null : Number(productId)),
@@ -39,22 +44,31 @@ export function LotsPage() {
     <section>
       <h1 className="mb-4 text-2xl font-semibold">Lotes y caducidad</h1>
 
-      <label className="mb-4 block text-sm text-slate-600">
-        Producto
+      <div className="mb-4 text-sm text-slate-600">
+        <label htmlFor={productFieldId}>Producto</label>
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Nombre, SKU o código de barras…"
+          aria-label="Buscar producto"
+          className="mt-1 block w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
+        />
         <select
+          id={productFieldId}
           value={productId}
           onChange={(event) => setProductId(event.target.value)}
           className="mt-1 block w-64 rounded border border-slate-300 px-3 py-2 text-sm"
         >
           <option value="">Elige un producto…</option>
-          {(products.data ?? []).map((product) => (
+          {matches.map((product) => (
             <option key={product.id} value={product.id}>
               {product.sku} — {product.name}
               {product.track_lots ? '' : ' (no controla lotes)'}
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
       {productId === '' && (
         <p className="text-sm text-slate-500">Elige un producto para ver y gestionar sus lotes.</p>

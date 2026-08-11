@@ -1,8 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
+import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { type OrderLineInput } from '@/features/purchasing/api';
 import { decimalString } from '@/lib/decimal';
 
@@ -32,6 +34,7 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<AddLineFormValues>({
     resolver: zodResolver(addLineSchema),
@@ -47,6 +50,10 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
 
   const productId = watch('product_id');
   const selectedProduct = products.find((p) => String(p.id) === productId);
+  const productFieldId = useId();
+  const { query, setQuery, matches } = useProductSearch(products, {
+    onSingleMatch: (id) => setValue('product_id', id),
+  });
 
   const submit = handleSubmit((values) => {
     onSubmit({
@@ -73,14 +80,23 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
       noValidate
       className="flex flex-wrap items-end gap-2"
     >
-      <label className="text-sm text-slate-600">
-        Producto
+      <div className="text-sm text-slate-600">
+        <label htmlFor={productFieldId}>Producto</label>
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Nombre, SKU o código de barras…"
+          aria-label="Buscar producto"
+          className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
+        />
         <select
+          id={productFieldId}
           className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
           {...register('product_id')}
         >
           <option value="">Elige un producto…</option>
-          {products.map((product) => (
+          {matches.map((product) => (
             <option key={product.id} value={product.id}>
               {product.sku} — {product.name}
             </option>
@@ -89,7 +105,7 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
         {errors.product_id && (
           <p className="mt-1 text-sm text-red-600">{errors.product_id.message}</p>
         )}
-      </label>
+      </div>
 
       <label className="text-sm text-slate-600">
         Formato
