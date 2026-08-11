@@ -52,20 +52,17 @@ interface CreateProductFormProps {
   submitError: string | null;
 }
 
-/** Suma de las tasas de los impuestos elegidos si hay alguno explícito;
- * si no, la de la categoría — exactamente la prioridad que resuelve
+/** La tasa del impuesto elegido si hay uno explícito; si no, la de la
+ * categoría — exactamente la prioridad que resuelve
  * app.pricing.service.effective_tax_rate una vez el producto existe. */
 function effectiveTaxRatePreview(
   categories: ProductCategory[],
   categoryId: string,
   taxes: Tax[],
-  selectedTaxIds: Set<number>,
+  selectedTaxId: number | null,
 ): string {
-  if (selectedTaxIds.size > 0) {
-    return taxes
-      .filter((tax) => selectedTaxIds.has(tax.id))
-      .reduce((sum, tax) => sum + Number(tax.rate), 0)
-      .toString();
+  if (selectedTaxId !== null) {
+    return String(taxes.find((tax) => tax.id === selectedTaxId)?.rate ?? 0);
   }
   const category = categories.find((c) => String(c.id) === categoryId);
   if (!category) return '0';
@@ -87,24 +84,19 @@ export function CreateProductForm({
   isPending,
   submitError,
 }: CreateProductFormProps) {
-  // `taxIds` es lo que de verdad se manda (vacío = sigue heredando, ver
+  // `taxId` es lo que de verdad se manda (vacío = sigue heredando, ver
   // onSubmit más abajo); `isOverride` distingue "nunca lo ha tocado" de
-  // "ha elegido explícitamente estos" — mientras no lo toque, los chips
-  // muestran marcados los de la categoría (displayedTaxIds), para que no
-  // parezca que no se aplica ningún impuesto, pero taxIds sigue vacío.
+  // "ha elegido explícitamente ese" — mientras no lo toque, el chip
+  // muestra marcado el de la categoría (displayedTaxId), para que no
+  // parezca que no se aplica ningún impuesto, pero taxId sigue vacío.
   const [isOverride, setIsOverride] = useState(false);
-  const [taxIds, setTaxIds] = useState<Set<number>>(new Set());
+  const [taxId, setTaxId] = useState<number | null>(null);
 
-  function toggleTax(id: number, categoryTaxIds: Set<number>) {
-    setTaxIds((current) => {
-      const base = isOverride ? current : categoryTaxIds;
-      const next = new Set(base);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  function selectTax(id: number | null) {
+    setTaxId(id);
     setIsOverride(true);
   }
+
   const {
     register,
     handleSubmit,
@@ -130,6 +122,11 @@ export function CreateProductForm({
   const cost = watch('cost');
   const marginInput = watch('margin_rate');
   const categoryId = watch('category_id');
+  // Mientras no se toque el selector se muestra el de la categoría, que es
+  // el que de verdad se aplicaría — pero `taxId` sigue vacío, así que el
+  // alta no lo manda como si fuera una elección propia.
+  const categoryTaxId = categories.find((c) => String(c.id) === categoryId)?.taxes[0]?.id ?? null;
+  const displayedTaxId = isOverride ? taxId : categoryTaxId;
   const [estimatedPrice, setEstimatedPrice] = useState<string | null>(null);
 
   const previewMutation = useMutation({
@@ -152,7 +149,7 @@ export function CreateProductForm({
   useEffect(() => {
     const marginRate =
       marginInput.trim() !== '' ? marginInput : categoryMarginRate(categories, categoryId);
-    const taxRate = effectiveTaxRatePreview(categories, categoryId, taxes, taxIds);
+    const taxRate = effectiveTaxRatePreview(categories, categoryId, taxes, displayedTaxId);
     if (!cost || Number.isNaN(Number(cost.replace(',', '.')))) {
       setEstimatedPrice(null);
       return;
@@ -169,12 +166,7 @@ export function CreateProductForm({
     // re-run this effect on every render (its identity isn't memoised) —
     // deliberately left out.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cost, marginInput, categoryId, categories, taxes, taxIds]);
-
-  const categoryTaxIds = new Set(
-    (categories.find((c) => String(c.id) === categoryId)?.taxes ?? []).map((t) => t.id),
-  );
-  const displayedTaxIds = isOverride ? taxIds : categoryTaxIds;
+  }, [cost, marginInput, categoryId, categories, taxes, displayedTaxId]);
 
   const submit = handleSubmit((values) =>
     onSubmit(
@@ -193,7 +185,7 @@ export function CreateProductForm({
         track_lots: values.track_lots,
         track_expiration: values.track_expiration,
       },
-      [...taxIds],
+      taxId === null ? [] : [taxId],
     ),
   );
 
@@ -327,16 +319,12 @@ export function CreateProductForm({
 
         <div className="text-sm text-slate-600 sm:col-span-3">
           <span className="mb-1 block">
-            Impuestos —{' '}
+            Impuesto —{' '}
             {isOverride
-              ? 'propios de este producto'
-              : `heredados de "${categories.find((c) => String(c.id) === categoryId)?.name ?? 'sin categoría'}" (marcados igualmente, para que se vea que sí se aplican)`}
+              ? 'propio de este producto'
+              : `heredados de "${categories.find((c) => String(c.id) === categoryId)?.name ?? 'sin categoría'}" (marcado igualmente, para que se vea que sí se aplica)`}
           </span>
-          <TaxChips
-            taxes={taxes}
-            selected={displayedTaxIds}
-            onToggle={(id) => toggleTax(id, categoryTaxIds)}
-          />
+          <TaxChips taxes={taxes} selected={displayedTaxId} onSelect={selectTax} />
         </div>
 
         <div className="text-sm text-slate-600">

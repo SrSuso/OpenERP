@@ -7,9 +7,10 @@ product's current price must never rewrite what its price *was*). No
 
 ``Tax``/``category_taxes``/``product_taxes`` and ``PricingSettings`` are
 what actually compute a product's list price, added after the 22-phase
-plan closed, at the user's request: several taxes may apply to one
-product at once (they stack additively — IVA + recargo de equivalencia,
-for instance), and both taxes and margin can be set on a
+plan closed, at the user's request: a product applies **one** tax at most
+(two would add up to a rate that doesn't exist; the recargo de
+equivalencia travels inside the tax itself, see ``Tax.surcharge_rate``),
+and both tax and margin can be set on a
 ``ProductCategory`` as a default that a product's own explicit value (if
 it has one) overrides — see ``app.pricing.service.effective_tax_rate``/
 ``effective_margin_rate``, the only place that resolves that priority.
@@ -55,8 +56,9 @@ class ProductPriceHistory(IntPrimaryKeyMixin, Base):
 class Tax(IntPrimaryKeyMixin, TimestampMixin, Base):
     """A named tax ("IVA general 21%"), managed on its own — never typed
     as a raw number on a product. Assigned to products/categories via the
-    association tables below; several can apply to the same product at
-    once."""
+    association tables below, one at most on each: those tables stay
+    many-to-many because rows created before that rule existed have to
+    remain readable."""
 
     __tablename__ = "taxes"
 

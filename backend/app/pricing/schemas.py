@@ -5,7 +5,24 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _at_most_one_tax(value: list[int] | None) -> list[int] | None:
+    """Un producto (o una categoría) tiene *un* tipo de IVA, no una suma de
+    varios: dos elegidos darían un 31% que no existe. Se permitían varios
+    cuando así se representaba "IVA + recargo de equivalencia"; desde que
+    el recargo es una columna del propio impuesto (`Tax.surcharge_rate`)
+    apilar ya no hace falta.
+
+    Vacío sigue significando "hereda", que es distinto de "sin impuesto".
+    """
+    if value is not None and len(value) > 1:
+        raise ValueError(
+            "Sólo se puede aplicar un impuesto: dos tipos de IVA a la vez se sumarían "
+            "y darían una tasa que no existe."
+        )
+    return value
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -48,6 +65,11 @@ class SetPricingInputsRequest(BaseModel):
     margin_rate: Decimal | None = Field(default=None, ge=0)
     tax_ids: list[int] | None = Field(default=None)
 
+    @field_validator("tax_ids")
+    @classmethod
+    def _at_most_one(cls, value: list[int] | None) -> list[int] | None:
+        return _at_most_one_tax(value)
+
 
 class TaxCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
@@ -83,6 +105,11 @@ class CategoryPricingUpdate(BaseModel):
 
     margin_rate: Decimal | None = Field(default=None, ge=0)
     tax_ids: list[int] | None = Field(default=None)
+
+    @field_validator("tax_ids")
+    @classmethod
+    def _at_most_one(cls, value: list[int] | None) -> list[int] | None:
+        return _at_most_one_tax(value)
 
 
 class PricingSettingsRead(BaseModel):

@@ -38,20 +38,16 @@ export function ProductPricingPanel({
   // en un override propio a partir de ahí (isOverride pasa a true).
   const hasOwnTaxes = product.taxes.length > 0;
   const [isOverride, setIsOverride] = useState(hasOwnTaxes);
-  const [taxIds, setTaxIds] = useState<Set<number>>(
-    new Set((hasOwnTaxes ? product.taxes : (category?.taxes ?? [])).map((t) => t.id)),
+  // Uno como mucho (ver `TaxChips`): un producto tiene un tipo de IVA.
+  const [taxId, setTaxId] = useState<number | null>(
+    (hasOwnTaxes ? product.taxes : (category?.taxes ?? []))[0]?.id ?? null,
   );
 
   const inheritsMargin = marginInput.trim() === '';
 
-  function toggleTax(id: number) {
+  function selectTax(id: number | null) {
     setIsOverride(true);
-    setTaxIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setTaxId(id);
   }
 
   function submit() {
@@ -67,7 +63,7 @@ export function ProductPricingPanel({
       // Sin tocar nada: sigue vacío (hereda), aunque la interfaz muestre
       // marcados los de la categoría — nunca se manda ese conjunto como
       // si fuera una elección propia sin que el usuario haya interactuado.
-      tax_ids: isOverride ? [...taxIds] : [],
+      tax_ids: isOverride && taxId !== null ? [taxId] : [],
     });
   }
 
@@ -112,12 +108,12 @@ export function ProductPricingPanel({
 
         <div className="text-xs text-slate-600 sm:col-span-3">
           <span className="mb-1 block">
-            Impuestos —{' '}
+            Impuesto —{' '}
             {isOverride
               ? 'propios de este producto'
               : `heredados de "${category?.name ?? 'sin categoría'}" (marcados igualmente, para que se vea que sí se aplican)`}
           </span>
-          <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
+          <TaxChips taxes={taxes} selected={taxId} onSelect={selectTax} />
         </div>
       </div>
 
