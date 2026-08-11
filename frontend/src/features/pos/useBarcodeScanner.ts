@@ -1,13 +1,22 @@
 import { useEffect, useRef } from 'react';
 
-/** Un lector teclea un código entero en unas decenas de milisegundos; una
- * persona no baja de ~100 ms entre teclas ni de lejos. Si pasa más tiempo
- * del que cabe aquí entre dos teclas, lo de antes no era un escaneo. */
-const MAX_GAP_MS = 60;
+/** Hueco máximo entre dos teclas para seguir considerándolo un escaneo.
+ *
+ * Un lector rápido teclea a 10-20 ms por carácter, pero los hay que van a
+ * 50-80, y por Bluetooth se nota más. Una persona no baja de 150 ms entre
+ * teclas ni escribiendo muy rápido, así que 120 deja pasar a cualquier
+ * lector sin llegar a confundirse con alguien tecleando. */
+const MAX_GAP_MS = 120;
 
 /** Por debajo de esto no es un código de barras, es alguien que ha pulsado
- * Intro con dos teclas sueltas encima. */
+ * una tecla suelta con el foco fuera de un campo. */
 const MIN_LENGTH = 4;
+
+/** Muchos lectores vienen de fábrica sin sufijo: sueltan el código y ya.
+ * Si no llega ningún terminador, se da por terminado al dejar de teclear.
+ * Tiene que ser bastante más que `MAX_GAP_MS` para no cortar un código por
+ * la mitad. */
+const IDLE_FLUSH_MS = 400;
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -21,12 +30,13 @@ function isTyping(target: EventTarget | null): boolean {
  * Escucha el lector de códigos de barras en toda la pantalla, sin tener que
  * pinchar antes en ningún recuadro.
  *
- * Un lector de los de pistola se comporta como un teclado: escribe el
- * código muy deprisa y termina con Intro. Aquí se acumula lo que se teclea
- * y, al llegar el Intro, si vino a la velocidad de una máquina y es lo
- * bastante largo, se trata como un escaneo. Escribir a mano en cualquier
- * recuadro sigue funcionando igual: mientras el foco esté en un campo, esto
- * no se mete.
+ * Un lector de pistola se comporta como un teclado: escribe el código muy
+ * deprisa y, según cómo venga configurado, lo termina con Intro, con Tab o
+ * con nada. Aquí se acumula lo que se teclea y se da por hecho el escaneo
+ * de las tres formas: los dos terminadores, y el quedarse quieto.
+ *
+ * Escribir a mano sigue funcionando igual: mientras el foco esté en un
+ * campo, esto no se mete.
  */
 export function useBarcodeScanner(onScan: (code: string) => void, enabled: boolean): void {
   const onScanRef = useRef(onScan);
@@ -37,10 +47,19 @@ export function useBarcodeScanner(onScan: (code: string) => void, enabled: boole
 
     let buffer = '';
     let lastKeyAt = 0;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function flush() {
+      const code = buffer;
+      buffer = '';
+      clearTimeout(idleTimer);
+      if (code.length >= MIN_LENGTH) onScanRef.current(code);
+      return code.length >= MIN_LENGTH;
+    }
 
     function handle(event: KeyboardEvent) {
       // Con el foco en un campo manda el campo: es donde se teclea a mano
-      // un código, los gramos de lo que se pesa o la contraseña.
+      // un código, los gramos de lo que se pesa o una contraseña.
       if (isTyping(event.target)) return;
       // Un atajo del navegador no es un escaneo.
       if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -49,23 +68,27 @@ export function useBarcodeScanner(onScan: (code: string) => void, enabled: boole
       if (now - lastKeyAt > MAX_GAP_MS) buffer = '';
       lastKeyAt = now;
 
-      if (event.key === 'Enter') {
-        const code = buffer;
-        buffer = '';
-        if (code.length >= MIN_LENGTH) {
-          // Que no active además el botón que tuviera el foco.
-          event.preventDefault();
-          onScanRef.current(code);
-        }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        // Que el terminador no active además el botón que tuviera el foco
+        // ni mueva el foco de sitio.
+        if (flush()) event.preventDefault();
         return;
       }
 
-      // Sólo caracteres sueltos: "Shift", "Tab" y compañía llegan con
+      // Sólo caracteres sueltos: "Shift", "F5" y compañía llegan con
       // nombres largos y no forman parte del código.
-      if (event.key.length === 1) buffer += event.key;
+      if (event.key.length !== 1) return;
+      buffer += event.key;
+
+      // Sin sufijo configurado: se cierra solo al dejar de llegar teclas.
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(flush, IDLE_FLUSH_MS);
     }
 
     document.addEventListener('keydown', handle);
-    return () => document.removeEventListener('keydown', handle);
+    return () => {
+      document.removeEventListener('keydown', handle);
+      clearTimeout(idleTimer);
+    };
   }, [enabled]);
 }

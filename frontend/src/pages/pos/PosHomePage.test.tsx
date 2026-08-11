@@ -327,7 +327,7 @@ describe('PosHomePage', () => {
   it('reads a scanned barcode without clicking into the box first', async () => {
     const backend = stubBackend({ existingDraft: emptySale(42) });
     renderPage();
-    await screen.findByRole('button', { name: /leche entera 1l/i });
+    await screen.findByRole('button', { name: /cancelar venta/i });
 
     // Un lector teclea el código entero de golpe y termina con Intro, sin
     // que nadie haya pinchado en ningún sitio.
@@ -339,10 +339,45 @@ describe('PosHomePage', () => {
     await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
   });
 
+  it('reads a slower scanner too, and one that sends no Enter at all', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await screen.findByRole('button', { name: /cancelar venta/i });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      // 80 ms por carácter: un lector por Bluetooth de los lentos.
+      for (const key of '8410000000010') {
+        fireEvent.keyDown(document, { key });
+        vi.advanceTimersByTime(80);
+      }
+      // Sin Intro ni Tab: muchos vienen de fábrica sin sufijo, y se cierra
+      // solo al dejar de llegar teclas.
+      vi.advanceTimersByTime(500);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
+  });
+
+  it('accepts Tab as the terminator, which many scanners send instead', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await screen.findByRole('button', { name: /cancelar venta/i });
+
+    for (const key of '8410000000010') {
+      fireEvent.keyDown(document, { key });
+    }
+    fireEvent.keyDown(document, { key: 'Tab' });
+
+    await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
+  });
+
   it('ignores slow typing outside a field: that is not a scanner', async () => {
     const backend = stubBackend({ existingDraft: emptySale(42) });
     renderPage();
-    await screen.findByRole('button', { name: /leche entera 1l/i });
+    await screen.findByRole('button', { name: /cancelar venta/i });
 
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

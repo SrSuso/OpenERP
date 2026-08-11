@@ -173,7 +173,15 @@ export function PosHomePage() {
       setSale(updated);
       setBarcode('');
     },
-    onError: (error) => setLineError(describeError(error)),
+    // Con el lector, el error que sale casi siempre es que ese código no
+    // está dado de alta — y hay que decirlo con el código delante, para no
+    // dejar a nadie mirando la pantalla sin saber qué ha leído la pistola.
+    onError: (error, code) =>
+      setLineError(
+        error instanceof ApiError && error.status === 404
+          ? `El código ${code} no está dado de alta en ningún producto.`
+          : describeError(error),
+      ),
   });
 
   const removeLineMutation = useMutation({
