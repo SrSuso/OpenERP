@@ -30,6 +30,7 @@ const SALE: Sale = {
   location_id: 1,
   status: 'DRAFT',
   notes: '',
+  created_at: '2026-08-11T10:00:00Z',
   lines: [MILK_LINE],
   total: '2.640000',
   payments: [],

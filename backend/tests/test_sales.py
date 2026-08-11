@@ -5,6 +5,7 @@ exclusively phase 13's job once payments exist."""
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -355,3 +356,31 @@ async def test_weighed_quantities_add_up_on_one_line(
     lines = response.json()["lines"]
     assert len(lines) == 1
     assert lines[0]["quantity_packages"] == "0.800000"
+
+
+async def test_sales_can_be_listed_by_the_day_they_were_opened(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """La pantalla de ventas pregunta por un día concreto; el rango es
+    cerrado por abajo y abierto por arriba para poder pedirlo entero."""
+    await login(role_name="ADMIN")
+    sale = await _open_sale(client)
+    today = datetime.now(UTC).date()
+
+    same_day = await client.get(
+        "/api/v1/sales",
+        params={
+            "created_from": today.isoformat(),
+            "created_to": (today + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert sale["id"] in [s["id"] for s in same_day.json()]
+
+    tomorrow_only = await client.get(
+        "/api/v1/sales",
+        params={
+            "created_from": (today + timedelta(days=1)).isoformat(),
+            "created_to": (today + timedelta(days=2)).isoformat(),
+        },
+    )
+    assert tomorrow_only.json() == []

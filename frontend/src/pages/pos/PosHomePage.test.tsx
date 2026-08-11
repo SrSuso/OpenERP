@@ -72,6 +72,7 @@ function emptySale(id: number): Sale {
     location_id: 1,
     status: 'DRAFT',
     notes: '',
+    created_at: '2026-08-11T10:00:00Z',
     lines: [],
     total: '0.000000',
     payments: [],
@@ -86,6 +87,7 @@ function saleWithMilkLine(id: number): Sale {
     location_id: 1,
     status: 'DRAFT',
     notes: '',
+    created_at: '2026-08-11T10:00:00Z',
     lines: [
       {
         id: 900,

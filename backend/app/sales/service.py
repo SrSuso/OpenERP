@@ -142,6 +142,8 @@ async def list_sales(
     *,
     status: str | None = None,
     warehouse_id: int | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[Sale]:
@@ -156,6 +158,12 @@ async def list_sales(
         stmt = stmt.where(Sale.status == status)
     if warehouse_id is not None:
         stmt = stmt.where(Sale.warehouse_id == warehouse_id)
+    # Por fecha de apertura: es la que se pregunta ("las de hoy"), y la
+    # única que tienen también las que se quedaron sin cobrar.
+    if created_from is not None:
+        stmt = stmt.where(Sale.created_at >= created_from)
+    if created_to is not None:
+        stmt = stmt.where(Sale.created_at < created_to)
     return list((await session.execute(stmt)).scalars())
 
 

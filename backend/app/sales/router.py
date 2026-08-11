@@ -5,6 +5,7 @@ endpoints protected the same way)."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -40,11 +41,22 @@ async def list_sales(
     pricing: PricingSettingsDep,
     status: Annotated[str | None, Query()] = None,
     warehouse_id: Annotated[int | None, Query()] = None,
+    #: Rango sobre la fecha de apertura, cerrado por abajo y abierto por
+    #: arriba, para poder pedir un día entero sin pelearse con la última
+    #: hora: `created_from=2026-08-11&created_to=2026-08-12`.
+    created_from: Annotated[datetime | None, Query()] = None,
+    created_to: Annotated[datetime | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[SaleRead]:
     sales = await service.list_sales(
-        session, status=status, warehouse_id=warehouse_id, limit=limit, offset=offset
+        session,
+        status=status,
+        warehouse_id=warehouse_id,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+        offset=offset,
     )
     return [_to_read(s, pricing) for s in sales]
 

@@ -45,6 +45,7 @@ const SECTIONS: NavSection[] = [
     entries: [
       { to: '/admin/suppliers', label: 'Proveedores', permissions: ['supplier.read'] },
       { to: '/admin/purchasing', label: 'Compras', permissions: ['purchase.read'] },
+      { to: '/admin/sales', label: 'Ventas', permissions: ['sale.read'] },
       { to: '/admin/returns', label: 'Devoluciones', permissions: ['return.read'] },
       { to: '/admin/reports', label: 'Informes', permissions: ['report.read'] },
     ],

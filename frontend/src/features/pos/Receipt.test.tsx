@@ -12,6 +12,7 @@ const PAID_SALE: Sale = {
   location_id: 1,
   status: 'COMPLETED',
   notes: '',
+  created_at: '2026-08-11T10:00:00Z',
   lines: [],
   total: '20.000000',
   payments: [{ id: 1, method: 'CASH', amount: '50.000000', created_at: '2026-08-08T10:00:00Z' }],

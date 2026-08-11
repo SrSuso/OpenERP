@@ -148,6 +148,10 @@ export const saleSchema = z.object({
   location_id: z.number(),
   status: z.enum(['DRAFT', 'COMPLETED', 'CANCELLED']),
   notes: z.string(),
+  // Cuándo se abrió: es por lo que se listan y se filtran en la pantalla
+  // de Ventas, y lo único que tienen también las que se quedaron sin
+  // cobrar.
+  created_at: z.string(),
   lines: z.array(saleLineSchema),
   total: z.string(),
   payments: z.array(paymentSchema),
@@ -178,6 +182,36 @@ export function draftSalesQuery(warehouseId: number | null) {
         signal,
       }),
     enabled: warehouseId !== null,
+  });
+}
+
+export interface SalesFilters {
+  /** Día concreto, `YYYY-MM-DD`. */
+  day?: string;
+  status?: 'DRAFT' | 'COMPLETED' | 'CANCELLED';
+}
+
+/** Las ventas de un día, para la pantalla de Ventas del panel. El rango va
+ * de ese día al siguiente porque el servidor lo trata cerrado por abajo y
+ * abierto por arriba: así entra el día entero sin pelearse con la última
+ * hora. */
+export function salesQuery(filters: SalesFilters) {
+  const params = new URLSearchParams({ limit: '500' });
+  if (filters.day) {
+    const next = new Date(`${filters.day}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    params.set('created_from', filters.day);
+    params.set('created_to', next.toISOString().slice(0, 10));
+  }
+  if (filters.status) params.set('status', filters.status);
+
+  return queryOptions({
+    queryKey: ['sales', 'list', filters] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/sales?${params.toString()}`, {
+        schema: z.array(saleSchema),
+        signal,
+      }),
   });
 }
 
