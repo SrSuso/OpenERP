@@ -287,3 +287,52 @@ export async function generateTicket(saleId: number): Promise<Ticket> {
     schema: ticketSchema,
   });
 }
+
+// --- cierre de caja (la Z de totales) ---------------------------------------
+
+export const zReportSchema = z.object({
+  id: z.number(),
+  warehouse_id: z.number(),
+  number: z.number(),
+  covers_from: z.string().nullable(),
+  closed_at: z.string(),
+  sales_count: z.number(),
+  gross_total: z.string(),
+  tax_total: z.string(),
+  discount_total: z.string(),
+  cash_total: z.string(),
+  card_total: z.string(),
+  other_total: z.string(),
+  returns_count: z.number(),
+  returns_total: z.string(),
+  closed_by_user_id: z.number().nullable(),
+});
+export type ZReport = z.infer<typeof zReportSchema>;
+
+export const zReportPreviewSchema = zReportSchema
+  .omit({ id: true, warehouse_id: true, number: true, closed_at: true, closed_by_user_id: true })
+  .extend({ open_sales: z.number() });
+export type ZReportPreview = z.infer<typeof zReportPreviewSchema>;
+
+/** Lo que saldría en la Z si se cerrase ahora, sin guardar nada. */
+export function zReportPreviewQuery(warehouseId: number | null) {
+  return queryOptions({
+    queryKey: ['pos', 'z-report', 'preview', warehouseId] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/z-reports/preview?warehouse_id=${warehouseId}`, {
+        schema: zReportPreviewSchema,
+        signal,
+      }),
+    enabled: warehouseId !== null,
+    // El turno sigue vivo mientras se mira: no vale un total de hace un rato.
+    staleTime: 0,
+  });
+}
+
+/** Cierra el turno y congela sus totales. */
+export async function closeZReport(warehouseId: number): Promise<ZReport> {
+  return apiFetch(`${API_V1}/z-reports?warehouse_id=${warehouseId}`, {
+    method: 'POST',
+    schema: zReportSchema,
+  });
+}

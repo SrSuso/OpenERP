@@ -87,3 +87,43 @@ class SaleRead(BaseModel):
     #: Cash handed back to the customer on the last checkout — 0 unless
     #: ``status == COMPLETED`` and a cash tender overshot the total.
     change_due: Decimal
+
+
+class ZReportRead(BaseModel):
+    """El cierre de caja, tal y como se guardó — ver `app.sales.z_reports`."""
+
+    id: int
+    warehouse_id: int
+    number: int
+    #: Nulo en la primera Z de esa caja: antes no había corte.
+    covers_from: datetime | None
+    closed_at: datetime
+    sales_count: int
+    gross_total: Decimal
+    tax_total: Decimal
+    discount_total: Decimal
+    cash_total: Decimal
+    card_total: Decimal
+    other_total: Decimal
+    returns_count: int
+    returns_total: Decimal
+    closed_by_user_id: int | None
+
+
+class ZReportPreview(BaseModel):
+    """Lo mismo, pero sin guardar ni numerar: lo que se enseña antes de
+    confirmar el cierre."""
+
+    covers_from: datetime | None
+    sales_count: int
+    gross_total: Decimal
+    tax_total: Decimal
+    discount_total: Decimal
+    cash_total: Decimal
+    card_total: Decimal
+    other_total: Decimal
+    returns_count: int
+    returns_total: Decimal
+    #: Ventas sin cobrar en esta caja: con alguna abierta no se puede
+    #: cerrar, y el TPV lo dice antes de dejar pulsar.
+    open_sales: int

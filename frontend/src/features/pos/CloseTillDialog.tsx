@@ -1,0 +1,149 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+
+import { closeZReport, zReportPreviewQuery, type ZReport } from '@/features/pos/api';
+import { ApiError } from '@/lib/api';
+import { formatMoney } from '@/lib/format';
+
+interface CloseTillDialogProps {
+  warehouseId: number | null;
+  onCancel: () => void;
+  /** Se llama cuando el turno ya está cerrado y guardado. */
+  onClosed: () => void;
+}
+
+function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex justify-between gap-6 py-1">
+      <span className={strong ? 'font-semibold text-slate-100' : 'text-slate-400'}>{label}</span>
+      <span className={strong ? 'font-semibold text-slate-50' : 'text-slate-200'}>{value}</span>
+    </div>
+  );
+}
+
+/**
+ * El cierre de caja antes de salir.
+ *
+ * Cerrar sesión sin cuadrar deja el turno abierto y sin nada con que
+ * reconciliar el cajón al día siguiente, así que la caja no deja irse sin
+ * hacer la Z. Se enseñan los totales antes de confirmar —lo que se ha
+ * cobrado y en qué forma de pago— y, una vez cerrada, la Z queda guardada
+ * con su número y se puede imprimir.
+ *
+ * Con una venta a medias no se cierra: ese carrito se cobraría después del
+ * corte y descuadraría esta Z y la siguiente. El servidor lo rechaza igual
+ * (regla 11); aquí sólo se dice antes de dejar pulsar.
+ */
+export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDialogProps) {
+  const preview = useQuery(zReportPreviewQuery(warehouseId));
+  const [closed, setClosed] = useState<ZReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const closeMutation = useMutation({
+    mutationFn: () => closeZReport(warehouseId as number),
+    onSuccess: (report) => {
+      setClosed(report);
+      setError(null);
+    },
+    onError: (err: unknown) =>
+      setError(err instanceof ApiError ? err.message : 'No se ha podido cerrar la caja.'),
+  });
+
+  // Con la Z ya guardada, se manda a imprimir: es el papel con el que se
+  // cuadra el cajón.
+  useEffect(() => {
+    if (closed !== null) window.print();
+  }, [closed]);
+
+  const totals = closed ?? preview.data;
+  const openSales = preview.data?.open_sales ?? 0;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Cierre de caja"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+    >
+      <div className="ticket-print-root w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl">
+        <h2 className="text-xl font-semibold text-slate-50">
+          {closed ? `Cierre Z nº ${closed.number}` : 'Cierre de caja (Z)'}
+        </h2>
+        <p className="mt-1 text-sm text-slate-400">
+          {closed
+            ? 'Guardado. Puedes volver a imprimirlo desde el panel.'
+            : 'Estos son los totales del turno desde el último cierre.'}
+        </p>
+
+        {preview.isPending && !closed && <p className="mt-4 text-slate-400">Calculando…</p>}
+
+        {totals && (
+          <div className="mt-4 border-t border-slate-700 pt-3 text-sm">
+            <Row label="Ventas cobradas" value={String(totals.sales_count)} />
+            <Row label="Efectivo" value={formatMoney(totals.cash_total)} />
+            <Row label="Tarjeta" value={formatMoney(totals.card_total)} />
+            <Row label="Otros" value={formatMoney(totals.other_total)} />
+            {Number(totals.returns_total) > 0 && (
+              <Row
+                label={`Devoluciones (${totals.returns_count})`}
+                value={`− ${formatMoney(totals.returns_total)}`}
+              />
+            )}
+            <div className="mt-2 border-t border-slate-700 pt-2">
+              <Row label="Total cobrado" value={formatMoney(totals.gross_total)} strong />
+              <Row label="Del que es IVA" value={formatMoney(totals.tax_total)} />
+            </div>
+          </div>
+        )}
+
+        {!closed && openSales > 0 && (
+          <p className="mt-4 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
+            Hay {openSales} venta{openSales === 1 ? '' : 's'} sin cobrar. Cóbrala
+            {openSales === 1 ? '' : 's'} o cancélala{openSales === 1 ? '' : 's'} antes de cerrar.
+          </p>
+        )}
+
+        {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+
+        <div className="mt-6 flex gap-2 print:hidden">
+          {closed ? (
+            <>
+              <button
+                type="button"
+                onClick={onClosed}
+                className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white"
+              >
+                Salir
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+              >
+                Imprimir otra vez
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={closeMutation.isPending || preview.isPending || openSales > 0}
+                onClick={() => closeMutation.mutate()}
+                className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white disabled:opacity-40"
+              >
+                {closeMutation.isPending ? 'Cerrando…' : 'Cerrar caja e imprimir Z'}
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+              >
+                Seguir vendiendo
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

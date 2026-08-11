@@ -23,7 +23,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.catalog.models import Product, ProductPackage
@@ -122,3 +122,50 @@ class Payment(IntPrimaryKeyMixin, TimestampMixin, Base):
     amount: Mapped[Money]
 
     sale: Mapped[Sale] = relationship(back_populates="payments")
+
+
+class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
+    """El cierre de caja: los totales del turno, congelados.
+
+    Se guarda calculado, no como una consulta que se rehaga al mirarla: una
+    Z es el papel con el que se cuadra el cajón esa noche, y tiene que decir
+    dentro de un año exactamente lo mismo que decía entonces, aunque después
+    se haya devuelto media compra o cambiado un precio. Mismo criterio que
+    el texto del ticket (`app.tickets`).
+
+    El turno va del cierre anterior a éste: `covers_from` es el `closed_at`
+    de la Z anterior de ese almacén, o nulo la primera vez (entran todas las
+    ventas que haya). Así no hay huecos ni solapes entre dos Z seguidas.
+
+    `number` es correlativo por almacén, que es lo que se espera de una Z y
+    lo que hace que se note si falta una.
+    """
+
+    __tablename__ = "z_reports"
+    __table_args__ = (
+        UniqueConstraint("warehouse_id", "number", name="uq_z_reports_warehouse_number"),
+    )
+
+    warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    #: Nulo en la primera Z: antes de ella no hay corte, así que entra todo.
+    covers_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    sales_count: Mapped[int] = mapped_column(Integer, default=0)
+    gross_total: Mapped[Money]
+    tax_total: Mapped[Money]
+    discount_total: Mapped[Money]
+    #: Desglose por forma de pago: es con lo que se cuadra el cajón.
+    cash_total: Mapped[Money]
+    card_total: Mapped[Money]
+    other_total: Mapped[Money]
+    #: Lo devuelto en el mismo turno, que sale del cajón igual que una
+    #: venta entra en él.
+    returns_count: Mapped[int] = mapped_column(Integer, default=0)
+    returns_total: Mapped[Money]
+
+    #: Nulo si quien la cerró se da de baja después (regla 14).
+    closed_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=True
+    )

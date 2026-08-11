@@ -1,6 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Outlet } from 'react-router';
 
 import { useAuth } from '@/features/auth/AuthContext';
+import { warehousesQuery } from '@/features/inventory/api';
+import { CloseTillDialog } from '@/features/pos/CloseTillDialog';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 
 /**
@@ -13,6 +17,11 @@ import { useShopSetting } from '@/features/settings/useShopSettings';
 export function PosLayout() {
   const { user, logout } = useAuth();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
+  // Nadie sale de la caja sin cuadrarla: el botón abre el cierre, y sólo
+  // desde ahí —con la Z ya guardada— se cierra la sesión.
+  const [closingTill, setClosingTill] = useState(false);
+  const warehouses = useQuery(warehousesQuery);
+  const warehouseId = warehouses.data?.[0]?.id ?? null;
 
   return (
     <div className="pos-surface flex h-full flex-col bg-slate-900 text-slate-50">
@@ -22,7 +31,7 @@ export function PosLayout() {
           {user && <span>{user.full_name}</span>}
           <button
             type="button"
-            onClick={() => void logout()}
+            onClick={() => setClosingTill(true)}
             className="rounded bg-slate-700 px-4 py-2 font-medium hover:bg-slate-600"
           >
             Cerrar sesión
@@ -32,6 +41,14 @@ export function PosLayout() {
       <main className="flex-1 overflow-hidden">
         <Outlet />
       </main>
+
+      {closingTill && (
+        <CloseTillDialog
+          warehouseId={warehouseId}
+          onCancel={() => setClosingTill(false)}
+          onClosed={() => void logout()}
+        />
+      )}
     </div>
   );
 }
