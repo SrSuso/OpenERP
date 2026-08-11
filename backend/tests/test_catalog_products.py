@@ -389,3 +389,33 @@ async def test_renaming_a_category_onto_an_existing_name_is_a_conflict(
     # Renombrarla a lo que ya se llama no es un choque consigo misma.
     same = await client.patch(f"/api/v1/product-categories/{other['id']}", json={"name": "Lácteos"})
     assert same.status_code == 200
+
+
+async def test_products_can_be_searched_by_barcode(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """El código de barras es lo que está impreso en el producto; el SKU es
+    una referencia interna que nadie se sabe de memoria."""
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+    await client.post(
+        f"/api/v1/products/{product['id']}/packages",
+        json={"name": "CAJA 6", "factor": "6", "barcode": "8412345678901"},
+    )
+    await client.post(
+        "/api/v1/products",
+        json=_product_payload(sku="WATER-1L", name="Agua 1L", base_barcode="777777"),
+    )
+
+    # El de un formato que no es el base cuenta igual: es el mismo producto.
+    by_box = await client.get("/api/v1/products?search=8412345678901")
+    assert [p["id"] for p in by_box.json()] == [product["id"]]
+
+    by_base = await client.get("/api/v1/products?search=111111")
+    assert [p["id"] for p in by_base.json()] == [product["id"]]
+
+    # Y el nombre y el SKU siguen buscándose como antes.
+    assert [p["id"] for p in (await client.get("/api/v1/products?search=leche")).json()] == [
+        product["id"]
+    ]
+    assert (await client.get("/api/v1/products?search=000000")).json() == []
