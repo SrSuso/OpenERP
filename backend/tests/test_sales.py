@@ -37,6 +37,17 @@ async def _create_product(
     return body
 
 
+_sku_counter = 0
+
+
+def _next_sku() -> int:
+    """Un SKU distinto por prueba: el catálogo es único por SKU y estas
+    pruebas crean su propio producto."""
+    global _sku_counter
+    _sku_counter += 1
+    return _sku_counter
+
+
 async def _open_sale(client: AsyncClient) -> dict[str, Any]:
     warehouse_id, location_id = await _default_location(client)
     response = await client.post(
@@ -274,3 +285,73 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/sales")
 
     assert response.status_code == 401
+
+
+async def test_the_same_product_twice_is_one_line_of_two(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Tres del mismo producto son una línea de tres, no tres de uno: es
+    como se lee un ticket y como se repasa el carrito."""
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku=f"GROUP-{_next_sku()}")
+    sale_id = (await _open_sale(client))["id"]
+    package_id = next(p["id"] for p in product["packages"] if p["is_base"])
+
+    for _ in range(3):
+        response = await client.post(
+            f"/api/v1/sales/{sale_id}/lines",
+            json={
+                "product_id": product["id"],
+                "package_id": package_id,
+                "quantity_packages": "1",
+            },
+        )
+        assert response.status_code == 201
+
+    lines = response.json()["lines"]
+    assert len(lines) == 1
+    assert lines[0]["quantity_packages"] == "3.000000"
+    assert lines[0]["quantity_base"] == "3.000000"
+
+
+async def test_a_line_with_a_discount_stays_on_its_own(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Juntarlas escondería el descuento y cambiaría lo que se cobra."""
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku=f"GROUP-{_next_sku()}")
+    sale_id = (await _open_sale(client))["id"]
+    package_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    base = {"product_id": product["id"], "package_id": package_id, "quantity_packages": "1"}
+
+    await client.post(f"/api/v1/sales/{sale_id}/lines", json=base)
+    response = await client.post(
+        f"/api/v1/sales/{sale_id}/lines", json={**base, "discount_rate": "10"}
+    )
+
+    lines = response.json()["lines"]
+    assert len(lines) == 2
+    assert sorted(line["discount_rate"] for line in lines) == ["0.000000", "10.000000"]
+
+
+async def test_weighed_quantities_add_up_on_one_line(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku=f"GROUP-{_next_sku()}")
+    sale_id = (await _open_sale(client))["id"]
+    package_id = next(p["id"] for p in product["packages"] if p["is_base"])
+
+    for grams in ("0.500", "0.300"):
+        response = await client.post(
+            f"/api/v1/sales/{sale_id}/lines",
+            json={
+                "product_id": product["id"],
+                "package_id": package_id,
+                "quantity_packages": grams,
+            },
+        )
+
+    lines = response.json()["lines"]
+    assert len(lines) == 1
+    assert lines[0]["quantity_packages"] == "0.800000"

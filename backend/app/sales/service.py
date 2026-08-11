@@ -237,6 +237,37 @@ def _new_line(
     )
 
 
+def _add_or_merge(sale: Sale, line: SaleLine, session: AsyncSession) -> SaleLine:
+    """Pasar tres veces el mismo producto es una línea de tres, no tres
+    líneas de uno: es como lo espera quien lee el ticket, y como lo cuenta
+    quien repasa la compra en el carrito. Suma las cantidades sobre la línea
+    que ya había y devuelve la línea resultante.
+
+    Sólo se juntan si coinciden en todo lo que decide el importe —producto,
+    formato, precio unitario, descuento e impuesto—. Si algo difiere se
+    quedan aparte: si el PVP ha cambiado a mitad de venta, o una lleva
+    descuento y la otra no, juntarlas cambiaría lo que se cobra o escondería
+    el descuento.
+
+    Sin riesgo con las devoluciones: sólo se añaden líneas a una venta en
+    borrador, y una venta en borrador todavía no puede tener nada devuelto.
+    """
+    for existing in sale.lines:
+        if (
+            existing.product_id == line.product_id
+            and existing.package_id == line.package_id
+            and existing.unit_price == line.unit_price
+            and existing.discount_rate == line.discount_rate
+            and existing.tax_rate == line.tax_rate
+        ):
+            existing.quantity_packages += line.quantity_packages
+            existing.quantity_base += line.quantity_base
+            return existing
+
+    session.add(line)
+    return line
+
+
 async def _assert_discount_allowed(session: AsyncSession, discount_rate: Decimal) -> None:
     """`sales.max_discount_rate` (app.settings.registry) — a ceiling on what
     one line can be discounted by, so a mistyped discount at the till can't
@@ -258,15 +289,18 @@ async def add_line(session: AsyncSession, sale_id: int, payload: SaleLineCreate)
     package = await _package_or_422(session, payload.product_id, payload.package_id)
     await _assert_discount_allowed(session, payload.discount_rate)
 
-    line = _new_line(
-        sale_id=sale_id,
-        product=product,
-        package=package,
-        quantity_packages=payload.quantity_packages,
-        discount_rate=payload.discount_rate,
-        tax_rate=await pricing_service.effective_tax_rate_for(session, product.id),
+    line = _add_or_merge(
+        sale,
+        _new_line(
+            sale_id=sale_id,
+            product=product,
+            package=package,
+            quantity_packages=payload.quantity_packages,
+            discount_rate=payload.discount_rate,
+            tax_rate=await pricing_service.effective_tax_rate_for(session, product.id),
+        ),
+        session,
     )
-    session.add(line)
     await session.flush()
     await audit.record(
         session,
@@ -277,6 +311,7 @@ async def add_line(session: AsyncSession, sale_id: int, payload: SaleLineCreate)
             "product_id": payload.product_id,
             "package": package.name,
             "quantity_packages": str(payload.quantity_packages),
+            "line_quantity_packages": str(line.quantity_packages),
         },
     )
     return await get_sale(session, sale_id)
@@ -294,15 +329,18 @@ async def add_line_by_barcode(
     if not product.is_active:
         raise ValidationError(f"Product {product.id} is deactivated and cannot be sold.")
 
-    line = _new_line(
-        sale_id=sale_id,
-        product=product,
-        package=package,
-        quantity_packages=payload.quantity_packages,
-        discount_rate=payload.discount_rate,
-        tax_rate=await pricing_service.effective_tax_rate_for(session, product.id),
+    line = _add_or_merge(
+        sale,
+        _new_line(
+            sale_id=sale_id,
+            product=product,
+            package=package,
+            quantity_packages=payload.quantity_packages,
+            discount_rate=payload.discount_rate,
+            tax_rate=await pricing_service.effective_tax_rate_for(session, product.id),
+        ),
+        session,
     )
-    session.add(line)
     await session.flush()
     await audit.record(
         session,
@@ -313,6 +351,7 @@ async def add_line_by_barcode(
             "product_id": product.id,
             "package": package.name,
             "quantity_packages": str(payload.quantity_packages),
+            "line_quantity_packages": str(line.quantity_packages),
             "barcode": payload.barcode,
         },
     )
