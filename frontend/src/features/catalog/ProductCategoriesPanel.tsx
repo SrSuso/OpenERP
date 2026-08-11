@@ -108,15 +108,13 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
 function CategoryPricingRow({ category, taxes }: { category: ProductCategory; taxes: Tax[] }) {
   const queryClient = useQueryClient();
   const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
-  // Uno como mucho: una categoría define *el* IVA de sus productos, no
-  // una suma de varios (ver `TaxChips`).
-  const [taxId, setTaxId] = useState<number | null>(category.taxes[0]?.id ?? null);
+  const [taxIds, setTaxIds] = useState<Set<number>>(new Set(category.taxes.map((t) => t.id)));
 
   const saveMutation = useMutation({
     mutationFn: () =>
       setCategoryPricing(category.id, {
         margin_rate: marginInput.trim() === '' ? null : marginInput,
-        tax_ids: taxId === null ? [] : [taxId],
+        tax_ids: [...taxIds],
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
@@ -126,6 +124,15 @@ function CategoryPricingRow({ category, taxes }: { category: ProductCategory; ta
       void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
     },
   });
+
+  function toggleTax(id: number) {
+    setTaxIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
     <div className="mt-1.5 rounded border border-slate-200 bg-slate-50 p-3">
@@ -141,9 +148,9 @@ function CategoryPricingRow({ category, taxes }: { category: ProductCategory; ta
         />
       </label>
 
-      <p className="mb-1 text-xs text-slate-600">Impuesto por defecto</p>
+      <p className="mb-1 text-xs text-slate-600">Impuestos por defecto</p>
       <div className="mb-2">
-        <TaxChips taxes={taxes} selected={taxId} onSelect={setTaxId} />
+        <TaxChips taxes={taxes} selected={taxIds} onToggle={toggleTax} />
       </div>
 
       <button

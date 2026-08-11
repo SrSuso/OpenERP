@@ -3,25 +3,20 @@ import { formatRate } from '@/lib/format';
 
 interface TaxChipsProps {
   taxes: Tax[];
-  /** `null` = ninguno elegido. */
-  selected: number | null;
-  onSelect: (id: number | null) => void;
+  selected: Set<number>;
+  onToggle: (id: number) => void;
 }
 
-/** Selector del impuesto, como etiquetas pulsables (al estilo de los tags
- * de Odoo en el formulario de producto) — se usa al dar de alta un
- * producto, al editar su precio y al fijar el de una categoría, siempre el
- * mismo componente y el mismo gesto.
- *
- * **Uno como mucho**: un producto tiene un tipo de IVA, no dos sumados.
- * Antes se podían apilar varios porque así se representaba "IVA + recargo
- * de equivalencia"; desde que el recargo es una columna del propio
- * impuesto (`Tax.surcharge_rate`) apilar ya no hace falta, y permitirlo
- * sólo servía para calcular un IVA imposible del 31%. Volver a pulsar el
- * que ya está marcado lo quita, que es lo que devuelve a "hereda el de su
- * categoría". */
-export function TaxChips({ taxes, selected, onSelect }: TaxChipsProps) {
-  const selectable = taxes.filter((tax) => tax.is_active || tax.id === selected);
+/** Selector de impuestos como etiquetas pulsables (al estilo de los tags
+ * de Odoo en el formulario de producto) — se usa tanto al dar de alta un
+ * producto como al editar el precio de uno ya creado o el de una
+ * categoría, siempre el mismo componente y el mismo gesto. */
+export function TaxChips({ taxes, selected, onToggle }: TaxChipsProps) {
+  // Uno desactivado ya no cuenta en el cálculo (backend:
+  // `effective_tax_rate`), así que ofrecerlo aquí sería mentir. Se sigue
+  // mostrando si el producto ya lo tenía puesto, para no ocultar por qué
+  // su precio es el que es.
+  const selectable = taxes.filter((tax) => tax.is_active || selected.has(tax.id));
 
   if (selectable.length === 0) {
     return <span className="text-xs text-slate-400">No hay impuestos creados todavía.</span>;
@@ -30,13 +25,13 @@ export function TaxChips({ taxes, selected, onSelect }: TaxChipsProps) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {selectable.map((tax) => {
-        const isSelected = selected === tax.id;
+        const isSelected = selected.has(tax.id);
         return (
           <button
             key={tax.id}
             type="button"
             aria-pressed={isSelected}
-            onClick={() => onSelect(isSelected ? null : tax.id)}
+            onClick={() => onToggle(tax.id)}
             className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
               isSelected
                 ? 'border-brand-700 bg-brand-700 text-white'

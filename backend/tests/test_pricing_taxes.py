@@ -1,9 +1,8 @@
-"""Impuestos, herencia de margen/IVA entre categoría y producto, y la
-fórmula del PVP de la tienda. Un producto (o una categoría) aplica **un**
-impuesto como mucho — dos se sumarían y darían una tasa que no existe; el
-recargo de equivalencia viaja dentro del propio impuesto. El margen y el
-impuesto de la categoría son el valor por defecto que el producto pisa si
-fija el suyo. See app/pricing/service.py's own
+"""Multiple taxes, category/product margin+tax inheritance, and the
+store-wide pricing formula — added after the 22-phase plan closed, at the
+user's request: several taxes may apply to one product at once, and both
+margin and taxes can be set on a category as a default that a product's
+own explicit value overrides. See app/pricing/service.py's own
 docstrings on effective_tax_rate/effective_margin_rate for the rule this
 exercises end to end.
 """
@@ -214,30 +213,23 @@ async def test_clearing_a_products_override_reverts_to_the_categorys(
     assert Decimal(body["list_price"]) == Decimal("14.520000")
 
 
-async def test_an_iva_brings_its_own_surcharge_without_stacking_two_taxes(
+async def test_several_taxes_on_the_same_product_stack_additively(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Sustituye al test que apilaba dos impuestos: el recargo de
-    equivalencia es una columna del propio IVA (`Tax.surcharge_rate`), así
-    que se aplica sin necesidad de elegir dos —que ahora se rechaza."""
     await login(role_name="ADMIN")
-    tax = (
-        await client.post(
-            "/api/v1/taxes",
-            json={"name": "IVA general (con RE)", "rate": "21", "surcharge_rate": "5.2"},
-        )
-    ).json()
+    iva_id = await _create_tax(client, "IVA general (stack)", "21")
+    recargo_id = await _create_tax(client, "Recargo de equivalencia", "5.2")
     product_id = (await client.post("/api/v1/products", json=_product_payload(cost="10"))).json()[
         "id"
     ]
 
     response = await client.patch(
         f"/api/v1/products/{product_id}/pricing",
-        json={"margin_rate": "0", "tax_ids": [tax["id"]]},
+        json={"margin_rate": "0", "tax_ids": [iva_id, recargo_id]},
     )
 
     assert response.status_code == 200
-    # (10 + 10*21% + 10*5,2%) * 1 = 12,62 — con un solo impuesto elegido.
+    # (10 + 10*26.2/100) * 1 = 12.62 — 21% + 5.2% sumados, no sólo uno.
     assert Decimal(response.json()["list_price"]) == Decimal("12.620000")
 
 
@@ -520,35 +512,3 @@ async def test_cashier_cannot_deactivate_a_tax(
     await login(role_name="CASHIER")
 
     assert (await client.post(f"/api/v1/taxes/{tax_id}/deactivate")).status_code == 403
-
-
-async def test_two_taxes_at_once_are_rejected_on_a_category_and_on_a_product(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """Un producto o una categoría tienen *un* tipo de IVA: dos se sumarían
-    y darían una tasa que no existe (21 + 10 = 31%)."""
-    await login(role_name="ADMIN")
-    iva_21 = await _create_tax(client, "IVA 21 (uno solo)", "21")
-    iva_10 = await _create_tax(client, "IVA 10 (uno solo)", "10")
-    category_id = await _create_category(client, "Categoría de un IVA")
-    product_id = (await client.post("/api/v1/products", json=_product_payload())).json()["id"]
-
-    on_category = await client.patch(
-        f"/api/v1/product-categories/{category_id}/pricing",
-        json={"tax_ids": [iva_21, iva_10]},
-    )
-    on_product = await client.patch(
-        f"/api/v1/products/{product_id}/pricing", json={"tax_ids": [iva_21, iva_10]}
-    )
-
-    assert on_category.status_code == 422
-    assert on_product.status_code == 422
-    # Uno solo sigue valiendo, y vacío sigue significando "hereda".
-    assert (
-        await client.patch(
-            f"/api/v1/product-categories/{category_id}/pricing", json={"tax_ids": [iva_21]}
-        )
-    ).status_code == 200
-    assert (
-        await client.patch(f"/api/v1/products/{product_id}/pricing", json={"tax_ids": []})
-    ).status_code == 200

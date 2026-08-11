@@ -134,11 +134,10 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: were the same thing; now they aren't, so this had to become nullable.
     margin_rate: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
     #: Explicit tax override for this product. Empty = inherit the
-    #: category's `ProductCategory.taxes`; non-empty = that one, and only
-    #: it, applies — see `app.pricing.service.effective_tax_rate`. At most
-    #: one (`app.pricing.schemas._at_most_one_tax`): two would add up to a
-    #: rate that doesn't exist. The recargo de equivalencia is a column on
-    #: the tax itself, so it needs no second entry here.
+    #: category's `ProductCategory.taxes`; non-empty = these, and only
+    #: these, apply — see `app.pricing.service.effective_tax_rate`. Several
+    #: can apply at once (they stack additively, e.g. IVA + recargo de
+    #: equivalencia).
     taxes: Mapped[list[Tax]] = relationship(
         secondary="product_taxes", order_by="Tax.name", viewonly=False
     )
