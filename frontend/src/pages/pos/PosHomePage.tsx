@@ -5,6 +5,7 @@ import { Cart } from '@/features/pos/Cart';
 import { CategoryTabs } from '@/features/pos/CategoryTabs';
 import { Checkout } from '@/features/pos/Checkout';
 import { ProductGrid } from '@/features/pos/ProductGrid';
+import { QuantityPad } from '@/features/pos/QuantityPad';
 import { Receipt } from '@/features/pos/Receipt';
 import { WeightPrompt } from '@/features/pos/WeightPrompt';
 import {
@@ -130,12 +131,19 @@ export function PosHomePage() {
     .filter((unit) => unit !== '');
   const [weighing, setWeighing] = useState<Product | null>(null);
 
+  // Lo tecleado en el multiplicador, vacío mientras no se toque (= una
+  // unidad). Se limpia al añadir: es para el siguiente producto, no un modo
+  // en el que quedarse.
+  const [pendingQuantity, setPendingQuantity] = useState('');
+
   function pickProduct(product: Product) {
     if (weighedUnits.includes(product.base_unit_name.toUpperCase())) {
+      // Lo que se pesa lleva su propia cantidad, en gramos.
       setWeighing(product);
       return;
     }
-    addLineMutation.mutate({ product, quantity: '1' });
+    addLineMutation.mutate({ product, quantity: pendingQuantity === '' ? '1' : pendingQuantity });
+    setPendingQuantity('');
   }
 
   const addBarcodeMutation = useMutation({
@@ -313,6 +321,9 @@ export function PosHomePage() {
                         onPick={pickProduct}
                         disabled={sale === null || busy}
                       />
+                      {/* Debajo de la cuadrícula, que es lo que se pulsa
+                          justo después de teclear la cantidad. */}
+                      <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
                     </div>
 
                     <Cart

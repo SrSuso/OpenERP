@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { Keypad } from '@/features/pos/Keypad';
 import { type Product } from '@/features/pos/api';
 import { formatMoney } from '@/lib/format';
 
@@ -47,6 +48,9 @@ export function WeightPrompt({ product, onCancel, onConfirm, isPending }: Weight
           {formatMoney(product.list_price)} / {product.base_unit_name}
         </p>
 
+        {/* Se teclea con el teclado de abajo, pero sigue siendo un campo
+            de verdad: quien tenga teclado físico (o un lector de balanza que
+            escriba) no tiene por qué pulsar los botones. */}
         <label className="mt-4 block text-sm text-slate-300">
           Gramos
           <input
@@ -54,40 +58,43 @@ export function WeightPrompt({ product, onCancel, onConfirm, isPending }: Weight
             inputMode="numeric"
             autoFocus
             value={grams}
-            onChange={(event) => setGrams(event.target.value)}
+            onChange={(event) => setGrams(event.target.value.replace(/[^0-9]/g, ''))}
             onKeyDown={(event) => {
               if (event.key === 'Enter') confirm();
               if (event.key === 'Escape') onCancel();
             }}
             placeholder="500"
-            className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-3 py-3 text-right text-2xl font-semibold text-slate-50"
+            className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-3 py-3 text-right text-3xl font-semibold text-slate-50"
           />
         </label>
 
-        <p className="mt-3 text-right text-sm text-slate-300">
+        <p className="mt-2 text-right text-sm text-slate-300">
           Importe:{' '}
           <span className="text-lg font-semibold text-emerald-400">
             {formatMoney(amount.toFixed(2))}
           </span>
         </p>
 
-        <div className="mt-5 flex gap-2">
-          <button
-            type="button"
-            disabled={!isValid || isPending}
-            onClick={confirm}
-            className="flex-1 rounded bg-emerald-600 px-4 py-3 text-base font-semibold text-white disabled:opacity-50"
-          >
-            {isPending ? 'Añadiendo…' : 'Añadir'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
-          >
-            Cancelar
-          </button>
+        <div className="mt-4">
+          <Keypad
+            value={grams}
+            onChange={setGrams}
+            maxLength={5}
+            action={{
+              label: isPending ? 'Añadiendo…' : 'Añadir',
+              onPress: confirm,
+              disabled: !isValid || isPending,
+            }}
+          />
         </div>
+
+        <button
+          type="button"
+          onClick={onCancel}
+          className="mt-2 w-full rounded px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+        >
+          Cancelar
+        </button>
       </div>
     </div>
   );

@@ -1,0 +1,64 @@
+interface KeypadProps {
+  /** Lo tecleado hasta ahora, como cadena de dígitos. */
+  value: string;
+  onChange: (value: string) => void;
+  /** Cuántos dígitos caben — evita que un dedo apoyado deje un número
+   * absurdo. */
+  maxLength?: number;
+  /** Se dibuja en la última casilla, junto a «C» y «←». */
+  action?: { label: string; onPress: () => void; disabled?: boolean };
+}
+
+const DIGITS = ['7', '8', '9', '4', '5', '6', '1', '2', '3'];
+
+const KEY =
+  'rounded bg-slate-700 py-4 text-xl font-semibold text-slate-50 transition active:bg-slate-600 disabled:opacity-40';
+
+/** Teclado numérico para usar con el dedo: en una caja no hay teclado
+ * físico a mano, y el del móvil tapa media pantalla justo cuando hace
+ * falta ver lo que se está cobrando.
+ *
+ * Sirve tanto para los gramos de lo que se pesa como para multiplicar
+ * unidades — el número es el mismo gesto, lo que cambia es quién lo usa. */
+export function Keypad({ value, onChange, maxLength = 6, action }: KeypadProps) {
+  function press(digit: string) {
+    // Un cero a la izquierda no significa nada y confunde al leerlo.
+    const next = value === '0' ? digit : value + digit;
+    if (next.length > maxLength) return;
+    onChange(next);
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {DIGITS.map((digit) => (
+        <button key={digit} type="button" onClick={() => press(digit)} className={KEY}>
+          {digit}
+        </button>
+      ))}
+      <button type="button" onClick={() => onChange('')} className={KEY} aria-label="Borrar todo">
+        C
+      </button>
+      <button type="button" onClick={() => press('0')} className={KEY}>
+        0
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(value.slice(0, -1))}
+        className={KEY}
+        aria-label="Borrar un dígito"
+      >
+        ←
+      </button>
+      {action && (
+        <button
+          type="button"
+          onClick={action.onPress}
+          disabled={action.disabled}
+          className="col-span-3 rounded bg-emerald-600 py-4 text-lg font-semibold text-white transition active:bg-emerald-500 disabled:opacity-40"
+        >
+          {action.label}
+        </button>
+      )}
+    </div>
+  );
+}

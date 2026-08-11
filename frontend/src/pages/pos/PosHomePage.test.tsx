@@ -254,6 +254,50 @@ describe('PosHomePage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('sells several units at once with the keypad', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByRole('button', { name: /leche entera 1l/i });
+
+    // Se teclea 3 y se pulsa el producto: una línea de tres, sin pulsarlo
+    // tres veces.
+    await userEvent.click(screen.getByRole('button', { name: '3' }));
+    expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×3');
+
+    await userEvent.click(screen.getByRole('button', { name: /leche entera 1l/i }));
+
+    expect(backend.addLineCalls).toEqual([
+      { product_id: 1, package_id: 10, quantity_packages: '3' },
+    ]);
+    // Y vuelve a una unidad: es para el siguiente producto, no un modo en
+    // el que quedarse.
+    expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×1');
+  });
+
+  it('types the grams on the keypad of the weight dialog', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: /tomate/i }));
+    const dialog = await screen.findByRole('dialog', { name: /cantidad de tomate/i });
+
+    for (const digit of ['2', '5', '0']) {
+      await userEvent.click(within(dialog).getByRole('button', { name: digit }));
+    }
+    expect(within(dialog).getByLabelText('Gramos')).toHaveValue('250');
+
+    // El último dígito se borra con ←, sin tener que empezar de cero.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Borrar un dígito' }));
+    expect(within(dialog).getByLabelText('Gramos')).toHaveValue('25');
+
+    await userEvent.click(within(dialog).getByRole('button', { name: '0' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Añadir' }));
+
+    expect(backend.addLineCalls).toEqual([
+      { product_id: 2, package_id: 20, quantity_packages: '0.250' },
+    ]);
+  });
+
   it('resumes an existing draft sale instead of opening a new one', async () => {
     const backend = stubBackend({ existingDraft: saleWithMilkLine(42) });
     renderPage();

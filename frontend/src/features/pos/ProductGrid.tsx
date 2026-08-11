@@ -37,7 +37,7 @@ export function ProductGrid({ products, isPending, isError, onPick, disabled }: 
   return (
     // El doble de columnas y menos alto que antes: en una caja caben más
     // productos por pantalla y se rebusca menos.
-    <div className="grid grid-cols-4 gap-2 overflow-y-auto p-3 sm:grid-cols-6 lg:grid-cols-8">
+    <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-4 gap-2 overflow-y-auto p-3 sm:grid-cols-6 lg:grid-cols-8">
       {products.map((product) => (
         <ProductButton
           key={product.id}
