@@ -12,7 +12,15 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
@@ -193,3 +201,35 @@ class ProductBarcode(IntPrimaryKeyMixin, TimestampMixin, Base):
     barcode: Mapped[str] = mapped_column(String(64), unique=True)
 
     package: Mapped[ProductPackage] = relationship(back_populates="barcodes")
+
+
+class EntityImage(IntPrimaryKeyMixin, TimestampMixin, Base):
+    """La foto de un producto o de una categoría.
+
+    En su propia tabla, y no como columna de `products`/`product_categories`
+    /`pos_categories`, por dos razones: los bytes no tienen por qué viajar
+    en cada listado (un `SELECT products.*` con la imagen dentro traería
+    megas para pintar una tabla de texto), y así una sola tabla sirve a los
+    tres dueños en vez de repetir el mismo par de columnas tres veces.
+
+    Guardadas en Postgres y no en disco a propósito: la copia de seguridad
+    de la tienda es un `pg_dump` (scripts/backup-postgres.sh), así que las
+    fotos entran en ella sin montar ni respaldar nada más. Las imágenes se
+    reescalan en el navegador antes de subirlas (unas decenas de kB), que
+    es lo que hace que esto salga a cuenta.
+
+    `entity_type` es de una lista cerrada (`IMAGE_OWNERS`), no un texto
+    libre: es lo que decide qué permiso hace falta para tocarla.
+
+    `version` sube con cada reemplazo y viaja en la URL (`?v=`) para que el
+    navegador no siga enseñando la foto vieja.
+    """
+
+    __tablename__ = "entity_images"
+    __table_args__ = (UniqueConstraint("entity_type", "entity_id", name="uq_entity_images_owner"),)
+
+    entity_type: Mapped[str] = mapped_column(String(32))
+    entity_id: Mapped[int] = mapped_column(BigInteger)
+    content_type: Mapped[str] = mapped_column(String(64))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")

@@ -31,6 +31,7 @@ import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
 import { productPurchaseHistoryQuery } from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
 import { ApiError } from '@/lib/api';
+import { ImagePicker } from '@/features/images/ImagePicker';
 import { formatQuantity } from '@/lib/format';
 
 type Tab = 'general' | 'pricing' | 'packages' | 'lots' | 'purchases';
@@ -187,14 +188,23 @@ export function ProductDetailPage() {
       </Link>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">
-            {data.name} <span className="font-mono text-base text-slate-400">{data.sku}</span>
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {data.category_name ?? 'Sin categoría'} · {data.is_active ? 'Activo' : 'Inactivo'} ·{' '}
-            Stock: {totalStock === null ? '…' : `${formatQuantity(String(totalStock))} uds.`}
-          </p>
+        <div className="flex items-center gap-3">
+          <ImagePicker
+            ownerType="product"
+            ownerId={data.id}
+            ownerName={data.name}
+            canManage={canManageProduct}
+            size="lg"
+          />
+          <div>
+            <h1 className="text-2xl font-semibold">
+              {data.name} <span className="font-mono text-base text-slate-400">{data.sku}</span>
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {data.category_name ?? 'Sin categoría'} · {data.is_active ? 'Activo' : 'Inactivo'} ·{' '}
+              Stock: {totalStock === null ? '…' : `${formatQuantity(String(totalStock))} uds.`}
+            </p>
+          </div>
         </div>
         {canManageProduct && data.is_active && (
           <button

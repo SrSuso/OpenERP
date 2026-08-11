@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
+
+import { imageUrl, imageVersionsQuery } from '@/features/images/api';
 import { type Product } from '@/features/pos/api';
 import { formatMoney } from '@/lib/format';
 
@@ -17,6 +20,10 @@ interface ProductGridProps {
  * deliberate scope cut for phase 12 (see the phase report).
  */
 export function ProductGrid({ products, isPending, isError, onPick, disabled }: ProductGridProps) {
+  // Qué productos tienen foto, de una vez para toda la cuadrícula: así el
+  // que no tiene no provoca una petición que acabe en 404.
+  const versions = useQuery(imageVersionsQuery('product'));
+
   if (isPending) {
     return <p className="p-6 text-slate-400">Cargando productos…</p>;
   }
@@ -30,19 +37,52 @@ export function ProductGrid({ products, isPending, isError, onPick, disabled }: 
   return (
     <div className="grid grid-cols-2 gap-3 overflow-y-auto p-3 sm:grid-cols-3 lg:grid-cols-4">
       {products.map((product) => (
-        <button
+        <ProductButton
           key={product.id}
-          type="button"
+          product={product}
+          version={versions.data?.[String(product.id)]}
           disabled={disabled}
-          onClick={() => onPick(product)}
-          className="flex h-28 flex-col justify-between rounded-lg bg-slate-800 p-3 text-left shadow transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <span className="line-clamp-2 text-sm font-medium text-slate-50">{product.name}</span>
-          <span className="text-lg font-semibold text-emerald-400">
-            {formatMoney(product.list_price)}
-          </span>
-        </button>
+          onPick={onPick}
+        />
       ))}
     </div>
+  );
+}
+
+/** Con foto el botón es un mosaico —se localiza el producto de un vistazo,
+ * que es de lo que va una caja— y sin ella se queda como estaba, en vez de
+ * dejar un hueco gris pidiendo una foto que quizá nunca se ponga. */
+function ProductButton({
+  product,
+  version,
+  disabled,
+  onPick,
+}: {
+  product: Product;
+  version: number | undefined;
+  disabled: boolean | undefined;
+  onPick: (product: Product) => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onPick(product)}
+      className="flex h-28 flex-col justify-between overflow-hidden rounded-lg bg-slate-800 text-left shadow transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {version !== undefined && (
+        <img
+          src={imageUrl('product', product.id, version)}
+          alt=""
+          className="h-14 w-full shrink-0 object-cover"
+        />
+      )}
+      <span className="line-clamp-2 px-3 pt-2 text-sm font-medium text-slate-50">
+        {product.name}
+      </span>
+      <span className="px-3 pb-3 text-lg font-semibold text-emerald-400">
+        {formatMoney(product.list_price)}
+      </span>
+    </button>
   );
 }

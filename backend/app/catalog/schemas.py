@@ -46,6 +46,20 @@ class ProductCategoryRead(BaseModel):
     taxes: list[ProductTaxRead]
 
 
+class ImageUpload(BaseModel):
+    """La foto, ya reescalada por el navegador, como data URL — ver
+    `app.catalog.images.decode` sobre por qué así y no multipart."""
+
+    data_url: str = Field(min_length=1, max_length=2_000_000)
+
+
+class ImageRead(BaseModel):
+    entity_id: int
+    #: Sube con cada reemplazo; va en la URL de la foto (`?v=`) para que el
+    #: navegador no se quede con la anterior.
+    version: int
+
+
 class UnitCreate(BaseModel):
     name: str = Field(min_length=1, max_length=20)
 

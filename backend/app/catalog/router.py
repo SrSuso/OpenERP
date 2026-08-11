@@ -9,16 +9,18 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
-from app.auth.dependencies import SessionDep
-from app.catalog import service
+from app.auth.dependencies import CurrentUser, SessionDep
+from app.catalog import images, service
 from app.catalog.models import PosCategory, Unit
 from app.catalog.presenters import category_to_read as _category_to_read
 from app.catalog.presenters import product_to_read as _to_read
 from app.catalog.schemas import (
     BarcodeCreate,
     BarcodeUpdate,
+    ImageRead,
+    ImageUpload,
     PackageCreate,
     PosCategoryCreate,
     PosCategoryRead,
@@ -33,7 +35,7 @@ from app.catalog.schemas import (
     UnitMoveRequest,
     UnitRead,
 )
-from app.rbac.dependencies import require_permission
+from app.rbac.dependencies import check_permission, require_permission
 from app.rbac.permissions import POS_CATEGORY_MANAGE, PRODUCT_MANAGE, PRODUCT_READ
 
 router = APIRouter(tags=["catalog"])
@@ -108,6 +110,59 @@ async def activate_category(category_id: int, session: SessionDep) -> ProductCat
 @router.delete("/product-categories/{category_id}", status_code=204, dependencies=[_require_manage])
 async def delete_category(category_id: int, session: SessionDep) -> None:
     await service.delete_category(session, category_id)
+
+
+# --- fotos de productos y categorías ---------------------------------------
+#
+# Verlas sólo pide `product.read` (el TPV lo tiene); ponerlas o quitarlas,
+# el permiso que dice `IMAGE_OWNERS` para ese tipo de dueño, comprobado
+# dentro del endpoint porque depende de la URL. La ruta de lectura no lleva
+# `response_model`: devuelve los bytes de la imagen, no JSON.
+
+
+@router.get("/images/{entity_type}", dependencies=[_require_read])
+async def list_image_versions(entity_type: str, session: SessionDep) -> dict[int, int]:
+    """Qué productos (o categorías) tienen foto, y por qué versión van, para
+    pintar `<img>` sólo donde hay algo y no provocar un 404 por cada uno."""
+    return await images.list_versions(session, entity_type)
+
+
+@router.get("/images/{entity_type}/{entity_id}", dependencies=[_require_read])
+async def get_image(entity_type: str, entity_id: int, session: SessionDep) -> Response:
+    image = await images.get(session, entity_type, entity_id)
+    return Response(
+        content=image.data,
+        media_type=image.content_type,
+        headers={
+            # La URL lleva `?v=` con la versión, así que una foto concreta
+            # no cambia nunca: se puede guardar mucho tiempo.
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "ETag": f'"{entity_type}-{entity_id}-{image.version}"',
+        },
+    )
+
+
+@router.put("/images/{entity_type}/{entity_id}", response_model=ImageRead)
+async def put_image(
+    entity_type: str,
+    entity_id: int,
+    payload: ImageUpload,
+    session: SessionDep,
+    user: CurrentUser,
+) -> ImageRead:
+    owner = images.owner_or_404(entity_type)
+    check_permission(user, owner.manage_permission)
+    image = await images.put(session, entity_type, entity_id, payload.data_url)
+    return ImageRead(entity_id=image.entity_id, version=image.version)
+
+
+@router.delete("/images/{entity_type}/{entity_id}", status_code=204)
+async def delete_image(
+    entity_type: str, entity_id: int, session: SessionDep, user: CurrentUser
+) -> None:
+    owner = images.owner_or_404(entity_type)
+    check_permission(user, owner.manage_permission)
+    await images.delete(session, entity_type, entity_id)
 
 
 def _unit_to_read(unit: Unit) -> UnitRead:

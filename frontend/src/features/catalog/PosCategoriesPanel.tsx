@@ -8,6 +8,7 @@ import {
   updatePosCategory,
   type PosCategory,
 } from '@/features/catalog/api';
+import { ImagePicker } from '@/features/images/ImagePicker';
 import { ApiError } from '@/lib/api';
 
 /** Categorías POS (fase 10): las pestañas/botones que agrupan productos en
@@ -77,6 +78,12 @@ export function PosCategoriesPanel({ canManage }: { canManage: boolean }) {
             <span
               className="inline-block h-3 w-3 shrink-0 rounded-full"
               style={{ backgroundColor: category.color }}
+            />
+            <ImagePicker
+              ownerType="pos_category"
+              ownerId={category.id}
+              ownerName={category.name}
+              canManage={canManage}
             />
             {editingId === category.id ? (
               <>

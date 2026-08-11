@@ -19,6 +19,17 @@ def user_permissions(user: User) -> frozenset[str]:
     return frozenset(permission.key for permission in user.role.permissions)
 
 
+def check_permission(user: User, key: str) -> None:
+    """La misma comprobación que `require_permission`, para cuando el
+    permiso que hace falta no se sabe hasta ver la petición — las fotos, por
+    ejemplo, donde lo decide el tipo de dueño que venga en la URL (ver
+    `app.catalog.images.IMAGE_OWNERS`). Una dependencia no puede saberlo a
+    la hora de declararse, pero la comprobación sigue siendo del backend
+    (regla 11)."""
+    if key not in user_permissions(user):
+        raise PermissionDeniedError(f"Missing permission: {key}")
+
+
 def require_permission(key: str) -> Callable[[User], Coroutine[Any, Any, User]]:
     """Build a dependency that lets the request through only if the
     signed-in user's role grants ``key``; otherwise raises 403."""

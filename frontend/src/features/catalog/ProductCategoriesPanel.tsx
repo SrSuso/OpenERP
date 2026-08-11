@@ -10,6 +10,7 @@ import {
   productCategoriesQuery,
   type ProductCategory,
 } from '@/features/catalog/api';
+import { ImagePicker } from '@/features/images/ImagePicker';
 import { setCategoryPricing, taxesQuery, type Tax } from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
 import { ApiError } from '@/lib/api';
@@ -112,6 +113,12 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
         {categories.data?.map((category) => (
           <li key={category.id}>
             <div className="flex items-center gap-2 text-sm">
+              <ImagePicker
+                ownerType="product_category"
+                ownerId={category.id}
+                ownerName={category.name}
+                canManage={canManage}
+              />
               {renamingId === category.id ? (
                 <>
                   <input

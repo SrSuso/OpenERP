@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -25,27 +26,39 @@ const MILK: Product = {
   ],
 };
 
+/** El componente pregunta al servidor qué fotos hay, así que necesita un
+ * QueryClient aunque estas pruebas no vayan de fotos. Sin respuesta, la
+ * consulta falla y no se pinta ninguna, que es justo el caso de siempre. */
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 describe('ProductGrid', () => {
   it('shows a loading message while pending', () => {
-    render(<ProductGrid products={[]} isPending isError={false} onPick={vi.fn()} />);
+    renderWithQueryClient(<ProductGrid products={[]} isPending isError={false} onPick={vi.fn()} />);
 
     expect(screen.getByText(/cargando productos/i)).toBeInTheDocument();
   });
 
   it('shows an error message when the query failed', () => {
-    render(<ProductGrid products={[]} isPending={false} isError onPick={vi.fn()} />);
+    renderWithQueryClient(<ProductGrid products={[]} isPending={false} isError onPick={vi.fn()} />);
 
     expect(screen.getByText(/no se pudieron cargar/i)).toBeInTheDocument();
   });
 
   it('shows an empty state when there are no products in the category', () => {
-    render(<ProductGrid products={[]} isPending={false} isError={false} onPick={vi.fn()} />);
+    renderWithQueryClient(
+      <ProductGrid products={[]} isPending={false} isError={false} onPick={vi.fn()} />,
+    );
 
     expect(screen.getByText(/no hay productos en esta categoría/i)).toBeInTheDocument();
   });
 
   it('renders a button per product with its name and formatted price', () => {
-    render(<ProductGrid products={[MILK]} isPending={false} isError={false} onPick={vi.fn()} />);
+    renderWithQueryClient(
+      <ProductGrid products={[MILK]} isPending={false} isError={false} onPick={vi.fn()} />,
+    );
 
     const button = screen.getByRole('button', { name: /leche entera 1l/i });
     expect(button).toBeInTheDocument();
@@ -54,7 +67,9 @@ describe('ProductGrid', () => {
 
   it('calls onPick with the product when tapped', async () => {
     const onPick = vi.fn();
-    render(<ProductGrid products={[MILK]} isPending={false} isError={false} onPick={onPick} />);
+    renderWithQueryClient(
+      <ProductGrid products={[MILK]} isPending={false} isError={false} onPick={onPick} />,
+    );
 
     await userEvent.click(screen.getByRole('button', { name: /leche entera 1l/i }));
 
@@ -62,7 +77,7 @@ describe('ProductGrid', () => {
   });
 
   it('disables every product button while disabled', () => {
-    render(
+    renderWithQueryClient(
       <ProductGrid products={[MILK]} isPending={false} isError={false} onPick={vi.fn()} disabled />,
     );
 

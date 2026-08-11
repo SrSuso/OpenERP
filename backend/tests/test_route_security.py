@@ -56,6 +56,23 @@ STAFF_WIDE_READONLY_ROUTES = {
     ("GET", "/settings/values"),
 }
 
+#: Authenticated, and permission-checked — but with
+#: `app.rbac.dependencies.check_permission` inside the handler instead of a
+#: dependency, because *which* permission applies is not known until the
+#: request is read. The images endpoints take the owner type from the path
+#: (`/images/product/12` vs `/images/pos_category/3`) and each owner
+#: declares its own manage permission in `app.catalog.images.IMAGE_OWNERS`;
+#: a dependency would have to be declared with one fixed key.
+#:
+#: The bar for this set: the handler's *first* statements must resolve the
+#: owner and call `check_permission`, before touching anything. Rule 11 is
+#: still honoured — the check is backend-side either way — but it cannot be
+#: seen from the route table, so it is listed here deliberately.
+RUNTIME_PERMISSION_ROUTES = {
+    ("PUT", "/images/{entity_type}/{entity_id}"),
+    ("DELETE", "/images/{entity_type}/{entity_id}"),
+}
+
 
 def _collect_api_routes() -> list[APIRoute]:
     """FastAPI routers nest by way of an internal wrapper, not a flat
@@ -120,6 +137,7 @@ def test_every_authenticated_route_checks_a_permission_unless_self_service() -> 
                 key in PUBLIC_ROUTES
                 or key in SELF_SERVICE_ROUTES
                 or key in STAFF_WIDE_READONLY_ROUTES
+                or key in RUNTIME_PERMISSION_ROUTES
             ):
                 continue
             names = _dependency_names(route)
@@ -146,5 +164,7 @@ def test_the_allowlists_do_not_drift_from_the_actual_route_table() -> None:
     all_routes = {
         (method, route.path) for route in _collect_api_routes() for method in _methods(route)
     }
-    stale = (PUBLIC_ROUTES | SELF_SERVICE_ROUTES | STAFF_WIDE_READONLY_ROUTES) - all_routes
+    stale = (
+        PUBLIC_ROUTES | SELF_SERVICE_ROUTES | STAFF_WIDE_READONLY_ROUTES | RUNTIME_PERMISSION_ROUTES
+    ) - all_routes
     assert not stale, f"Allowlisted routes that no longer exist: {stale}"
