@@ -88,9 +88,13 @@ activa configurada.
 impresión del navegador y hay que darle a «Imprimir» cada vez, es que la
 caja no está arrancada en modo caja. Una página web no puede saltarse ese
 cuadro por su cuenta —el navegador no se lo permite a ninguna, por
-seguridad—, así que se abre el TPV con `scripts/pos-kiosk.sh`, que arranca
-Chrome preparado para imprimir directo en la impresora predeterminada. Ese
-script explica dentro cómo dejarlo puesto al encender el equipo.
+seguridad—, así que la caja se abre con un acceso directo especial:
+`scripts\pos-kiosk.cmd` en Windows, `scripts/pos-kiosk.sh` en Linux. Eso
+arranca el navegador preparado para imprimir directo en la impresora
+predeterminada. Si a ti te sigue saliendo el cuadro, es que has abierto el
+TPV desde una pestaña normal del navegador en vez de con ese acceso
+directo — díselo a tu administrador, en `docs/ADMIN_GUIDE.md` está cómo
+dejarlo puesto para que arranque solo.
 
 ---
 

@@ -205,11 +205,46 @@ papel. No hay forma de programarlo desde la aplicación.
 
 Lo que sí se puede es arrancar el navegador de la caja en **modo caja**,
 donde `window.print()` manda el trabajo directo a la impresora
-predeterminada. Para eso está `scripts/pos-kiosk.sh`:
+predeterminada. Según el equipo de la caja:
+
+**Windows** — haz doble clic en `scripts\pos-kiosk.cmd`, o crea un acceso
+directo a él con la dirección detrás:
+
+```
+pos-kiosk.cmd https://tu-tienda.example
+```
+
+Para que arranque solo al encender, pon ese acceso directo en la carpeta
+Inicio (tecla Windows + R → `shell:startup`).
+
+**Linux** — `scripts/pos-kiosk.sh https://tu-tienda.example`, y añádelo a
+las aplicaciones de inicio de sesión del escritorio.
+
+**macOS** — desde el Terminal:
 
 ```bash
-scripts/pos-kiosk.sh https://tu-tienda.example
+open -na "Google Chrome" --args --kiosk-printing \
+  --user-data-dir="$HOME/Library/Application Support/openerp-pos-kiosk" \
+  --app=https://tu-tienda.example/pos
 ```
+
+**Firefox**, si es el navegador de la caja: no tiene modo caja, pero sí un
+ajuste equivalente. En `about:config`, pon `print.always_print_silent` a
+`true`.
+
+### Cómo saber si está funcionando
+
+Cobra una venta de prueba. Si el ticket sale por la impresora **sin que
+aparezca ninguna ventana**, está bien. Si sigue apareciendo el cuadro de
+impresión, casi siempre es una de estas tres:
+
+- Se abrió el TPV con un Chrome que **ya estaba abierto**. El modo caja se
+  decide al arrancar el navegador; el script usa un perfil aparte
+  precisamente para arrancar uno nuevo, pero si abres la dirección
+  copiándola a una pestaña del Chrome de siempre, no vale.
+- El acceso directo perdió el `--kiosk-printing` (pasa al recrearlo a mano).
+- Es otro navegador. Edge admite el mismo `--kiosk-printing`; Safari no
+  tiene equivalente.
 
 En el equipo de la caja, antes:
 
