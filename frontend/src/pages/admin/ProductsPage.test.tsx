@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -102,7 +102,12 @@ function stubBackend(options: { products?: Product[] } = {}) {
         return Promise.resolve(jsonResponse(POS_CATEGORIES));
       }
       if (method === 'GET' && url.includes('/stock-balance/totals')) {
-        return Promise.resolve(jsonResponse([{ product_id: 1, quantity: '24.000000' }]));
+        return Promise.resolve(
+          jsonResponse([
+            { product_id: 1, quantity: '24.000000' },
+            { product_id: 2, quantity: '14.500000' },
+          ]),
+        );
       }
       if (method === 'GET' && url.includes('/settings/values')) {
         return Promise.resolve(jsonResponse({ 'catalog.quick_price_units': 'KG' }));
@@ -374,6 +379,14 @@ describe('ProductsPage', () => {
     await userEvent.clear(price);
     await userEvent.type(price, '1,68{Enter}');
 
+    // No se guarda a la primera: el precio nuevo se aplica también a lo que
+    // ya está en la estantería, así que avisa antes.
+    const dialog = await screen.findByRole('dialog', { name: /cambiar el pvp de tomate/i });
+    expect(backend.manualPriceCalls).toEqual([]);
+    expect(within(dialog).getByText(/14,5 KG en almacén/)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cambiar' }));
+
     expect(backend.manualPriceCalls).toEqual([{ id: 2, listPrice: '1.68' }]);
     expect(await screen.findByText('Guardado')).toBeInTheDocument();
   });
@@ -408,5 +421,6 @@ describe('ProductsPage', () => {
     await userEvent.type(price, '0,60{Enter}');
 
     expect(backend.manualPriceCalls).toEqual([]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

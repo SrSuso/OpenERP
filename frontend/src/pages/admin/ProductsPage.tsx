@@ -10,11 +10,13 @@ import {
   productCategoriesQuery,
   productsQuery,
   unitsQuery,
+  type Product,
   type ProductCreateInput,
 } from '@/features/catalog/api';
 import { CreateProductForm } from '@/features/catalog/CreateProductForm';
 import { ProductsTable } from '@/features/catalog/ProductsTable';
 import { stockTotalsQuery } from '@/features/inventory/api';
+import { PriceChangeDialog } from '@/features/pricing/PriceChangeDialog';
 import { setManualPrice, setProductPricing, taxesQuery } from '@/features/pricing/api';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
@@ -97,6 +99,14 @@ export function ProductsPage() {
 
   const [savedPriceId, setSavedPriceId] = useState<number | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
+  // El cambio tecleado, esperando a que se confirme: el precio nuevo se
+  // aplica también a lo que ya está en la estantería, así que se pregunta
+  // antes de guardarlo.
+  const [proposedPrice, setProposedPrice] = useState<{
+    product: Product;
+    listPrice: string;
+  } | null>(null);
+
   const priceMutation = useMutation({
     mutationFn: ({ id, listPrice }: { id: number; listPrice: string }) =>
       setManualPrice(id, listPrice),
@@ -104,10 +114,12 @@ export function ProductsPage() {
       invalidateProducts();
       setSavedPriceId(id);
       setPriceError(null);
+      setProposedPrice(null);
     },
     onError: () => {
       setSavedPriceId(null);
       setPriceError('No se ha podido guardar el precio.');
+      setProposedPrice(null);
     },
   });
 
@@ -211,6 +223,27 @@ export function ProductsPage() {
 
       {priceError && <p className="mb-2 text-sm text-red-600">{priceError}</p>}
 
+      {proposedPrice !== null && (
+        <PriceChangeDialog
+          productName={proposedPrice.product.name}
+          what="PVP"
+          current={proposedPrice.product.list_price}
+          next={proposedPrice.listPrice}
+          unitName={proposedPrice.product.base_unit_name}
+          stock={
+            stockByProduct === null ? null : (stockByProduct.get(proposedPrice.product.id) ?? '0')
+          }
+          isPending={priceMutation.isPending}
+          onCancel={() => setProposedPrice(null)}
+          onConfirm={() =>
+            priceMutation.mutate({
+              id: proposedPrice.product.id,
+              listPrice: proposedPrice.listPrice,
+            })
+          }
+        />
+      )}
+
       {products.data && (
         <ProductsTable
           products={visibleProducts}
@@ -222,7 +255,7 @@ export function ProductsPage() {
           isDeactivating={deactivateMutation.isPending}
           onActivate={(id) => activateMutation.mutate(id)}
           isActivating={activateMutation.isPending}
-          onSetPrice={(id, listPrice) => priceMutation.mutate({ id, listPrice })}
+          onSetPrice={(product, listPrice) => setProposedPrice({ product, listPrice })}
           savingPriceId={priceMutation.isPending ? priceMutation.variables.id : null}
           savedPriceId={savedPriceId}
         />

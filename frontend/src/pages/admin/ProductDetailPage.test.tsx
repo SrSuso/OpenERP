@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -323,6 +323,35 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Compras' }));
     expect(await screen.findAllByText('Distribuciones Ejemplo SL')).toHaveLength(2);
     expect(screen.getByText('#7')).toBeInTheDocument();
+  });
+
+  it('warns before a cost change, showing what is still in stock', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByRole('button', { name: 'Precios' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+    const costInput = screen.getByLabelText('Coste');
+    await userEvent.clear(costInput);
+    await userEvent.type(costInput, '0,45');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
+
+    // Todavía no se ha guardado: el coste recalcula el PVP, y eso toca lo
+    // que se cobra por lo que ya está en la estantería.
+    const dialog = await screen.findByRole('dialog', { name: /cambiar el coste de agua 1l/i });
+    expect(backend.pricingCalls).toEqual([]);
+    expect(within(dialog).getByText(/en almacén/)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    expect(backend.pricingCalls).toEqual([]);
+
+    // Y a la segunda, aceptando, sí.
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cambiar' }),
+    );
+
+    expect(backend.pricingCalls).toEqual([{ cost: '0.45', margin_rate: null, tax_ids: [] }]);
   });
 
   it('shows the category-inherited taxes pre-checked, without turning them into an override', async () => {

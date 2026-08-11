@@ -27,6 +27,7 @@ import { LotsTable } from '@/features/lots/LotsTable';
 import { createLot, lotsQuery, type LotCreateInput } from '@/features/lots/api';
 import { setProductPricing, taxesQuery, type PricingOverrideInput } from '@/features/pricing/api';
 import { ProductFormulaPanel } from '@/features/pricing/ProductFormulaPanel';
+import { PriceChangeDialog } from '@/features/pricing/PriceChangeDialog';
 import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
 import { productPurchaseHistoryQuery } from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
@@ -103,8 +104,19 @@ export function ProductDetailPage() {
   const savePricingMutation = useMutation({
     mutationFn: (input: PricingOverrideInput & { cost?: string }) =>
       setProductPricing(productId, input),
-    onSuccess: invalidateProduct,
+    onSuccess: () => {
+      invalidateProduct();
+      setProposedPricing(null);
+    },
+    onError: () => setProposedPricing(null),
   });
+
+  // Cambiar el coste recalcula el PVP con la fórmula, así que acaba
+  // tocando lo que se le cobra al cliente por lo que ya está en la
+  // estantería: se pregunta antes (ver `PriceChangeDialog`).
+  const [proposedPricing, setProposedPricing] = useState<
+    (PricingOverrideInput & { cost?: string }) | null
+  >(null);
 
   const addPackageMutation = useMutation({
     mutationFn: ({
@@ -289,6 +301,20 @@ export function ProductDetailPage() {
         />
       )}
 
+      {proposedPricing !== null && proposedPricing.cost !== undefined && (
+        <PriceChangeDialog
+          productName={data.name}
+          what="coste"
+          current={data.cost}
+          next={proposedPricing.cost}
+          unitName={data.base_unit_name}
+          stock={totalStock === null ? null : String(totalStock)}
+          isPending={savePricingMutation.isPending}
+          onCancel={() => setProposedPricing(null)}
+          onConfirm={() => savePricingMutation.mutate(proposedPricing)}
+        />
+      )}
+
       {tab === 'pricing' && canManagePricing && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <ProductPricingPanel
@@ -296,7 +322,15 @@ export function ProductDetailPage() {
             category={categories.data?.find((c) => c.id === data.category_id)}
             taxes={taxes.data ?? []}
             isSaving={savePricingMutation.isPending}
-            onSave={(input) => savePricingMutation.mutate(input)}
+            onSave={(input) => {
+              // Sin tocar el coste no hay nada que avisar: el margen y los
+              // impuestos se guardan directamente.
+              if (input.cost !== undefined && Number(input.cost) !== Number(data.cost)) {
+                setProposedPricing(input);
+                return;
+              }
+              savePricingMutation.mutate(input);
+            }}
           />
           <ProductFormulaPanel
             product={data}

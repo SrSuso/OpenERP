@@ -20,8 +20,10 @@ interface ProductsTableProps {
   onActivate: (id: number) => void;
   isActivating: boolean;
   /** Precio de venta tecleado en la propia fila — `listPrice` ya viene
-   * normalizado (coma → punto) por `decimalString`. */
-  onSetPrice: (id: number, listPrice: string) => void;
+   * normalizado (coma → punto) por `decimalString`. No guarda: la página
+   * pregunta antes, porque el precio nuevo se aplica también a lo que ya
+   * está en la estantería (ver `PriceChangeDialog`). */
+  onSetPrice: (product: Product, listPrice: string) => void;
   savingPriceId: number | null;
   savedPriceId: number | null;
 }
@@ -162,7 +164,7 @@ function PriceCell({
   isSaved,
 }: {
   product: Product;
-  onSave: (id: number, listPrice: string) => void;
+  onSave: (product: Product, listPrice: string) => void;
   isSaving: boolean;
   isSaved: boolean;
 }) {
@@ -175,9 +177,9 @@ function PriceCell({
   function save() {
     if (!parsed.success || parsed.data === product.list_price) return;
     // Mismo número escrito de otra forma ("1,68" frente a "1.680000") no es
-    // un cambio: guardarlo sólo ensuciaría el histórico de precios.
+    // un cambio: proponerlo sólo sacaría un aviso para nada.
     if (Number(parsed.data) === Number(product.list_price)) return;
-    onSave(product.id, parsed.data);
+    onSave(product, parsed.data);
   }
 
   return (
