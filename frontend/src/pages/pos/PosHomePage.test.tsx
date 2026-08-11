@@ -23,12 +23,34 @@ const POS_CATEGORY = {
   display_order: 0,
   is_active: true,
 };
+/** Se vende pesando: un toque no puede venderlo, tiene que preguntar. */
+const TOMATO = {
+  id: 2,
+  sku: 'TOMATE',
+  name: 'Tomate',
+  pos_category_id: 1,
+  pos_category_name: 'Bebidas',
+  base_unit_name: 'KG',
+  list_price: '1.680000',
+  tax_rate: '4.000000',
+  is_active: true,
+  packages: [
+    {
+      id: 20,
+      name: 'KG',
+      factor: '1.000000',
+      is_base: true,
+      barcodes: [],
+    },
+  ],
+};
 const MILK = {
   id: 1,
   sku: 'LECHE-1L',
   name: 'Leche entera 1L',
   pos_category_id: 1,
   pos_category_name: 'Bebidas',
+  base_unit_name: 'UNIT',
   list_price: '1.200000',
   tax_rate: '10.000000',
   is_active: true,
@@ -99,6 +121,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
   let sale: Sale | null = options.existingDraft ?? null;
   let nextSaleId = 5;
   const postSalesCalls = { count: 0 };
+  const addLineCalls: Record<string, unknown>[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -116,7 +139,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         return Promise.resolve(jsonResponse([POS_CATEGORY]));
       }
       if (url.includes('/products')) {
-        return Promise.resolve(jsonResponse([MILK]));
+        return Promise.resolve(jsonResponse([MILK, TOMATO]));
       }
       if (url.includes('/sales') && url.includes('status=DRAFT')) {
         return Promise.resolve(jsonResponse(sale ? [sale] : []));
@@ -149,6 +172,9 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
       if (method === 'POST' && /\/sales\/\d+\/lines$/.test(url)) {
+        addLineCalls.push(
+          init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
+        );
         sale = saleWithMilkLine(sale?.id ?? nextSaleId);
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
@@ -166,7 +192,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
     }),
   );
 
-  return { postSalesCalls };
+  return { postSalesCalls, addLineCalls };
 }
 
 function renderPage() {
@@ -193,6 +219,39 @@ describe('PosHomePage', () => {
     const cart = screen.getByRole('button', { name: /cancelar venta/i }).closest('aside')!;
     expect(within(cart).getByText('Leche entera 1L')).toBeInTheDocument();
     expect(within(cart).getAllByText('1,32 €').length).toBeGreaterThan(0);
+  });
+
+  it('asks how many grams before selling something that goes by weight', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: /tomate/i }));
+
+    // Un toque no lo ha vendido: primero hay que decir cuánto pesa.
+    const dialog = await screen.findByRole('dialog', { name: /cantidad de tomate/i });
+    expect(backend.addLineCalls).toEqual([]);
+
+    await userEvent.type(within(dialog).getByLabelText('Gramos'), '500');
+    // El importe se ve antes de aceptar: es lo que se le va a cobrar.
+    expect(within(dialog).getByText('0,84 €')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Añadir' }));
+
+    expect(backend.addLineCalls).toEqual([
+      { product_id: 2, package_id: 20, quantity_packages: '0.500' },
+    ]);
+  });
+
+  it('sells one unit on a plain tap when the product is not sold by weight', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: /leche entera 1l/i }));
+
+    await screen.findAllByText('Leche entera 1L');
+    expect(backend.addLineCalls).toEqual([
+      { product_id: 1, package_id: 10, quantity_packages: '1' },
+    ]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('resumes an existing draft sale instead of opening a new one', async () => {

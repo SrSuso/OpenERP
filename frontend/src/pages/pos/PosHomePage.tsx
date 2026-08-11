@@ -6,6 +6,7 @@ import { CategoryTabs } from '@/features/pos/CategoryTabs';
 import { Checkout } from '@/features/pos/Checkout';
 import { ProductGrid } from '@/features/pos/ProductGrid';
 import { Receipt } from '@/features/pos/Receipt';
+import { WeightPrompt } from '@/features/pos/WeightPrompt';
 import {
   addLine,
   addLineByBarcode,
@@ -24,6 +25,7 @@ import {
   type SaleLine,
   type Tender,
 } from '@/features/pos/api';
+import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
 
 function describeError(error: unknown): string {
@@ -105,18 +107,36 @@ export function PosHomePage() {
   );
 
   const addLineMutation = useMutation({
-    mutationFn: (product: Product) =>
+    mutationFn: ({ product, quantity }: { product: Product; quantity: string }) =>
       addLine(sale!.id, {
         product_id: product.id,
         package_id: basePackage(product).id,
-        quantity_packages: '1',
+        quantity_packages: quantity,
       }),
     onSuccess: (updated) => {
       setLineError(null);
       setSale(updated);
+      setWeighing(null);
     },
     onError: (error) => setLineError(describeError(error)),
   });
+
+  // Los productos que se venden pesando (KG por defecto, ver el ajuste) no
+  // se pueden vender de un toque: nadie compra exactamente un kilo. Al
+  // pulsarlos se pregunta cuántos gramos, y esto es el que está esperando.
+  const weighedUnits = useShopSetting('pos.weighed_units', 'KG')
+    .split(',')
+    .map((unit) => unit.trim().toUpperCase())
+    .filter((unit) => unit !== '');
+  const [weighing, setWeighing] = useState<Product | null>(null);
+
+  function pickProduct(product: Product) {
+    if (weighedUnits.includes(product.base_unit_name.toUpperCase())) {
+      setWeighing(product);
+      return;
+    }
+    addLineMutation.mutate({ product, quantity: '1' });
+  }
 
   const addBarcodeMutation = useMutation({
     mutationFn: (code: string) => addLineByBarcode(sale!.id, code),
@@ -290,7 +310,7 @@ export function PosHomePage() {
                         products={products.data ?? []}
                         isPending={products.isPending}
                         isError={products.isError}
-                        onPick={(product) => addLineMutation.mutate(product)}
+                        onPick={pickProduct}
                         disabled={sale === null || busy}
                       />
                     </div>
@@ -311,6 +331,15 @@ export function PosHomePage() {
             </>
           )}
         </>
+      )}
+
+      {weighing !== null && (
+        <WeightPrompt
+          product={weighing}
+          isPending={addLineMutation.isPending}
+          onCancel={() => setWeighing(null)}
+          onConfirm={(quantity) => addLineMutation.mutate({ product: weighing, quantity })}
+        />
       )}
     </section>
   );

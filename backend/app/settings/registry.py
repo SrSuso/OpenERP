@@ -264,6 +264,19 @@ SETTINGS: tuple[SettingDef, ...] = (
     ),
     # --- caja --------------------------------------------------------------
     SettingDef(
+        key="pos.weighed_units",
+        group=GROUP_POS,
+        label="Unidades que se venden pesando",
+        help=(
+            "Un producto con estas unidades no se puede vender de un toque: al "
+            "pulsarlo, la caja pregunta cuántos gramos se llevan, porque nadie "
+            "compra exactamente un kilo de tomates. El resto se vende de un toque, "
+            "una unidad. Varias separadas por comas (KG, L)."
+        ),
+        type=SettingType.STRING,
+        default="KG",
+    ),
+    SettingDef(
         key="pos.default_payment_method",
         group=GROUP_POS,
         label="Forma de pago que sale marcada",

@@ -35,7 +35,9 @@ export function ProductGrid({ products, isPending, isError, onPick, disabled }: 
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 overflow-y-auto p-3 sm:grid-cols-3 lg:grid-cols-4">
+    // El doble de columnas y menos alto que antes: en una caja caben más
+    // productos por pantalla y se rebusca menos.
+    <div className="grid grid-cols-4 gap-2 overflow-y-auto p-3 sm:grid-cols-6 lg:grid-cols-8">
       {products.map((product) => (
         <ProductButton
           key={product.id}
@@ -68,19 +70,19 @@ function ProductButton({
       type="button"
       disabled={disabled}
       onClick={() => onPick(product)}
-      className="flex h-28 flex-col justify-between overflow-hidden rounded-lg bg-slate-800 text-left shadow transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex h-24 flex-col justify-between overflow-hidden rounded-lg bg-slate-800 text-left shadow transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {version !== undefined && (
         <img
           src={imageUrl('product', product.id, version)}
           alt=""
-          className="h-14 w-full shrink-0 object-cover"
+          className="h-10 w-full shrink-0 object-cover"
         />
       )}
-      <span className="line-clamp-2 px-3 pt-2 text-sm font-medium text-slate-50">
+      <span className="line-clamp-2 px-2 pt-1.5 text-xs font-medium text-slate-50">
         {product.name}
       </span>
-      <span className="px-3 pb-3 text-lg font-semibold text-emerald-400">
+      <span className="px-2 pb-2 text-sm font-semibold text-emerald-400">
         {formatMoney(product.list_price)}
       </span>
     </button>

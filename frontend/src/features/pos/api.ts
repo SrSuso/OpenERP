@@ -71,6 +71,9 @@ export const productSchema = z.object({
   name: z.string(),
   pos_category_id: z.number().nullable(),
   pos_category_name: z.string().nullable(),
+  // En qué se vende: lo que decide si un toque vende una unidad o hay que
+  // preguntar cuánto pesa (ver el ajuste `pos.weighed_units`).
+  base_unit_name: z.string(),
   list_price: z.string(),
   tax_rate: z.string(),
   is_active: z.boolean(),

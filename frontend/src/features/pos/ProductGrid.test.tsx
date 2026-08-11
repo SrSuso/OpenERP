@@ -12,6 +12,7 @@ const MILK: Product = {
   name: 'Leche entera 1L',
   pos_category_id: 1,
   pos_category_name: 'Bebidas',
+  base_unit_name: 'UNIT',
   list_price: '1.200000',
   tax_rate: '10.000000',
   is_active: true,
