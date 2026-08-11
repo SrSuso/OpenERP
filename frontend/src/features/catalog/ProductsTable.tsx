@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 
 import { type Product } from '@/features/catalog/api';
-import { decimalString } from '@/lib/decimal';
+import { decimalInputValue, decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
 
 interface ProductsTableProps {
@@ -133,12 +133,6 @@ export function ProductsTable({
   );
 }
 
-/** `"1.680000"` (NUMERIC(18,6)) → `"1,68"`: lo que se teclearía, sin los
- * ceros de relleno y con la coma de aquí. */
-function priceInputValue(listPrice: string): string {
-  return String(Number(listPrice)).replace('.', ',');
-}
-
 /** El PVP tecleado en la propia fila, para poder repasar los precios del
  * día de un tirón (la fruta y la carne cambian a diario): Intro o salir del
  * recuadro guarda, Escape deshace. Fija el precio tal cual, sin pasar por el
@@ -155,7 +149,7 @@ function PriceCell({
   isSaving: boolean;
   isSaved: boolean;
 }) {
-  const saved = priceInputValue(product.list_price);
+  const saved = decimalInputValue(product.list_price);
   const [draft, setDraft] = useState(saved);
 
   const parsed = decimalString({ min: 0 }).safeParse(draft);

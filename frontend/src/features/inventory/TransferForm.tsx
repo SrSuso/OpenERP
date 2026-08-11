@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
+import { useCostOfChosenProduct } from '@/features/inventory/useCostOfChosenProduct';
 import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import { decimalString } from '@/lib/decimal';
 
@@ -69,6 +70,7 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
   useDefaultToFirstOption(toLocationId, toLocations.data, (value) =>
     setValue('to_location_id', value),
   );
+  useCostOfChosenProduct(watch('product_id'), products, (value) => setValue('unit_cost', value));
 
   const submit = handleSubmit((values) =>
     onSubmit({

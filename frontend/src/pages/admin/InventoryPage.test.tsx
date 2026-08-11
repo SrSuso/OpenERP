@@ -185,10 +185,13 @@ describe('InventoryBalancesPage', () => {
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
     await userEvent.selectOptions(within(form).getByLabelText('Producto'), '10');
     // Almacén y ubicación vienen ya con la primera opción puesta: con un solo
-    // almacén no hay nada que elegir, y desplegarlos era un paso de más.
+    // almacén no hay nada que elegir, y desplegarlos era un paso de más. El
+    // coste se rellena con el que tiene ahora el producto (0,50), sin dejar
+    // de poder cambiarse.
     await waitFor(() => {
       expect(within(form).getByLabelText('Almacén')).toHaveValue('1');
       expect(within(form).getByLabelText('Ubicación')).toHaveValue('1');
+      expect(within(form).getByLabelText('Coste/ud.')).toHaveValue('0,5');
     });
     await userEvent.type(within(form).getByLabelText('Cantidad (con signo)'), '-2');
     await userEvent.click(within(form).getByRole('button', { name: 'Registrar ajuste' }));
@@ -200,7 +203,7 @@ describe('InventoryBalancesPage', () => {
         location_id: 1,
         movement_type: 'ADJUSTMENT',
         quantity: '-2',
-        unit_cost: '0',
+        unit_cost: '0.5',
         lot_id: null,
         reason: '',
       },
