@@ -192,6 +192,8 @@ describe('InventoryBalancesPage', () => {
       expect(within(form).getByLabelText('Almacén')).toHaveValue('1');
       expect(within(form).getByLabelText('Ubicación')).toHaveValue('1');
       expect(within(form).getByLabelText('Coste/ud.')).toHaveValue('0,5');
+      // Al lado, el PVP del producto, sólo para mirarlo.
+      expect(within(form).getByLabelText('PVP/ud.')).toHaveValue('1');
     });
     await userEvent.type(within(form).getByLabelText('Cantidad (con signo)'), '-2');
     await userEvent.click(within(form).getByRole('button', { name: 'Registrar ajuste' }));

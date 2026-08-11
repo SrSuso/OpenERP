@@ -7,7 +7,7 @@ import { type Product } from '@/features/catalog/api';
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
 import { useCostOfChosenProduct } from '@/features/inventory/useCostOfChosenProduct';
 import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
-import { decimalString } from '@/lib/decimal';
+import { decimalInputValue, decimalString } from '@/lib/decimal';
 
 const transferSchema = z.object({
   product_id: z.string().min(1, 'Elige un producto.'),
@@ -50,6 +50,8 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
     defaultValues: { unit_cost: '0' },
   });
 
+  const productId = watch('product_id');
+  const chosenProduct = products.find((product) => String(product.id) === productId);
   const fromWarehouseId = watch('from_warehouse_id');
   const toWarehouseId = watch('to_warehouse_id');
   const fromLocationId = watch('from_location_id');
@@ -70,7 +72,7 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
   useDefaultToFirstOption(toLocationId, toLocations.data, (value) =>
     setValue('to_location_id', value),
   );
-  useCostOfChosenProduct(watch('product_id'), products, (value) => setValue('unit_cost', value));
+  useCostOfChosenProduct(productId, products, (value) => setValue('unit_cost', value));
 
   const submit = handleSubmit((values) =>
     onSubmit({
@@ -136,6 +138,20 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
           {errors.unit_cost && (
             <p className="mt-1 text-sm text-red-600">{errors.unit_cost.message}</p>
           )}
+        </label>
+
+        {/* Al lado del coste para poder comparar de un vistazo lo que cuesta
+            con lo que se vende. No entra en la transferencia (que se valora
+            al coste): para cambiarlo está la lista de productos. */}
+        <label className="text-sm text-slate-600">
+          PVP/ud.
+          <input
+            type="text"
+            readOnly
+            value={chosenProduct ? decimalInputValue(chosenProduct.list_price) : ''}
+            placeholder="—"
+            className="mt-1 w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+          />
         </label>
 
         <label className="text-sm text-slate-600">
