@@ -14,15 +14,22 @@ import {
 } from '@/features/catalog/api';
 import { CreateProductForm } from '@/features/catalog/CreateProductForm';
 import { ProductsTable } from '@/features/catalog/ProductsTable';
-import { setProductPricing, taxesQuery } from '@/features/pricing/api';
+import { setManualPrice, setProductPricing, taxesQuery } from '@/features/pricing/api';
 import { ApiError } from '@/lib/api';
 
 export function ProductsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('product.manage');
 
+  const canManagePricing = hasPermission('pricing.manage');
+
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  // Para repasar de un vistazo lo que se vende por peso ("KG") y teclear los
+  // precios del día. Se filtra aquí y no en el servidor porque la lista ya
+  // viene entera (`list_products` no pagina) y `base_unit_name` viene en cada
+  // producto: un filtro más en la API no aportaría nada.
+  const [unitName, setUnitName] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -78,6 +85,26 @@ export function ProductsPage() {
     onSuccess: invalidateProducts,
   });
 
+  const [savedPriceId, setSavedPriceId] = useState<number | null>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const priceMutation = useMutation({
+    mutationFn: ({ id, listPrice }: { id: number; listPrice: string }) =>
+      setManualPrice(id, listPrice),
+    onSuccess: (_product, { id }) => {
+      invalidateProducts();
+      setSavedPriceId(id);
+      setPriceError(null);
+    },
+    onError: () => {
+      setSavedPriceId(null);
+      setPriceError('No se ha podido guardar el precio.');
+    },
+  });
+
+  const visibleProducts = (products.data ?? []).filter(
+    (product) => unitName === '' || product.base_unit_name === unitName,
+  );
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -103,6 +130,21 @@ export function ProductsPage() {
               {categories.data?.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-slate-600">
+            Unidad
+            <select
+              value={unitName}
+              onChange={(event) => setUnitName(event.target.value)}
+              className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
+            >
+              <option value="">Todas</option>
+              {units.data?.map((unit) => (
+                <option key={unit.id} value={unit.name}>
+                  {unit.name}
                 </option>
               ))}
             </select>
@@ -149,14 +191,20 @@ export function ProductsPage() {
         <p className="text-sm text-red-600">No se han podido cargar los productos.</p>
       )}
 
+      {priceError && <p className="mb-2 text-sm text-red-600">{priceError}</p>}
+
       {products.data && (
         <ProductsTable
-          products={products.data}
+          products={visibleProducts}
           canManage={canManage}
+          canManagePricing={canManagePricing}
           onDeactivate={(id) => deactivateMutation.mutate(id)}
           isDeactivating={deactivateMutation.isPending}
           onActivate={(id) => activateMutation.mutate(id)}
           isActivating={activateMutation.isPending}
+          onSetPrice={(id, listPrice) => priceMutation.mutate({ id, listPrice })}
+          savingPriceId={priceMutation.isPending ? priceMutation.variables.id : null}
+          savedPriceId={savedPriceId}
         />
       )}
     </div>

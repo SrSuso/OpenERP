@@ -41,7 +41,10 @@ const CATEGORIES: ProductCategory[] = [
 const POS_CATEGORIES: PosCategory[] = [
   { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
 ];
-const UNITS: Unit[] = [{ id: 1, name: 'UNIT', display_order: 0 }];
+const UNITS: Unit[] = [
+  { id: 1, name: 'UNIT', display_order: 0 },
+  { id: 2, name: 'KG', display_order: 1 },
+];
 
 function baseProduct(): Product {
   return {
@@ -76,6 +79,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
   const deactivateCalls: number[] = [];
   const activateCalls: number[] = [];
   const pricingCalls: { id: number; body: Record<string, unknown> }[] = [];
+  const manualPriceCalls: { id: number; listPrice: string }[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -137,6 +141,16 @@ function stubBackend(options: { products?: Product[] } = {}) {
         product.is_active = true;
         return Promise.resolve(jsonResponse(product));
       }
+      if (method === 'PUT' && /\/products\/(\d+)\/pricing\/manual-price$/.test(url)) {
+        const id = Number(/\/products\/(\d+)\/pricing\/manual-price$/.exec(url)![1]);
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { list_price: string })
+          : { list_price: '' };
+        manualPriceCalls.push({ id, listPrice: body.list_price });
+        const product = products.find((p) => p.id === id)!;
+        product.list_price = `${Number(body.list_price).toFixed(6)}`;
+        return Promise.resolve(jsonResponse(product));
+      }
       if (method === 'PATCH' && /\/products\/(\d+)\/pricing$/.test(url)) {
         const id = Number(/\/products\/(\d+)\/pricing$/.exec(url)![1]);
         const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
@@ -153,7 +167,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
     }),
   );
 
-  return { createCalls, deactivateCalls, activateCalls, pricingCalls };
+  return { createCalls, deactivateCalls, activateCalls, pricingCalls, manualPriceCalls };
 }
 
 function renderPage() {
@@ -321,5 +335,44 @@ describe('ProductsPage', () => {
     expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ver ficha' })).toBeInTheDocument();
+    // Sin pricing.manage el precio se ve, pero no se teclea.
+    expect(screen.queryByLabelText('Precio de Agua 1L')).not.toBeInTheDocument();
+  });
+
+  it('filters by base unit and sets the day price right in the row', async () => {
+    const backend = stubBackend({
+      products: [
+        baseProduct(),
+        { ...baseProduct(), id: 2, sku: 'P000002', name: 'Tomate', base_unit_name: 'KG' },
+      ],
+    });
+    renderPage();
+    await screen.findByText('Tomate');
+
+    await userEvent.selectOptions(screen.getByLabelText('Unidad'), 'KG');
+
+    expect(screen.queryByText('Agua 1L')).not.toBeInTheDocument();
+    expect(screen.getByText('€/KG')).toBeInTheDocument();
+
+    const price = screen.getByLabelText('Precio de Tomate');
+    await userEvent.clear(price);
+    await userEvent.type(price, '1,68{Enter}');
+
+    expect(backend.manualPriceCalls).toEqual([{ id: 2, listPrice: '1.68' }]);
+    expect(await screen.findByText('Guardado')).toBeInTheDocument();
+  });
+
+  it('does not save a price that has not really changed', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    const price = screen.getByLabelText('Precio de Agua 1L');
+    await userEvent.clear(price);
+    // "0,60" es lo mismo que el "0.600000" guardado: no hay nada que guardar,
+    // y una entrada de más en el histórico de precios sería ruido.
+    await userEvent.type(price, '0,60{Enter}');
+
+    expect(backend.manualPriceCalls).toEqual([]);
   });
 });
