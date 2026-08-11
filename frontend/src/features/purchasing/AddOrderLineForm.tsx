@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { type Product } from '@/features/catalog/api';
 import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { type OrderLineInput } from '@/features/purchasing/api';
-import { decimalString } from '@/lib/decimal';
+import { decimalInputValue, decimalString } from '@/lib/decimal';
 
 const addLineSchema = z.object({
   product_id: z.string().min(1, 'Elige un producto.'),
@@ -149,6 +149,32 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
         {errors.unit_cost && (
           <p className="mt-1 text-sm text-red-600">{errors.unit_cost.message}</p>
         )}
+      </label>
+
+      {/* Lo que ese producto vale hoy, para poder comparar con lo que pide
+          el proveedor sin abrir su ficha. Sólo de lectura: el coste de la
+          izquierda es el de esta compra, y el PVP se cambia desde la lista
+          de productos. */}
+      <label className="text-sm text-slate-600">
+        Coste actual
+        <input
+          type="text"
+          readOnly
+          value={selectedProduct ? decimalInputValue(selectedProduct.cost) : ''}
+          placeholder="—"
+          className="mt-1 block w-24 rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600"
+        />
+      </label>
+
+      <label className="text-sm text-slate-600">
+        PVP actual
+        <input
+          type="text"
+          readOnly
+          value={selectedProduct ? decimalInputValue(selectedProduct.list_price) : ''}
+          placeholder="—"
+          className="mt-1 block w-24 rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600"
+        />
       </label>
 
       <label className="text-sm text-slate-600">

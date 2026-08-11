@@ -226,6 +226,10 @@ describe('PurchasingPage', () => {
     await screen.findByText('Añade al menos un producto — un pedido no se puede crear vacío.');
 
     await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    // Lo que ese producto vale hoy, para comparar con lo que pide el
+    // proveedor sin abrir su ficha.
+    expect(screen.getByLabelText('Coste actual')).toHaveValue('0,5');
+    expect(screen.getByLabelText('PVP actual')).toHaveValue('1');
     await userEvent.selectOptions(screen.getByLabelText('Formato'), '100');
     const qtyInput = screen.getByLabelText('Cantidad');
     await userEvent.clear(qtyInput);
