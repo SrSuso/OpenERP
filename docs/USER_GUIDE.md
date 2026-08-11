@@ -78,11 +78,19 @@ Al confirmar:
 
 ### 2.5. Imprimir el ticket
 
-Desde la propia pantalla de confirmación de cobro, **Imprimir ticket** abre
-el diálogo de impresión del navegador con el recibo ya formateado (58 o
-80mm, según la impresora configurada). Si el botón da un error en vez de
-imprimir, avisa a tu administrador — normalmente significa que no hay una
-plantilla de ticket activa configurada.
+Desde la propia pantalla de confirmación de cobro, **Imprimir ticket** manda
+el recibo ya formateado a la impresora (58 o 80 mm, según la que tengas
+configurada). Si el botón da un error en vez de imprimir, avisa a tu
+administrador — normalmente significa que no hay una plantilla de ticket
+activa configurada.
+
+**Que salga directo, sin preguntar.** Si al imprimir se abre el cuadro de
+impresión del navegador y hay que darle a «Imprimir» cada vez, es que la
+caja no está arrancada en modo caja. Una página web no puede saltarse ese
+cuadro por su cuenta —el navegador no se lo permite a ninguna, por
+seguridad—, así que se abre el TPV con `scripts/pos-kiosk.sh`, que arranca
+Chrome preparado para imprimir directo en la impresora predeterminada. Ese
+script explica dentro cómo dejarlo puesto al encender el equipo.
 
 ---
 

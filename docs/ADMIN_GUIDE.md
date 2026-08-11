@@ -196,6 +196,34 @@ commitear (`git status`), para no pisarlos con el `pull`.
 
 ---
 
+## 3.1. La caja: imprimir el ticket sin cuadro de impresión
+
+Una página web no puede saltarse el cuadro de impresión del navegador.
+`window.print()` lo abre siempre, y es una restricción de seguridad
+deliberada: si una web pudiera imprimir sola, cualquiera podría vaciarte el
+papel. No hay forma de programarlo desde la aplicación.
+
+Lo que sí se puede es arrancar el navegador de la caja en **modo caja**,
+donde `window.print()` manda el trabajo directo a la impresora
+predeterminada. Para eso está `scripts/pos-kiosk.sh`:
+
+```bash
+scripts/pos-kiosk.sh https://tu-tienda.example
+```
+
+En el equipo de la caja, antes:
+
+1. Pon la impresora de tickets como **predeterminada del sistema**. Es la
+   que se usará: el modo caja no pregunta, y por eso no elige.
+2. En su controlador, deja configurado el ancho del rollo (58 u 80 mm).
+   Los márgenes los quita ya la aplicación (`@page { margin: 0 }`), que es
+   lo que evita que el ticket salga partido.
+
+Para que arranque solo al encender, añade el script a las aplicaciones de
+inicio de sesión del escritorio.
+
+---
+
 ## 4. Copias de seguridad
 
 Los mismos scripts que en desarrollo (`scripts/backup-postgres.sh`,

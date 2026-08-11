@@ -52,6 +52,16 @@
  * `window.print()` never needs the rest of the till's chrome (or its dark
  * background) reproduced on paper. */
 @media print {
+  /* Sin márgenes: en un rollo térmico de 58/80 mm, los ~10 mm que el
+     navegador añade por su cuenta parten el ticket. Con el cuadro de
+     impresión se podían quitar a mano cada vez; imprimiendo directo
+     (Chrome con --kiosk-printing, ver scripts/pos-kiosk.sh) no hay dónde
+     tocarlos, así que se fijan aquí. El ancho del rollo lo pone el
+     controlador de la impresora, que es quien lo sabe. */
+  @page {
+    margin: 0;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -64,5 +74,18 @@
   .ticket-print-root {
     position: fixed;
     inset: 0;
+    /* En negro sobre blanco pase lo que pase: el cierre de caja se pinta
+       en pantalla sobre fondo oscuro y con letra clara, y los navegadores
+       no imprimen fondos — esa letra saldría en blanco sobre el papel, es
+       decir, en blanco. */
+    background: #fff;
+    color: #000;
+    padding: 2mm;
+  }
+
+  .ticket-print-root * {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
   }
 }
