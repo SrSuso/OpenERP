@@ -250,9 +250,12 @@ describe('CategoriesPage', () => {
     renderPage();
     await screen.findByText('Ofertas');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Ofertas»' }));
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Ocultar' }));
+    confirmSpy.mockRestore();
 
-    await screen.findByText(/Ofertas.*inactiva/);
+    await screen.findByText(/Ofertas.*oculta/);
     expect(backend.deactivatePosCategoryCalls).toEqual([1]);
   });
 
@@ -273,7 +276,7 @@ describe('CategoriesPage', () => {
     renderPage();
     await screen.findByText('Bebidas');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Margen/impuestos' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
     const marginInput = screen.getByPlaceholderText('vacío = sin margen por defecto');
     await userEvent.type(marginInput, '25');
     await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
@@ -289,7 +292,7 @@ describe('CategoriesPage', () => {
     renderPage();
     await screen.findByText('Bebidas');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Renombrar «Bebidas»' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
     await userEvent.clear(screen.getByLabelText('Nombre de «Bebidas»'));
     await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
@@ -297,10 +300,10 @@ describe('CategoriesPage', () => {
     expect(backend.renameCategoryCalls).toEqual([]);
     expect(screen.getByText('Bebidas')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Renombrar «Bebidas»' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
     await userEvent.clear(screen.getByLabelText('Nombre de «Bebidas»'));
     await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar nombre' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(await screen.findByText('Refrescos')).toBeInTheDocument();
     expect(backend.renameCategoryCalls).toEqual([{ id: 1, name: 'Refrescos' }]);
@@ -311,7 +314,7 @@ describe('CategoriesPage', () => {
     renderPage();
     await screen.findByText('Bebidas');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Margen/impuestos' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
     await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
     await userEvent.click(screen.getByRole('button', { name: /IVA reducido/ }));
 
@@ -337,6 +340,7 @@ describe('CategoriesPage', () => {
     await screen.findByText('Bebidas');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
     await userEvent.click(screen.getByRole('button', { name: 'Ocultar' }));
 
     expect(confirm).toHaveBeenCalledOnce();
@@ -356,6 +360,7 @@ describe('CategoriesPage', () => {
     await screen.findByText('Bebidas');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
     await userEvent.click(screen.getByRole('button', { name: 'Borrar' }));
 
     expect(confirm).toHaveBeenCalledOnce();

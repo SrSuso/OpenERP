@@ -195,3 +195,80 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/pos-categories")
 
     assert response.status_code == 401
+
+
+async def test_a_pos_category_can_be_hidden_and_shown_again(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Sin el camino de vuelta, esconder una por error obligaba a crear otra
+    igual y reasignarle los productos a mano."""
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/pos-categories", json={"name": "Ofertas"})).json()
+
+    hidden = await client.post(f"/api/v1/pos-categories/{category['id']}/deactivate")
+    assert hidden.status_code == 200
+    assert hidden.json()["is_active"] is False
+
+    shown = await client.post(f"/api/v1/pos-categories/{category['id']}/activate")
+    assert shown.status_code == 200
+    assert shown.json()["is_active"] is True
+
+
+async def test_colour_and_order_can_be_changed_after_creating_it(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Un color mal elegido no puede obligar a crear otra categoría."""
+    await login(role_name="ADMIN")
+    category = (
+        await client.post(
+            "/api/v1/pos-categories",
+            json={"name": "Fruta", "color": "#64748b", "display_order": 0},
+        )
+    ).json()
+
+    updated = await client.patch(
+        f"/api/v1/pos-categories/{category['id']}",
+        json={"name": "Fruta y verdura", "color": "#22c55e", "display_order": 3},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json() == {
+        **category,
+        "name": "Fruta y verdura",
+        "color": "#22c55e",
+        "display_order": 3,
+    }
+
+
+async def test_a_pos_category_in_use_is_not_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/pos-categories", json={"name": "En uso"})).json()
+    await client.post(
+        "/api/v1/products",
+        json={
+            "name": "Tomate",
+            "base_unit_name": "KG",
+            "cost": "1.20",
+            "list_price": "1.68",
+            "pos_category_id": category["id"],
+        },
+    )
+
+    refused = await client.delete(f"/api/v1/pos-categories/{category['id']}")
+
+    assert refused.status_code == 409
+    assert "1 productos" in refused.json()["error"]["message"]
+
+
+async def test_an_unused_pos_category_can_be_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/pos-categories", json={"name": "Sobrante"})).json()
+
+    assert (await client.delete(f"/api/v1/pos-categories/{category['id']}")).status_code == 204
+
+    listed = (await client.get("/api/v1/pos-categories?active_only=false")).json()
+    assert category["id"] not in [c["id"] for c in listed]

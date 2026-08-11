@@ -357,6 +357,58 @@ async def update_pos_category(
     return updated
 
 
+async def set_pos_category_active(
+    session: AsyncSession, pos_category_id: int, *, is_active: bool
+) -> PosCategory:
+    """Ocultar o volver a mostrar una categoría del TPV. Reversible: sin el
+    camino de vuelta, esconder una por error obligaba a crear otra igual y
+    reasignarle los productos a mano."""
+    category = await get_pos_category(session, pos_category_id)
+    if category.is_active == is_active:
+        return category
+
+    before = _pos_category_snapshot(category)
+    category.is_active = is_active
+    await session.flush()
+    await audit.record(
+        session,
+        action="activated" if is_active else "deactivated",
+        entity_type="pos_category",
+        entity_id=pos_category_id,
+        before=before,
+        after=_pos_category_snapshot(category),
+    )
+    return category
+
+
+async def delete_pos_category(session: AsyncSession, pos_category_id: int) -> None:
+    """Borrado de verdad, y sólo si no la usa ningún producto — mismo
+    criterio que `delete_category`: borrarla con productos dentro les
+    quitaría su sitio en el TPV sin decir nada."""
+    category = await get_pos_category(session, pos_category_id)
+    in_use = (
+        await session.execute(
+            select(func.count())
+            .select_from(Product)
+            .where(Product.pos_category_id == pos_category_id)
+        )
+    ).scalar_one()
+    if in_use:
+        raise ConflictError(
+            f"No se puede borrar «{category.name}»: la usan {in_use} productos. "
+            "Ocúltala en su lugar, o cámbiales la categoría antes."
+        )
+    await session.delete(category)
+    await session.flush()
+    await audit.record(
+        session,
+        action="deleted",
+        entity_type="pos_category",
+        entity_id=pos_category_id,
+        before={"name": category.name},
+    )
+
+
 async def deactivate_pos_category(session: AsyncSession, pos_category_id: int) -> PosCategory:
     """Rule 14: POS categories are never deleted, only deactivated. Products
     already assigned to it keep the link (traceability) — the POS grid

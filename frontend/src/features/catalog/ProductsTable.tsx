@@ -7,7 +7,6 @@ import { formatMoney, formatQuantity } from '@/lib/format';
 
 interface ProductsTableProps {
   products: Product[];
-  canManage: boolean;
   canManagePricing: boolean;
   /** Unidades base cuyo precio se teclea en la propia fila (el resto sólo
    * lo muestra) — ver el ajuste `catalog.quick_price_units`. */
@@ -15,10 +14,6 @@ interface ProductsTableProps {
   /** Cuánto hay de cada producto, por id. Ausente = todavía cargando, o
    * sin permiso para verlo (`inventory.read`). */
   stockByProduct: Map<number, string> | null;
-  onDeactivate: (id: number) => void;
-  isDeactivating: boolean;
-  onActivate: (id: number) => void;
-  isActivating: boolean;
   /** Precio de venta tecleado en la propia fila — `listPrice` ya viene
    * normalizado (coma → punto) por `decimalString`. No guarda: la página
    * pregunta antes, porque el precio nuevo se aplica también a lo que ya
@@ -28,50 +23,49 @@ interface ProductsTableProps {
   savedPriceId: number | null;
 }
 
-/** Cada fila enlaza a la ficha completa del producto
- * (`/admin/inventory/products/:id`, ver `ProductDetailPage`) — presentaciones,
- * precio, proveedores, lotes y compras se editan ahí, en pestañas, no desde
- * filas expandibles de esta tabla. */
+/** El nombre de cada producto es el enlace a su ficha
+ * (`/admin/inventory/products/:id`, ver `ProductDetailPage`), que es donde
+ * se hace *todo* con él: datos generales, precio, presentaciones,
+ * proveedores, lotes, y desactivarlo o reactivarlo. La lista no repite esas
+ * acciones en cada fila; para eso está la ficha.
+ *
+ * El SKU no se enseña: es una referencia interna que genera el propio
+ * programa para que ventas, compras e inventario se entiendan entre ellos,
+ * y en una tienda pequeña no significa nada para quien mira la lista. Se
+ * sigue pudiendo buscar por él. */
 export function ProductsTable({
   products,
-  canManage,
   canManagePricing,
   quickPriceUnits,
   stockByProduct,
-  onDeactivate,
-  isDeactivating,
-  onActivate,
-  isActivating,
   onSetPrice,
   savingPriceId,
   savedPriceId,
 }: ProductsTableProps) {
-  function confirmDeactivate(product: Product) {
-    if (window.confirm(`¿Desactivar «${product.name}»? Dejará de venderse en el TPV.`)) {
-      onDeactivate(product.id);
-    }
-  }
-
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <table className="w-full text-left text-sm">
         <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
-            <th className="px-4 py-2 font-medium">SKU</th>
-            <th className="px-4 py-2 font-medium">Nombre</th>
+            <th className="px-4 py-2 font-medium">Producto</th>
             <th className="px-4 py-2 font-medium">Categoría</th>
             <th className="px-4 py-2 font-medium">Categoría POS</th>
             <th className="px-4 py-2 font-medium">Stock</th>
             <th className="px-4 py-2 font-medium">Precio (por unidad base)</th>
             <th className="px-4 py-2 font-medium">Estado</th>
-            <th className="px-4 py-2 font-medium" />
           </tr>
         </thead>
         <tbody>
           {products.map((product) => (
             <tr key={product.id} className="border-b border-slate-100 last:border-0">
-              <td className="px-4 py-2 font-mono text-xs text-slate-500">{product.sku}</td>
-              <td className="px-4 py-2 font-medium text-slate-800">{product.name}</td>
+              <td className="px-4 py-2">
+                <Link
+                  to={`/admin/inventory/products/${product.id}`}
+                  className="font-medium text-brand-700 hover:underline"
+                >
+                  {product.name}
+                </Link>
+              </td>
               <td className="px-4 py-2">{product.category_name ?? '—'}</td>
               <td className="px-4 py-2">{product.pos_category_name ?? '—'}</td>
               <td className="px-4 py-2 whitespace-nowrap">
@@ -114,34 +108,6 @@ export function ProductsTable({
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                     Inactivo
                   </span>
-                )}
-              </td>
-              <td className="px-4 py-2 text-right whitespace-nowrap">
-                <Link
-                  to={`/admin/inventory/products/${product.id}`}
-                  className="mr-3 text-sm font-medium text-brand-700 hover:underline"
-                >
-                  Ver ficha
-                </Link>
-                {canManage && product.is_active && (
-                  <button
-                    type="button"
-                    onClick={() => confirmDeactivate(product)}
-                    disabled={isDeactivating}
-                    className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Desactivar
-                  </button>
-                )}
-                {canManage && !product.is_active && (
-                  <button
-                    type="button"
-                    onClick={() => onActivate(product.id)}
-                    disabled={isActivating}
-                    className="text-sm font-medium text-brand-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Reactivar
-                  </button>
                 )}
               </td>
             </tr>

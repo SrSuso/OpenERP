@@ -157,6 +157,21 @@ export async function deactivatePosCategory(id: number): Promise<PosCategory> {
   });
 }
 
+/** El camino de vuelta de `deactivatePosCategory`: sin él, esconder una
+ * por error obligaba a crear otra igual y reasignarle los productos. */
+export async function activatePosCategory(id: number): Promise<PosCategory> {
+  return apiFetch(`${API_V1}/pos-categories/${id}/activate`, {
+    method: 'POST',
+    schema: posCategorySchema,
+  });
+}
+
+/** Borrado de verdad. El backend lo rechaza (409) si algún producto la
+ * usa — en ese caso hay que ocultarla. */
+export async function deletePosCategory(id: number): Promise<void> {
+  await apiFetch(`${API_V1}/pos-categories/${id}`, { method: 'DELETE', schema: z.null() });
+}
+
 // --- productos, presentaciones y códigos de barras -------------------------
 
 export const barcodeSchema = z.object({

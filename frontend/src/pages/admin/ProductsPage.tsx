@@ -3,9 +3,7 @@ import { useState } from 'react';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import {
-  activateProduct,
   createProduct,
-  deactivateProduct,
   posCategoriesQuery,
   productCategoriesQuery,
   productsQuery,
@@ -85,16 +83,6 @@ export function ProductsPage() {
           : 'No se ha podido crear el producto.',
       );
     },
-  });
-
-  const deactivateMutation = useMutation({
-    mutationFn: (id: number) => deactivateProduct(id),
-    onSuccess: invalidateProducts,
-  });
-
-  const activateMutation = useMutation({
-    mutationFn: (id: number) => activateProduct(id),
-    onSuccess: invalidateProducts,
   });
 
   const [savedPriceId, setSavedPriceId] = useState<number | null>(null);
@@ -247,14 +235,9 @@ export function ProductsPage() {
       {products.data && (
         <ProductsTable
           products={visibleProducts}
-          canManage={canManage}
           canManagePricing={canManagePricing}
           quickPriceUnits={quickPriceUnits}
           stockByProduct={stockByProduct}
-          onDeactivate={(id) => deactivateMutation.mutate(id)}
-          isDeactivating={deactivateMutation.isPending}
-          onActivate={(id) => activateMutation.mutate(id)}
-          isActivating={activateMutation.isPending}
           onSetPrice={(product, listPrice) => setProposedPrice({ product, listPrice })}
           savingPriceId={priceMutation.isPending ? priceMutation.variables.id : null}
           savedPriceId={savedPriceId}

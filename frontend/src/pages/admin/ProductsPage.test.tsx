@@ -207,7 +207,8 @@ describe('ProductsPage', () => {
     renderPage();
 
     expect(await screen.findByText('Agua 1L')).toBeInTheDocument();
-    expect(screen.getByText('P000001')).toBeInTheDocument();
+    // El SKU es una referencia interna: ya no se enseña en la lista.
+    expect(screen.queryByText('P000001')).not.toBeInTheDocument();
     // Cuánto hay de cada uno, sin tener que ir a Saldos.
     expect(await screen.findByText('24')).toBeInTheDocument();
 
@@ -288,48 +289,18 @@ describe('ProductsPage', () => {
     expect(backend.pricingCalls).toEqual([]);
   });
 
-  it('links each row to its product detail page instead of editing inline', async () => {
+  it('opens the product detail from its own name', async () => {
     stubBackend();
     renderPage();
     await screen.findByText('Agua 1L');
 
-    expect(screen.getByRole('link', { name: 'Ver ficha' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Agua 1L' })).toHaveAttribute(
       'href',
       '/admin/inventory/products/1',
     );
   });
 
-  it('asks for confirmation before deactivating, and does nothing if cancelled', async () => {
-    const backend = stubBackend();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
-
-    expect(confirmSpy).toHaveBeenCalledWith('¿Desactivar «Agua 1L»? Dejará de venderse en el TPV.');
-    expect(backend.deactivateCalls).toEqual([]);
-    expect(screen.getByText('Activo')).toBeInTheDocument();
-  });
-
-  it('deactivates a product once confirmed, and offers to reactivate it', async () => {
-    const backend = stubBackend();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
-
-    await screen.findByText('Inactivo');
-    expect(backend.deactivateCalls).toEqual([1]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
-
-    await screen.findByText('Activo');
-    expect(backend.activateCalls).toEqual([1]);
-  });
-
-  it('does not offer to create/deactivate a product without product.manage, but the detail link stays', async () => {
+  it('does not offer to create a product without product.manage, but the detail link stays', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) => {
@@ -355,8 +326,8 @@ describe('ProductsPage', () => {
     await screen.findByText('Agua 1L');
 
     expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver ficha' })).toBeInTheDocument();
+    // Se puede seguir mirando la ficha, que es de sólo lectura sin permisos.
+    expect(screen.getByRole('link', { name: 'Agua 1L' })).toBeInTheDocument();
     // Sin pricing.manage el precio se ve, pero no se teclea.
     expect(screen.queryByLabelText('Precio de Agua 1L')).not.toBeInTheDocument();
   });

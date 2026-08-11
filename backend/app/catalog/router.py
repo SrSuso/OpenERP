@@ -241,7 +241,29 @@ async def update_pos_category(
     dependencies=[_require_pos_category_manage],
 )
 async def deactivate_pos_category(pos_category_id: int, session: SessionDep) -> PosCategoryRead:
-    return _pos_category_to_read(await service.deactivate_pos_category(session, pos_category_id))
+    return _pos_category_to_read(
+        await service.set_pos_category_active(session, pos_category_id, is_active=False)
+    )
+
+
+@router.post(
+    "/pos-categories/{pos_category_id}/activate",
+    response_model=PosCategoryRead,
+    dependencies=[_require_pos_category_manage],
+)
+async def activate_pos_category(pos_category_id: int, session: SessionDep) -> PosCategoryRead:
+    return _pos_category_to_read(
+        await service.set_pos_category_active(session, pos_category_id, is_active=True)
+    )
+
+
+@router.delete(
+    "/pos-categories/{pos_category_id}",
+    status_code=204,
+    dependencies=[_require_pos_category_manage],
+)
+async def delete_pos_category(pos_category_id: int, session: SessionDep) -> None:
+    await service.delete_pos_category(session, pos_category_id)
 
 
 @router.get("/products/barcode/{barcode}", response_model=ProductRead, dependencies=[_require_read])
