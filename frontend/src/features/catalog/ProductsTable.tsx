@@ -9,6 +9,9 @@ interface ProductsTableProps {
   products: Product[];
   canManage: boolean;
   canManagePricing: boolean;
+  /** Unidades base cuyo precio se teclea en la propia fila (el resto sólo
+   * lo muestra) — ver el ajuste `catalog.quick_price_units`. */
+  quickPriceUnits: string[];
   onDeactivate: (id: number) => void;
   isDeactivating: boolean;
   onActivate: (id: number) => void;
@@ -28,6 +31,7 @@ export function ProductsTable({
   products,
   canManage,
   canManagePricing,
+  quickPriceUnits,
   onDeactivate,
   isDeactivating,
   onActivate,
@@ -64,7 +68,8 @@ export function ProductsTable({
               <td className="px-4 py-2">{product.category_name ?? '—'}</td>
               <td className="px-4 py-2">{product.pos_category_name ?? '—'}</td>
               <td className="px-4 py-2">
-                {canManagePricing ? (
+                {canManagePricing &&
+                quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (
                   <PriceCell
                     // Se remonta cuando el servidor devuelve otro precio, así
                     // el recuadro parte siempre de lo que hay guardado.

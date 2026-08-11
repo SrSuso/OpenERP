@@ -15,12 +15,21 @@ import {
 import { CreateProductForm } from '@/features/catalog/CreateProductForm';
 import { ProductsTable } from '@/features/catalog/ProductsTable';
 import { setManualPrice, setProductPricing, taxesQuery } from '@/features/pricing/api';
+import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
 
 export function ProductsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('product.manage');
 
+  // Sólo lo que se vende por peso o volumen cambia de precio a diario, así
+  // que sólo eso lleva el precio editable en la lista; lo demás se cambia
+  // desde la ficha, como siempre. La lista de unidades es un ajuste
+  // (Configuración → Productos), no un "KG" escrito aquí.
+  const quickPriceUnits = useShopSetting('catalog.quick_price_units', 'KG')
+    .split(',')
+    .map((unit) => unit.trim().toUpperCase())
+    .filter((unit) => unit !== '');
   const canManagePricing = hasPermission('pricing.manage');
 
   const [search, setSearch] = useState('');
@@ -198,6 +207,7 @@ export function ProductsPage() {
           products={visibleProducts}
           canManage={canManage}
           canManagePricing={canManagePricing}
+          quickPriceUnits={quickPriceUnits}
           onDeactivate={(id) => deactivateMutation.mutate(id)}
           isDeactivating={deactivateMutation.isPending}
           onActivate={(id) => activateMutation.mutate(id)}

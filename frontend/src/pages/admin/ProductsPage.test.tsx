@@ -94,6 +94,9 @@ function stubBackend(options: { products?: Product[] } = {}) {
       if (method === 'GET' && url.includes('/pos-categories')) {
         return Promise.resolve(jsonResponse(POS_CATEGORIES));
       }
+      if (method === 'GET' && url.includes('/settings/values')) {
+        return Promise.resolve(jsonResponse({ 'catalog.quick_price_units': 'KG' }));
+      }
       if (method === 'GET' && url.includes('/units')) {
         return Promise.resolve(jsonResponse(UNITS));
       }
@@ -322,6 +325,7 @@ describe('ProductsPage', () => {
         }
         if (url.includes('/product-categories')) return Promise.resolve(jsonResponse(CATEGORIES));
         if (url.includes('/pos-categories')) return Promise.resolve(jsonResponse(POS_CATEGORIES));
+        if (url.includes('/settings/values')) return Promise.resolve(jsonResponse({}));
         if (url.includes('/units')) return Promise.resolve(jsonResponse(UNITS));
         if (url.includes('/taxes')) return Promise.resolve(jsonResponse(TAXES));
         if (url.includes('/products?')) return Promise.resolve(jsonResponse([baseProduct()]));
@@ -339,8 +343,30 @@ describe('ProductsPage', () => {
     expect(screen.queryByLabelText('Precio de Agua 1L')).not.toBeInTheDocument();
   });
 
-  it('filters by base unit and sets the day price right in the row', async () => {
+  it('only the products sold by weight get the price editable in the row', async () => {
     const backend = stubBackend({
+      products: [
+        baseProduct(),
+        { ...baseProduct(), id: 2, sku: 'P000002', name: 'Tomate', base_unit_name: 'KG' },
+      ],
+    });
+    renderPage();
+    await screen.findByText('Tomate');
+
+    // "Agua 1L" se vende por unidades: su precio se ve, no se teclea.
+    expect(screen.queryByLabelText('Precio de Agua 1L')).not.toBeInTheDocument();
+    expect(screen.getByText('0,60 €')).toBeInTheDocument();
+
+    const price = screen.getByLabelText('Precio de Tomate');
+    await userEvent.clear(price);
+    await userEvent.type(price, '1,68{Enter}');
+
+    expect(backend.manualPriceCalls).toEqual([{ id: 2, listPrice: '1.68' }]);
+    expect(await screen.findByText('Guardado')).toBeInTheDocument();
+  });
+
+  it('filters the list by base unit', async () => {
+    stubBackend({
       products: [
         baseProduct(),
         { ...baseProduct(), id: 2, sku: 'P000002', name: 'Tomate', base_unit_name: 'KG' },
@@ -353,21 +379,16 @@ describe('ProductsPage', () => {
 
     expect(screen.queryByText('Agua 1L')).not.toBeInTheDocument();
     expect(screen.getByText('€/KG')).toBeInTheDocument();
-
-    const price = screen.getByLabelText('Precio de Tomate');
-    await userEvent.clear(price);
-    await userEvent.type(price, '1,68{Enter}');
-
-    expect(backend.manualPriceCalls).toEqual([{ id: 2, listPrice: '1.68' }]);
-    expect(await screen.findByText('Guardado')).toBeInTheDocument();
   });
 
   it('does not save a price that has not really changed', async () => {
-    const backend = stubBackend();
+    const backend = stubBackend({
+      products: [{ ...baseProduct(), name: 'Tomate', base_unit_name: 'KG' }],
+    });
     renderPage();
-    await screen.findByText('Agua 1L');
+    await screen.findByText('Tomate');
 
-    const price = screen.getByLabelText('Precio de Agua 1L');
+    const price = screen.getByLabelText('Precio de Tomate');
     await userEvent.clear(price);
     // "0,60" es lo mismo que el "0.600000" guardado: no hay nada que guardar,
     // y una entrada de más en el histórico de precios sería ruido.

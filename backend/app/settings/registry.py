@@ -336,6 +336,20 @@ SETTINGS: tuple[SettingDef, ...] = (
         default=Decimal(0),
         minimum=Decimal(0),
     ),
+    SettingDef(
+        key="catalog.quick_price_units",
+        group=GROUP_CATALOG,
+        label="Unidades con el precio editable en la lista",
+        help=(
+            "Los productos que se venden con estas unidades llevan el precio en un "
+            "recuadro dentro de la propia lista de Inventario → Productos, para poder "
+            "repasar los precios del día de un tirón. El resto sólo lo muestran, y se "
+            "cambian desde la ficha. Varias unidades, separadas por comas (KG, L). "
+            "Déjalo vacío y no habrá recuadro en ninguna."
+        ),
+        type=SettingType.STRING,
+        default="KG",
+    ),
     # --- avisos ------------------------------------------------------------
     SettingDef(
         key="notifications.email_subject_prefix",
