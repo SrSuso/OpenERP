@@ -95,7 +95,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
               disabled={isPending}
               className={`rounded-lg py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 method === value
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-till-600 text-white'
                   : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
               }`}
             >
@@ -141,7 +141,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
           type="button"
           onClick={handleConfirm}
           disabled={isPending || !coversTotal}
-          className="w-full rounded-lg bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg bg-till-600 py-3 text-base font-semibold text-white transition hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isPending ? 'Cobrando…' : 'Confirmar cobro'}
         </button>

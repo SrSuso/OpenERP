@@ -54,7 +54,7 @@ export function Keypad({ value, onChange, maxLength = 6, action }: KeypadProps) 
           type="button"
           onClick={action.onPress}
           disabled={action.disabled}
-          className="col-span-3 rounded bg-emerald-600 py-4 text-lg font-semibold text-white transition active:bg-emerald-500 disabled:opacity-40"
+          className="col-span-3 rounded bg-till-600 py-4 text-lg font-semibold text-white transition active:bg-till-500 disabled:opacity-40"
         >
           {action.label}
         </button>

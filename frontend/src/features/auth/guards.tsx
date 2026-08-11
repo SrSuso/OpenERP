@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import { useBaseFontSize } from '@/features/settings/useBaseFontSize';
+import { useButtonColors } from '@/features/settings/useButtonColors';
 
 /**
  * Redirects to `/login` when signed out; renders nothing while the initial
@@ -18,6 +19,7 @@ export function RequireAuth() {
   // como la caja, y el primero en el que ya hay sesión para poder leer los
   // ajustes de la tienda.
   useBaseFontSize();
+  useButtonColors();
 
   if (isLoading) {
     return null;

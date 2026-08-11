@@ -656,6 +656,31 @@ SETTINGS: tuple[SettingDef, ...] = (
         minimum=Decimal(14),
         maximum=Decimal(24),
     ),
+    SettingDef(
+        key="ui.button_color",
+        group=GROUP_UI,
+        label="Color de los botones del panel",
+        help=(
+            "En hexadecimal (#2b5bb5). Del color que elijas se toma el tono: la "
+            "aplicación reconstruye los claros y los oscuros con las mismas "
+            "intensidades de siempre, para que la letra encima del botón se siga "
+            "leyendo elijas lo que elijas."
+        ),
+        type=SettingType.STRING,
+        default="#2b5bb5",
+    ),
+    SettingDef(
+        key="ui.pos_button_color",
+        group=GROUP_UI,
+        label="Color de los botones de cobrar (caja)",
+        help=(
+            "El de los botones que rematan una acción en el TPV: cobrar, añadir al "
+            "carrito, aceptar los gramos. Aparte del anterior a propósito, para que "
+            "en la caja se distingan de un vistazo."
+        ),
+        type=SettingType.STRING,
+        default="#059669",
+    ),
     # --- servidor ----------------------------------------------------------
     # Al final a propósito: son los que casi nunca se tocan, y así el panel
     # los pinta en la última tarjeta.

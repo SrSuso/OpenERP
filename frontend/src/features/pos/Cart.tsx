@@ -81,7 +81,7 @@ export function Cart({ sale, disabled, onRemoveLine, onCancelSale, onCheckout }:
           type="button"
           onClick={onCheckout}
           disabled={disabled || lines.length === 0}
-          className="w-full rounded-lg bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg bg-till-600 py-3 text-base font-semibold text-white transition hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cobrar
         </button>

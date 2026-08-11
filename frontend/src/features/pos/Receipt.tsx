@@ -97,7 +97,7 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-lg bg-emerald-600 px-8 py-3 text-base font-semibold text-white hover:bg-emerald-500"
+          className="rounded-lg bg-till-600 px-8 py-3 text-base font-semibold text-white hover:bg-till-500"
         >
           Nueva venta
         </button>
