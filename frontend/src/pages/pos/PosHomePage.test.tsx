@@ -181,7 +181,10 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         addLineCalls.push(
           init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
         );
-        sale = saleWithMilkLine(sale?.id ?? nextSaleId);
+        // Sobre la venta que dice la URL, no sobre "la última": con varias
+        // abiertas a la vez son cosas distintas.
+        const targetId = Number(/\/sales\/(\d+)\/lines$/.exec(url)![1]);
+        sale = saleWithMilkLine(targetId);
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
       if (method === 'DELETE' && /\/sales\/\d+\/lines\/\d+$/.test(url)) {
@@ -208,6 +211,41 @@ function renderPage() {
       <PosHomePage />
     </QueryClientProvider>,
   );
+}
+
+/** El lector sólo escucha con una venta activa y sin nada en vuelo, que es
+ * justo cuando el recuadro de códigos deja de estar deshabilitado: esperar
+ * a eso es esperar a la condición de verdad, y no a algo que se pinta
+ * antes. */
+async function waitForScannerReady() {
+  await waitFor(() =>
+    expect(screen.getByPlaceholderText('Escanear o introducir código de barras')).toBeEnabled(),
+  );
+}
+
+/** Teclea un código como lo haría un lector, con el reloj congelado.
+ *
+ * El hook distingue el lector del tecleo por lo que tarda entre teclas, así
+ * que dejarlo al reloj de verdad hace la prueba dependiente de lo cargada
+ * que esté la máquina: un tirón de 120 ms entre dos `fireEvent` y ya no
+ * parece un escaneo. Aquí el tiempo lo decide la prueba. */
+function scan(
+  code: string,
+  options: { terminator?: 'Enter' | 'Tab'; gapMs?: number; idleAfter?: boolean } = {},
+) {
+  const { terminator, gapMs = 15, idleAfter = false } = options;
+  vi.useFakeTimers({ shouldAdvanceTime: false });
+  try {
+    for (const key of code) {
+      fireEvent.keyDown(document, { key });
+      vi.advanceTimersByTime(gapMs);
+    }
+    if (terminator) fireEvent.keyDown(document, { key: terminator });
+    // Sin terminador: el escaneo se cierra solo al dejar de llegar teclas.
+    if (idleAfter) vi.advanceTimersByTime(500);
+  } finally {
+    vi.useRealTimers();
+  }
 }
 
 describe('PosHomePage', () => {
@@ -324,17 +362,39 @@ describe('PosHomePage', () => {
     expect(first).toHaveAttribute('aria-current', 'true');
   });
 
-  it('reads a scanned barcode without clicking into the box first', async () => {
-    const backend = stubBackend({ existingDraft: emptySale(42) });
+  it('keeps every open sale up to date, not just the one on screen', async () => {
+    // Lo que pasaba: la barra de arriba pintaba cada venta con lo que tenía
+    // al cargar la pantalla, así que al volver a una faltaban los productos
+    // que ya se le habían metido y el total no era el suyo.
+    stubBackend({ existingDraft: emptySale(42) });
     renderPage();
     await screen.findByRole('button', { name: /cancelar venta/i });
 
+    await userEvent.click(screen.getByRole('button', { name: '+ Venta nueva' }));
+    const first = await screen.findByRole('button', { name: /Venta 1/ });
+
+    // Se le mete un producto a la segunda…
+    await userEvent.click(screen.getByRole('button', { name: /leche entera 1l/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Venta 2/ })).toHaveTextContent('1 línea'),
+    );
+
+    // …se vuelve a la primera y de nuevo a la segunda: lo suyo sigue ahí.
+    await userEvent.click(first);
+    await userEvent.click(screen.getByRole('button', { name: /Venta 2/ }));
+
+    const cart = screen.getByRole('button', { name: /cancelar venta/i }).closest('aside')!;
+    expect(within(cart).getByText('Leche entera 1L')).toBeInTheDocument();
+  });
+
+  it('reads a scanned barcode without clicking into the box first', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await waitForScannerReady();
+
     // Un lector teclea el código entero de golpe y termina con Intro, sin
     // que nadie haya pinchado en ningún sitio.
-    for (const key of '8410000000010') {
-      fireEvent.keyDown(document, { key });
-    }
-    fireEvent.keyDown(document, { key: 'Enter' });
+    scan('8410000000010', { terminator: 'Enter' });
 
     await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
   });
@@ -342,21 +402,11 @@ describe('PosHomePage', () => {
   it('reads a slower scanner too, and one that sends no Enter at all', async () => {
     const backend = stubBackend({ existingDraft: emptySale(42) });
     renderPage();
-    await screen.findByRole('button', { name: /cancelar venta/i });
+    await waitForScannerReady();
 
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      // 80 ms por carácter: un lector por Bluetooth de los lentos.
-      for (const key of '8410000000010') {
-        fireEvent.keyDown(document, { key });
-        vi.advanceTimersByTime(80);
-      }
-      // Sin Intro ni Tab: muchos vienen de fábrica sin sufijo, y se cierra
-      // solo al dejar de llegar teclas.
-      vi.advanceTimersByTime(500);
-    } finally {
-      vi.useRealTimers();
-    }
+    // 80 ms por carácter (un lector por Bluetooth de los lentos) y sin
+    // Intro ni Tab: muchos vienen de fábrica sin sufijo configurado.
+    scan('8410000000010', { gapMs: 80, idleAfter: true });
 
     await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
   });
@@ -364,12 +414,9 @@ describe('PosHomePage', () => {
   it('accepts Tab as the terminator, which many scanners send instead', async () => {
     const backend = stubBackend({ existingDraft: emptySale(42) });
     renderPage();
-    await screen.findByRole('button', { name: /cancelar venta/i });
+    await waitForScannerReady();
 
-    for (const key of '8410000000010') {
-      fireEvent.keyDown(document, { key });
-    }
-    fireEvent.keyDown(document, { key: 'Tab' });
+    scan('8410000000010', { terminator: 'Tab' });
 
     await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
   });
@@ -377,18 +424,9 @@ describe('PosHomePage', () => {
   it('ignores slow typing outside a field: that is not a scanner', async () => {
     const backend = stubBackend({ existingDraft: emptySale(42) });
     renderPage();
-    await screen.findByRole('button', { name: /cancelar venta/i });
+    await waitForScannerReady();
 
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      for (const key of '8410') {
-        fireEvent.keyDown(document, { key });
-        vi.advanceTimersByTime(200);
-      }
-      fireEvent.keyDown(document, { key: 'Enter' });
-    } finally {
-      vi.useRealTimers();
-    }
+    scan('8410', { gapMs: 200, terminator: 'Enter' });
 
     expect(backend.barcodeCalls).toEqual([]);
   });

@@ -108,6 +108,22 @@ export function PosHomePage() {
     }
   }, [sale, warehouseId, locationId, draftSales.data, isOpeningSale, failedToOpenSale, openSale]);
 
+  /** Guarda la venta que acaba de devolver el servidor: como activa y, a la
+   * vez, en la lista de abiertas.
+   *
+   * Las dos cosas, siempre. La barra de arriba pinta cada venta con sus
+   * líneas y su total leyendo de esa lista, así que actualizar sólo la
+   * activa dejaba las demás congeladas en como estaban al cargar la
+   * pantalla: al saltar a otra faltaban los productos que ya se le habían
+   * metido y el total no era el suyo. */
+  function syncSale(updated: Sale) {
+    setSale(updated);
+    if (warehouseId === null) return;
+    queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, (current) =>
+      (current ?? []).map((candidate) => (candidate.id === updated.id ? updated : candidate)),
+    );
+  }
+
   /** Quita de la lista de abiertas la que se acaba de cerrar (cobrada o
    * cancelada) y deja como activa otra, si queda alguna. Si no queda
    * ninguna, el efecto de arriba abre una nueva. */
@@ -136,7 +152,7 @@ export function PosHomePage() {
       }),
     onSuccess: (updated) => {
       setLineError(null);
-      setSale(updated);
+      syncSale(updated);
       setWeighing(null);
     },
     onError: (error) => setLineError(describeError(error)),
@@ -170,7 +186,7 @@ export function PosHomePage() {
     mutationFn: (code: string) => addLineByBarcode(sale!.id, code),
     onSuccess: (updated) => {
       setLineError(null);
-      setSale(updated);
+      syncSale(updated);
       setBarcode('');
     },
     // Con el lector, el error que sale casi siempre es que ese código no
@@ -188,7 +204,7 @@ export function PosHomePage() {
     mutationFn: (line: SaleLine) => removeLine(sale!.id, line.id),
     onSuccess: (updated) => {
       setLineError(null);
-      setSale(updated);
+      syncSale(updated);
     },
     onError: (error) => setLineError(describeError(error)),
   });
