@@ -25,6 +25,7 @@ from app.catalog.schemas import (
     PosCategoryUpdate,
     ProductCategoryCreate,
     ProductCategoryRead,
+    ProductCategoryUpdate,
     ProductCreate,
     ProductRead,
     ProductUpdate,
@@ -69,6 +70,17 @@ async def create_category(
     payload: ProductCategoryCreate, session: SessionDep
 ) -> ProductCategoryRead:
     return _category_to_read(await service.create_category(session, payload))
+
+
+@router.patch(
+    "/product-categories/{category_id}",
+    response_model=ProductCategoryRead,
+    dependencies=[_require_manage],
+)
+async def update_category(
+    category_id: int, payload: ProductCategoryUpdate, session: SessionDep
+) -> ProductCategoryRead:
+    return _category_to_read(await service.update_category(session, category_id, payload))
 
 
 @router.post(

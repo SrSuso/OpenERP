@@ -47,6 +47,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   ];
   const createCategoryCalls: string[] = [];
   const deleteCategoryCalls: number[] = [];
+  const renameCategoryCalls: { id: number; name: string }[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
   const createUnitCalls: string[] = [];
@@ -63,6 +64,16 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
 
       if (method === 'GET' && url.includes('/product-categories')) {
         return Promise.resolve(jsonResponse(categories));
+      }
+      if (method === 'PATCH' && /\/product-categories\/(\d+)$/.test(url)) {
+        const id = Number(/\/product-categories\/(\d+)$/.exec(url)![1]);
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { name: string })
+          : { name: '' };
+        renameCategoryCalls.push({ id, name: body.name });
+        const category = categories.find((c) => c.id === id)!;
+        category.name = body.name;
+        return Promise.resolve(jsonResponse(category));
       }
       if (method === 'POST' && /\/product-categories\/(\d+)\/(de)?activate$/.test(url)) {
         const match = /\/product-categories\/(\d+)\/(de)?activate$/.exec(url)!;
@@ -176,6 +187,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   return {
     createCategoryCalls,
     deleteCategoryCalls,
+    renameCategoryCalls,
     createPosCategoryCalls,
     deactivatePosCategoryCalls,
     createUnitCalls,
@@ -270,6 +282,28 @@ describe('CategoriesPage', () => {
     expect(backend.categoryPricingCalls).toEqual([
       { id: 1, body: { margin_rate: '25', tax_ids: [1] } },
     ]);
+  });
+
+  it('renames a category already created, and can back out without saving', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Renombrar «Bebidas»' }));
+    await userEvent.clear(screen.getByLabelText('Nombre de «Bebidas»'));
+    await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(backend.renameCategoryCalls).toEqual([]);
+    expect(screen.getByText('Bebidas')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Renombrar «Bebidas»' }));
+    await userEvent.clear(screen.getByLabelText('Nombre de «Bebidas»'));
+    await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar nombre' }));
+
+    expect(await screen.findByText('Refrescos')).toBeInTheDocument();
+    expect(backend.renameCategoryCalls).toEqual([{ id: 1, name: 'Refrescos' }]);
   });
 
   it('applies one tax at a time: choosing another replaces the one marked', async () => {

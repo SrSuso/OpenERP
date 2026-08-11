@@ -26,6 +26,7 @@ from app.catalog.schemas import (
     PosCategoryCreate,
     PosCategoryUpdate,
     ProductCategoryCreate,
+    ProductCategoryUpdate,
     ProductCreate,
     ProductUpdate,
     UnitCreate,
@@ -122,6 +123,40 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
         after={"name": category.name},
     )
     return await get_category(session, category.id)
+
+
+async def update_category(
+    session: AsyncSession, category_id: int, payload: ProductCategoryUpdate
+) -> ProductCategory:
+    """Renombrar una categoría ya creada (una errata, un nombre que ya no
+    dice lo que vende). Se renombra en el sitio, con el mismo id: los
+    productos que la tienen asignada siguen apuntando a ella."""
+    category = await get_category(session, category_id)
+    if category.name == payload.name:
+        return category
+
+    clash = (
+        await session.execute(
+            select(ProductCategory).where(
+                ProductCategory.name == payload.name, ProductCategory.id != category_id
+            )
+        )
+    ).scalar_one_or_none()
+    if clash is not None:
+        raise ConflictError("A category with this name already exists.")
+
+    before = category.name
+    category.name = payload.name
+    await session.flush()
+    await audit.record(
+        session,
+        action="updated",
+        entity_type="product_category",
+        entity_id=category_id,
+        before={"name": before},
+        after={"name": category.name},
+    )
+    return await get_category(session, category_id)
 
 
 async def set_category_active(

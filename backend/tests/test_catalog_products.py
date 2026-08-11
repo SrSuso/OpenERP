@@ -350,3 +350,42 @@ async def test_cashier_cannot_hide_or_delete_a_category(
         await client.post(f"/api/v1/product-categories/{category['id']}/deactivate")
     ).status_code == 403
     assert (await client.delete(f"/api/v1/product-categories/{category['id']}")).status_code == 403
+
+
+async def test_a_category_can_be_renamed_after_creation(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Se renombra en el sitio: mismo id, así que el producto que la tiene
+    asignada la conserva y pasa a verse con el nombre nuevo."""
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/product-categories", json={"name": "Bevidas"})).json()
+    product = (
+        await client.post("/api/v1/products", json=_product_payload(category_id=category["id"]))
+    ).json()
+
+    response = await client.patch(
+        f"/api/v1/product-categories/{category['id']}", json={"name": "Bebidas"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {**category, "name": "Bebidas"}
+    updated = (await client.get(f"/api/v1/products/{product['id']}")).json()
+    assert updated["category_id"] == category["id"]
+    assert updated["category_name"] == "Bebidas"
+
+
+async def test_renaming_a_category_onto_an_existing_name_is_a_conflict(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    await client.post("/api/v1/product-categories", json={"name": "Bebidas"})
+    other = (await client.post("/api/v1/product-categories", json={"name": "Lácteos"})).json()
+
+    response = await client.patch(
+        f"/api/v1/product-categories/{other['id']}", json={"name": "Bebidas"}
+    )
+
+    assert response.status_code == 409
+    # Renombrarla a lo que ya se llama no es un choque consigo misma.
+    same = await client.patch(f"/api/v1/product-categories/{other['id']}", json={"name": "Lácteos"})
+    assert same.status_code == 200

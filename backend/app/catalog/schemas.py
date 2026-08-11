@@ -12,6 +12,14 @@ class ProductCategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
 
+class ProductCategoryUpdate(BaseModel):
+    """Sólo el nombre: el margen/impuestos por defecto se cambian desde
+    PATCH /product-categories/{id}/pricing (app.pricing.router), y
+    `is_active` desde deactivate/activate."""
+
+    name: str = Field(min_length=1, max_length=100)
+
+
 class ProductTaxRead(BaseModel):
     """Minimal view of a `Tax` (app.pricing.models) as seen from a product
     or category — the full CRUD lives in app.pricing, this is just enough

@@ -45,6 +45,16 @@ export async function createProductCategory(name: string): Promise<ProductCatego
   });
 }
 
+/** Renombrar una ya creada — mismo id, así que los productos que la
+ * tienen asignada la conservan. */
+export async function renameProductCategory(id: number, name: string): Promise<ProductCategory> {
+  return apiFetch(`${API_V1}/product-categories/${id}`, {
+    method: 'PATCH',
+    schema: productCategorySchema,
+    body: { name },
+  });
+}
+
 /** Ocultar una categoría: deja de ofrecerse al clasificar productos, pero
  * los que ya la tienen la conservan. Reversible. */
 export async function deactivateProductCategory(id: number): Promise<ProductCategory> {

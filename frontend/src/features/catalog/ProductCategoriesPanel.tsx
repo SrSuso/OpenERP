@@ -6,6 +6,7 @@ import {
   createProductCategory,
   deactivateProductCategory,
   deleteProductCategory,
+  renameProductCategory,
   productCategoriesQuery,
   type ProductCategory,
 } from '@/features/catalog/api';
@@ -28,6 +29,9 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Cuál se está renombrando (ninguna = null) y el nombre a medio escribir.
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameInput, setRenameInput] = useState('');
 
   const createMutation = useMutation({
     mutationFn: (value: string) => createProductCategory(value),
@@ -41,6 +45,25 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
         err instanceof ApiError && err.code === 'conflict'
           ? 'Ya existe una categoría con ese nombre.'
           : 'No se ha podido crear la categoría.',
+      );
+    },
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ id, name: value }: { id: number; name: string }) =>
+      renameProductCategory(id, value),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
+      // El nombre de la categoría se ve en la lista de productos.
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      setRenamingId(null);
+      setError(null);
+    },
+    onError: (err: unknown) => {
+      setError(
+        err instanceof ApiError && err.code === 'conflict'
+          ? 'Ya existe una categoría con ese nombre.'
+          : 'No se ha podido cambiar el nombre.',
       );
     },
   });
@@ -89,16 +112,66 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
         {categories.data?.map((category) => (
           <li key={category.id}>
             <div className="flex items-center gap-2 text-sm">
-              <span
-                className={`rounded-full px-3 py-1 ${
-                  category.is_active ? 'bg-slate-100 text-slate-700' : 'bg-slate-50 text-slate-400'
-                }`}
-              >
-                {category.name}
-                {!category.is_active && <span className="ml-1 text-xs">(oculta)</span>}
-              </span>
-              {canManage && (
+              {renamingId === category.id ? (
                 <>
+                  <input
+                    type="text"
+                    autoFocus
+                    aria-label={`Nombre de «${category.name}»`}
+                    value={renameInput}
+                    onChange={(event) => setRenameInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') setRenamingId(null);
+                    }}
+                    className="w-48 rounded border border-slate-300 px-3 py-1 text-sm"
+                  />
+                  <button
+                    type="button"
+                    disabled={renameMutation.isPending || renameInput.trim() === ''}
+                    onClick={() =>
+                      renameMutation.mutate({ id: category.id, name: renameInput.trim() })
+                    }
+                    className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50"
+                  >
+                    Guardar nombre
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRenamingId(null)}
+                    className="text-xs font-medium text-slate-600 hover:underline"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              ) : (
+                <span
+                  className={`rounded-full px-3 py-1 ${
+                    category.is_active
+                      ? 'bg-slate-100 text-slate-700'
+                      : 'bg-slate-50 text-slate-400'
+                  }`}
+                >
+                  {category.name}
+                  {!category.is_active && <span className="ml-1 text-xs">(oculta)</span>}
+                </span>
+              )}
+              {canManage && renamingId !== category.id && (
+                <>
+                  <button
+                    type="button"
+                    // Con el nombre dentro: la pantalla tiene varias filas, y
+                    // el panel de categorías POS de al lado tiene su propio
+                    // "Renombrar".
+                    aria-label={`Renombrar «${category.name}»`}
+                    onClick={() => {
+                      setRenamingId(category.id);
+                      setRenameInput(category.name);
+                      setError(null);
+                    }}
+                    className="text-xs font-medium text-brand-700 hover:underline"
+                  >
+                    Renombrar
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
