@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
 import {
+  activateProductCategory,
   createProductCategory,
+  deactivateProductCategory,
+  deleteProductCategory,
   productCategoriesQuery,
   type ProductCategory,
 } from '@/features/catalog/api';
@@ -12,8 +15,12 @@ import { ApiError } from '@/lib/api';
 
 /** Categorías de estantería (independientes de las categorías POS del TPV
  * — ver `PosCategoriesPanel`). Alta simple, más el margen/impuestos por
- * defecto que heredan sus productos (ver `CategoryPricingRow`) — no hay
- * endpoint para desactivarlas todavía en el backend. */
+ * defecto que heredan sus productos (ver `CategoryPricingRow`).
+ *
+ * Se pueden ocultar (reversible, y los productos que ya la tienen la
+ * conservan) o borrar del todo, que sólo se permite si no la usa ningún
+ * producto. Las dos piden confirmación: son acciones que cuesta deshacer
+ * a mano si se pulsan sin querer. */
 export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   const categories = useQuery(productCategoriesQuery);
   const taxes = useQuery(taxesQuery);
@@ -38,6 +45,34 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
     },
   });
 
+  const activeMutation = useMutation({
+    mutationFn: (category: ProductCategory) =>
+      category.is_active
+        ? deactivateProductCategory(category.id)
+        : activateProductCategory(category.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
+      setError(null);
+    },
+    onError: () => setError('No se ha podido cambiar la categoría.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (category: ProductCategory) => deleteProductCategory(category.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
+      setError(null);
+    },
+    onError: (err: unknown) =>
+      // El 409 trae el motivo exacto (cuántos productos la usan) y ya viene
+      // en castellano: se enseña tal cual en vez de un genérico.
+      setError(
+        err instanceof ApiError && err.code === 'conflict'
+          ? err.message
+          : 'No se ha podido borrar la categoría.',
+      ),
+  });
+
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) return;
@@ -54,19 +89,55 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
         {categories.data?.map((category) => (
           <li key={category.id}>
             <div className="flex items-center gap-2 text-sm">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+              <span
+                className={`rounded-full px-3 py-1 ${
+                  category.is_active ? 'bg-slate-100 text-slate-700' : 'bg-slate-50 text-slate-400'
+                }`}
+              >
                 {category.name}
+                {!category.is_active && <span className="ml-1 text-xs">(oculta)</span>}
               </span>
               {canManage && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedId((current) => (current === category.id ? null : category.id))
-                  }
-                  className="text-xs font-medium text-brand-700 hover:underline"
-                >
-                  {expandedId === category.id ? 'Ocultar precio' : 'Margen/impuestos'}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedId((current) => (current === category.id ? null : category.id))
+                    }
+                    className="text-xs font-medium text-brand-700 hover:underline"
+                  >
+                    {expandedId === category.id ? 'Cerrar precio' : 'Margen/impuestos'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={activeMutation.isPending}
+                    onClick={() => {
+                      const question = category.is_active
+                        ? `¿Ocultar «${category.name}»?\n\nDejará de poder elegirse al clasificar productos. Los que ya la tienen la conservan, y puedes volver a mostrarla cuando quieras.`
+                        : `¿Volver a mostrar «${category.name}»?`;
+                      if (window.confirm(question)) activeMutation.mutate(category);
+                    }}
+                    className="text-xs font-medium text-slate-600 hover:underline disabled:opacity-50"
+                  >
+                    {category.is_active ? 'Ocultar' : 'Mostrar'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `¿Borrar «${category.name}» definitivamente?\n\nEsto no se puede deshacer. Si prefieres conservarla por si acaso, usa "Ocultar".`,
+                        )
+                      ) {
+                        deleteMutation.mutate(category);
+                      }
+                    }}
+                    className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                  >
+                    Borrar
+                  </button>
+                </>
               )}
             </div>
             {expandedId === category.id && (

@@ -71,6 +71,33 @@ async def create_category(
     return _category_to_read(await service.create_category(session, payload))
 
 
+@router.post(
+    "/product-categories/{category_id}/deactivate",
+    response_model=ProductCategoryRead,
+    dependencies=[_require_manage],
+)
+async def deactivate_category(category_id: int, session: SessionDep) -> ProductCategoryRead:
+    return _category_to_read(
+        await service.set_category_active(session, category_id, is_active=False)
+    )
+
+
+@router.post(
+    "/product-categories/{category_id}/activate",
+    response_model=ProductCategoryRead,
+    dependencies=[_require_manage],
+)
+async def activate_category(category_id: int, session: SessionDep) -> ProductCategoryRead:
+    return _category_to_read(
+        await service.set_category_active(session, category_id, is_active=True)
+    )
+
+
+@router.delete("/product-categories/{category_id}", status_code=204, dependencies=[_require_manage])
+async def delete_category(category_id: int, session: SessionDep) -> None:
+    await service.delete_category(session, category_id)
+
+
 def _unit_to_read(unit: Unit) -> UnitRead:
     return UnitRead(id=unit.id, name=unit.name, display_order=unit.display_order)
 

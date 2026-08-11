@@ -124,6 +124,58 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
     return await get_category(session, category.id)
 
 
+async def set_category_active(
+    session: AsyncSession, category_id: int, *, is_active: bool
+) -> ProductCategory:
+    """Ocultar una categoría (regla 14: no se borra, se desactiva). Los
+    productos que ya la tienen asignada la conservan —el histórico tiene
+    que seguir siendo legible—, simplemente deja de ofrecerse al clasificar
+    productos nuevos. Mismo criterio que `deactivate_pos_category`."""
+    category = await get_category(session, category_id)
+    if category.is_active == is_active:
+        return category
+
+    category.is_active = is_active
+    await session.flush()
+    await audit.record(
+        session,
+        action="activated" if is_active else "deactivated",
+        entity_type="product_category",
+        entity_id=category_id,
+        before={"is_active": not is_active},
+        after={"is_active": is_active},
+    )
+    return await get_category(session, category_id)
+
+
+async def delete_category(session: AsyncSession, category_id: int) -> None:
+    """Borrado de verdad, y sólo si no la usa ningún producto: si la usara,
+    borrarla dejaría a esos productos apuntando a algo que ya no existe (o
+    perdería en silencio su clasificación). En ese caso se rechaza y se
+    ofrece ocultarla, que conserva el dato."""
+    category = await get_category(session, category_id)
+    in_use = (
+        await session.execute(
+            select(func.count()).select_from(Product).where(Product.category_id == category_id)
+        )
+    ).scalar_one()
+    if in_use:
+        raise ConflictError(
+            f"No se puede borrar «{category.name}»: la usan {in_use} productos. "
+            "Ocúltala en su lugar, o cámbiales la categoría antes."
+        )
+
+    await session.delete(category)
+    await session.flush()
+    await audit.record(
+        session,
+        action="deleted",
+        entity_type="product_category",
+        entity_id=category_id,
+        before={"name": category.name},
+    )
+
+
 # --- units ---------------------------------------------------------------------
 
 

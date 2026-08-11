@@ -45,6 +45,28 @@ export async function createProductCategory(name: string): Promise<ProductCatego
   });
 }
 
+/** Ocultar una categoría: deja de ofrecerse al clasificar productos, pero
+ * los que ya la tienen la conservan. Reversible. */
+export async function deactivateProductCategory(id: number): Promise<ProductCategory> {
+  return apiFetch(`${API_V1}/product-categories/${id}/deactivate`, {
+    method: 'POST',
+    schema: productCategorySchema,
+  });
+}
+
+export async function activateProductCategory(id: number): Promise<ProductCategory> {
+  return apiFetch(`${API_V1}/product-categories/${id}/activate`, {
+    method: 'POST',
+    schema: productCategorySchema,
+  });
+}
+
+/** Borrado de verdad. El backend lo rechaza (409) si algún producto la
+ * usa — en ese caso hay que ocultarla, que conserva el dato. */
+export async function deleteProductCategory(id: number): Promise<void> {
+  await apiFetch(`${API_V1}/product-categories/${id}`, { method: 'DELETE', schema: z.null() });
+}
+
 // --- unidades (lista gestionada para el desplegable "unidad base") --------
 
 export const unitSchema = z.object({

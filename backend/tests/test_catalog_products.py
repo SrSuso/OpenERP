@@ -280,3 +280,73 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/products")
 
     assert response.status_code == 401
+
+
+async def test_a_category_can_be_hidden_and_shown_again(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Ocultar no borra: la categoría sigue ahí y los productos que la
+    tienen asignada la conservan."""
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/product-categories", json={"name": "Temporada"})).json()
+    product = (
+        await client.post("/api/v1/products", json=_product_payload(category_id=category["id"]))
+    ).json()
+
+    hidden = await client.post(f"/api/v1/product-categories/{category['id']}/deactivate")
+
+    assert hidden.status_code == 200
+    assert hidden.json()["is_active"] is False
+    listed = {c["id"]: c for c in (await client.get("/api/v1/product-categories")).json()}
+    assert listed[category["id"]]["is_active"] is False
+    # El producto no pierde su clasificación.
+    assert (await client.get(f"/api/v1/products/{product['id']}")).json()["category_id"] == (
+        category["id"]
+    )
+
+    shown = await client.post(f"/api/v1/product-categories/{category['id']}/activate")
+
+    assert shown.status_code == 200
+    assert shown.json()["is_active"] is True
+
+
+async def test_deleting_a_category_in_use_is_refused_with_a_reason(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/product-categories", json={"name": "En uso"})).json()
+    await client.post("/api/v1/products", json=_product_payload(category_id=category["id"]))
+
+    response = await client.delete(f"/api/v1/product-categories/{category['id']}")
+
+    assert response.status_code == 409
+    message = response.json()["error"]["message"]
+    assert "1 productos" in message
+    assert "Ocúltala" in message
+
+
+async def test_an_unused_category_can_be_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/product-categories", json={"name": "Sobrante"})).json()
+
+    response = await client.delete(f"/api/v1/product-categories/{category['id']}")
+
+    assert response.status_code == 204
+    listed = [c["id"] for c in (await client.get("/api/v1/product-categories")).json()]
+    assert category["id"] not in listed
+
+
+async def test_cashier_cannot_hide_or_delete_a_category(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/product-categories", json={"name": "Protegida"})).json()
+
+    await login(role_name="CASHIER")
+
+    assert (
+        await client.post(f"/api/v1/product-categories/{category['id']}/deactivate")
+    ).status_code == 403
+    assert (await client.delete(f"/api/v1/product-categories/{category['id']}")).status_code == 403

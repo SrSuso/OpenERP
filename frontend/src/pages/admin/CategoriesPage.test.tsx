@@ -30,7 +30,10 @@ const ME = {
   ],
 };
 
-function stubBackend() {
+/** `inUse`: ids de categoría que el backend se negaría a borrar por tener
+ * productos asignados (responde 409, igual que `service.delete_category`). */
+function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
+  const categoriesInUse = new Set(inUse);
   const categories: ProductCategory[] = [
     { id: 1, name: 'Bebidas', is_active: true, margin_rate: null, taxes: [] },
   ];
@@ -42,6 +45,7 @@ function stubBackend() {
     { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
   ];
   const createCategoryCalls: string[] = [];
+  const deleteCategoryCalls: number[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
   const createUnitCalls: string[] = [];
@@ -58,6 +62,34 @@ function stubBackend() {
 
       if (method === 'GET' && url.includes('/product-categories')) {
         return Promise.resolve(jsonResponse(categories));
+      }
+      if (method === 'POST' && /\/product-categories\/(\d+)\/(de)?activate$/.test(url)) {
+        const match = /\/product-categories\/(\d+)\/(de)?activate$/.exec(url)!;
+        const category = categories.find((c) => c.id === Number(match[1]))!;
+        category.is_active = match[2] === undefined;
+        return Promise.resolve(jsonResponse(category));
+      }
+      if (method === 'DELETE' && /\/product-categories\/(\d+)$/.test(url)) {
+        const id = Number(/\/product-categories\/(\d+)$/.exec(url)![1]);
+        deleteCategoryCalls.push(id);
+        if (categoriesInUse.has(id)) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                error: {
+                  code: 'conflict',
+                  message: 'No se puede borrar «Bebidas»: la usan 3 productos.',
+                },
+              },
+              { status: 409 },
+            ),
+          );
+        }
+        categories.splice(
+          categories.findIndex((c) => c.id === id),
+          1,
+        );
+        return Promise.resolve(new Response(null, { status: 204 }));
       }
       if (method === 'POST' && url.includes('/product-categories')) {
         const body = init?.body
@@ -142,6 +174,7 @@ function stubBackend() {
 
   return {
     createCategoryCalls,
+    deleteCategoryCalls,
     createPosCategoryCalls,
     deactivatePosCategoryCalls,
     createUnitCalls,
@@ -236,6 +269,45 @@ describe('CategoriesPage', () => {
     expect(backend.categoryPricingCalls).toEqual([
       { id: 1, body: { margin_rate: '25', tax_ids: [1] } },
     ]);
+  });
+
+  it('asks before hiding a category, and does nothing if you say no', async () => {
+    stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ocultar' }));
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(screen.queryByText('(oculta)')).not.toBeInTheDocument();
+
+    confirm.mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Ocultar' }));
+
+    expect(await screen.findByText('(oculta)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mostrar' })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('asks before deleting, and explains why it is refused when the category is in use', async () => {
+    const backend = stubBackend({ inUse: [1] });
+    renderPage();
+    await screen.findByText('Bebidas');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Borrar' }));
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(backend.deleteCategoryCalls).toEqual([]);
+
+    confirm.mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Borrar' }));
+
+    expect(await screen.findByText(/la usan 3 productos/)).toBeInTheDocument();
+    expect(backend.deleteCategoryCalls).toEqual([1]);
+    expect(screen.getByText('Bebidas')).toBeInTheDocument();
+    confirm.mockRestore();
   });
 
   it('reorders units with the up/down buttons', async () => {

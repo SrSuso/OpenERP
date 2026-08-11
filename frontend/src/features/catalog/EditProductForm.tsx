@@ -123,11 +123,16 @@ export function EditProductForm({
             {...register('category_id')}
           >
             <option value="">Sin categoría</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
+            {/* Una categoría oculta deja de ofrecerse, pero sigue visible
+                si es la que el producto ya tenía: si no, parecería que no
+                tiene ninguna. */}
+            {categories
+              .filter((category) => category.is_active || category.id === product.category_id)
+              .map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
           </select>
         </label>
 
