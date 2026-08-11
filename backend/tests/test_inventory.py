@@ -74,6 +74,9 @@ async def test_recording_an_adjustment_updates_the_balance_atomically(
     balances = (await client.get("/api/v1/stock-balance", params={"product_id": product_id})).json()
     assert len(balances) == 1
     assert balances[0]["quantity"] == "24.000000"
+    # El nombre viaja con el saldo: es por lo que se identifica el producto
+    # en pantalla, y el SKU es sólo la referencia interna.
+    assert balances[0]["product_name"] == "Producto de inventario"
 
 
 async def test_waste_is_normalised_to_negative(

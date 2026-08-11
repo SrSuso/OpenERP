@@ -49,6 +49,9 @@ class StockMovementRead(BaseModel):
 class StockBalanceRead(BaseModel):
     product_id: int
     product_sku: str
+    #: El nombre es lo que se lee en pantalla; el SKU es la referencia
+    #: interna, que se sigue mandando para quien la necesite.
+    product_name: str
     warehouse_id: int
     location_id: int
     lot_id: int | None

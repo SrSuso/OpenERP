@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import { productsQuery } from '@/features/catalog/api';
+import { useProductSearch } from '@/features/catalog/useProductSearch';
 import { AdjustmentForm } from '@/features/inventory/AdjustmentForm';
 import { StockBalanceTable } from '@/features/inventory/StockBalanceTable';
 import { TransferForm } from '@/features/inventory/TransferForm';
@@ -21,6 +22,8 @@ export function InventoryBalancesPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('inventory.manage');
 
+  const productFieldId = useId();
+  const [productId, setProductId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
   const [showTransferForm, setShowTransferForm] = useState(false);
@@ -30,8 +33,14 @@ export function InventoryBalancesPage() {
 
   const warehouses = useQuery(warehousesQuery);
   const products = useQuery(productsQuery({ activeOnly: true }));
+  const { query, setQuery, matches } = useProductSearch(products.data ?? [], {
+    onSingleMatch: setProductId,
+  });
   const balances = useQuery(
-    stockBalanceQuery(warehouseId === '' ? {} : { warehouseId: Number(warehouseId) }),
+    stockBalanceQuery({
+      ...(productId === '' ? {} : { productId: Number(productId) }),
+      ...(warehouseId === '' ? {} : { warehouseId: Number(warehouseId) }),
+    }),
   );
   const queryClient = useQueryClient();
 
@@ -78,21 +87,50 @@ export function InventoryBalancesPage() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <label className="text-sm text-slate-600">
-          Almacén
-          <select
-            value={warehouseId}
-            onChange={(event) => setWarehouseId(event.target.value)}
-            className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">Todos</option>
-            {(warehouses.data ?? []).map((warehouse) => (
-              <option key={warehouse.id} value={warehouse.id}>
-                {warehouse.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Buscar por código de barras es lo natural aquí: se tiene el
+            producto en la mano y se quiere saber cuánto queda. */}
+          <div className="text-sm text-slate-600">
+            <label htmlFor={productFieldId}>Producto</label>
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nombre, SKU o código de barras…"
+              aria-label="Buscar producto"
+              className="mt-1 block w-56 rounded border border-slate-300 px-3 py-1.5 text-sm"
+            />
+            <select
+              id={productFieldId}
+              value={productId}
+              onChange={(event) => setProductId(event.target.value)}
+              className="mt-1 block w-56 rounded border border-slate-300 px-3 py-1.5 text-sm"
+            >
+              <option value="">Todos</option>
+              {matches.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <label className="text-sm text-slate-600">
+            Almacén
+            <select
+              value={warehouseId}
+              onChange={(event) => setWarehouseId(event.target.value)}
+              className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
+            >
+              <option value="">Todos</option>
+              {(warehouses.data ?? []).map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         {canManage && (
           <div className="flex gap-2">

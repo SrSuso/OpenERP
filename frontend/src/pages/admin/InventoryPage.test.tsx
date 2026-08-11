@@ -70,6 +70,7 @@ function stubBackend() {
     {
       product_id: 10,
       product_sku: 'P000010',
+      product_name: 'Agua 1.5L',
       warehouse_id: 1,
       location_id: 1,
       lot_id: null,
@@ -187,8 +188,17 @@ describe('InventoryBalancesPage', () => {
     const backend = stubBackend();
     renderComponent(<InventoryBalancesPage />);
 
-    expect(await screen.findByText('P000010')).toBeInTheDocument();
-    expect(screen.getByText('24')).toBeInTheDocument();
+    // La tabla identifica el producto por su nombre, no por el SKU.
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Agua 1.5L')).toBeInTheDocument();
+    expect(within(table).queryByText('P000010')).not.toBeInTheDocument();
+    expect(within(table).getByText('24')).toBeInTheDocument();
+
+    // Y la lista se puede acotar a un producto buscándolo por su código de
+    // barras, con el producto en la mano.
+    const filters = screen.getByLabelText('Buscar producto');
+    await userEvent.type(filters, '8412345678901');
+    expect(screen.getByLabelText('Producto')).toHaveValue('10');
 
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
@@ -230,7 +240,7 @@ describe('InventoryBalancesPage', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderComponent(<InventoryBalancesPage />);
 
-    await screen.findByText('P000010');
+    await screen.findByRole('table');
     await userEvent.click(screen.getByRole('button', { name: 'Reconstruir inventario' }));
 
     expect(confirmSpy).toHaveBeenCalled();
@@ -243,7 +253,7 @@ describe('InventoryBalancesPage', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderComponent(<InventoryBalancesPage />);
 
-    await screen.findByText('P000010');
+    await screen.findByRole('table');
     await userEvent.click(screen.getByRole('button', { name: 'Reconstruir inventario' }));
 
     expect(backend.rebuildCalls).toEqual([]);

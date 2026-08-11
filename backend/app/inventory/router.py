@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionDep
+from app.catalog.models import Product
 from app.catalog.service import get_product
 from app.inventory import service
 from app.inventory.models import Location, StockBalance, StockMovement, Warehouse
@@ -65,10 +66,11 @@ async def _movement_to_read(session: AsyncSession, movement: StockMovement) -> S
     )
 
 
-def _balance_to_read(balance: StockBalance, product_sku: str) -> StockBalanceRead:
+def _balance_to_read(balance: StockBalance, product: Product) -> StockBalanceRead:
     return StockBalanceRead(
         product_id=balance.product_id,
-        product_sku=product_sku,
+        product_sku=product.sku,
+        product_name=product.name,
         warehouse_id=balance.warehouse_id,
         location_id=balance.location_id,
         lot_id=balance.lot_id,
@@ -157,7 +159,7 @@ async def list_balances(
     results = []
     for balance in balances:
         product = await get_product(session, balance.product_id)
-        results.append(_balance_to_read(balance, product.sku))
+        results.append(_balance_to_read(balance, product))
     return results
 
 

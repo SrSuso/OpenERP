@@ -110,6 +110,7 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
     {
       product_id: 1,
       product_sku: 'P000001',
+      product_name: 'Agua 1.5L',
       warehouse_id: 1,
       location_id: 1,
       lot_id: null,
