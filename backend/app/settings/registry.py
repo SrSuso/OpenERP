@@ -39,6 +39,10 @@ class SettingType(StrEnum):
     TEXT = "TEXT"
     #: One of `SettingDef.choices`.
     ENUM = "ENUM"
+    #: Como STRING, pero no sale nunca al leer: se puede escribir desde el
+    #: panel y ahí se queda (contraseñas, cadenas de conexión). El panel
+    #: enseña si hay algo guardado, no el qué.
+    SECRET = "SECRET"
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,12 @@ GROUP_POS = "Caja (TPV)"
 GROUP_SALES = "Ventas"
 GROUP_CATALOG = "Productos"
 GROUP_NOTIFICATIONS = "Avisos"
+#: Lo que hasta ahora sólo estaba en el `.env`. No se lee en caliente: hace
+#: falta reiniciar para que surta efecto, y así lo dice cada opción. Ver
+#: `app.settings.server`.
+GROUP_SERVER = "Servidor (avanzado)"
+
+_RESTART = "Hay que reiniciar el servidor para que este cambio surta efecto."
 
 #: Formatos de fecha del ticket. Valor = patrón de `strftime`; etiqueta =
 #: cómo se ve, que es lo único que le importa a quien elige.
@@ -118,6 +128,253 @@ _DATE_FORMATS = (
     Choice("%d-%m-%Y %H:%M", "31-12-2026 14:05"),
     Choice("%Y-%m-%d %H:%M", "2026-12-31 14:05"),
     Choice("%d/%m/%Y", "31/12/2026 (sin hora)"),
+)
+
+
+_SERVER_SETTINGS: tuple[SettingDef, ...] = (
+    SettingDef(
+        key="server.app_name",
+        group=GROUP_SERVER,
+        label="Nombre interno de la aplicación",
+        help="Sale en la documentación de la API y en el registro de sucesos, no en el ticket.",
+        type=SettingType.STRING,
+        default="OpenERP",
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.environment",
+        group=GROUP_SERVER,
+        label="Tipo de instalación",
+        help=(
+            'En "producción" la sesión sólo viaja por HTTPS. Cambiarlo a otra cosa en la '
+            "tienda de verdad debilita la seguridad."
+        ),
+        type=SettingType.ENUM,
+        default="production",
+        choices=(
+            Choice("production", "Producción (la tienda)"),
+            Choice("local", "Local (desarrollo)"),
+            Choice("ci", "Integración continua"),
+            Choice("test", "Pruebas"),
+        ),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.debug",
+        group=GROUP_SERVER,
+        label="Modo depuración",
+        help="Sólo para buscar un fallo. Déjalo apagado en la tienda.",
+        type=SettingType.BOOL,
+        default=False,
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.database_url",
+        group=GROUP_SERVER,
+        label="Dirección de la base de datos",
+        help=(
+            "Dónde vive todo lo que guarda la aplicación. Sólo se usa si se puede conectar "
+            "con ella: si no, se vuelve a la del fichero de arranque, para que un error de "
+            "tecleo no deje la tienda sin caja. No se muestra porque lleva la contraseña."
+        ),
+        type=SettingType.SECRET,
+        default="",
+        caution="Si te equivocas aquí, la aplicación sigue arrancando con la dirección de antes.",
+    ),
+    SettingDef(
+        key="server.db_pool_size",
+        group=GROUP_SERVER,
+        label="Conexiones permanentes a la base de datos",
+        help="Cuántas se mantienen abiertas. Con una tienda y un par de cajas, 5 sobra.",
+        type=SettingType.INT,
+        default=5,
+        minimum=Decimal(1),
+        maximum=Decimal(100),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.db_max_overflow",
+        group=GROUP_SERVER,
+        label="Conexiones extra en un apuro",
+        help="Las que se abren de más cuando todas las permanentes están ocupadas.",
+        type=SettingType.INT,
+        default=10,
+        minimum=Decimal(0),
+        maximum=Decimal(100),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.db_pool_pre_ping",
+        group=GROUP_SERVER,
+        label="Comprobar la conexión antes de usarla",
+        help=(
+            "Evita el error de la primera petición de la mañana, cuando la base de datos ha "
+            "cerrado por su cuenta una conexión dormida. Déjalo encendido."
+        ),
+        type=SettingType.BOOL,
+        default=True,
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.db_echo",
+        group=GROUP_SERVER,
+        label="Escribir todas las consultas en el registro",
+        help="Para buscar un fallo. Llena el registro muy deprisa; apágalo después.",
+        type=SettingType.BOOL,
+        default=False,
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.db_statement_timeout_ms",
+        group=GROUP_SERVER,
+        label="Tiempo máximo de una consulta (ms)",
+        help=(
+            "Una consulta que pase de aquí se corta, para que un informe pesado no deje "
+            "la caja esperando. 30000 son 30 segundos."
+        ),
+        type=SettingType.INT,
+        default=30_000,
+        minimum=Decimal(1000),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.log_level",
+        group=GROUP_SERVER,
+        label="Detalle del registro de sucesos",
+        help='Cuánto se anota. "INFO" es lo normal; "DEBUG" sólo para buscar un fallo.',
+        type=SettingType.ENUM,
+        default="INFO",
+        choices=(
+            Choice("DEBUG", "DEBUG (todo)"),
+            Choice("INFO", "INFO (lo normal)"),
+            Choice("WARNING", "WARNING (sólo avisos)"),
+            Choice("ERROR", "ERROR (sólo fallos)"),
+            Choice("CRITICAL", "CRITICAL (sólo lo grave)"),
+        ),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.log_format",
+        group=GROUP_SERVER,
+        label="Formato del registro de sucesos",
+        help='"json" para que lo lea una máquina; "console" para leerlo tú.',
+        type=SettingType.ENUM,
+        default="json",
+        choices=(Choice("json", "JSON"), Choice("console", "Texto")),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.cors_origins",
+        group=GROUP_SERVER,
+        label="Direcciones web que pueden usar la API",
+        help=(
+            "Separadas por comas. Sólo hace falta tocarlo si abres la aplicación desde una "
+            "dirección distinta a la de siempre."
+        ),
+        type=SettingType.STRING,
+        default="",
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.session_cookie_name",
+        group=GROUP_SERVER,
+        label="Nombre de la galleta de sesión",
+        help="Cambiarlo cierra la sesión de todo el mundo.",
+        type=SettingType.STRING,
+        default="openerp_session",
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.session_ttl_days",
+        group=GROUP_SERVER,
+        label="Días que dura la sesión",
+        help=(
+            "Cuánto se tarda en volver a pedir la contraseña. En una caja que no se mueve de "
+            "la tienda puede ser largo; en un portátil que sale de casa, corto."
+        ),
+        type=SettingType.INT,
+        default=30,
+        minimum=Decimal(1),
+        maximum=Decimal(365),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.session_touch_interval_seconds",
+        group=GROUP_SERVER,
+        label="Cada cuánto se renueva la sesión (segundos)",
+        help=(
+            "La sesión se va renovando sola mientras se usa, pero se apunta como mucho una "
+            "vez cada este rato, para no escribir en la base de datos en cada petición."
+        ),
+        type=SettingType.INT,
+        default=60,
+        minimum=Decimal(0),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.bootstrap_admin_email",
+        group=GROUP_SERVER,
+        label="Correo del administrador inicial",
+        help=(
+            "Sólo se usa al arrancar por primera vez, para crear el primer usuario. Con la "
+            "tienda ya en marcha no hace nada: los usuarios se gestionan en su pantalla."
+        ),
+        type=SettingType.STRING,
+        default="",
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.bootstrap_admin_password",
+        group=GROUP_SERVER,
+        label="Contraseña del administrador inicial",
+        help="Igual que el correo de arriba: sólo cuenta en el primer arranque.",
+        type=SettingType.SECRET,
+        default="",
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.login_rate_limit_max_attempts",
+        group=GROUP_SERVER,
+        label="Intentos de contraseña por usuario",
+        help="Cuántos fallos seguidos se permiten sobre una misma cuenta antes de bloquearla.",
+        type=SettingType.INT,
+        default=5,
+        minimum=Decimal(1),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.login_rate_limit_window_seconds",
+        group=GROUP_SERVER,
+        label="Durante cuánto se cuentan esos intentos (segundos)",
+        help="Pasado este rato sin fallar, la cuenta vuelve a empezar de cero.",
+        type=SettingType.DECIMAL,
+        default=Decimal(300),
+        minimum=Decimal(1),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.login_rate_limit_ip_max_attempts",
+        group=GROUP_SERVER,
+        label="Intentos de contraseña por equipo",
+        help=(
+            "Más generoso que el de arriba a propósito: las cajas de la tienda salen todas "
+            "por la misma línea, y varias personas equivocándose no pueden bloquearla."
+        ),
+        type=SettingType.INT,
+        default=20,
+        minimum=Decimal(1),
+        caution=_RESTART,
+    ),
+    SettingDef(
+        key="server.login_rate_limit_ip_window_seconds",
+        group=GROUP_SERVER,
+        label="Durante cuánto se cuentan los intentos por equipo (segundos)",
+        help="Igual que el de por usuario, pero para el equipo.",
+        type=SettingType.DECIMAL,
+        default=Decimal(300),
+        minimum=Decimal(1),
+        caution=_RESTART,
+    ),
 )
 
 SETTINGS: tuple[SettingDef, ...] = (
@@ -382,6 +639,10 @@ SETTINGS: tuple[SettingDef, ...] = (
         minimum=Decimal(0),
         maximum=Decimal(365),
     ),
+    # --- servidor ----------------------------------------------------------
+    # Al final a propósito: son los que casi nunca se tocan, y así el panel
+    # los pinta en la última tarjeta.
+    *_SERVER_SETTINGS,
 )
 
 SETTINGS_BY_KEY: dict[str, SettingDef] = {s.key: s for s in SETTINGS}

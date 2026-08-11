@@ -18,7 +18,7 @@ from app.auth.dependencies import CurrentUser, SessionDep
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import SETTINGS_MANAGE, SETTINGS_READ
 from app.settings import store
-from app.settings.registry import GROUPS, SETTINGS, SettingDef
+from app.settings.registry import GROUPS, SETTINGS, SettingDef, SettingType
 from app.settings.schemas import (
     SettingChoiceRead,
     SettingDefinitionRead,
@@ -33,14 +33,18 @@ _require_manage = Depends(require_permission(SETTINGS_MANAGE))
 
 
 def _definition_to_read(definition: SettingDef, value: Any) -> SettingDefinitionRead:
+    # Un SECRET (una contraseña, una cadena de conexión) se puede escribir
+    # desde el panel pero no sale nunca al leer: sólo si hay algo guardado.
+    is_secret = definition.type is SettingType.SECRET
     return SettingDefinitionRead(
         key=definition.key,
         group=definition.group,
         label=definition.label,
         help=definition.help,
         type=definition.type,
-        value=definition.serialise(value),
-        default=definition.serialise(definition.default),
+        value="" if is_secret else definition.serialise(value),
+        is_set=bool(definition.serialise(value)) if is_secret else False,
+        default="" if is_secret else definition.serialise(definition.default),
         choices=[SettingChoiceRead(value=c.value, label=c.label) for c in definition.choices],
         minimum=definition.minimum,
         maximum=definition.maximum,
@@ -68,13 +72,15 @@ async def list_values(session: SessionDep, user: CurrentUser) -> dict[str, str]:
     does not (and should not) hold `settings.read`, which is what gates the
     editable catalogue above.
 
-    Safe to widen like this because nothing in the registry is a secret:
-    every option here is a label, a format or an on/off switch, and most of
-    them are literally printed on the customer's receipt. Credentials live
-    in `app.settings.router`'s SMTP endpoints, which stay ADMIN-only.
+    Los `SECRET` (contraseñas, la cadena de conexión) se quedan fuera: son
+    lo único del registro que no puede ver cualquiera que esté dentro. El
+    resto son etiquetas, formatos e interruptores, y la mayoría van
+    impresos en el ticket del cliente. Las credenciales de correo siguen
+    donde estaban, en los endpoints SMTP de `app.settings.router`, que sólo
+    ve un administrador.
     """
     values = await store.get_values(session)
-    return {d.key: d.serialise(values[d.key]) for d in SETTINGS}
+    return {d.key: d.serialise(values[d.key]) for d in SETTINGS if d.type is not SettingType.SECRET}
 
 
 @router.put("/settings/options", response_model=SettingsOptionsRead, dependencies=[_require_manage])

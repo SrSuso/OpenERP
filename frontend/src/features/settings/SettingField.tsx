@@ -92,6 +92,20 @@ export function SettingField({
         />
       );
       break;
+    case 'SECRET':
+      control = (
+        <input
+          id={inputId}
+          type="password"
+          autoComplete="new-password"
+          value={value}
+          disabled={disabled}
+          placeholder={definition.is_set ? 'Guardada — escribe para cambiarla' : 'Sin guardar'}
+          onChange={(event) => onChange(event.target.value)}
+          className={inputClass}
+        />
+      );
+      break;
     case 'TEXT':
       control = (
         <textarea
@@ -117,7 +131,10 @@ export function SettingField({
       );
   }
 
-  const isDefault = value === definition.default;
+  // Un secreto no se lee, así que no hay con qué comparar: nunca se enseña
+  // "Valor por defecto" ni el botón de restablecer, que darían a entender
+  // que se está viendo lo que hay guardado.
+  const isDefault = definition.type === 'SECRET' || value === definition.default;
   const isCheckbox = definition.type === 'BOOL';
 
   return (

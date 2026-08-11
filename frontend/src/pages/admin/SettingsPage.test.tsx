@@ -39,7 +39,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
  * ajuste de cada tipo: la pantalla no conoce ninguna de estas claves, las
  * pinta a partir de esta respuesta. */
 const DEFAULT_OPTIONS: SettingsOptions = {
-  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Avisos'],
+  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Avisos', 'Servidor (avanzado)'],
   settings: [
     {
       key: 'store.name',
@@ -48,6 +48,7 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       help: 'Se imprime arriba del todo en el ticket.',
       type: 'STRING',
       value: '',
+      is_set: false,
       default: '',
       choices: [],
       minimum: null,
@@ -61,6 +62,7 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       help: 'Una línea por renglón.',
       type: 'TEXT',
       value: 'Calle Mayor 1',
+      is_set: false,
       default: '',
       choices: [],
       minimum: null,
@@ -74,6 +76,7 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       help: 'Cómo se escribe la fecha y la hora de la venta.',
       type: 'ENUM',
       value: '%Y-%m-%d %H:%M',
+      is_set: false,
       default: '%Y-%m-%d %H:%M',
       choices: [
         { value: '%d/%m/%Y %H:%M', label: '31/12/2026 14:05' },
@@ -90,6 +93,7 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       help: 'Añade el nombre del cajero bajo la fecha.',
       type: 'BOOL',
       value: 'false',
+      is_set: false,
       default: 'false',
       choices: [],
       minimum: null,
@@ -103,6 +107,7 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       help: 'Tope de descuento que se puede aplicar a una línea de venta.',
       type: 'DECIMAL',
       value: '100',
+      is_set: false,
       default: '100',
       choices: [],
       minimum: '0',
@@ -116,6 +121,7 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       help: 'Hoy la caja bloquea la venta si el inventario no llega.',
       type: 'BOOL',
       value: 'false',
+      is_set: false,
       default: 'false',
       choices: [],
       minimum: null,
@@ -129,10 +135,26 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       help: 'Con el que se crea una regla de caducidad nueva.',
       type: 'INT',
       value: '7',
+      is_set: false,
       default: '7',
       choices: [],
       minimum: '0',
       maximum: '365',
+      caution: null,
+    },
+    {
+      key: 'server.database_url',
+      group: 'Servidor (avanzado)',
+      label: 'Dirección de la base de datos',
+      help: 'No se muestra porque lleva la contraseña.',
+      type: 'SECRET',
+      // El servidor nunca devuelve un secreto: sólo dice que hay uno.
+      value: '',
+      is_set: true,
+      default: '',
+      choices: [],
+      minimum: null,
+      maximum: null,
       caution: null,
     },
   ],
@@ -386,6 +408,25 @@ describe('SettingsPage — opciones del registro', () => {
     ).toBeInTheDocument();
     // Lo escrito sigue ahí para corregirlo, no se ha descartado.
     expect(discount).toHaveValue('150');
+  });
+
+  it('lets a secret be written but never shows it', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Servidor (avanzado)');
+
+    const field = screen.getByLabelText('Dirección de la base de datos');
+    // Llega vacío: el servidor no devuelve un secreto, sólo dice que lo hay.
+    expect(field).toHaveValue('');
+    expect(field).toHaveAttribute('type', 'password');
+    expect(field).toHaveAttribute('placeholder', 'Guardada — escribe para cambiarla');
+
+    await userEvent.type(field, 'postgresql://nueva');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Guardar cambios de Servidor (avanzado)' }),
+    );
+
+    expect(backend.optionsPutCalls).toEqual([{ 'server.database_url': 'postgresql://nueva' }]);
   });
 
   it('filters the options by label and help text', async () => {

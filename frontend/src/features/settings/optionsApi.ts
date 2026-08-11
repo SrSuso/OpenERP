@@ -8,7 +8,17 @@ import { API_V1, apiFetch } from '@/lib/api';
 // Configuración se pinta sola a partir de esta respuesta: una opción nueva
 // en app.settings.registry aparece en el panel sin tocar nada de aquí.
 
-export const settingTypeSchema = z.enum(['BOOL', 'INT', 'DECIMAL', 'STRING', 'TEXT', 'ENUM']);
+export const settingTypeSchema = z.enum([
+  'BOOL',
+  'INT',
+  'DECIMAL',
+  'STRING',
+  'TEXT',
+  'ENUM',
+  // Se escribe pero no se lee: el servidor lo devuelve siempre vacío y
+  // sólo dice, en `is_set`, si hay algo guardado.
+  'SECRET',
+]);
 export type SettingType = z.infer<typeof settingTypeSchema>;
 
 export const settingChoiceSchema = z.object({
@@ -23,8 +33,11 @@ export const settingDefinitionSchema = z.object({
   label: z.string(),
   help: z.string(),
   type: settingTypeSchema,
-  /** Siempre texto, sea cual sea el `type` — se interpreta al pintarlo. */
+  /** Siempre texto, sea cual sea el `type` — se interpreta al pintarlo. Un
+   * `SECRET` llega siempre vacío. */
   value: z.string(),
+  /** Sólo para `SECRET`: si hay algo guardado, sin decir el qué. */
+  is_set: z.boolean(),
   default: z.string(),
   /** Vacío salvo para `ENUM`. */
   choices: z.array(settingChoiceSchema),

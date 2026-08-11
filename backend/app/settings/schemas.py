@@ -79,8 +79,12 @@ class SettingDefinitionRead(BaseModel):
     label: str
     help: str
     type: SettingType
-    #: Siempre en forma de texto; el panel lo interpreta según `type`.
+    #: Siempre en forma de texto; el panel lo interpreta según `type`. Un
+    #: `SECRET` viene siempre vacío: se escribe, no se lee.
     value: str
+    #: Sólo para `SECRET`: si hay algo guardado, para que el panel pueda
+    #: decir "guardada" sin enseñar el qué.
+    is_set: bool = False
     default: str
     choices: list[SettingChoiceRead]
     minimum: Decimal | None

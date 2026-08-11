@@ -32,6 +32,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.db.session import dispose_engine
+from app.settings import server as server_settings
 
 logger = get_logger(__name__)
 
@@ -49,7 +50,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings or get_settings()
+    if settings is None:
+        # Sin `settings` explícitos es el arranque de verdad: los ajustes de
+        # servidor guardados desde el panel se leen aquí, antes de montar
+        # nada, porque de ellos salen el motor de base de datos, los
+        # middlewares y el registro (ver `app.settings.server`). Con
+        # `settings` dados —las pruebas— no se toca la base de datos: cada
+        # prueba manda sobre su propia configuración.
+        settings = server_settings.load(get_settings())
     configure_logging(level=settings.log_level, fmt=settings.log_format)
 
     app = FastAPI(
