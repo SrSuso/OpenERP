@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 
 import { type Product } from '@/features/catalog/api';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatQuantity } from '@/lib/format';
 
 interface ProductsTableProps {
   products: Product[];
@@ -12,6 +12,9 @@ interface ProductsTableProps {
   /** Unidades base cuyo precio se teclea en la propia fila (el resto sólo
    * lo muestra) — ver el ajuste `catalog.quick_price_units`. */
   quickPriceUnits: string[];
+  /** Cuánto hay de cada producto, por id. Ausente = todavía cargando, o
+   * sin permiso para verlo (`inventory.read`). */
+  stockByProduct: Map<number, string> | null;
   onDeactivate: (id: number) => void;
   isDeactivating: boolean;
   onActivate: (id: number) => void;
@@ -32,6 +35,7 @@ export function ProductsTable({
   canManage,
   canManagePricing,
   quickPriceUnits,
+  stockByProduct,
   onDeactivate,
   isDeactivating,
   onActivate,
@@ -55,6 +59,7 @@ export function ProductsTable({
             <th className="px-4 py-2 font-medium">Nombre</th>
             <th className="px-4 py-2 font-medium">Categoría</th>
             <th className="px-4 py-2 font-medium">Categoría POS</th>
+            <th className="px-4 py-2 font-medium">Stock</th>
             <th className="px-4 py-2 font-medium">Precio (por unidad base)</th>
             <th className="px-4 py-2 font-medium">Estado</th>
             <th className="px-4 py-2 font-medium" />
@@ -67,6 +72,18 @@ export function ProductsTable({
               <td className="px-4 py-2 font-medium text-slate-800">{product.name}</td>
               <td className="px-4 py-2">{product.category_name ?? '—'}</td>
               <td className="px-4 py-2">{product.pos_category_name ?? '—'}</td>
+              <td className="px-4 py-2 whitespace-nowrap">
+                {stockByProduct === null ? (
+                  <span className="text-slate-400">—</span>
+                ) : (
+                  <>
+                    {/* Sin fila de saldo es que no hay ninguno, no que se
+                        desconozca: el saldo se borra al llegar a cero. */}
+                    {formatQuantity(stockByProduct.get(product.id) ?? '0')}
+                    <span className="ml-1 text-xs text-slate-400">{product.base_unit_name}</span>
+                  </>
+                )}
+              </td>
               <td className="px-4 py-2">
                 {canManagePricing &&
                 quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (

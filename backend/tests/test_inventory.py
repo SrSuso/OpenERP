@@ -346,3 +346,35 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/stock-balance")
 
     assert response.status_code == 401
+
+
+async def test_stock_totals_add_up_a_products_locations(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Un total por producto, que es lo que enseña la columna de stock de la
+    lista de productos — no una fila por ubicación."""
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client, sku="INV-TOTALS")
+    warehouse_id, location_id = await _default_location(client)
+    other_location = (
+        await client.post(
+            f"/api/v1/warehouses/{warehouse_id}/locations", json={"name": "Pasillo 2"}
+        )
+    ).json()["id"]
+    for location in (location_id, other_location):
+        await client.post(
+            "/api/v1/stock-movements/adjustments",
+            json={
+                "product_id": product_id,
+                "warehouse_id": warehouse_id,
+                "location_id": location,
+                "movement_type": "ADJUSTMENT",
+                "quantity": "5",
+                "unit_cost": "1",
+            },
+        )
+
+    totals = (await client.get("/api/v1/stock-balance/totals")).json()
+
+    mine = [t for t in totals if t["product_id"] == product_id]
+    assert mine == [{"product_id": product_id, "quantity": "10.000000"}]

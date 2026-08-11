@@ -53,8 +53,17 @@ class StockBalanceRead(BaseModel):
     #: interna, que se sigue mandando para quien la necesite.
     product_name: str
     warehouse_id: int
+    warehouse_name: str
     location_id: int
+    location_name: str
     lot_id: int | None
+    quantity: Decimal
+
+
+class ProductStockTotal(BaseModel):
+    """Cuánto hay de un producto en total, sumando ubicaciones y lotes."""
+
+    product_id: int
     quantity: Decimal
 
 

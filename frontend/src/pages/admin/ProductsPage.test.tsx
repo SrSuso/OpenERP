@@ -27,7 +27,13 @@ const ME = {
   email: 'admin@example.com',
   full_name: 'Admin Uno',
   role: 'ADMIN',
-  permissions: ['admin.access', 'product.read', 'product.manage', 'pricing.manage'],
+  permissions: [
+    'admin.access',
+    'product.read',
+    'product.manage',
+    'pricing.manage',
+    'inventory.read',
+  ],
 };
 
 const TAXES: Tax[] = [
@@ -94,6 +100,9 @@ function stubBackend(options: { products?: Product[] } = {}) {
       }
       if (method === 'GET' && url.includes('/pos-categories')) {
         return Promise.resolve(jsonResponse(POS_CATEGORIES));
+      }
+      if (method === 'GET' && url.includes('/stock-balance/totals')) {
+        return Promise.resolve(jsonResponse([{ product_id: 1, quantity: '24.000000' }]));
       }
       if (method === 'GET' && url.includes('/settings/values')) {
         return Promise.resolve(jsonResponse({ 'catalog.quick_price_units': 'KG' }));
@@ -194,6 +203,8 @@ describe('ProductsPage', () => {
 
     expect(await screen.findByText('Agua 1L')).toBeInTheDocument();
     expect(screen.getByText('P000001')).toBeInTheDocument();
+    // Cuánto hay de cada uno, sin tener que ir a Saldos.
+    expect(await screen.findByText('24')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
     expect(screen.queryByLabelText('SKU')).not.toBeInTheDocument();
@@ -327,6 +338,7 @@ describe('ProductsPage', () => {
         if (url.includes('/product-categories')) return Promise.resolve(jsonResponse(CATEGORIES));
         if (url.includes('/pos-categories')) return Promise.resolve(jsonResponse(POS_CATEGORIES));
         if (url.includes('/settings/values')) return Promise.resolve(jsonResponse({}));
+        if (url.includes('/stock-balance/totals')) return Promise.resolve(jsonResponse([]));
         if (url.includes('/units')) return Promise.resolve(jsonResponse(UNITS));
         if (url.includes('/taxes')) return Promise.resolve(jsonResponse(TAXES));
         if (url.includes('/products?')) return Promise.resolve(jsonResponse([baseProduct()]));

@@ -72,7 +72,9 @@ function stubBackend() {
       product_sku: 'P000010',
       product_name: 'Agua 1.5L',
       warehouse_id: 1,
+      warehouse_name: 'Almacén central',
       location_id: 1,
+      location_name: 'Recepción',
       lot_id: null,
       quantity: '24',
     },
@@ -193,6 +195,9 @@ describe('InventoryBalancesPage', () => {
     expect(within(table).getByText('Agua 1.5L')).toBeInTheDocument();
     expect(within(table).queryByText('P000010')).not.toBeInTheDocument();
     expect(within(table).getByText('24')).toBeInTheDocument();
+    // Almacén y ubicación por su nombre, no por su id.
+    expect(within(table).getByText('Almacén central')).toBeInTheDocument();
+    expect(within(table).getByText('Recepción')).toBeInTheDocument();
 
     // Y la lista se puede acotar a un producto buscándolo por su código de
     // barras, con el producto en la mano.

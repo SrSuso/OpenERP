@@ -25,8 +25,8 @@ export function StockBalanceTable({ balances }: { balances: StockBalance[] }) {
               className="border-b border-slate-100 last:border-0"
             >
               <td className="px-4 py-2 font-medium text-slate-800">{balance.product_name}</td>
-              <td className="px-4 py-2">#{balance.warehouse_id}</td>
-              <td className="px-4 py-2">#{balance.location_id}</td>
+              <td className="px-4 py-2">{balance.warehouse_name}</td>
+              <td className="px-4 py-2">{balance.location_name}</td>
               <td className="px-4 py-2">{balance.lot_id ?? '—'}</td>
               <td className="px-4 py-2">{formatQuantity(balance.quantity)}</td>
             </tr>

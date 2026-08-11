@@ -14,6 +14,7 @@ import {
 } from '@/features/catalog/api';
 import { CreateProductForm } from '@/features/catalog/CreateProductForm';
 import { ProductsTable } from '@/features/catalog/ProductsTable';
+import { stockTotalsQuery } from '@/features/inventory/api';
 import { setManualPrice, setProductPricing, taxesQuery } from '@/features/pricing/api';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
@@ -109,6 +110,14 @@ export function ProductsPage() {
       setPriceError('No se ha podido guardar el precio.');
     },
   });
+
+  // El total de stock por producto vive en inventario y tiene su propio
+  // permiso: quien no pueda verlo sigue viendo la lista, con la columna en
+  // blanco.
+  const stockTotals = useQuery({ ...stockTotalsQuery, enabled: hasPermission('inventory.read') });
+  const stockByProduct = stockTotals.data
+    ? new Map(stockTotals.data.map((total) => [total.product_id, total.quantity]))
+    : null;
 
   const visibleProducts = (products.data ?? []).filter(
     (product) => unitName === '' || product.base_unit_name === unitName,
@@ -208,6 +217,7 @@ export function ProductsPage() {
           canManage={canManage}
           canManagePricing={canManagePricing}
           quickPriceUnits={quickPriceUnits}
+          stockByProduct={stockByProduct}
           onDeactivate={(id) => deactivateMutation.mutate(id)}
           isDeactivating={deactivateMutation.isPending}
           onActivate={(id) => activateMutation.mutate(id)}

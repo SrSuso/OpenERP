@@ -18,6 +18,7 @@ from app.inventory.schemas import (
     AdjustmentCreate,
     LocationCreate,
     LocationRead,
+    ProductStockTotal,
     StockBalanceRead,
     StockMovementRead,
     TransferCreate,
@@ -66,13 +67,17 @@ async def _movement_to_read(session: AsyncSession, movement: StockMovement) -> S
     )
 
 
-def _balance_to_read(balance: StockBalance, product: Product) -> StockBalanceRead:
+def _balance_to_read(
+    balance: StockBalance, product: Product, warehouse_name: str, location_name: str
+) -> StockBalanceRead:
     return StockBalanceRead(
         product_id=balance.product_id,
         product_sku=product.sku,
         product_name=product.name,
         warehouse_id=balance.warehouse_id,
+        warehouse_name=warehouse_name,
         location_id=balance.location_id,
+        location_name=location_name,
         lot_id=balance.lot_id,
         quantity=balance.quantity,
     )
@@ -156,11 +161,33 @@ async def list_balances(
         limit=limit,
         offset=offset,
     )
+    warehouse_names, location_names = await service.names_by_id(session)
     results = []
     for balance in balances:
         product = await get_product(session, balance.product_id)
-        results.append(_balance_to_read(balance, product))
+        results.append(
+            _balance_to_read(
+                balance,
+                product,
+                warehouse_names.get(balance.warehouse_id, f"#{balance.warehouse_id}"),
+                location_names.get(balance.location_id, f"#{balance.location_id}"),
+            )
+        )
     return results
+
+
+@router.get(
+    "/stock-balance/totals", response_model=list[ProductStockTotal], dependencies=[_require_read]
+)
+async def list_stock_totals(
+    session: SessionDep,
+    warehouse_id: Annotated[int | None, Query()] = None,
+) -> list[ProductStockTotal]:
+    """Cuánto hay de cada producto, para la columna de stock de la lista de
+    productos: un total por producto en vez de las cientos de filas
+    (producto, almacén, ubicación y lote) que devuelve /stock-balance."""
+    totals = await service.total_quantity_by_product(session, warehouse_id=warehouse_id)
+    return [ProductStockTotal(product_id=pid, quantity=qty) for pid, qty in totals.items()]
 
 
 @router.post(

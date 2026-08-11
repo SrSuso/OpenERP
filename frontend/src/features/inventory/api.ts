@@ -100,11 +100,30 @@ export const stockBalanceSchema = z.object({
   product_sku: z.string(),
   product_name: z.string(),
   warehouse_id: z.number(),
+  warehouse_name: z.string(),
   location_id: z.number(),
+  location_name: z.string(),
   lot_id: z.number().nullable(),
   quantity: z.string(),
 });
 export type StockBalance = z.infer<typeof stockBalanceSchema>;
+
+export const productStockTotalSchema = z.object({
+  product_id: z.number(),
+  quantity: z.string(),
+});
+
+/** Cuánto hay de cada producto, sumando ubicaciones y lotes — para la
+ * columna de stock de la lista de productos. Se pide aparte de los saldos
+ * porque aquéllos vienen paginados. */
+export const stockTotalsQuery = queryOptions({
+  queryKey: ['inventory', 'stock-totals'] as const,
+  queryFn: ({ signal }) =>
+    apiFetch(`${API_V1}/stock-balance/totals`, {
+      schema: z.array(productStockTotalSchema),
+      signal,
+    }),
+});
 
 export interface BalanceFilters {
   productId?: number;

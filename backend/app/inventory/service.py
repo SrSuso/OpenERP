@@ -334,6 +334,30 @@ async def list_balances(
     return list((await session.execute(stmt)).scalars())
 
 
+async def names_by_id(session: AsyncSession) -> tuple[dict[int, str], dict[int, str]]:
+    """Almacenes y ubicaciones por id, para poner nombres a un listado de
+    saldos sin una consulta por fila. Una tienda tiene un puñado de cada
+    cosa, así que se traen enteros."""
+    warehouses = await session.execute(select(Warehouse.id, Warehouse.name))
+    locations = await session.execute(select(Location.id, Location.name))
+    return ({row.id: row.name for row in warehouses}, {row.id: row.name for row in locations})
+
+
+async def total_quantity_by_product(
+    session: AsyncSession, *, warehouse_id: int | None = None
+) -> dict[int, Decimal]:
+    """Cuánto hay de cada producto, sumando ubicaciones y lotes — lo que
+    enseña la columna de stock de la lista de productos. Se suma aquí y no
+    en el cliente porque el listado de saldos viene paginado."""
+    stmt = select(StockBalance.product_id, func.sum(StockBalance.quantity)).group_by(
+        StockBalance.product_id
+    )
+    if warehouse_id is not None:
+        stmt = stmt.where(StockBalance.warehouse_id == warehouse_id)
+    rows = await session.execute(stmt)
+    return {row[0]: row[1] for row in rows}
+
+
 async def rebuild_stock_balance(session: AsyncSession) -> int:
     """Delete every ``stock_balance`` row and reconstruct it by summing
     ``stock_movements`` — the capability rule 2 requires: the projection
