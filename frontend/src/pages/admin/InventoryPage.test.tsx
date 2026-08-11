@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -184,8 +184,12 @@ describe('InventoryBalancesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
     await userEvent.selectOptions(within(form).getByLabelText('Producto'), '10');
-    await userEvent.selectOptions(within(form).getByLabelText('Almacén'), '1');
-    await userEvent.selectOptions(within(form).getByLabelText('Ubicación'), '1');
+    // Almacén y ubicación vienen ya con la primera opción puesta: con un solo
+    // almacén no hay nada que elegir, y desplegarlos era un paso de más.
+    await waitFor(() => {
+      expect(within(form).getByLabelText('Almacén')).toHaveValue('1');
+      expect(within(form).getByLabelText('Ubicación')).toHaveValue('1');
+    });
     await userEvent.type(within(form).getByLabelText('Cantidad (con signo)'), '-2');
     await userEvent.click(within(form).getByRole('button', { name: 'Registrar ajuste' }));
 

@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
+import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import { type GoodsReceiptLineInput, type PurchaseOrder } from '@/features/purchasing/api';
 import { decimalString } from '@/lib/decimal';
 import { formatQuantity } from '@/lib/format';
@@ -60,6 +61,9 @@ export function GoodsReceiptForm({
 
   const warehouses = useQuery(warehousesQuery);
   const locations = useQuery(locationsQuery(warehouseId === '' ? null : Number(warehouseId)));
+
+  useDefaultToFirstOption(warehouseId, warehouses.data, setWarehouseId);
+  useDefaultToFirstOption(locationId, locations.data, setLocationId);
 
   const {
     register,

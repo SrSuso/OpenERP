@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
+import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import { decimalString } from '@/lib/decimal';
 
 const adjustmentSchema = z.object({
@@ -56,6 +57,7 @@ export function AdjustmentForm({
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<AdjustmentFormValues>({
     resolver: zodResolver(adjustmentSchema),
@@ -63,8 +65,12 @@ export function AdjustmentForm({
   });
 
   const warehouseId = watch('warehouse_id');
+  const locationId = watch('location_id');
   const warehouses = useQuery(warehousesQuery);
   const locations = useQuery(locationsQuery(warehouseId ? Number(warehouseId) : null));
+
+  useDefaultToFirstOption(warehouseId, warehouses.data, (value) => setValue('warehouse_id', value));
+  useDefaultToFirstOption(locationId, locations.data, (value) => setValue('location_id', value));
 
   const submit = handleSubmit((values) =>
     onSubmit({

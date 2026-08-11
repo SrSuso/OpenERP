@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
+import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import { decimalString } from '@/lib/decimal';
 
 const transferSchema = z.object({
@@ -41,6 +42,7 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<TransferFormValues>({
     resolver: zodResolver(transferSchema),
@@ -49,9 +51,24 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
 
   const fromWarehouseId = watch('from_warehouse_id');
   const toWarehouseId = watch('to_warehouse_id');
+  const fromLocationId = watch('from_location_id');
+  const toLocationId = watch('to_location_id');
   const warehouses = useQuery(warehousesQuery);
   const fromLocations = useQuery(locationsQuery(fromWarehouseId ? Number(fromWarehouseId) : null));
   const toLocations = useQuery(locationsQuery(toWarehouseId ? Number(toWarehouseId) : null));
+
+  useDefaultToFirstOption(fromWarehouseId, warehouses.data, (value) =>
+    setValue('from_warehouse_id', value),
+  );
+  useDefaultToFirstOption(toWarehouseId, warehouses.data, (value) =>
+    setValue('to_warehouse_id', value),
+  );
+  useDefaultToFirstOption(fromLocationId, fromLocations.data, (value) =>
+    setValue('from_location_id', value),
+  );
+  useDefaultToFirstOption(toLocationId, toLocations.data, (value) =>
+    setValue('to_location_id', value),
+  );
 
   const submit = handleSubmit((values) =>
     onSubmit({
