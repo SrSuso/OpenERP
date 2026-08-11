@@ -170,10 +170,12 @@ export function TemplateFieldsForm({
             </label>
           )}
 
-          <label className="text-sm text-slate-600 sm:col-span-2">
+          {/* Ancho justo para lo que contiene: son dos opciones de cinco
+              caracteres, y ocupaba una fila entera de lado a lado. */}
+          <label className="text-sm text-slate-600">
             Ancho del papel
             <select
-              className="mt-1 w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-sm"
+              className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('width_mm')}
             >
               <option value="58">58 mm</option>
@@ -286,7 +288,7 @@ export function TemplateFieldsForm({
           <label className="text-sm text-slate-600">
             Formato de la fecha
             <select
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              className="mt-1 block w-56 rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('date_format')}
             >
               {DATE_FORMATS.map((option) => (
