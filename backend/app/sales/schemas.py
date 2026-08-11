@@ -110,6 +110,14 @@ class ZReportRead(BaseModel):
     closed_by_user_id: int | None
 
 
+class PendingSaleRead(BaseModel):
+    """Una venta a medias, lo justo para reconocerla en pantalla."""
+
+    id: int
+    lines_count: int
+    total: Decimal
+
+
 class ZReportPreview(BaseModel):
     """Lo mismo, pero sin guardar ni numerar: lo que se enseña antes de
     confirmar el cierre."""
@@ -124,6 +132,7 @@ class ZReportPreview(BaseModel):
     other_total: Decimal
     returns_count: int
     returns_total: Decimal
-    #: Ventas sin cobrar en esta caja: con alguna abierta no se puede
-    #: cerrar, y el TPV lo dice antes de dejar pulsar.
-    open_sales: int
+    #: Las ventas sin cobrar que impiden cerrar. Van enteras y no contadas:
+    #: "hay una sin cobrar" sin decir cuál deja sin salida a quien está en
+    #: el mostrador.
+    open_sales: list[PendingSaleRead]

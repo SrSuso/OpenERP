@@ -34,10 +34,12 @@ const PREVIEW = {
   other_total: '0.000000',
   returns_count: 0,
   returns_total: '0.000000',
-  open_sales: 0,
+  open_sales: [],
 };
 
-function stubBackend(options: { openSales?: number } = {}) {
+function stubBackend(
+  options: { openSales?: { id: number; lines_count: number; total: string }[] } = {},
+) {
   const closeCalls: string[] = [];
   const logoutCalls: string[] = [];
 
@@ -57,7 +59,7 @@ function stubBackend(options: { openSales?: number } = {}) {
         return Promise.resolve(jsonResponse([{ id: 1, name: 'Tienda', is_active: true }]));
       }
       if (url.includes('/z-reports/preview')) {
-        return Promise.resolve(jsonResponse({ ...PREVIEW, open_sales: options.openSales ?? 0 }));
+        return Promise.resolve(jsonResponse({ ...PREVIEW, open_sales: options.openSales ?? [] }));
       }
       if (method === 'POST' && url.includes('/z-reports')) {
         closeCalls.push(url);
@@ -127,14 +129,23 @@ describe('PosLayout', () => {
     expect(backend.logoutCalls).toHaveLength(1);
   });
 
-  it('does not let the till be closed with a sale in progress', async () => {
-    stubBackend({ openSales: 2 });
+  it('says which sales are in the way, not just how many', async () => {
+    // "Hay una venta sin cobrar" a secas deja sin salida a quien está en el
+    // mostrador: no sabe cuál buscar.
+    stubBackend({
+      openSales: [
+        { id: 12, lines_count: 3, total: '8.400000' },
+        { id: 15, lines_count: 1, total: '1.200000' },
+      ],
+    });
     renderLayout();
     await screen.findByText('Ana');
 
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
 
     expect(await screen.findByText(/2 ventas sin cobrar/)).toBeInTheDocument();
+    expect(screen.getByText(/Venta #12 — 3 líneas · 8,40 €/)).toBeInTheDocument();
+    expect(screen.getByText(/Venta #15 — 1 línea · 1,20 €/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cerrar caja e imprimir Z' })).toBeDisabled();
   });
 });

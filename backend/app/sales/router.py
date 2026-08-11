@@ -6,6 +6,7 @@ endpoints protected the same way)."""
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +20,7 @@ from app.sales.models import Sale, ZReport
 from app.sales.presenters import sale_to_read as _sale_to_read
 from app.sales.schemas import (
     CheckoutRequest,
+    PendingSaleRead,
     SaleCreate,
     SaleLineByBarcodeCreate,
     SaleLineCreate,
@@ -158,13 +160,33 @@ async def list_z_reports(
 
 @router.get("/z-reports/preview", response_model=ZReportPreview, dependencies=[_require_manage])
 async def preview_z_report(
-    session: SessionDep, warehouse_id: Annotated[int, Query()]
+    session: SessionDep,
+    pricing: PricingSettingsDep,
+    warehouse_id: Annotated[int, Query()],
 ) -> ZReportPreview:
     """Los totales que tendría la Z si se cerrase ahora. Lo enseña el TPV
     antes de que nadie confirme nada."""
     totals = await z_reports.preview(session, warehouse_id)
     pending = await z_reports.open_sales(session, warehouse_id)
-    return ZReportPreview(**totals, open_sales=pending)
+    return ZReportPreview(
+        **totals,
+        open_sales=[
+            PendingSaleRead(
+                id=sale.id,
+                lines_count=len(sale.lines),
+                total=sum(
+                    (
+                        service.compute_line_totals(
+                            line, prices_include_tax=pricing.prices_include_tax
+                        ).total
+                        for line in sale.lines
+                    ),
+                    Decimal(0),
+                ),
+            )
+            for sale in pending
+        ],
+    )
 
 
 @router.post(

@@ -56,7 +56,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   }, [closed]);
 
   const totals = closed ?? preview.data;
-  const openSales = preview.data?.open_sales ?? 0;
+  const openSales = preview.data?.open_sales ?? [];
 
   return (
     <div
@@ -96,11 +96,24 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
           </div>
         )}
 
-        {!closed && openSales > 0 && (
-          <p className="mt-4 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
-            Hay {openSales} venta{openSales === 1 ? '' : 's'} sin cobrar. Cóbrala
-            {openSales === 1 ? '' : 's'} o cancélala{openSales === 1 ? '' : 's'} antes de cerrar.
-          </p>
+        {!closed && openSales.length > 0 && (
+          <div className="mt-4 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
+            <p>
+              {openSales.length === 1
+                ? 'Hay una venta sin cobrar. Cóbrala o cancélala antes de cerrar:'
+                : `Hay ${openSales.length} ventas sin cobrar. Cóbralas o cancélalas antes de cerrar:`}
+            </p>
+            {/* Cuáles son, con lo que llevan dentro: son las que hay que ir
+                a buscar a la barra de ventas abiertas. */}
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {openSales.map((pending) => (
+                <li key={pending.id}>
+                  Venta #{pending.id} — {pending.lines_count}{' '}
+                  {pending.lines_count === 1 ? 'línea' : 'líneas'} · {formatMoney(pending.total)}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
@@ -127,7 +140,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
             <>
               <button
                 type="button"
-                disabled={closeMutation.isPending || preview.isPending || openSales > 0}
+                disabled={closeMutation.isPending || preview.isPending || openSales.length > 0}
                 onClick={() => closeMutation.mutate()}
                 className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white disabled:opacity-40"
               >

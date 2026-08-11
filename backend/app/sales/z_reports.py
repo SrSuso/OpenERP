@@ -21,8 +21,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.core.context import get_user_id
@@ -49,14 +50,22 @@ async def _last_close(session: AsyncSession, warehouse_id: int) -> ZReport | Non
     ).scalar_one_or_none()
 
 
-async def open_sales(session: AsyncSession, warehouse_id: int) -> int:
-    return (
-        await session.execute(
-            select(func.count())
-            .select_from(Sale)
-            .where(Sale.warehouse_id == warehouse_id, Sale.status == SaleStatus.DRAFT)
-        )
-    ).scalar_one()
+async def open_sales(session: AsyncSession, warehouse_id: int) -> list[Sale]:
+    """Las ventas a medias que impiden cerrar: las que tienen algo dentro.
+
+    Un borrador **vacío** no cuenta, y esto no es un detalle: la caja abre
+    uno sola en cuanto se queda sin ninguno (para que recargar la página no
+    deje a nadie sin carrito), así que contándolos no habría forma humana
+    de cerrar el turno — se cancela el vacío y aparece otro. Y tampoco hay
+    nada que cuadrar en un carrito sin líneas: no se va a cobrar.
+    """
+    stmt = (
+        select(Sale)
+        .where(Sale.warehouse_id == warehouse_id, Sale.status == SaleStatus.DRAFT)
+        .options(selectinload(Sale.lines))
+        .order_by(Sale.id)
+    )
+    return [sale for sale in (await session.execute(stmt)).scalars() if sale.lines]
 
 
 async def preview(session: AsyncSession, warehouse_id: int) -> dict[str, object]:
@@ -134,10 +143,11 @@ async def close(session: AsyncSession, warehouse_id: int) -> ZReport:
     """Cierra el turno: calcula los totales, los congela y los numera."""
     pending = await open_sales(session, warehouse_id)
     if pending:
+        numbers = ", ".join(f"#{sale.id}" for sale in pending)
         raise ConflictError(
-            f"Hay {pending} venta(s) sin cobrar en esta caja. Cóbralas o cancélalas "
-            "antes de cerrar: si no, se cobrarían después del corte y no cuadraría "
-            "ni esta Z ni la siguiente."
+            f"Hay {len(pending)} venta(s) sin cobrar en esta caja ({numbers}). Cóbralas "
+            "o cancélalas antes de cerrar: si no, se cobrarían después del corte y no "
+            "cuadraría ni esta Z ni la siguiente."
         )
 
     last = await _last_close(session, warehouse_id)

@@ -311,7 +311,11 @@ export type ZReport = z.infer<typeof zReportSchema>;
 
 export const zReportPreviewSchema = zReportSchema
   .omit({ id: true, warehouse_id: true, number: true, closed_at: true, closed_by_user_id: true })
-  .extend({ open_sales: z.number() });
+  .extend({
+    // Cuáles son, no cuántas: "hay una sin cobrar" sin decir cuál deja sin
+    // salida a quien está en el mostrador.
+    open_sales: z.array(z.object({ id: z.number(), lines_count: z.number(), total: z.string() })),
+  });
 export type ZReportPreview = z.infer<typeof zReportPreviewSchema>;
 
 /** Lo que saldría en la Z si se cerrase ahora, sin guardar nada. */

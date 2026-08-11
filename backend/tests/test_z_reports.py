@@ -132,18 +132,60 @@ async def test_a_frozen_close_does_not_change_afterwards(
 async def test_the_till_cannot_be_closed_with_a_sale_in_progress(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Un carrito abierto se cobraría después del corte: quedaría fuera de
-    esta Z y dentro de la siguiente, cuadrando mal las dos."""
+    """Un carrito con algo dentro se cobraría después del corte: quedaría
+    fuera de esta Z y dentro de la siguiente, cuadrando mal las dos. Y el
+    aviso dice cuál es: "hay una sin cobrar" a secas deja sin salida a
+    quien está en el mostrador."""
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json={
+                "sku": "Z-PENDING",
+                "name": "Pan",
+                "base_unit_name": "UNIDAD",
+                "cost": "0.50",
+                "list_price": "1.00",
+            },
+        )
+    ).json()
+    sale = (
+        await client.post(
+            "/api/v1/sales", json={"warehouse_id": warehouse_id, "location_id": location_id}
+        )
+    ).json()
+    await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={
+            "product_id": product["id"],
+            "package_id": next(p["id"] for p in product["packages"] if p["is_base"]),
+            "quantity_packages": "1",
+        },
+    )
+
+    refused = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+
+    assert refused.status_code == 409
+    assert f"#{sale['id']}" in refused.json()["error"]["message"]
+
+
+async def test_an_empty_cart_does_not_block_the_close(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """La caja abre un carrito vacío sola en cuanto se queda sin ninguno,
+    así que contándolos no habría forma humana de cerrar el turno: se
+    cancela el vacío y aparece otro. Y no hay nada que cuadrar en un
+    carrito sin líneas."""
     await login(role_name="ADMIN")
     warehouse_id, location_id = await _default_location(client)
     await client.post(
         "/api/v1/sales", json={"warehouse_id": warehouse_id, "location_id": location_id}
     )
 
-    refused = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+    closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
 
-    assert refused.status_code == 409
-    assert "sin cobrar" in refused.json()["error"]["message"]
+    assert closed.status_code == 201
 
 
 async def test_the_preview_says_what_would_be_closed(
@@ -159,7 +201,7 @@ async def test_the_preview_says_what_would_be_closed(
 
     assert preview["sales_count"] == 1
     assert preview["cash_total"] == "4.000000"
-    assert preview["open_sales"] == 0
+    assert preview["open_sales"] == []
     # Y no ha guardado nada: sigue sin haber ninguna Z.
     assert (await client.get("/api/v1/z-reports")).json() == []
 
