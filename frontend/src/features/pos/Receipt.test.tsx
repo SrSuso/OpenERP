@@ -35,6 +35,37 @@ function renderReceipt(overrides: Partial<Parameters<typeof Receipt>[0]> = {}) {
   );
 }
 
+/** Distingue los dos endpoints que toca esta pantalla: los ajustes de la
+ * tienda y la generación del ticket. */
+function stubBackend(values: Record<string, string>) {
+  const ticketCalls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/settings/values')) return Promise.resolve(jsonResponse(values));
+      if ((init?.method ?? 'GET') === 'POST' && url.includes('/tickets')) {
+        ticketCalls.push(url);
+        return Promise.resolve(
+          jsonResponse(
+            {
+              id: 1,
+              sale_id: 1,
+              template_id: 1,
+              width_mm: 58,
+              rendered_text: 'Venta #1\nTOTAL 20.00\n',
+              created_at: '2026-08-08T10:00:00Z',
+            },
+            { status: 201 },
+          ),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected fetch to ${url} in test`));
+    }),
+  );
+  return { ticketCalls };
+}
+
 describe('Receipt', () => {
   let printMock: ReturnType<typeof vi.fn>;
 
@@ -98,6 +129,33 @@ describe('Receipt', () => {
       ),
     );
     renderReceipt();
+
+    await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
+
+    expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
+    expect(printMock).toHaveBeenCalled();
+  });
+
+  it('prints on its own as soon as the sale is charged', async () => {
+    // En una caja con cola detrás, un botón más por cliente son cientos de
+    // pulsaciones al mes.
+    const backend = stubBackend({});
+    renderReceipt();
+
+    expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
+    expect(printMock).toHaveBeenCalledTimes(1);
+    // Una sola vez: generar el ticket es idempotente, pero pedirlo dos
+    // veces mandaría dos trabajos a la impresora.
+    expect(backend.ticketCalls).toHaveLength(1);
+  });
+
+  it('waits for the button when the shop turned auto-printing off', async () => {
+    const backend = stubBackend({ 'pos.print_ticket_on_checkout': 'false' });
+    renderReceipt();
+    await screen.findByText('20,00 €');
+
+    expect(printMock).not.toHaveBeenCalled();
+    expect(backend.ticketCalls).toEqual([]);
 
     await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
 

@@ -392,6 +392,17 @@ SETTINGS: tuple[SettingDef, ...] = (
     ),
     # --- caja --------------------------------------------------------------
     SettingDef(
+        key="pos.print_ticket_on_checkout",
+        group=GROUP_POS,
+        label="Imprimir el ticket al cobrar",
+        help=(
+            "Nada más cobrar, el ticket sale solo, sin tener que darle a imprimir. "
+            "Apágalo si prefieres decidir cada vez (el botón sigue estando)."
+        ),
+        type=SettingType.BOOL,
+        default=True,
+    ),
+    SettingDef(
         key="pos.weighed_units",
         group=GROUP_POS,
         label="Unidades que se venden pesando",

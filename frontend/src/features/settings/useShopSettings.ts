@@ -18,3 +18,18 @@ export function useShopFlag(key: string, fallback: boolean): boolean {
   const value = useShopSetting(key, fallback ? 'true' : 'false');
   return value === 'true';
 }
+
+/** Como `useShopFlag`, pero distinguiendo "todavía no se sabe"
+ * (`undefined`) de "está apagado".
+ *
+ * `useShopFlag` devuelve el valor por defecto mientras carga, que es justo
+ * lo que hace falta para pintar sin parpadeos. Para *actuar* —imprimir un
+ * ticket, por ejemplo— eso no vale: se haría igualmente en una tienda que
+ * lo tiene apagado, antes de que llegue su respuesta. Si la consulta falla
+ * se responde con el valor por defecto, para no quedarse esperando para
+ * siempre a algo que no va a llegar. */
+export function useSettledShopFlag(key: string, fallback: boolean): boolean | undefined {
+  const { data, isPending } = useQuery(settingsValuesQuery);
+  if (isPending) return undefined;
+  return (data?.[key] ?? (fallback ? 'true' : 'false')) === 'true';
+}
