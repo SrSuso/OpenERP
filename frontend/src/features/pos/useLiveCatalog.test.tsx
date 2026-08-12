@@ -8,21 +8,28 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 }
 
-/** El intervalo sale de un ajuste, así que la caja tiene que leerlo antes
- * de poder empezar a refrescar. */
-function stubSettings(values: Record<string, string> = {}) {
+/** El backend visto desde la caja: los ajustes (de donde sale cada cuánto
+ * preguntar) y la huella del catálogo, que aquí se cambia a mano para
+ * simular que alguien ha guardado algo en el panel. */
+function stubBackend(values: Record<string, string> = {}) {
+  const state = { version: 'v1', versionCalls: 0 };
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.includes('/settings/values')) return Promise.resolve(jsonResponse(values));
+      if (url.includes('/catalog-version')) {
+        state.versionCalls += 1;
+        return Promise.resolve(jsonResponse({ version: state.version }));
+      }
       return Promise.reject(new Error(`Unexpected fetch to ${url} in test`));
     }),
   );
+  return state;
 }
 
 function setup(values?: Record<string, string>) {
-  stubSettings(values);
+  const backend = stubBackend(values);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
   const rendered = renderHook(() => useLiveCatalog(), {
@@ -30,7 +37,7 @@ function setup(values?: Record<string, string>) {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   });
-  return { ...rendered, invalidate };
+  return { ...rendered, backend, invalidate };
 }
 
 /** Qué se ha mandado refrescar, como texto legible ("pos/products"). */
@@ -50,28 +57,45 @@ describe('useLiveCatalog', () => {
     vi.unstubAllGlobals();
   });
 
-  it('re-asks for the catalog on its own, so a change made in the panel shows up', async () => {
-    const { invalidate } = setup({ 'pos.catalog_refresh_seconds': '5' });
-    // Espera a que el ajuste esté cargado: hasta entonces el intervalo es
-    // el de por defecto.
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
+  it('picks up a change made in the panel without anyone touching the till', async () => {
+    const { backend, invalidate } = setup({ 'pos.catalog_refresh_seconds': '5' });
+    await waitFor(() => expect(backend.versionCalls).toBeGreaterThan(0));
     invalidate.mockClear();
 
+    // Alguien guarda un precio en el panel, en el otro equipo.
+    backend.version = 'v2';
     await vi.advanceTimersByTimeAsync(5_000);
 
     // Precios y productos, botones del TPV, ajustes de tienda y la
     // plantilla del ticket: todo lo que se cambia desde el panel.
-    expect(invalidatedKeys(invalidate)).toEqual([
-      'pos/products',
-      'pos/categories',
-      'settings/values',
-      'tickets/templates',
-    ]);
+    await waitFor(() => {
+      expect(invalidatedKeys(invalidate)).toEqual(
+        expect.arrayContaining([
+          'pos/products',
+          'pos/categories',
+          'settings/values',
+          'tickets/templates',
+        ]),
+      );
+    });
   });
 
-  it('refreshes at once when another tab saves something', async () => {
-    const { invalidate } = setup();
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
+  it('does not reload the catalogue while nothing changes', async () => {
+    const { backend, invalidate } = setup({ 'pos.catalog_refresh_seconds': '5' });
+    await waitFor(() => expect(backend.versionCalls).toBeGreaterThan(0));
+    invalidate.mockClear();
+
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    // Ha preguntado varias veces —eso es lo barato— pero no se ha traído
+    // el catálogo ni una sola vez.
+    expect(backend.versionCalls).toBeGreaterThan(1);
+    expect(invalidatedKeys(invalidate)).not.toContain('pos/products');
+  });
+
+  it('refreshes at once when another tab of the same browser saves something', async () => {
+    const { backend, invalidate } = setup();
+    await waitFor(() => expect(backend.versionCalls).toBeGreaterThan(0));
     invalidate.mockClear();
 
     // Lo que hace el panel al guardar, desde su propia pestaña.
@@ -84,25 +108,24 @@ describe('useLiveCatalog', () => {
     });
   });
 
-  it('refreshes when the till window comes back to the front', async () => {
-    const { invalidate } = setup();
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
+  it('checks again when the till window comes back to the front', async () => {
+    const { backend, invalidate } = setup();
+    await waitFor(() => expect(backend.versionCalls).toBeGreaterThan(0));
     invalidate.mockClear();
 
     window.dispatchEvent(new Event('focus'));
 
-    expect(invalidatedKeys(invalidate)).toContain('pos/products');
+    expect(invalidatedKeys(invalidate)).toContain('pos/catalog-version');
   });
 
   it('stops asking once the till screen is gone', async () => {
-    const { invalidate, unmount } = setup({ 'pos.catalog_refresh_seconds': '5' });
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const { backend, unmount } = setup({ 'pos.catalog_refresh_seconds': '5' });
+    await waitFor(() => expect(backend.versionCalls).toBeGreaterThan(0));
     unmount();
-    invalidate.mockClear();
+    const asked = backend.versionCalls;
 
-    await vi.advanceTimersByTimeAsync(20_000);
-    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(backend.versionCalls).toBe(asked);
   });
 });

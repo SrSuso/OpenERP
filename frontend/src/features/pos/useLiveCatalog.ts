@@ -1,7 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { z } from 'zod';
 
 import { useShopSetting } from '@/features/settings/useShopSettings';
+import { API_V1, apiFetch } from '@/lib/api';
 import { onChangeBroadcast } from '@/lib/changeBroadcast';
 
 /** Lo que la caja enseña y que se cambia desde el panel: productos y sus
@@ -20,24 +22,51 @@ const LIVE_KEYS = [
   ['tickets', 'templates'],
 ] as const;
 
-/** Mantiene la caja al día sin recargarla.
+/** Una huella de cómo está el catálogo ahora mismo — ver
+ * `backend/app/catalog/version.py`. Cabe en una línea, así que preguntarla
+ * cada pocos segundos no cuesta nada; el catálogo entero sí. */
+const catalogVersionQuery = queryOptions({
+  queryKey: ['pos', 'catalog-version'] as const,
+  queryFn: ({ signal }) =>
+    apiFetch(`${API_V1}/catalog-version`, { schema: z.object({ version: z.string() }), signal }),
+  staleTime: 0,
+});
+
+/** Mantiene la caja al día sin que nadie la toque.
  *
- * Un cambio guardado en el panel tiene que verse en el TPV en cuanto se
- * guarda, y hay dos caminos porque hay dos situaciones:
+ * La caja está en otro equipo, dedicada, y no se recarga en todo el día:
+ * un precio cambiado en el panel tiene que aparecer allí solo. Así que
+ * pregunta cada pocos segundos «¿ha cambiado algo?» —una huella, no el
+ * catálogo— y sólo cuando la respuesta es distinta a la de antes vuelve a
+ * pedir lo gordo. Con `pos.catalog_refresh_seconds` en 3, el precio está
+ * puesto antes de que llegues andando hasta la caja.
  *
- * - Panel y caja en el mismo navegador (lo normal en una tienda de un
- *   equipo): el aviso entre pestañas llega al instante
- *   (`changeBroadcast`).
- * - La caja en otro equipo: no hay aviso posible, así que vuelve a
- *   preguntar cada pocos segundos — `pos.catalog_refresh_seconds`.
+ * Encima de eso, dos atajos que no cuestan nada:
  *
- * Y en los dos casos, al volver a la pestaña de la caja se refresca sin
- * esperar al siguiente turno: es el momento exacto en que alguien acaba de
- * cambiar algo en la otra ventana. */
+ * - Si el panel está abierto en el mismo navegador, al guardar avisa a las
+ *   demás pestañas y la caja refresca en el acto (`changeBroadcast`).
+ * - Al volver a la ventana de la caja se comprueba sin esperar al
+ *   siguiente turno.
+ *
+ * Los tres caminos hacen lo mismo, así que con que funcione uno la caja
+ * está al día. */
 export function useLiveCatalog(): void {
   const queryClient = useQueryClient();
-  const seconds = Number(useShopSetting('pos.catalog_refresh_seconds', '10'));
-  const interval = Number.isFinite(seconds) && seconds >= 2 ? seconds : 10;
+  const seconds = Number(useShopSetting('pos.catalog_refresh_seconds', '3'));
+  const interval = Number.isFinite(seconds) && seconds >= 1 ? seconds : 3;
+
+  const { data } = useQuery({
+    ...catalogVersionQuery,
+    refetchInterval: interval * 1000,
+    // La caja puede estar sin foco (un aviso encima, el salvapantallas) y
+    // tiene que seguir enterándose igual.
+    refetchIntervalInBackground: true,
+  });
+  const version = data?.version;
+
+  //: La última huella que ya se refrescó. La primera que llega no
+  //: refresca nada: es la foto de lo que la caja acaba de cargar.
+  const seen = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const refresh = () => {
@@ -46,19 +75,35 @@ export function useLiveCatalog(): void {
       }
     };
 
-    const timer = window.setInterval(refresh, interval * 1000);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh();
+    const check = () => {
+      void queryClient.invalidateQueries({ queryKey: catalogVersionQuery.queryKey });
     };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    // Un cambio guardado en otra pestaña del mismo navegador: no hay nada
+    // que preguntar, se sabe que hay algo nuevo.
     const stopListening = onChangeBroadcast(refresh);
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', refresh);
+    window.addEventListener('focus', check);
 
     return () => {
-      window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', refresh);
+      window.removeEventListener('focus', check);
       stopListening();
     };
-  }, [queryClient, interval]);
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (version === undefined) return;
+    if (seen.current === undefined) {
+      seen.current = version;
+      return;
+    }
+    if (seen.current === version) return;
+    seen.current = version;
+    for (const queryKey of LIVE_KEYS) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }, [version, queryClient]);
 }

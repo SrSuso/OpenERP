@@ -405,16 +405,17 @@ SETTINGS: tuple[SettingDef, ...] = (
     SettingDef(
         key="pos.catalog_refresh_seconds",
         group=GROUP_POS,
-        label="Cada cuánto se refresca la caja",
+        label="Cada cuánto mira la caja si hay cambios",
         help=(
-            "Cada cuántos segundos la caja vuelve a pedir precios, productos y "
-            "botones, para que un cambio hecho en el panel se vea sin recargar. "
-            "Si el panel y la caja están en el mismo navegador el cambio se ve al "
-            "instante igualmente; esto es para cuando la caja está en otro equipo."
+            "La caja pregunta cada tantos segundos si ha cambiado algo en el "
+            "panel, y sólo cuando la respuesta es que sí vuelve a pedir precios, "
+            "productos y botones. La pregunta es diminuta, así que bajarlo no "
+            "pesa: con 3 segundos, un precio cambiado en el panel está en la caja "
+            "antes de que te dé tiempo a ir hasta ella."
         ),
         type=SettingType.INT,
-        default=10,
-        minimum=Decimal(2),
+        default=3,
+        minimum=Decimal(1),
         maximum=Decimal(600),
     ),
     SettingDef(

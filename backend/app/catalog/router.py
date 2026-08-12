@@ -35,6 +35,7 @@ from app.catalog.schemas import (
     UnitMoveRequest,
     UnitRead,
 )
+from app.catalog.version import catalog_version
 from app.rbac.dependencies import check_permission, require_permission
 from app.rbac.permissions import POS_CATEGORY_MANAGE, PRODUCT_MANAGE, PRODUCT_READ
 
@@ -43,6 +44,15 @@ router = APIRouter(tags=["catalog"])
 _require_read = Depends(require_permission(PRODUCT_READ))
 _require_manage = Depends(require_permission(PRODUCT_MANAGE))
 _require_pos_category_manage = Depends(require_permission(POS_CATEGORY_MANAGE))
+
+
+@router.get("/catalog-version", response_model=dict[str, str])
+async def get_catalog_version(session: SessionDep, user: CurrentUser) -> dict[str, str]:
+    """Para que la caja, que está en otro equipo y nadie recarga, sepa si
+    ha cambiado algo sin traerse el catálogo entero cada vez. Basta con
+    estar dentro: quien cobra no tiene `product.read` y la necesita igual.
+    Ver `app.catalog.version`."""
+    return {"version": await catalog_version(session)}
 
 
 def _pos_category_to_read(category: PosCategory) -> PosCategoryRead:
