@@ -11,10 +11,31 @@ SHELL := /bin/bash
 BACKEND  := backend
 FRONTEND := frontend
 COMPOSE  := docker compose -f docker/compose.yml
+PYTEST   := cd $(BACKEND) && uv run pytest -q
+
+SALES_TESTS := \
+	tests/test_sales.py \
+	tests/test_checkout.py \
+	tests/test_returns.py \
+	tests/test_tickets.py \
+	tests/test_sale_history.py
+PRICING_TESTS := \
+	tests/test_pricing_formula.py \
+	tests/test_pricing_router.py \
+	tests/test_pricing_taxes.py
+INVENTORY_TESTS := \
+	tests/test_inventory.py \
+	tests/test_lots.py \
+	tests/test_numeric_storage.py \
+	tests/test_receiving.py
+REPORTS_TESTS := \
+	tests/test_reports.py \
+	tests/test_z_reports.py \
+	tests/test_ticket_render.py
 
 .PHONY: help
 help:  ## Show this help
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
 	| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # --- setup -----------------------------------------------------------------
@@ -128,20 +149,81 @@ format:  ## Autoformat everything
 
 # --- tests -----------------------------------------------------------------
 
+.PHONY: test-fast
+test-fast:  ## Run explicit backend tests with fail-fast: make test-fast TESTS="tests/test_sales.py::test_name"
+	@if [ -z "$(strip $(TESTS))" ]; then \
+		echo 'ERROR: TESTS is required; test-fast never falls back to the full suite.' >&2; \
+		exit 2; \
+	fi
+	$(PYTEST) -x $(TESTS)
+
+.PHONY: test-backend-unit
+test-backend-unit:  ## Run backend tests whose fixture graph does not require PostgreSQL
+	$(PYTEST) -m "not integration"
+
+.PHONY: test-backend-sales
+test-backend-sales:  ## Run the sales/payments/returns/tickets domain with fail-fast
+	$(PYTEST) -x $(SALES_TESTS)
+
+.PHONY: test-backend-pricing
+test-backend-pricing:  ## Run the pricing domain with fail-fast
+	$(PYTEST) -x $(PRICING_TESTS)
+
+.PHONY: test-backend-inventory
+test-backend-inventory:  ## Run inventory/lots/receiving tests with fail-fast
+	$(PYTEST) -x $(INVENTORY_TESTS)
+
+.PHONY: test-backend-reports
+test-backend-reports:  ## Run reports/Z-closes/rendering tests with fail-fast
+	$(PYTEST) -x $(REPORTS_TESTS)
+
+.PHONY: test-backend-migrations-fast
+test-backend-migrations-fast:  ## Check migration head/model consistency without historical round trips
+	$(PYTEST) -x tests/test_migrations.py \
+		-k "database_is_at_head or exactly_one_head or models_and_migrations"
+
+.PHONY: test-backend-migrations
+test-backend-migrations:  ## Run every migration and historical-fixture test
+	$(PYTEST) tests/test_migrations.py
+
 .PHONY: test
 test: test-backend test-frontend  ## Run backend and frontend unit/integration tests
 
 .PHONY: test-backend
 test-backend:  ## pytest against a real PostgreSQL
-	cd $(BACKEND) && uv run pytest
+	$(PYTEST)
 
 .PHONY: test-frontend
 test-frontend:  ## Vitest + React Testing Library
 	cd $(FRONTEND) && npm run test
 
+.PHONY: test-frontend-fast
+test-frontend-fast:  ## Run explicit Vitest files: make test-frontend-fast TESTS="src/features/pos/Cart.test.tsx"
+	@if [ -z "$(strip $(TESTS))" ]; then \
+		echo 'ERROR: TESTS is required; test-frontend-fast never falls back to the full suite.' >&2; \
+		exit 2; \
+	fi
+	cd $(FRONTEND) && npm run test -- $(TESTS)
+
 .PHONY: test-e2e
 test-e2e:  ## Playwright end-to-end suite (boots API + frontend)
 	npm run test:e2e
+
+.PHONY: test-e2e-spec
+test-e2e-spec:  ## Run one Playwright spec: make test-e2e-spec SPEC=tests/e2e/specs/pos.sale.spec.ts
+	@if [ -z "$(strip $(SPEC))" ]; then \
+		echo 'ERROR: SPEC is required; test-e2e-spec never falls back to the full suite.' >&2; \
+		exit 2; \
+	fi
+	npm run test:e2e -- $(SPEC)
+
+.PHONY: test-e2e-flow
+test-e2e-flow:  ## Run Playwright tests matching a title: make test-e2e-flow FLOW="cash sale"
+	@if [ -z "$(strip $(FLOW))" ]; then \
+		echo 'ERROR: FLOW is required; test-e2e-flow never falls back to the full suite.' >&2; \
+		exit 2; \
+	fi
+	npm run test:e2e -- --grep "$(FLOW)"
 
 .PHONY: install-e2e
 install-e2e:  ## Install Playwright and its browser
@@ -153,6 +235,9 @@ build:  ## Production build of the frontend
 
 .PHONY: check
 check: lint test build  ## Everything CI runs, except E2E
+
+.PHONY: test-full
+test-full: check test-e2e  ## Release gate: lint, all unit/integration tests, build and E2E
 
 # --- production deployment (docs/ADMIN_GUIDE.md) ----------------------------
 

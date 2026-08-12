@@ -31,6 +31,7 @@ desarrollar sobre él):
 | --- | --- |
 | [`docs/USAGE.md`](docs/USAGE.md) | Arranque en local para desarrollar, paso a paso. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Documentación técnica: cómo está construido el código, backend y frontend. |
+| [`docs/TESTING.md`](docs/TESTING.md) | Política FAST/DOMAIN/FULL y comandos para ejecutar únicamente las pruebas relevantes. |
 | [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) | Manual de administración: despliegue en la red interna, variables de entorno, backups, usuarios/roles, operación diaria. |
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Manual de usuario: cómo usar el TPV y el panel de administración, sin tecnicismos. |
 
@@ -126,6 +127,8 @@ El backend **nunca** usa SQLite. `pytest` resuelve el servidor así:
 
 Cada sesión crea una base de datos desechable y la migra con el `alembic upgrade
 head` real, de modo que la cadena de migraciones se ejercita en cada ejecución.
+Para el ciclo rápido, selección por dominio y puertas completas, consulta
+[`docs/TESTING.md`](docs/TESTING.md).
 
 ---
 
