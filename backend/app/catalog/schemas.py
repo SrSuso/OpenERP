@@ -45,6 +45,11 @@ class ProductCategoryRead(BaseModel):
     #: PATCH /product-categories/{id}/pricing (app.pricing.router), not
     #: from this module's own endpoints.
     margin_rate: Decimal | None
+    #: Las otras dos formas de poner precio que heredan sus productos: una
+    #: cantidad fija en euros sobre el coste, o una fórmula propia.
+    #: ``None`` en las dos = no se dice nada aquí.
+    margin_amount: Decimal | None
+    price_formula: str | None
     #: Si sus productos llevan control de existencias, salvo que el
     #: producto diga lo contrario — ver `app.catalog.stock`.
     tracks_stock: bool
@@ -167,6 +172,9 @@ class ProductCreate(BaseModel):
     #: ``None`` = no override, inherit the category's margin (or 0 if the
     #: category has none either) — see ProductCategoryRead's own docstring.
     margin_rate: Decimal | None = Field(default=None, ge=0)
+    #: Igual, pero en dinero: euros sobre el coste. Ver
+    #: `app.catalog.models.Product.margin_amount`.
+    margin_amount: Decimal | None = Field(default=None, ge=0)
     min_stock: Decimal = Field(default=Decimal(0), ge=0)
     track_lots: bool = False
     track_expiration: bool = False
@@ -217,6 +225,8 @@ class ProductRead(BaseModel):
     #: ``None`` = inherits the category's margin — see this module's own
     #: `ProductCategoryRead` docstring on the override priority.
     margin_rate: Decimal | None
+    #: Lo mismo en dinero — ``None`` = hereda el de su categoría.
+    margin_amount: Decimal | None
     #: Explicit tax override; empty means "inherits the category's taxes"
     #: (`ProductCategoryRead.taxes`), not "no tax applies".
     taxes: list[ProductTaxRead]

@@ -78,6 +78,9 @@ def _snapshot(product: Product) -> dict[str, Any]:
         "tax_rate": str(product.tax_rate),
         "surcharge_rate": str(product.surcharge_rate),
         "margin_rate": str(product.margin_rate) if product.margin_rate is not None else None,
+        "margin_amount": (
+            str(product.margin_amount) if product.margin_amount is not None else None
+        ),
         "price_formula": product.price_formula,
         "min_stock": str(product.min_stock),
         "track_lots": product.track_lots,
@@ -568,6 +571,7 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         tax_rate=payload.tax_rate,
         surcharge_rate=payload.surcharge_rate,
         margin_rate=payload.margin_rate,
+        margin_amount=payload.margin_amount,
         min_stock=payload.min_stock
         if "min_stock" in payload.model_fields_set
         else Decimal(str(shop["catalog.default_min_stock"])),

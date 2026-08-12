@@ -555,3 +555,144 @@ async def test_a_product_reports_the_tax_rate_that_really_applies(
         )
     ).json()
     assert updated["effective_tax_rate"] == "10.000000"
+
+
+# --- margen en dinero y fórmula heredada -------------------------------------
+#
+# Las otras dos formas de poner precio, además del porcentaje: «esto me deja
+# 25 céntimos por unidad» y «para esta familia el precio se saca así». Las
+# tres se heredan igual: lo que diga el producto, si no lo que diga su
+# categoría, si no nada.
+
+
+async def test_a_fixed_amount_over_the_cost_is_a_way_of_pricing_too(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = (await client.post("/api/v1/products", json=_product_payload(cost="10"))).json()[
+        "id"
+    ]
+
+    response = await client.patch(
+        f"/api/v1/products/{product_id}/pricing", json={"margin_amount": "0.25"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["margin_amount"] == "0.250000"
+    # Sin impuestos ni porcentaje: 10 + 0,25. Se gana justo lo que se dijo.
+    assert Decimal(body["list_price"]) == Decimal("10.250000")
+
+
+async def test_the_fixed_amount_is_charged_on_top_of_taxes_and_percentage(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Va al final de la fórmula, no dentro: los 25 céntimos son lo que
+    queda limpio, no algo sobre lo que después se calcula nada más."""
+    await login(role_name="ADMIN")
+    tax_id = await _create_tax(client, "IVA general (mixto)", "21")
+    product_id = (await client.post("/api/v1/products", json=_product_payload(cost="10"))).json()[
+        "id"
+    ]
+
+    response = await client.patch(
+        f"/api/v1/products/{product_id}/pricing",
+        json={"margin_rate": "20", "margin_amount": "0.25", "tax_ids": [tax_id]},
+    )
+
+    assert response.status_code == 200
+    # (10 + 10*21/100) * 1,20 + 0,25 = 14,52 + 0,25
+    assert Decimal(response.json()["list_price"]) == Decimal("14.770000")
+
+
+async def test_the_category_lends_its_fixed_amount_to_its_products(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category_id = await _create_category(client, "Chuches")
+    product_id = (
+        await client.post(
+            "/api/v1/products", json=_product_payload(category_id=category_id, cost="10")
+        )
+    ).json()["id"]
+
+    response = await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing", json={"margin_amount": "0.25"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["margin_amount"] == "0.250000"
+    product = (await client.get(f"/api/v1/products/{product_id}")).json()
+    assert product["margin_amount"] is None  # no tiene valor propio: hereda
+    assert Decimal(product["list_price"]) == Decimal("10.250000")
+
+
+async def test_a_products_own_fixed_amount_wins_and_can_be_given_back(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category_id = await _create_category(client, "Panadería")
+    await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing", json={"margin_amount": "0.25"}
+    )
+    product_id = (
+        await client.post(
+            "/api/v1/products", json=_product_payload(category_id=category_id, cost="10")
+        )
+    ).json()["id"]
+
+    own = await client.patch(
+        f"/api/v1/products/{product_id}/pricing", json={"margin_amount": "1.00"}
+    )
+    assert Decimal(own.json()["list_price"]) == Decimal("11.000000")
+
+    # `null` explícito = vuelve a heredar, que no es lo mismo que poner 0 €.
+    back = await client.patch(
+        f"/api/v1/products/{product_id}/pricing", json={"margin_amount": None}
+    )
+    assert back.json()["margin_amount"] is None
+    assert Decimal(back.json()["list_price"]) == Decimal("10.250000")
+
+
+async def test_the_category_can_carry_the_formula_and_the_product_may_differ(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """La tercera forma: una fórmula para toda una familia, sin repetirla
+    producto a producto — y un producto suyo puede seguir llevando la
+    contraria con la suya."""
+    await login(role_name="ADMIN")
+    category_id = await _create_category(client, "Ferretería")
+    product_id = (
+        await client.post(
+            "/api/v1/products", json=_product_payload(category_id=category_id, cost="10")
+        )
+    ).json()["id"]
+
+    response = await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing",
+        json={"price_formula": "cost * 2"},
+    )
+    assert response.status_code == 200
+    assert response.json()["price_formula"] == "cost * 2"
+    product = (await client.get(f"/api/v1/products/{product_id}")).json()
+    assert product["price_formula"] is None  # sigue sin fórmula propia
+    assert Decimal(product["list_price"]) == Decimal("20.000000")
+
+    own = await client.put(
+        f"/api/v1/products/{product_id}/pricing/formula", json={"price_formula": "cost * 3"}
+    )
+    assert Decimal(own.json()["list_price"]) == Decimal("30.000000")
+
+
+async def test_an_unsafe_category_formula_is_rejected_when_saved(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category_id = await _create_category(client, "Droguería")
+
+    response = await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing",
+        json={"price_formula": "__import__('os')"},
+    )
+
+    assert response.status_code == 422

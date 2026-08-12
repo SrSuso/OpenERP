@@ -45,6 +45,10 @@ class ProductPriceHistory(IntPrimaryKeyMixin, Base):
     tax_rate: Mapped[Rate]
     surcharge_rate: Mapped[Rate]
     margin_rate: Mapped[Rate]
+    #: El margen en dinero que se usó (0 cuando no hay ninguno). Añadida
+    #: con `server_default` porque la tabla ya tenía filas: las anteriores
+    #: no tenían esta forma de poner precio, así que 0 € es exacto.
+    margin_amount: Mapped[Decimal] = mapped_column(numeric(), server_default="0")
     price_formula: Mapped[str | None] = mapped_column(String(500), nullable=True)
     list_price: Mapped[Money]
     created_at: Mapped[datetime] = mapped_column(

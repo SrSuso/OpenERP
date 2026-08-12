@@ -17,6 +17,7 @@ class FormulaPreviewRequest(BaseModel):
     tax_rate: Decimal = Field(default=Decimal(0), ge=0)
     surcharge_rate: Decimal = Field(default=Decimal(0), ge=0)
     margin_rate: Decimal = Field(default=Decimal(0), ge=0)
+    margin_amount: Decimal = Field(default=Decimal(0), ge=0)
 
 
 class FormulaPreviewResponse(BaseModel):
@@ -46,6 +47,10 @@ class SetPricingInputsRequest(BaseModel):
     tax_rate: Decimal | None = Field(default=None, ge=0)
     surcharge_rate: Decimal | None = Field(default=None, ge=0)
     margin_rate: Decimal | None = Field(default=None, ge=0)
+    #: El margen en dinero, con las mismas reglas de presencia que
+    #: `margin_rate`: ausente = no se toca, ``null`` = vuelve a heredar el
+    #: de su categoría. Ver `app.catalog.models.Product.margin_amount`.
+    margin_amount: Decimal | None = Field(default=None, ge=0)
     tax_ids: list[int] | None = Field(default=None)
 
 
@@ -77,11 +82,19 @@ class TaxRead(BaseModel):
 
 class CategoryPricingUpdate(BaseModel):
     """Same presence-sensitive semantics as `SetPricingInputsRequest`'s
-    margin_rate/tax_ids — see its docstring. Saving either one here always
+    margin_rate/tax_ids — see its docstring. Saving any of these always
     recomputes every product in the category that doesn't have its own
-    explicit override (see app.pricing.service.update_category_pricing)."""
+    explicit override (see app.pricing.service.update_category_pricing).
+
+    Las tres formas de poner precio que se heredan: un porcentaje sobre el
+    coste, una cantidad fija en euros, o una fórmula. Un producto puede
+    llevar la contraria en cualquiera de las tres."""
 
     margin_rate: Decimal | None = Field(default=None, ge=0)
+    margin_amount: Decimal | None = Field(default=None, ge=0)
+    #: Cadena vacía = quitar la fórmula de la categoría (vuelve a la de la
+    #: tienda), igual que ``null``.
+    price_formula: str | None = Field(default=None, max_length=500)
     tax_ids: list[int] | None = Field(default=None)
 
 
@@ -110,6 +123,7 @@ class PriceHistoryEntryRead(BaseModel):
     tax_rate: Decimal
     surcharge_rate: Decimal
     margin_rate: Decimal
+    margin_amount: Decimal
     price_formula: str | None
     list_price: Decimal
     created_at: datetime

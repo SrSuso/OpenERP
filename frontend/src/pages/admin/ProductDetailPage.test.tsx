@@ -45,12 +45,23 @@ const CATEGORIES_WITH_INHERITED_TAX: ProductCategory[] = [
     name: 'Bebidas',
     is_active: true,
     margin_rate: '30',
+    margin_amount: null,
+    price_formula: null,
     tracks_stock: true,
     taxes: [TAXES[0]!],
   },
 ];
 const CATEGORIES: ProductCategory[] = [
-  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', tracks_stock: true, taxes: [] },
+  {
+    id: 1,
+    name: 'Bebidas',
+    is_active: true,
+    margin_rate: '30',
+    margin_amount: null,
+    price_formula: null,
+    tracks_stock: true,
+    taxes: [],
+  },
 ];
 
 function baseProduct(): Product {
@@ -71,6 +82,7 @@ function baseProduct(): Product {
     effective_tax_rate: '0.000000',
     surcharge_rate: '0.000000',
     margin_rate: null,
+    margin_amount: null,
     taxes: [],
     price_formula: null,
     min_stock: '10.000000',
@@ -207,6 +219,7 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
               tax_rate: '0.000000',
               surcharge_rate: '0.000000',
               margin_rate: '30.000000',
+              margin_amount: '0.000000',
               price_formula: null,
               list_price: '0.600000',
               created_at: new Date().toISOString(),
@@ -317,7 +330,9 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
     expect(await screen.findByText('9,99 €')).toBeInTheDocument();
-    expect(backend.pricingCalls).toEqual([{ cost: '0.300000', margin_rate: '15', tax_ids: [1] }]);
+    expect(backend.pricingCalls).toEqual([
+      { cost: '0.300000', margin_rate: '15', margin_amount: null, tax_ids: [1] },
+    ]);
 
     // Formatos
     await userEvent.click(screen.getByRole('button', { name: 'Formatos' }));
@@ -361,6 +376,26 @@ describe('ProductDetailPage', () => {
     expect(backend.updateCalls[1]).not.toHaveProperty('tracks_stock');
   });
 
+  it('prices a product with a fixed amount over cost instead of a percentage', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+
+    // Vacío = hereda lo que diga la categoría, igual que el porcentaje.
+    const amountInput = screen.getByLabelText(/Margen fijo/);
+    expect(amountInput).toHaveValue('');
+    await userEvent.type(amountInput, '0.25');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
+
+    await waitFor(() => {
+      expect(backend.pricingCalls).toEqual([
+        { cost: '0.300000', margin_rate: null, margin_amount: '0.25', tax_ids: [] },
+      ]);
+    });
+  });
+
   it('warns before a cost change, showing what is still in stock', async () => {
     const backend = stubBackend();
     renderPage();
@@ -387,7 +422,9 @@ describe('ProductDetailPage', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cambiar' }),
     );
 
-    expect(backend.pricingCalls).toEqual([{ cost: '0.45', margin_rate: null, tax_ids: [] }]);
+    expect(backend.pricingCalls).toEqual([
+      { cost: '0.45', margin_rate: null, margin_amount: null, tax_ids: [] },
+    ]);
   });
 
   it('shows the category-inherited taxes pre-checked, without turning them into an override', async () => {
@@ -405,7 +442,9 @@ describe('ProductDetailPage', () => {
     // Guardar sin tocar los chips sigue mandando tax_ids vacío (sigue
     // heredando) — nunca el conjunto de la categoría como si fuera propio.
     await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
-    expect(backend.pricingCalls).toEqual([{ cost: '0.300000', margin_rate: null, tax_ids: [] }]);
+    expect(backend.pricingCalls).toEqual([
+      { cost: '0.300000', margin_rate: null, margin_amount: null, tax_ids: [] },
+    ]);
   });
 
   it('confirms before deactivating, and offers to reactivate afterwards', async () => {

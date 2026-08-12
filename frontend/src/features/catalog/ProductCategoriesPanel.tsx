@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 
 import {
   activateProductCategory,
@@ -152,7 +152,10 @@ function CategoryEditor({
   const [name, setName] = useState(category.name);
   const [tracksStock, setTracksStock] = useState(category.tracks_stock);
   const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
+  const [amountInput, setAmountInput] = useState(category.margin_amount ?? '');
+  const [formulaInput, setFormulaInput] = useState(category.price_formula ?? '');
   const [taxIds, setTaxIds] = useState<Set<number>>(new Set(category.taxes.map((t) => t.id)));
+  const formulaFieldId = useId();
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -164,6 +167,9 @@ function CategoryEditor({
       }
       await setCategoryPricing(category.id, {
         margin_rate: marginInput.trim() === '' ? null : marginInput,
+        margin_amount: amountInput.trim() === '' ? null : amountInput,
+        // Vacío = quitarla y volver a la fórmula de la tienda.
+        price_formula: formulaInput.trim(),
         tax_ids: [...taxIds],
       });
     },
@@ -238,6 +244,18 @@ function CategoryEditor({
           />
         </label>
 
+        <label className="text-xs text-slate-600">
+          Margen fijo por defecto (€)
+          <input
+            type="text"
+            inputMode="decimal"
+            value={amountInput}
+            onChange={(event) => setAmountInput(event.target.value)}
+            placeholder="p. ej. 0,25"
+            className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+        </label>
+
         <div className="text-xs text-slate-600">
           <span className="block">Foto</span>
           <div className="mt-1">
@@ -266,6 +284,24 @@ function CategoryEditor({
           </span>
         </span>
       </label>
+
+      {/* La tercera forma de poner precio, para cuando ni un porcentaje ni
+          una cantidad fija valen. Va fuera de la rejilla porque es larga. */}
+      <div className="mt-3 text-xs text-slate-600">
+        <label htmlFor={formulaFieldId}>Fórmula por defecto</label>
+        <input
+          id={formulaFieldId}
+          type="text"
+          value={formulaInput}
+          onChange={(event) => setFormulaInput(event.target.value)}
+          placeholder="vacío = la fórmula de la tienda"
+          className="mt-1 block w-full rounded border border-slate-300 px-2 py-1 font-mono text-sm"
+        />
+        <span className="mt-1 block text-slate-400">
+          Se aplica a sus productos, salvo a los que tengan la suya propia. Variables: cost,
+          tax_rate, surcharge_rate, margin_rate, margin_amount.
+        </span>
+      </div>
 
       <p className="mt-3 mb-1 text-xs text-slate-600">Impuestos por defecto</p>
       <TaxChips taxes={taxes} selected={taxIds} onChange={setTaxIds} />

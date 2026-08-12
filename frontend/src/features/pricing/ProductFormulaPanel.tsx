@@ -67,6 +67,7 @@ export function ProductFormulaPanel({
         tax_rate: effectiveTaxRate(product, taxes),
         surcharge_rate: product.surcharge_rate,
         margin_rate: product.margin_rate ?? category?.margin_rate ?? '0',
+        margin_amount: product.margin_amount ?? category?.margin_amount ?? '0',
       }),
   });
 

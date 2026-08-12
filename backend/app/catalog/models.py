@@ -72,6 +72,17 @@ class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: this — see `app.pricing.service.effective_margin_rate`/
     #: `effective_tax_rate`, the only place that resolves the priority.
     margin_rate: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
+    #: Margen en dinero, no en porcentaje: «25 céntimos por unidad, sea lo
+    #: que sea lo que me cueste». Se suma al final, después de impuestos y
+    #: del margen porcentual, así que es lo que se gana limpio por unidad.
+    #: Misma herencia que `margin_rate` — ``None`` es «aquí no se dice
+    #: nada», no «0 €».
+    margin_amount: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
+    #: Fórmula por defecto de la categoría, para cuando ni el porcentaje ni
+    #: la cantidad fija sirven. ``None`` = usar la de la tienda. Un producto
+    #: con `Product.price_formula` propia manda sobre ésta — ver
+    #: `app.pricing.service.effective_formula`.
+    price_formula: Mapped[str | None] = mapped_column(String(500), nullable=True)
     #: Si sus productos llevan control de existencias. Por defecto sí; un
     #: producto suyo puede decir lo contrario (ver `Product.tracks_stock`).
     tracks_stock: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
@@ -144,6 +155,11 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: 0`` before category-level margins existed, when "unset" and "0%"
     #: were the same thing; now they aren't, so this had to become nullable.
     margin_rate: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
+    #: Margen en dinero en vez de en porcentaje — «este me deja 25 céntimos
+    #: y punto». ``None`` = lo que diga su categoría
+    #: (`ProductCategory.margin_amount`), y si tampoco dice nada, 0 €. Ver
+    #: `app.pricing.service.effective_margin_amount`.
+    margin_amount: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
     #: Si este producto lleva control de existencias. `None` = lo que diga
     #: su categoría (`ProductCategory.tracks_stock`), que es el caso normal.
     #:

@@ -21,6 +21,8 @@ def category_to_read(category: ProductCategory) -> ProductCategoryRead:
         name=category.name,
         is_active=category.is_active,
         margin_rate=category.margin_rate,
+        margin_amount=category.margin_amount,
+        price_formula=category.price_formula,
         tracks_stock=category.tracks_stock,
         taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in category.taxes],
     )
@@ -54,6 +56,7 @@ def product_to_read(product: Product) -> ProductRead:
         surcharge_rate=product.surcharge_rate,
         effective_tax_rate=taxes.effective_tax_rate(product),
         margin_rate=product.margin_rate,
+        margin_amount=product.margin_amount,
         taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in product.taxes],
         price_formula=product.price_formula,
         min_stock=product.min_stock,

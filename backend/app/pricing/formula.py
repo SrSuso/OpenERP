@@ -3,7 +3,7 @@
 Rule 12: pricing formulas never use ``eval()``/``exec()``. This parses a
 formula with Python's ``ast`` module and interprets the tree itself, walking
 only nodes on an explicit whitelist — arithmetic, parentheses (implicit in
-the AST, not a node of their own), the four variable names in
+the AST, not a node of their own), the variable names in
 :data:`ALLOWED_VARIABLES`, and calls to the three functions in
 :data:`ALLOWED_FUNCTIONS`. Anything else (attribute access, subscripting,
 comparisons, lambdas, calls to anything not on the list, ...) is rejected
@@ -13,6 +13,7 @@ tree is never handed to Python's own evaluator.
 Example formula (from the spec)::
 
     (cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)
+      + margin_amount
 """
 
 from __future__ import annotations
@@ -21,9 +22,14 @@ import ast
 from collections.abc import Callable
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
-#: The only names a formula may reference. Every product carries all four
-#: (see app.catalog.models.Product), so a formula can always be evaluated.
-ALLOWED_VARIABLES = frozenset({"cost", "tax_rate", "surcharge_rate", "margin_rate"})
+#: The only names a formula may reference. Every product carries all of
+#: them (see app.catalog.models.Product), so a formula can always be
+#: evaluated. ``margin_amount`` is money, not a percentage: euros on top
+#: of the cost, for what is priced "un poco por encima de lo que me
+#: cuesta" instead of by margin.
+ALLOWED_VARIABLES = frozenset(
+    {"cost", "tax_rate", "surcharge_rate", "margin_rate", "margin_amount"}
+)
 
 
 class FormulaError(ValueError):

@@ -56,6 +56,7 @@ def _history_to_read(entry: ProductPriceHistory) -> PriceHistoryEntryRead:
         tax_rate=entry.tax_rate,
         surcharge_rate=entry.surcharge_rate,
         margin_rate=entry.margin_rate,
+        margin_amount=entry.margin_amount,
         price_formula=entry.price_formula,
         list_price=entry.list_price,
         created_at=entry.created_at,

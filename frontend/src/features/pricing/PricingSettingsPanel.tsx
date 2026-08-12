@@ -12,7 +12,7 @@ import { formatMoney } from '@/lib/format';
 /** La fórmula que calcula el PVP de cualquier producto que no tenga una
  * propia — "quiero definir yo la fórmula", tal como se pidió. Usa las
  * mismas cuatro variables que ya validaba el motor de fórmulas por
- * producto (fase 4): cost, tax_rate, surcharge_rate, margin_rate — aquí
+ * producto (fase 4): cost, tax_rate, surcharge_rate, margin_rate, margin_amount — aquí
  * tax_rate/margin_rate son los *efectivos* (el propio valor del producto,
  * o si no tiene, el de su categoría). También vive aquí "los precios ya
  * incluyen el IVA" — es del mismo tipo de decisión (cómo se calcula el
@@ -38,6 +38,7 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
         tax_rate: '21',
         surcharge_rate: '0',
         margin_rate: '20',
+        margin_amount: '0',
       }),
   });
 

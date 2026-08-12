@@ -65,12 +65,36 @@ def effective_margin_rate(product: Product) -> Decimal:
     return Decimal(0)
 
 
+def effective_margin_amount(product: Product) -> Decimal:
+    """El margen en dinero, con la misma herencia que el porcentual:
+    producto → categoría → 0 €. Ver `Product.margin_amount`."""
+    if product.margin_amount is not None:
+        return product.margin_amount
+    if product.category is not None and product.category.margin_amount is not None:
+        return product.category.margin_amount
+    return Decimal(0)
+
+
+def effective_formula(product: Product, settings: PricingSettings) -> str:
+    """Qué fórmula se le aplica de verdad a este producto: la suya, si la
+    tiene; si no, la de su categoría; si tampoco, la de la tienda. Es la
+    tercera forma de poner precio (además del margen en % y del margen en
+    €) y también se hereda, para no tener que repetirla producto a
+    producto dentro de una misma familia."""
+    if product.price_formula:
+        return product.price_formula
+    if product.category is not None and product.category.price_formula:
+        return product.category.price_formula
+    return settings.formula
+
+
 def _variables(product: Product) -> dict[str, Decimal]:
     return {
         "cost": product.cost,
         "tax_rate": effective_tax_rate(product),
         "surcharge_rate": effective_surcharge_rate(product),
         "margin_rate": effective_margin_rate(product),
+        "margin_amount": effective_margin_amount(product),
     }
 
 
@@ -81,6 +105,9 @@ def _snapshot(product: Product) -> dict[str, Any]:
         "tax_rate": str(product.tax_rate),
         "surcharge_rate": str(product.surcharge_rate),
         "margin_rate": str(product.margin_rate) if product.margin_rate is not None else None,
+        "margin_amount": (
+            str(product.margin_amount) if product.margin_amount is not None else None
+        ),
         "tax_ids": sorted(t.id for t in product.taxes),
         "price_formula": product.price_formula,
     }
@@ -107,6 +134,7 @@ def preview(payload: FormulaPreviewRequest) -> Decimal:
                 "tax_rate": payload.tax_rate,
                 "surcharge_rate": payload.surcharge_rate,
                 "margin_rate": payload.margin_rate,
+                "margin_amount": payload.margin_amount,
             },
         )
     except FormulaError as exc:
@@ -148,6 +176,7 @@ async def _record_history(session: AsyncSession, product: Product) -> None:
             tax_rate=effective_tax_rate(product),
             surcharge_rate=effective_surcharge_rate(product),
             margin_rate=effective_margin_rate(product),
+            margin_amount=effective_margin_amount(product),
             price_formula=product.price_formula,
             list_price=product.list_price,
         )
@@ -181,7 +210,7 @@ def _recompute_with(product: Product, settings: PricingSettings) -> None:
     it has none, against its *effective* inputs — the actual "PVP
     calculado automáticamente" the margin/tax panels trigger. Result is
     always rounded to 2 decimals — see `_quantize_price`."""
-    text = product.price_formula or settings.formula
+    text = effective_formula(product, settings)
     try:
         result = formula.evaluate(text, _variables(product))
     except FormulaError as exc:
@@ -213,6 +242,9 @@ async def set_pricing_inputs(
         product.surcharge_rate = payload.surcharge_rate
     if "margin_rate" in payload.model_fields_set:
         product.margin_rate = payload.margin_rate
+        touched_margin_or_tax = True
+    if "margin_amount" in payload.model_fields_set:
+        product.margin_amount = payload.margin_amount
         touched_margin_or_tax = True
     if "tax_ids" in payload.model_fields_set:
         product.taxes = await _taxes_by_id(session, payload.tax_ids or [])
@@ -453,18 +485,39 @@ async def _recompute_category_products(
     await session.flush()
 
 
+def _category_snapshot(category: ProductCategory) -> dict[str, Any]:
+    return {
+        "margin_rate": str(category.margin_rate) if category.margin_rate is not None else None,
+        "margin_amount": (
+            str(category.margin_amount) if category.margin_amount is not None else None
+        ),
+        "price_formula": category.price_formula,
+        "tax_ids": sorted(t.id for t in category.taxes),
+    }
+
+
 async def update_category_pricing(
     session: AsyncSession, category_id: int, payload: CategoryPricingUpdate
 ) -> ProductCategory:
     category = await catalog.get_category(session, category_id)
-    before = {
-        "margin_rate": str(category.margin_rate) if category.margin_rate is not None else None,
-        "tax_ids": sorted(t.id for t in category.taxes),
-    }
+    before = _category_snapshot(category)
 
     touched = False
     if "margin_rate" in payload.model_fields_set:
         category.margin_rate = payload.margin_rate
+        touched = True
+    if "margin_amount" in payload.model_fields_set:
+        category.margin_amount = payload.margin_amount
+        touched = True
+    if "price_formula" in payload.model_fields_set:
+        # Se valida aquí y no al evaluarla: si está mal, el error tiene que
+        # salir al guardarla, no días después al recalcular un producto.
+        if payload.price_formula:
+            try:
+                formula.validate(payload.price_formula)
+            except FormulaError as exc:
+                raise ValidationError(str(exc)) from exc
+        category.price_formula = payload.price_formula or None
         touched = True
     if "tax_ids" in payload.model_fields_set:
         category.taxes = await _taxes_by_id(session, payload.tax_ids or [])
@@ -477,10 +530,7 @@ async def update_category_pricing(
         entity_type="product_category",
         entity_id=category_id,
         before=before,
-        after={
-            "margin_rate": str(category.margin_rate) if category.margin_rate is not None else None,
-            "tax_ids": sorted(t.id for t in category.taxes),
-        },
+        after=_category_snapshot(category),
     )
 
     if touched:

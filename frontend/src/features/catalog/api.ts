@@ -24,6 +24,11 @@ export const productCategorySchema = z.object({
   // Precios). Se gestionan desde features/pricing (PATCH .../pricing), no
   // desde aquí.
   margin_rate: z.string().nullable(),
+  // Las otras dos formas de poner precio que heredan sus productos: una
+  // cantidad fija en euros sobre el coste, y una fórmula propia. null en
+  // las dos = aquí no se dice nada.
+  margin_amount: z.string().nullable(),
+  price_formula: z.string().nullable(),
   // Si sus productos llevan control de existencias, salvo que el producto
   // diga lo contrario.
   tracks_stock: z.boolean(),
@@ -220,6 +225,8 @@ export const productSchema = z.object({
   // null = hereda el margen de la categoría (o 0 si tampoco la categoría
   // tiene uno) — ver ProductCategory.margin_rate.
   margin_rate: z.string().nullable(),
+  // Lo mismo en dinero: null = hereda el de su categoría.
+  margin_amount: z.string().nullable(),
   // Vacío = hereda los impuestos de la categoría, no "sin impuestos".
   taxes: z.array(productTaxSchema),
   price_formula: z.string().nullable(),
@@ -287,6 +294,7 @@ export interface ProductCreateInput {
   cost: string;
   list_price: string;
   margin_rate: string | null;
+  margin_amount: string | null;
   min_stock: string;
   track_lots: boolean;
   track_expiration: boolean;

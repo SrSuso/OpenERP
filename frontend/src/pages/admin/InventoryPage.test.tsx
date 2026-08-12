@@ -50,6 +50,7 @@ function stubBackend() {
     effective_tax_rate: '0',
     surcharge_rate: '0',
     margin_rate: null,
+    margin_amount: null,
     taxes: [],
     price_formula: null,
     min_stock: '0',

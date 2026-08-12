@@ -30,6 +30,7 @@ const createProductSchema = z.object({
   cost: decimalString({ min: 0 }),
   list_price: decimalString({ min: 0 }),
   margin_rate: z.string(), // vacío = hereda de la categoría; validado abajo si no está vacío
+  margin_amount: z.string(), // igual, pero en euros sobre el coste
   min_stock: decimalString({ min: 0 }),
   track_lots: z.boolean(),
   track_expiration: z.boolean(),
@@ -77,6 +78,11 @@ function categoryMarginRate(categories: ProductCategory[], categoryId: string): 
   return category?.margin_rate ?? '0';
 }
 
+function categoryMarginAmount(categories: ProductCategory[], categoryId: string): string {
+  const category = categories.find((c) => String(c.id) === categoryId);
+  return category?.margin_amount ?? '0';
+}
+
 export function CreateProductForm({
   categories,
   posCategories,
@@ -117,6 +123,7 @@ export function CreateProductForm({
       cost: '0',
       list_price: '0',
       margin_rate: '',
+      margin_amount: '',
       min_stock: '0',
       track_lots: false,
       track_expiration: false,
@@ -125,21 +132,28 @@ export function CreateProductForm({
 
   const cost = watch('cost');
   const marginInput = watch('margin_rate');
+  const amountInput = watch('margin_amount');
   const categoryId = watch('category_id');
   const [estimatedPrice, setEstimatedPrice] = useState<string | null>(null);
 
   const previewMutation = useMutation({
-    mutationFn: (input: { cost: string; margin_rate: string; tax_rate: string }) =>
+    mutationFn: (input: {
+      cost: string;
+      margin_rate: string;
+      margin_amount: string;
+      tax_rate: string;
+    }) =>
       previewFormula({
         // Sin fórmula propia (el producto todavía no existe): usa la
         // fórmula por defecto de la tienda para que la vista previa sea
         // exactamente lo que el backend calcularía al guardar el margen.
         formula:
-          '(cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)',
+          '(cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100) + margin_amount',
         cost: input.cost,
         tax_rate: input.tax_rate,
         surcharge_rate: '0',
         margin_rate: input.margin_rate,
+        margin_amount: input.margin_amount,
       }),
     onSuccess: (result) => setEstimatedPrice(result),
     onError: () => setEstimatedPrice(null),
@@ -148,6 +162,8 @@ export function CreateProductForm({
   useEffect(() => {
     const marginRate =
       marginInput.trim() !== '' ? marginInput : categoryMarginRate(categories, categoryId);
+    const marginAmount =
+      amountInput.trim() !== '' ? amountInput : categoryMarginAmount(categories, categoryId);
     const taxRate = effectiveTaxRatePreview(categories, categoryId, taxes, taxIds);
     if (!cost || Number.isNaN(Number(cost.replace(',', '.')))) {
       setEstimatedPrice(null);
@@ -157,6 +173,7 @@ export function CreateProductForm({
       previewMutation.mutate({
         cost: cost.replace(',', '.'),
         margin_rate: marginRate,
+        margin_amount: marginAmount.replace(',', '.'),
         tax_rate: taxRate,
       });
     }, 300);
@@ -165,7 +182,7 @@ export function CreateProductForm({
     // re-run this effect on every render (its identity isn't memoised) —
     // deliberately left out.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cost, marginInput, categoryId, categories, taxes, taxIds]);
+  }, [cost, marginInput, amountInput, categoryId, categories, taxes, taxIds]);
 
   const categoryTaxIds = new Set(
     (categories.find((c) => String(c.id) === categoryId)?.taxes ?? []).map((t) => t.id),
@@ -185,6 +202,7 @@ export function CreateProductForm({
         cost: values.cost,
         list_price: values.list_price,
         margin_rate: values.margin_rate.trim() === '' ? null : values.margin_rate,
+        margin_amount: values.margin_amount.trim() === '' ? null : values.margin_amount,
         min_stock: values.min_stock,
         track_lots: values.track_lots,
         track_expiration: values.track_expiration,
@@ -323,6 +341,21 @@ export function CreateProductForm({
             }
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('margin_rate')}
+          />
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Margen fijo (€, vacío = el de la categoría)
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder={
+              categoryMarginAmount(categories, categoryId) === '0'
+                ? 'p. ej. 0,25'
+                : categoryMarginAmount(categories, categoryId)
+            }
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('margin_amount')}
           />
         </label>
 

@@ -30,6 +30,7 @@ export function ProductPricingPanel({
   const [cost, setCost] = useState(product.cost);
   const [costError, setCostError] = useState<string | null>(null);
   const [marginInput, setMarginInput] = useState(product.margin_rate ?? '');
+  const [amountInput, setAmountInput] = useState(product.margin_amount ?? '');
   // `product.taxes` sólo trae algo cuando el producto tiene su propio
   // override (regla del backend: vacío = hereda, nunca "sin impuestos") —
   // si está vacío, se muestran marcados los de la categoría para que la
@@ -43,6 +44,7 @@ export function ProductPricingPanel({
   );
 
   const inheritsMargin = marginInput.trim() === '';
+  const inheritsAmount = amountInput.trim() === '';
 
   function chooseTax(next: Set<number>) {
     setIsOverride(true);
@@ -59,6 +61,7 @@ export function ProductPricingPanel({
     onSave({
       cost: parsedCost.data,
       margin_rate: inheritsMargin ? null : marginInput,
+      margin_amount: inheritsAmount ? null : amountInput,
       // Sin tocar nada: sigue vacío (hereda), aunque la interfaz muestre
       // marcados los de la categoría — nunca se manda ese conjunto como
       // si fuera una elección propia sin que el usuario haya interactuado.
@@ -68,7 +71,7 @@ export function ProductPricingPanel({
 
   return (
     <div className="border-t border-slate-100 bg-slate-50 px-4 py-3">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <label className="text-xs text-slate-600">
           Coste
           <input
@@ -98,6 +101,22 @@ export function ProductPricingPanel({
           </span>
         </label>
 
+        <label className="text-xs text-slate-600">
+          Margen fijo (€)
+          <input
+            type="text"
+            inputMode="decimal"
+            value={amountInput}
+            placeholder={`heredado: ${category?.margin_amount ?? '0'} €`}
+            onChange={(event) => setAmountInput(event.target.value)}
+            className="mt-1 block w-full rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <span className="mt-1 block text-xs text-slate-400">
+            Dinero por unidad, encima del coste y de los impuestos. Se suma al final: es lo que se
+            gana limpio con cada uno. Se puede usar sola o junto al porcentaje.
+          </span>
+        </label>
+
         <div className="text-xs text-slate-600">
           <span className="block">PVP actual</span>
           <p className="mt-1 rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800">
@@ -105,7 +124,7 @@ export function ProductPricingPanel({
           </p>
         </div>
 
-        <div className="text-xs text-slate-600 sm:col-span-3">
+        <div className="text-xs text-slate-600 sm:col-span-4">
           <span className="mb-1 block">
             Impuestos —{' '}
             {isOverride

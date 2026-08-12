@@ -94,6 +94,7 @@ export interface FormulaPreviewInput {
   tax_rate: string;
   surcharge_rate: string;
   margin_rate: string;
+  margin_amount: string;
 }
 
 const formulaPreviewResponseSchema = z.object({ result: z.string() });
@@ -115,9 +116,20 @@ export interface PricingOverrideInput {
   /** `undefined` = no tocar; `null` = quitar el propio y heredar de la
    * categoría; un valor = fijarlo explícitamente. */
   margin_rate?: string | null;
+  /** El margen en dinero (euros sobre el coste), con las mismas reglas que
+   * `margin_rate`. Es la otra forma de marcar precio: «esto me deja 25
+   * céntimos», sin pensar en porcentajes. */
+  margin_amount?: string | null;
   /** `undefined` = no tocar; `[]` = quitar los propios y heredar de la
    * categoría; una lista = fijarla explícitamente. */
   tax_ids?: number[];
+}
+
+/** Lo que además se puede fijar en una categoría: su propia fórmula, que
+ * heredan sus productos (cadena vacía = quitarla y volver a la de la
+ * tienda). Un producto con fórmula propia sigue mandando sobre ella. */
+export interface CategoryPricingInput extends PricingOverrideInput {
+  price_formula?: string | null;
 }
 
 export async function setProductPricing(
@@ -133,7 +145,7 @@ export async function setProductPricing(
 
 export async function setCategoryPricing(
   categoryId: number,
-  input: PricingOverrideInput,
+  input: CategoryPricingInput,
 ): Promise<ProductCategory> {
   return apiFetch(`${API_V1}/product-categories/${categoryId}/pricing`, {
     method: 'PATCH',
@@ -183,6 +195,7 @@ export const priceHistoryEntrySchema = z.object({
   tax_rate: z.string(),
   surcharge_rate: z.string(),
   margin_rate: z.string(),
+  margin_amount: z.string(),
   price_formula: z.string().nullable(),
   list_price: z.string(),
   created_at: z.string(),

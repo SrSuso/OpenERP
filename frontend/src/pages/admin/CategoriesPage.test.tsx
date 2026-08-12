@@ -35,7 +35,16 @@ const ME = {
 function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   const categoriesInUse = new Set(inUse);
   const categories: ProductCategory[] = [
-    { id: 1, name: 'Bebidas', is_active: true, margin_rate: null, tracks_stock: true, taxes: [] },
+    {
+      id: 1,
+      name: 'Bebidas',
+      is_active: true,
+      margin_rate: null,
+      margin_amount: null,
+      price_formula: null,
+      tracks_stock: true,
+      taxes: [],
+    },
   ];
   const posCategories: PosCategory[] = [
     { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
@@ -114,6 +123,8 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
           name: body.name,
           is_active: true,
           margin_rate: null,
+          margin_amount: null,
+          price_formula: null,
           tracks_stock: true,
           taxes: [],
         };
@@ -291,7 +302,7 @@ describe('CategoriesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(backend.categoryPricingCalls).toEqual([
-      { id: 1, body: { margin_rate: '25', tax_ids: [1] } },
+      { id: 1, body: { margin_rate: '25', margin_amount: null, price_formula: '', tax_ids: [1] } },
     ]);
   });
 
@@ -315,6 +326,33 @@ describe('CategoriesPage', () => {
 
     expect(await screen.findByText('Refrescos')).toBeInTheDocument();
     expect(backend.updateCategoryCalls).toEqual([{ id: 1, name: 'Refrescos', tracks_stock: true }]);
+  });
+
+  it('sets a fixed amount and a formula that its products inherit', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    // Las tres formas de poner precio conviven: porcentaje, cantidad fija
+    // en euros, y una fórmula para toda la familia.
+    await userEvent.type(screen.getByPlaceholderText('p. ej. 0,25'), '0.25');
+    await userEvent.type(screen.getByLabelText('Fórmula por defecto'), 'cost * 2');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => {
+      expect(backend.categoryPricingCalls).toEqual([
+        {
+          id: 1,
+          body: {
+            margin_rate: null,
+            margin_amount: '0.25',
+            price_formula: 'cost * 2',
+            tax_ids: [],
+          },
+        },
+      ]);
+    });
   });
 
   it('lets a whole category sell without stock control', async () => {
@@ -356,7 +394,10 @@ describe('CategoriesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(backend.categoryPricingCalls).toEqual([
-      { id: 1, body: { margin_rate: null, tax_ids: [2] } },
+      {
+        id: 1,
+        body: { margin_rate: null, margin_amount: null, price_formula: '', tax_ids: [2] },
+      },
     ]);
   });
 

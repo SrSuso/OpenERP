@@ -15,6 +15,11 @@ const VARIABLES: { name: string; description: string }[] = [
       'El margen efectivo del producto: el suyo propio si lo tiene fijado, si no el de su categoría, si no 0. Mismo formato que tax_rate (20 = 20%).',
   },
   {
+    name: 'margin_amount',
+    description:
+      'El margen en dinero, no en porcentaje: los euros que se quieren ganar por unidad. El suyo propio si lo tiene fijado, si no el de su categoría, si no 0. En la fórmula de fábrica se suma al final, así que es lo que queda limpio con cada unidad.',
+  },
+  {
     name: 'surcharge_rate',
     description:
       'El recargo de equivalencia que acompaña a los impuestos aplicados (se configura junto a cada impuesto, en la lista de arriba: 5,2 con IVA 21, 1,4 con IVA 10, 0,5 con IVA 4). Es coste de compra —lo pagas tú al proveedor—, así que entra en el precio pero nunca se le repercute al cliente ni sale en el ticket. Vale 0 si no estás en ese régimen.',
@@ -59,11 +64,13 @@ export function FormulaHelp() {
 
       <h4 className="mb-1 font-semibold text-slate-700">Ejemplo (la fórmula de fábrica)</h4>
       <p className="mb-1 rounded bg-white px-2 py-1.5 font-mono text-xs text-slate-700">
-        (cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)
+        (cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100) +
+        margin_amount
       </p>
       <p className="text-xs text-slate-500">
-        Coste más impuestos y recargo, con el margen aplicado al final sobre ese total. Con coste
-        10€, IVA 21% y margen 20%: (10 + 2,1) × 1,2 = 14,52€.
+        Coste más impuestos y recargo, con el margen aplicado al final sobre ese total y, después,
+        el margen fijo en euros. Con coste 10€, IVA 21% y margen 20%: (10 + 2,1) × 1,2 = 14,52€; si
+        además se le ponen 25 céntimos fijos, 14,77€.
       </p>
     </div>
   );
