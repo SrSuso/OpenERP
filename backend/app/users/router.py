@@ -39,8 +39,8 @@ async def list_users(session: SessionDep) -> list[UserRead]:
 @router.post(
     "/users", response_model=UserRead, status_code=201, dependencies=[_require_users_manage]
 )
-async def create_user(payload: UserCreate, session: SessionDep) -> UserRead:
-    return _to_read(await service.create_user(session, payload))
+async def create_user(payload: UserCreate, actor: CurrentUser, session: SessionDep) -> UserRead:
+    return _to_read(await service.create_user(session, payload, actor=actor))
 
 
 @router.get("/users/{user_id}", response_model=UserRead, dependencies=[_require_users_manage])
@@ -49,8 +49,10 @@ async def get_user(user_id: int, session: SessionDep) -> UserRead:
 
 
 @router.patch("/users/{user_id}", response_model=UserRead, dependencies=[_require_users_manage])
-async def update_user(user_id: int, payload: UserUpdate, session: SessionDep) -> UserRead:
-    return _to_read(await service.update_user(session, user_id, payload))
+async def update_user(
+    user_id: int, payload: UserUpdate, actor: CurrentUser, session: SessionDep
+) -> UserRead:
+    return _to_read(await service.update_user(session, user_id, payload, actor=actor))
 
 
 @router.post(

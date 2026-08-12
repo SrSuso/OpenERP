@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import CurrentUser, SessionDep
 from app.rbac import service
 from app.rbac.dependencies import require_any_permission, require_permission
 from app.rbac.models import Permission, Role
@@ -56,6 +56,6 @@ async def create_role(payload: RoleCreate, session: SessionDep) -> RoleRead:
     "/roles/{role_id}/permissions", response_model=RoleRead, dependencies=[_require_manage]
 )
 async def set_role_permissions(
-    role_id: int, payload: RolePermissionsUpdate, session: SessionDep
+    role_id: int, payload: RolePermissionsUpdate, actor: CurrentUser, session: SessionDep
 ) -> RoleRead:
-    return _to_read(await service.set_role_permissions(session, role_id, payload))
+    return _to_read(await service.set_role_permissions(session, role_id, payload, actor=actor))

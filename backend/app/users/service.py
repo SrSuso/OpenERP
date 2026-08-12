@@ -12,6 +12,7 @@ from app.audit import service as audit
 from app.auth.security import hash_password, verify_password
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.rbac.models import Role
+from app.rbac.policy import ensure_role_is_assignable
 from app.users.models import User
 from app.users.schemas import PasswordChange, UserCreate, UserUpdate
 
@@ -41,19 +42,21 @@ async def get_user(session: AsyncSession, user_id: int) -> User:
 
 
 async def _role_or_422(session: AsyncSession, role_id: int) -> Role:
-    role = await session.get(Role, role_id)
+    stmt = select(Role).where(Role.id == role_id).options(selectinload(Role.permissions))
+    role = (await session.execute(stmt)).scalar_one_or_none()
     if role is None:
         raise ValidationError(f"Role {role_id} does not exist.")
     return role
 
 
-async def create_user(session: AsyncSession, payload: UserCreate) -> User:
+async def create_user(session: AsyncSession, payload: UserCreate, *, actor: User) -> User:
     existing = (
         await session.execute(select(User).where(User.email == payload.email))
     ).scalar_one_or_none()
     if existing is not None:
         raise ConflictError("A user with this email already exists.")
-    await _role_or_422(session, payload.role_id)
+    role = await _role_or_422(session, payload.role_id)
+    ensure_role_is_assignable(actor, role)
 
     user = User(
         email=payload.email,
@@ -74,14 +77,20 @@ async def create_user(session: AsyncSession, payload: UserCreate) -> User:
     return created
 
 
-async def update_user(session: AsyncSession, user_id: int, payload: UserUpdate) -> User:
+async def update_user(
+    session: AsyncSession, user_id: int, payload: UserUpdate, *, actor: User
+) -> User:
     user = await get_user(session, user_id)
     before = _snapshot(user)
     if payload.full_name is not None:
         user.full_name = payload.full_name
     if payload.role_id is not None:
-        await _role_or_422(session, payload.role_id)
-        user.role_id = payload.role_id
+        role = await _role_or_422(session, payload.role_id)
+        ensure_role_is_assignable(actor, role)
+        # Keep the already-loaded relationship coherent for this response;
+        # changing only role_id would leave ``user.role`` stale in the
+        # identity map until a later request.
+        user.role = role
     await session.flush()
     updated = await get_user(session, user_id)
     await audit.record(

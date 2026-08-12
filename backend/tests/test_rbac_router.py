@@ -6,6 +6,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.rbac.models import Permission, Role
 
 
 async def test_admin_can_list_the_seeded_roles(
@@ -74,3 +78,32 @@ async def test_duplicate_role_name_is_a_conflict(
     response = await client.post("/api/v1/roles", json={"name": "ADMIN", "description": ""})
 
     assert response.status_code == 409
+
+
+async def test_role_manager_cannot_grant_a_permission_they_do_not_have(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    roles_manage = (
+        await db_session.execute(select(Permission).where(Permission.key == "roles.manage"))
+    ).scalar_one()
+    restricted_role = Role(
+        name="RESTRICTED-ROLE-MANAGER",
+        description="Can manage role definitions, but not grant arbitrary permissions.",
+        permissions=[roles_manage],
+    )
+    db_session.add(restricted_role)
+    await db_session.flush()
+    await login(role_name=restricted_role.name)
+    target_id = (
+        await client.post("/api/v1/roles", json={"name": "TARGET-ROLE", "description": ""})
+    ).json()["id"]
+
+    response = await client.patch(
+        f"/api/v1/roles/{target_id}/permissions",
+        json={"permission_keys": ["settings.manage"]},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "permission_denied"
