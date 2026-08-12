@@ -36,6 +36,14 @@ def ensure_role_is_assignable(actor: User, role: Role) -> None:
         )
 
 
+def ensure_user_is_manageable(actor: User, user: User) -> None:
+    """Keep account lifecycle operations within the actor's capability set."""
+    if role_permissions(user.role) - user_permissions(actor):
+        raise PermissionDeniedError(
+            "You cannot administer an account containing permissions you do not have."
+        )
+
+
 def ensure_permissions_are_grantable(actor: User, permission_keys: set[str]) -> None:
     """Apply the same no-escalation rule when editing a role directly."""
     if permission_keys - user_permissions(actor):

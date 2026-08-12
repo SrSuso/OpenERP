@@ -256,6 +256,21 @@ async def test_one_of_two_recoverable_admins_can_be_deactivated(
     assert response.json()["is_active"] is False
 
 
+async def test_manager_cannot_deactivate_a_more_privileged_user(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    target = await make_user(email="protected-admin@example.com", role_name="ADMIN")
+    await make_user(email="other-admin@example.com", role_name="ADMIN")
+    await login(role_name="MANAGER")
+
+    response = await client.post(f"/api/v1/users/{target.id}/deactivate")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "permission_denied"
+
+
 async def test_last_recoverable_admin_cannot_downgrade_their_role(
     client: AsyncClient,
     login: Callable[..., Awaitable[dict[str, Any]]],

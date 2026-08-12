@@ -15,6 +15,7 @@ from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError,
 from app.rbac.models import Role
 from app.rbac.policy import (
     ensure_role_is_assignable,
+    ensure_user_is_manageable,
     ensure_user_transition_preserves_recovery,
     lock_recoverable_admin_invariant,
 )
@@ -93,6 +94,7 @@ async def update_user(
     if payload.role_id is not None:
         await lock_recoverable_admin_invariant(session)
     user = await get_user(session, user_id)
+    ensure_user_is_manageable(actor, user)
     before = _snapshot(user)
     if payload.full_name is not None:
         user.full_name = payload.full_name
@@ -128,6 +130,7 @@ async def deactivate_user(session: AsyncSession, user_id: int, *, actor: User) -
     await ensure_user_transition_preserves_recovery(
         session, user=user, role=user.role, is_active=False
     )
+    ensure_user_is_manageable(actor, user)
     before = _snapshot(user)
     user.is_active = False
     await session.flush()
@@ -145,7 +148,7 @@ async def deactivate_user(session: AsyncSession, user_id: int, *, actor: User) -
 
 async def activate_user(session: AsyncSession, user_id: int, *, actor: User) -> User:
     user = await get_user(session, user_id)
-    ensure_role_is_assignable(actor, user.role)
+    ensure_user_is_manageable(actor, user)
     if user.is_active:
         return user
     before = _snapshot(user)
@@ -172,7 +175,7 @@ async def reset_password(
     if user_id == actor.id:
         raise PermissionDeniedError("Use the personal password-change flow for your own account.")
     user = await get_user(session, user_id)
-    ensure_role_is_assignable(actor, user.role)
+    ensure_user_is_manageable(actor, user)
     user.password_hash = hash_password(payload.temporary_password)
     user.must_change_password = True
     await auth_service.revoke_user_sessions(session, user_id=user.id)
