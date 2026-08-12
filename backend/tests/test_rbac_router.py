@@ -107,3 +107,22 @@ async def test_role_manager_cannot_grant_a_permission_they_do_not_have(
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "permission_denied"
+
+
+async def test_cannot_remove_a_critical_permission_from_the_last_recoverable_role(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    admin_role = (await db_session.execute(select(Role).where(Role.name == "ADMIN"))).scalar_one()
+    current = (await client.get("/api/v1/roles")).json()
+    admin_permissions = next(role["permissions"] for role in current if role["name"] == "ADMIN")
+
+    response = await client.patch(
+        f"/api/v1/roles/{admin_role.id}/permissions",
+        json={"permission_keys": [key for key in admin_permissions if key != "roles.manage"]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"

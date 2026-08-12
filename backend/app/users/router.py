@@ -60,8 +60,8 @@ async def update_user(
     response_model=UserRead,
     dependencies=[_require_users_manage],
 )
-async def deactivate_user(user_id: int, session: SessionDep) -> UserRead:
-    return _to_read(await service.deactivate_user(session, user_id))
+async def deactivate_user(user_id: int, actor: CurrentUser, session: SessionDep) -> UserRead:
+    return _to_read(await service.deactivate_user(session, user_id, actor=actor))
 
 
 @router.post("/users/me/password", status_code=204)

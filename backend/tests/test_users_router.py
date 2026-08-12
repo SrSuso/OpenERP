@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import asyncio
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
-from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from argon2 import PasswordHasher
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import and_, delete, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from app.audit.models import AuditLog
+from app.auth.models import AuthSession
+from app.core.config import Settings, get_settings
+from app.db.session import get_session
+from app.main import create_app
 from app.rbac.models import Permission, Role
 from app.users.models import User
 from tests.conftest import DEFAULT_PASSWORD
+
+_CONCURRENCY_HASHER = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
 
 
 async def _cashier_role_id(session: AsyncSession) -> int:
@@ -204,3 +214,136 @@ async def test_manager_can_assign_cashier_when_cashier_permissions_are_within_th
 
     assert response.status_code == 200
     assert response.json()["role_name"] == "CASHIER"
+
+
+async def test_user_cannot_deactivate_themselves(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    admin = await login(role_name="ADMIN")
+
+    response = await client.post(f"/api/v1/users/{admin['id']}/deactivate")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "permission_denied"
+
+
+async def test_another_user_cannot_deactivate_the_last_recoverable_admin(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    last_admin = await make_user(email="last-admin@example.com", role_name="ADMIN")
+    await login(role_name="MANAGER")
+
+    response = await client.post(f"/api/v1/users/{last_admin.id}/deactivate")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+
+
+async def test_one_of_two_recoverable_admins_can_be_deactivated(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    await login(role_name="ADMIN")
+    other_admin = await make_user(email="second-admin@example.com", role_name="ADMIN")
+
+    response = await client.post(f"/api/v1/users/{other_admin.id}/deactivate")
+
+    assert response.status_code == 200
+    assert response.json()["is_active"] is False
+
+
+async def test_last_recoverable_admin_cannot_downgrade_their_role(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    admin = await login(role_name="ADMIN")
+    cashier_role = await _role(db_session, "CASHIER")
+
+    response = await client.patch(f"/api/v1/users/{admin['id']}", json={"role_id": cashier_role.id})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+
+
+async def test_concurrent_deactivations_cannot_remove_both_recoverable_admins(
+    settings: Settings,
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    """The advisory lock is intentionally tested with real commits/connections."""
+    suffix = uuid.uuid4().hex[:10]
+    emails = [f"concurrent-a-{suffix}@example.com", f"concurrent-b-{suffix}@example.com"]
+    password_hash = _CONCURRENCY_HASHER.hash(DEFAULT_PASSWORD)
+    async with committing_sessionmaker() as setup:
+        admin_role = await _role(setup, "ADMIN")
+        admins = [
+            User(
+                email=email,
+                full_name=f"Concurrent admin {index}",
+                password_hash=password_hash,
+                role_id=admin_role.id,
+            )
+            for index, email in enumerate(emails, start=1)
+        ]
+        setup.add_all(admins)
+        await setup.commit()
+        admin_ids = [admin.id for admin in admins]
+
+    app = create_app(settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    async def _committing_request_session() -> AsyncIterator[AsyncSession]:
+        async with committing_sessionmaker() as request_session:
+            try:
+                yield request_session
+                await request_session.commit()
+            except Exception:
+                await request_session.rollback()
+                raise
+
+    app.dependency_overrides[get_session] = _committing_request_session
+    transport = ASGITransport(app=app)
+    try:
+        async with (
+            AsyncClient(transport=transport, base_url="http://testserver") as client_a,
+            AsyncClient(transport=transport, base_url="http://testserver") as client_b,
+        ):
+            for http, email in zip((client_a, client_b), emails, strict=True):
+                response = await http.post(
+                    "/api/v1/auth/login", json={"email": email, "password": DEFAULT_PASSWORD}
+                )
+                assert response.status_code == 200
+
+            responses = await asyncio.gather(
+                client_a.post(f"/api/v1/users/{admin_ids[1]}/deactivate"),
+                client_b.post(f"/api/v1/users/{admin_ids[0]}/deactivate"),
+            )
+
+        assert sorted(response.status_code for response in responses) == [200, 409]
+        async with committing_sessionmaker() as verification:
+            states = list(
+                (
+                    await verification.execute(select(User.is_active).where(User.id.in_(admin_ids)))
+                ).scalars()
+            )
+            assert states.count(True) == 1
+    finally:
+        app.dependency_overrides.clear()
+        async with committing_sessionmaker() as cleanup:
+            await cleanup.execute(
+                delete(AuditLog).where(
+                    or_(
+                        AuditLog.user_id.in_(admin_ids),
+                        and_(
+                            AuditLog.entity_type == "user",
+                            AuditLog.entity_id.in_(admin_ids),
+                        ),
+                    )
+                )
+            )
+            await cleanup.execute(delete(AuthSession).where(AuthSession.user_id.in_(admin_ids)))
+            await cleanup.execute(delete(User).where(User.id.in_(admin_ids)))
+            await cleanup.commit()

@@ -10,9 +10,13 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.auth.security import hash_password, verify_password
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.rbac.models import Role
-from app.rbac.policy import ensure_role_is_assignable
+from app.rbac.policy import (
+    ensure_role_is_assignable,
+    ensure_user_transition_preserves_recovery,
+    lock_recoverable_admin_invariant,
+)
 from app.users.models import User
 from app.users.schemas import PasswordChange, UserCreate, UserUpdate
 
@@ -34,7 +38,11 @@ async def list_users(session: AsyncSession) -> list[User]:
 
 
 async def get_user(session: AsyncSession, user_id: int) -> User:
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.role))
+    stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(selectinload(User.role).selectinload(Role.permissions))
+    )
     user = (await session.execute(stmt)).scalar_one_or_none()
     if user is None:
         raise NotFoundError(f"User {user_id} not found.")
@@ -80,6 +88,8 @@ async def create_user(session: AsyncSession, payload: UserCreate, *, actor: User
 async def update_user(
     session: AsyncSession, user_id: int, payload: UserUpdate, *, actor: User
 ) -> User:
+    if payload.role_id is not None:
+        await lock_recoverable_admin_invariant(session)
     user = await get_user(session, user_id)
     before = _snapshot(user)
     if payload.full_name is not None:
@@ -87,6 +97,9 @@ async def update_user(
     if payload.role_id is not None:
         role = await _role_or_422(session, payload.role_id)
         ensure_role_is_assignable(actor, role)
+        await ensure_user_transition_preserves_recovery(
+            session, user=user, role=role, is_active=user.is_active
+        )
         # Keep the already-loaded relationship coherent for this response;
         # changing only role_id would leave ``user.role`` stale in the
         # identity map until a later request.
@@ -95,7 +108,7 @@ async def update_user(
     updated = await get_user(session, user_id)
     await audit.record(
         session,
-        action="updated",
+        action="role_changed" if payload.role_id is not None else "updated",
         entity_type="user",
         entity_id=user_id,
         before=before,
@@ -104,9 +117,15 @@ async def update_user(
     return updated
 
 
-async def deactivate_user(session: AsyncSession, user_id: int) -> User:
+async def deactivate_user(session: AsyncSession, user_id: int, *, actor: User) -> User:
     """Rule 14: users are never deleted, only deactivated."""
+    if user_id == actor.id:
+        raise PermissionDeniedError("You cannot deactivate your own account.")
+    await lock_recoverable_admin_invariant(session)
     user = await get_user(session, user_id)
+    await ensure_user_transition_preserves_recovery(
+        session, user=user, role=user.role, is_active=False
+    )
     before = _snapshot(user)
     user.is_active = False
     await session.flush()

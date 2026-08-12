@@ -11,7 +11,11 @@ from sqlalchemy.orm import selectinload
 from app.audit import service as audit
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.rbac.models import Permission, Role
-from app.rbac.policy import ensure_permissions_are_grantable
+from app.rbac.policy import (
+    ensure_permissions_are_grantable,
+    ensure_role_transition_preserves_recovery,
+    lock_recoverable_admin_invariant,
+)
 from app.rbac.schemas import RoleCreate, RolePermissionsUpdate
 from app.users.models import User
 
@@ -54,6 +58,7 @@ async def create_role(session: AsyncSession, payload: RoleCreate) -> Role:
 async def set_role_permissions(
     session: AsyncSession, role_id: int, payload: RolePermissionsUpdate, *, actor: User
 ) -> Role:
+    await lock_recoverable_admin_invariant(session)
     stmt = select(Role).where(Role.id == role_id).options(selectinload(Role.permissions))
     role = (await session.execute(stmt)).scalar_one_or_none()
     if role is None:
@@ -68,6 +73,9 @@ async def set_role_permissions(
         if missing:
             raise ValidationError(f"Unknown permission keys: {sorted(missing)}")
     ensure_permissions_are_grantable(actor, set(payload.permission_keys))
+    await ensure_role_transition_preserves_recovery(
+        session, role=role, permission_keys=set(payload.permission_keys)
+    )
 
     role.permissions = permissions
     await session.flush()
