@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -107,6 +107,20 @@ async def create_session(
 async def revoke_session(session: AsyncSession, auth_session: AuthSession) -> None:
     auth_session.revoked_at = datetime.now(UTC)
     await session.flush()
+
+
+async def revoke_user_sessions(
+    session: AsyncSession, *, user_id: int, except_session_id: int | None = None
+) -> None:
+    """Revoke every live server-side session belonging to one user."""
+    stmt = (
+        update(AuthSession)
+        .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    if except_session_id is not None:
+        stmt = stmt.where(AuthSession.id != except_session_id)
+    await session.execute(stmt)
 
 
 def set_session_cookie(

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
+from app.auth import service as auth_service
 from app.auth.security import hash_password, verify_password
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.rbac.models import Role
@@ -18,7 +19,7 @@ from app.rbac.policy import (
     lock_recoverable_admin_invariant,
 )
 from app.users.models import User
-from app.users.schemas import PasswordChange, UserCreate, UserUpdate
+from app.users.schemas import AdminPasswordReset, PasswordChange, UserCreate, UserUpdate
 
 
 def _snapshot(user: User) -> dict[str, Any]:
@@ -27,6 +28,7 @@ def _snapshot(user: User) -> dict[str, Any]:
         "email": user.email,
         "full_name": user.full_name,
         "is_active": user.is_active,
+        "must_change_password": user.must_change_password,
         "role_id": user.role_id,
         "role_name": user.role.name,
     }
@@ -129,6 +131,7 @@ async def deactivate_user(session: AsyncSession, user_id: int, *, actor: User) -
     before = _snapshot(user)
     user.is_active = False
     await session.flush()
+    await auth_service.revoke_user_sessions(session, user_id=user.id)
     await audit.record(
         session,
         action="deactivated",
@@ -140,10 +143,64 @@ async def deactivate_user(session: AsyncSession, user_id: int, *, actor: User) -
     return user
 
 
-async def change_password(session: AsyncSession, user: User, payload: PasswordChange) -> None:
+async def activate_user(session: AsyncSession, user_id: int, *, actor: User) -> User:
+    user = await get_user(session, user_id)
+    ensure_role_is_assignable(actor, user.role)
+    if user.is_active:
+        return user
+    before = _snapshot(user)
+    user.is_active = True
+    await session.flush()
+    await audit.record(
+        session,
+        action="activated",
+        entity_type="user",
+        entity_id=user_id,
+        before=before,
+        after=_snapshot(user),
+    )
+    return user
+
+
+async def reset_password(
+    session: AsyncSession,
+    user_id: int,
+    payload: AdminPasswordReset,
+    *,
+    actor: User,
+) -> None:
+    if user_id == actor.id:
+        raise PermissionDeniedError("Use the personal password-change flow for your own account.")
+    user = await get_user(session, user_id)
+    ensure_role_is_assignable(actor, user.role)
+    user.password_hash = hash_password(payload.temporary_password)
+    user.must_change_password = True
+    await auth_service.revoke_user_sessions(session, user_id=user.id)
+    await session.flush()
+    # Passwords and hashes are deliberately absent from both snapshots.
+    await audit.record(
+        session,
+        action="password_reset",
+        entity_type="user",
+        entity_id=user.id,
+        after={"must_change_password": True},
+    )
+
+
+async def change_password(
+    session: AsyncSession,
+    user: User,
+    payload: PasswordChange,
+    *,
+    current_session_id: int,
+) -> None:
     if not verify_password(payload.current_password, user.password_hash):
         raise ValidationError("Current password is incorrect.")
     user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    await auth_service.revoke_user_sessions(
+        session, user_id=user.id, except_session_id=current_session_id
+    )
     await session.flush()
     # Never before/after: nothing about a password belongs in a readable log.
     await audit.record(session, action="password_changed", entity_type="user", entity_id=user.id)

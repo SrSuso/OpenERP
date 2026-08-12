@@ -8,12 +8,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.auth.dependencies import CurrentUser, SessionDep
+from app.auth.dependencies import AuthSessionDep, CurrentUser, SessionDep
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import USERS_MANAGE
 from app.users import service
 from app.users.models import User
-from app.users.schemas import PasswordChange, UserCreate, UserRead, UserUpdate
+from app.users.schemas import (
+    AdminPasswordReset,
+    PasswordChange,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
 
 router = APIRouter(tags=["users"])
 
@@ -26,6 +32,7 @@ def _to_read(user: User) -> UserRead:
         email=user.email,
         full_name=user.full_name,
         is_active=user.is_active,
+        must_change_password=user.must_change_password,
         role_id=user.role_id,
         role_name=user.role.name,
     )
@@ -64,10 +71,38 @@ async def deactivate_user(user_id: int, actor: CurrentUser, session: SessionDep)
     return _to_read(await service.deactivate_user(session, user_id, actor=actor))
 
 
+@router.post(
+    "/users/{user_id}/activate",
+    response_model=UserRead,
+    dependencies=[_require_users_manage],
+)
+async def activate_user(user_id: int, actor: CurrentUser, session: SessionDep) -> UserRead:
+    return _to_read(await service.activate_user(session, user_id, actor=actor))
+
+
+@router.post(
+    "/users/{user_id}/reset-password",
+    status_code=204,
+    dependencies=[_require_users_manage],
+)
+async def reset_password(
+    user_id: int,
+    payload: AdminPasswordReset,
+    actor: CurrentUser,
+    session: SessionDep,
+) -> None:
+    await service.reset_password(session, user_id, payload, actor=actor)
+
+
 @router.post("/users/me/password", status_code=204)
 async def change_my_password(
-    payload: PasswordChange, user: CurrentUser, session: SessionDep
+    payload: PasswordChange, auth_session: AuthSessionDep, session: SessionDep
 ) -> None:
     """Any authenticated user may change their own password — no
     ``users.manage`` needed, it only ever touches the caller's own row."""
-    await service.change_password(session, user, payload)
+    await service.change_password(
+        session,
+        auth_session.user,
+        payload,
+        current_session_id=auth_session.id,
+    )

@@ -122,3 +122,60 @@ async def test_granting_role_permissions_is_audited(
     )
     actions = [e["action"] for e in log_response.json()]
     assert actions == ["permissions_changed", "created"]  # most recent first
+
+
+async def test_user_security_administration_is_audited_without_password_material(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[Any]],
+) -> None:
+    target = await make_user(
+        email="audited-security@example.com", role_name="CASHIER", is_active=False
+    )
+    await login(role_name="ADMIN")
+
+    assert (await client.post(f"/api/v1/users/{target.id}/activate")).status_code == 200
+    assert (
+        await client.post(
+            f"/api/v1/users/{target.id}/reset-password",
+            json={"temporary_password": "not-for-the-audit-log"},
+        )
+    ).status_code == 204
+    assert (await client.post(f"/api/v1/users/{target.id}/deactivate")).status_code == 200
+
+    entries = (
+        await client.get(
+            "/api/v1/audit-log", params={"entity_type": "user", "entity_id": target.id}
+        )
+    ).json()
+    assert [entry["action"] for entry in entries] == [
+        "deactivated",
+        "password_reset",
+        "activated",
+    ]
+    reset_entry = next(entry for entry in entries if entry["action"] == "password_reset")
+    rendered = str(reset_entry).lower()
+    assert "not-for-the-audit-log" not in rendered
+    assert "password_hash" not in rendered
+
+
+async def test_role_assignment_has_a_specific_audit_action(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[Any]],
+    db_session: AsyncSession,
+) -> None:
+    target = await make_user(email="audited-role@example.com", role_name="MANAGER")
+    await login(role_name="ADMIN")
+    cashier_role = await _cashier_role_id(db_session)
+
+    assert (
+        await client.patch(f"/api/v1/users/{target.id}", json={"role_id": cashier_role})
+    ).status_code == 200
+    entries = (
+        await client.get(
+            "/api/v1/audit-log", params={"entity_type": "user", "entity_id": target.id}
+        )
+    ).json()
+
+    assert entries[0]["action"] == "role_changed"

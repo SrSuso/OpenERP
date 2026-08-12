@@ -29,6 +29,7 @@ class MeResponse(BaseModel):
     full_name: str
     role: str
     permissions: list[str]
+    must_change_password: bool
 
 
 class SessionRead(BaseModel):

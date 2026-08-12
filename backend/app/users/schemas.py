@@ -41,10 +41,15 @@ class PasswordChange(BaseModel):
     new_password: str = Field(min_length=8, max_length=255)
 
 
+class AdminPasswordReset(BaseModel):
+    temporary_password: str = Field(min_length=12, max_length=255)
+
+
 class UserRead(BaseModel):
     id: int
     email: str
     full_name: str
     is_active: bool
+    must_change_password: bool
     role_id: int
     role_name: str

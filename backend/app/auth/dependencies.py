@@ -20,7 +20,7 @@ from app.auth.security import hash_session_token
 from app.auth.service import set_session_cookie
 from app.core.config import Settings, get_settings
 from app.core.context import set_user_id
-from app.core.errors import AuthenticationError
+from app.core.errors import AuthenticationError, PasswordChangeRequiredError
 from app.db.session import SessionDep as SessionDep
 from app.rbac.models import Role
 from app.users.models import User
@@ -57,6 +57,18 @@ async def get_current_auth_session(
         raise AuthenticationError("Session expired or invalid.")
     if not auth_session.user.is_active:
         raise AuthenticationError("User is deactivated.")
+
+    relative_path = request.url.path.removeprefix(settings.api_v1_prefix)
+    forced_change_routes = {
+        ("GET", "/auth/me"),
+        ("POST", "/auth/logout"),
+        ("POST", "/users/me/password"),
+    }
+    if (
+        auth_session.user.must_change_password
+        and (request.method, relative_path) not in forced_change_routes
+    ):
+        raise PasswordChangeRequiredError("You must change your temporary password first.")
 
     # Sliding expiry, throttled: a busy terminal shouldn't turn every request
     # into a write, so only extend once per `session_touch_interval_seconds`.

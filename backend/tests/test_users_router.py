@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.audit.models import AuditLog
 from app.auth.models import AuthSession
+from app.auth.security import verify_password
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.main import create_app
@@ -347,3 +348,198 @@ async def test_concurrent_deactivations_cannot_remove_both_recoverable_admins(
             await cleanup.execute(delete(AuthSession).where(AuthSession.user_id.in_(admin_ids)))
             await cleanup.execute(delete(User).where(User.id.in_(admin_ids)))
             await cleanup.commit()
+
+
+async def test_admin_can_reactivate_an_inactive_user(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    target = await make_user(
+        email="reactivated-user@example.com", role_name="CASHIER", is_active=False
+    )
+    await login(role_name="ADMIN")
+
+    response = await client.post(f"/api/v1/users/{target.id}/activate")
+
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+    relogin = await client.post(
+        "/api/v1/auth/login",
+        json={"email": target.email, "password": DEFAULT_PASSWORD},
+    )
+    assert relogin.status_code == 200
+
+
+async def test_admin_can_reset_another_users_password(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+    db_session: AsyncSession,
+) -> None:
+    target = await make_user(email="password-reset@example.com", role_name="CASHIER")
+    await login(role_name="ADMIN")
+
+    response = await client.post(
+        f"/api/v1/users/{target.id}/reset-password",
+        json={"temporary_password": "temporary-password-42"},
+    )
+
+    assert response.status_code == 204
+    await db_session.refresh(target)
+    assert verify_password("temporary-password-42", target.password_hash)
+    assert target.must_change_password is True
+
+
+async def test_admin_password_reset_revokes_the_targets_existing_sessions(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+    db_session: AsyncSession,
+) -> None:
+    target = await make_user(email="reset-sessions@example.com", role_name="CASHIER")
+    assert (
+        await client.post(
+            "/api/v1/auth/login",
+            json={"email": target.email, "password": DEFAULT_PASSWORD},
+        )
+    ).status_code == 200
+    old_token = client.cookies.get("openerp_session")
+    await login(role_name="ADMIN")
+
+    response = await client.post(
+        f"/api/v1/users/{target.id}/reset-password",
+        json={"temporary_password": "temporary-password-42"},
+    )
+    assert response.status_code == 204
+    old_session = (
+        await db_session.execute(select(AuthSession).where(AuthSession.user_id == target.id))
+    ).scalar_one()
+    assert old_session.revoked_at is not None
+
+    client.cookies.clear()
+    client.cookies.set("openerp_session", old_token)
+    assert (await client.get("/api/v1/auth/me")).status_code == 401
+
+
+async def test_temporary_password_requires_change_then_allows_normal_access(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    target = await make_user(email="forced-change@example.com", role_name="CASHIER")
+    await login(role_name="ADMIN")
+    reset = await client.post(
+        f"/api/v1/users/{target.id}/reset-password",
+        json={"temporary_password": "temporary-password-42"},
+    )
+    assert reset.status_code == 204
+
+    logged_in = await client.post(
+        "/api/v1/auth/login",
+        json={"email": target.email, "password": "temporary-password-42"},
+    )
+    assert logged_in.status_code == 200
+    assert logged_in.json()["must_change_password"] is True
+
+    restricted = await client.get("/api/v1/products")
+    assert restricted.status_code == 403
+    assert restricted.json()["error"]["code"] == "password_change_required"
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
+
+    changed = await client.post(
+        "/api/v1/users/me/password",
+        json={
+            "current_password": "temporary-password-42",
+            "new_password": "permanent-password-84",
+        },
+    )
+    assert changed.status_code == 204
+    assert (await client.get("/api/v1/products")).status_code == 200
+
+    await client.post("/api/v1/auth/logout")
+    assert (
+        await client.post(
+            "/api/v1/auth/login",
+            json={"email": target.email, "password": "temporary-password-42"},
+        )
+    ).status_code == 401
+    normal_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": target.email, "password": "permanent-password-84"},
+    )
+    assert normal_login.status_code == 200
+    assert normal_login.json()["must_change_password"] is False
+
+
+async def test_deactivation_revokes_existing_sessions(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+    db_session: AsyncSession,
+) -> None:
+    target = await make_user(email="deactivate-sessions@example.com", role_name="CASHIER")
+    assert (
+        await client.post(
+            "/api/v1/auth/login",
+            json={"email": target.email, "password": DEFAULT_PASSWORD},
+        )
+    ).status_code == 200
+    await login(role_name="ADMIN")
+
+    response = await client.post(f"/api/v1/users/{target.id}/deactivate")
+
+    assert response.status_code == 200
+    sessions = list(
+        (
+            await db_session.execute(select(AuthSession).where(AuthSession.user_id == target.id))
+        ).scalars()
+    )
+    assert sessions and all(auth_session.revoked_at is not None for auth_session in sessions)
+
+
+async def test_role_change_is_visible_to_an_existing_session_without_revocation(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    manager = await login(role_name="MANAGER")
+    manager_token = client.cookies.get("openerp_session")
+    await login(role_name="ADMIN")
+    cashier_role = await _role(db_session, "CASHIER")
+
+    response = await client.patch(
+        f"/api/v1/users/{manager['id']}", json={"role_id": cashier_role.id}
+    )
+    assert response.status_code == 200
+
+    client.cookies.clear()
+    client.cookies.set("openerp_session", manager_token)
+    denied = await client.get("/api/v1/users")
+    assert denied.status_code == 403
+    sessions = list(
+        (
+            await db_session.execute(
+                select(AuthSession).where(AuthSession.user_id == manager["id"])
+            )
+        ).scalars()
+    )
+    assert sessions and all(auth_session.revoked_at is None for auth_session in sessions)
+
+
+async def test_manager_cannot_reset_or_reactivate_a_more_privileged_account(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    target = await make_user(email="inactive-admin@example.com", role_name="ADMIN", is_active=False)
+    await login(role_name="MANAGER")
+
+    reset = await client.post(
+        f"/api/v1/users/{target.id}/reset-password",
+        json={"temporary_password": "temporary-password-42"},
+    )
+    activate = await client.post(f"/api/v1/users/{target.id}/activate")
+
+    assert reset.status_code == 403
+    assert activate.status_code == 403

@@ -65,6 +65,10 @@ class PermissionDeniedError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
 
 
+class PasswordChangeRequiredError(PermissionDeniedError):
+    code = "password_change_required"
+
+
 class ServiceUnavailableError(AppError):
     code = "service_unavailable"
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE

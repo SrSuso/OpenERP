@@ -23,6 +23,7 @@ def _me(user: User) -> MeResponse:
         full_name=user.full_name,
         role=user.role.name,
         permissions=sorted(user_permissions(user)),
+        must_change_password=user.must_change_password,
     )
 
 

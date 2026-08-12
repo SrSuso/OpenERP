@@ -30,6 +30,9 @@ class User(IntPrimaryKeyMixin, TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255))
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     role_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("roles.id"), index=True)
 
     role: Mapped[Role] = relationship()
