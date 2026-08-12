@@ -12,9 +12,11 @@ const MILK_LINE: SaleLine = {
   product_name: 'Leche entera 1L',
   package_id: 10,
   package_name: 'Brick',
+  package_factor: '1.000000',
   quantity_packages: '2.000000',
   quantity_base: '2.000000',
   quantity_returned: '0.000000',
+  package_price: '1.200000',
   unit_price: '1.200000',
   tax_rate: '10.000000',
   discount_rate: '0.000000',
@@ -66,6 +68,27 @@ describe('Cart', () => {
     expect(screen.getByText('Leche entera 1L')).toBeInTheDocument();
     expect(screen.getByText(/2 × brick/i)).toBeInTheDocument();
     expect(screen.getAllByText('2,64 €').length).toBeGreaterThan(0);
+  });
+
+  it('shows a non-base package conversion and its commercial price', () => {
+    const boxLine: SaleLine = {
+      ...MILK_LINE,
+      package_id: 11,
+      package_name: 'Caja 6',
+      package_factor: '6.000000',
+      quantity_packages: '2.000000',
+      quantity_base: '12.000000',
+      package_price: '7.200000',
+      subtotal: '14.400000',
+      tax_amount: '0.000000',
+      total: '14.400000',
+    };
+    renderCart({ sale: { ...SALE, lines: [boxLine], total: '14.400000' } });
+
+    const presentation = screen.getByText(/2 × caja 6/i);
+    expect(presentation).toHaveTextContent('6 uds. base');
+    expect(presentation).toHaveTextContent('7,20 €');
+    expect(screen.getAllByText('14,40 €').length).toBeGreaterThan(0);
   });
 
   it('shows the sale total', () => {

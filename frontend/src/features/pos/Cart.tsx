@@ -47,7 +47,10 @@ export function Cart({ sale, disabled, onRemoveLine, onCancelSale, onCheckout }:
                   <p className="truncate text-sm font-medium text-slate-50">{line.product_name}</p>
                   <p className="text-xs text-slate-400">
                     {formatQuantity(line.quantity_packages)} × {line.package_name} ·{' '}
-                    {formatMoney(line.unit_price)}
+                    {Number(line.package_factor) !== 1 && (
+                      <>{formatQuantity(line.package_factor)} uds. base · </>
+                    )}
+                    {formatMoney(line.package_price)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

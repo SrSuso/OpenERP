@@ -129,9 +129,11 @@ export const saleLineSchema = z.object({
   product_name: z.string(),
   package_id: z.number(),
   package_name: z.string(),
+  package_factor: z.string(),
   quantity_packages: z.string(),
   quantity_base: z.string(),
   quantity_returned: z.string(),
+  package_price: z.string(),
   unit_price: z.string(),
   tax_rate: z.string(),
   discount_rate: z.string(),
@@ -252,12 +254,12 @@ export function salesQuery(filters: SalesFilters) {
   });
 }
 
-/** El producto al que pertenece un código de barras.
+/** Prelectura del producto al que pertenece un código de barras.
  *
- * El TPV lo necesita *antes* de meterlo en la venta: si se vende al peso
- * hay que preguntar los gramos en vez de colar un kilo, y si hay una
- * cantidad tecleada hay que aplicarla. Añadirlo directamente por código
- * (`POST .../lines/by-barcode`) se saltaba las dos cosas. */
+ * Sólo decide si el TPV debe pedir un peso antes de vender. La identidad del
+ * formato, su factor, precio y cantidad base se vuelven a resolver de forma
+ * autoritativa al añadir con `POST .../lines/by-barcode`; React no envía ni
+ * reconstruye ninguno de esos valores. */
 export async function findProductByBarcode(barcode: string): Promise<Product> {
   return apiFetch(`${API_V1}/products/barcode/${encodeURIComponent(barcode)}`, {
     schema: productSchema,
@@ -283,11 +285,14 @@ export async function addLine(
   });
 }
 
-export async function addLineByBarcode(saleId: number, barcode: string): Promise<Sale> {
+export async function addLineByBarcode(
+  saleId: number,
+  line: { barcode: string; quantity_packages: string },
+): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines/by-barcode`, {
     method: 'POST',
     schema: saleSchema,
-    body: { barcode },
+    body: line,
   });
 }
 

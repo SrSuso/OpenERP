@@ -12,6 +12,7 @@ import { WeightPrompt } from '@/features/pos/WeightPrompt';
 import { useBarcodeScanner } from '@/features/pos/useBarcodeScanner';
 import {
   addLine,
+  addLineByBarcode,
   basePackage,
   cancelSale,
   findProductByBarcode,
@@ -165,7 +166,7 @@ export function PosHomePage() {
     .split(',')
     .map((unit) => unit.trim().toUpperCase())
     .filter((unit) => unit !== '');
-  const [weighing, setWeighing] = useState<Product | null>(null);
+  const [weighing, setWeighing] = useState<{ product: Product; barcode?: string } | null>(null);
 
   // Lo tecleado en el multiplicador, vacío mientras no se toque (= una
   // unidad). Se limpia al añadir: es para el siguiente producto, no un modo
@@ -175,32 +176,61 @@ export function PosHomePage() {
   function pickProduct(product: Product) {
     if (weighedUnits.includes(product.base_unit_name.toUpperCase())) {
       // Lo que se pesa lleva su propia cantidad, en gramos.
-      setWeighing(product);
+      setWeighing({ product });
       return;
     }
     addLineMutation.mutate({ product, quantity: pendingQuantity === '' ? '1' : pendingQuantity });
     setPendingQuantity('');
   }
 
-  // Pasa por el mismo camino que pulsar el producto: busca cuál es y deja
-  // que `pickProduct` decida. Añadirlo directamente por código se saltaba
-  // el peso (colaba un kilo) y la cantidad tecleada.
-  const addBarcodeMutation = useMutation({
-    mutationFn: (code: string) => findProductByBarcode(code),
-    onSuccess: (product) => {
+  const addBarcodeLineMutation = useMutation({
+    mutationFn: ({ code, quantity }: { code: string; quantity: string }) =>
+      addLineByBarcode(sale!.id, { barcode: code, quantity_packages: quantity }),
+    onSuccess: (updated) => {
       setLineError(null);
-      setBarcode('');
-      pickProduct(product);
+      syncSale(updated);
+      setWeighing(null);
     },
-    // Con el lector, el error que sale casi siempre es que ese código no
-    // está dado de alta — y hay que decirlo con el código delante, para no
-    // dejar a nadie mirando la pantalla sin saber qué ha leído la pistola.
-    onError: (error, code) =>
+    onError: (error, { code }) => {
+      setBarcode('');
+      setWeighing(null);
       setLineError(
         error instanceof ApiError && error.status === 404
           ? `El código ${code} no está dado de alta en ningún producto.`
           : describeError(error),
-      ),
+      );
+    },
+  });
+
+  // La prelectura sólo conserva el comportamiento existente de productos
+  // pesados. La escritura posterior siempre manda el código: el backend
+  // vuelve a resolver y guarda el formato exacto, el factor y el precio.
+  const resolveBarcodeMutation = useMutation({
+    mutationFn: (code: string) => findProductByBarcode(code),
+    onSuccess: (product, code) => {
+      setLineError(null);
+      setBarcode('');
+      if (weighedUnits.includes(product.base_unit_name.toUpperCase())) {
+        setWeighing({ product, barcode: code });
+        return;
+      }
+      addBarcodeLineMutation.mutate({
+        code,
+        quantity: pendingQuantity === '' ? '1' : pendingQuantity,
+      });
+      setPendingQuantity('');
+    },
+    // Con el lector, el error que sale casi siempre es que ese código no
+    // está dado de alta — y hay que decirlo con el código delante, para no
+    // dejar a nadie mirando la pantalla sin saber qué ha leído la pistola.
+    onError: (error, code) => {
+      setBarcode('');
+      setLineError(
+        error instanceof ApiError && error.status === 404
+          ? `El código ${code} no está dado de alta en ningún producto.`
+          : describeError(error),
+      );
+    },
   });
 
   const removeLineMutation = useMutation({
@@ -231,7 +261,8 @@ export function PosHomePage() {
 
   const busy =
     addLineMutation.isPending ||
-    addBarcodeMutation.isPending ||
+    resolveBarcodeMutation.isPending ||
+    addBarcodeLineMutation.isPending ||
     removeLineMutation.isPending ||
     cancelMutation.isPending;
 
@@ -240,7 +271,7 @@ export function PosHomePage() {
   // Mientras el foco esté en un campo (teclear un código a mano, los gramos
   // de lo que se pesa) manda el campo — lo decide el propio hook.
   useBarcodeScanner(
-    (code) => addBarcodeMutation.mutate(code),
+    (code) => resolveBarcodeMutation.mutate(code),
     sale !== null && !busy && view === 'cart' && weighing === null,
   );
 
@@ -248,7 +279,7 @@ export function PosHomePage() {
     event.preventDefault();
     const code = barcode.trim();
     if (code !== '' && sale !== null) {
-      addBarcodeMutation.mutate(code);
+      resolveBarcodeMutation.mutate(code);
     }
   }
 
@@ -400,10 +431,14 @@ export function PosHomePage() {
 
       {weighing !== null && (
         <WeightPrompt
-          product={weighing}
-          isPending={addLineMutation.isPending}
+          product={weighing.product}
+          isPending={addLineMutation.isPending || addBarcodeLineMutation.isPending}
           onCancel={() => setWeighing(null)}
-          onConfirm={(quantity) => addLineMutation.mutate({ product: weighing, quantity })}
+          onConfirm={(quantity) =>
+            weighing.barcode === undefined
+              ? addLineMutation.mutate({ product: weighing.product, quantity })
+              : addBarcodeLineMutation.mutate({ code: weighing.barcode, quantity })
+          }
         />
       )}
     </section>

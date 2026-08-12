@@ -62,6 +62,13 @@ const MILK = {
       is_base: true,
       barcodes: [{ id: 100, barcode: '8410000000010' }],
     },
+    {
+      id: 11,
+      name: 'Caja 6',
+      factor: '6.000000',
+      is_base: false,
+      barcodes: [{ id: 101, barcode: '8410000000065' }],
+    },
   ],
 };
 
@@ -98,9 +105,11 @@ function saleWithMilkLine(id: number): Sale {
         product_name: 'Leche entera 1L',
         package_id: 10,
         package_name: 'Brick',
+        package_factor: '1.000000',
         quantity_packages: '1.000000',
         quantity_base: '1.000000',
         quantity_returned: '0.000000',
+        package_price: '1.200000',
         unit_price: '1.200000',
         tax_rate: '10.000000',
         discount_rate: '0.000000',
@@ -126,6 +135,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
   let nextSaleId = 5;
   const postSalesCalls = { count: 0 };
   const addLineCalls: Record<string, unknown>[] = [];
+  const barcodeLineCalls: Record<string, unknown>[] = [];
   const barcodeCalls: string[] = [];
 
   vi.stubGlobal(
@@ -186,6 +196,63 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         sale = emptySale(nextSaleId++);
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
+      if (method === 'POST' && /\/sales\/\d+\/lines\/by-barcode$/.test(url)) {
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as {
+              barcode: string;
+              quantity_packages: string;
+            })
+          : { barcode: '', quantity_packages: '1' };
+        barcodeLineCalls.push(body);
+        const product = [MILK, TOMATO].find((candidate) =>
+          candidate.packages.some((pkg) =>
+            pkg.barcodes.some((entry) => entry.barcode === body.barcode),
+          ),
+        );
+        const pkg = product?.packages.find((candidate) =>
+          candidate.barcodes.some((entry) => entry.barcode === body.barcode),
+        );
+        if (!product || !pkg) return Promise.resolve(jsonResponse({}, { status: 404 }));
+
+        const targetId = Number(/\/sales\/(\d+)\/lines\/by-barcode$/.exec(url)![1]);
+        const quantity = Number(body.quantity_packages);
+        const factor = Number(pkg.factor);
+        const unitPrice = Number(product.list_price);
+        const existingLines = sale?.id === targetId ? sale.lines : [];
+        const existing = existingLines.find((line) => line.package_id === pkg.id);
+        const quantityPackages = quantity + (existing ? Number(existing.quantity_packages) : 0);
+        const quantityBase = quantityPackages * factor;
+        const lineTotal = quantityBase * unitPrice;
+        const line = {
+          id: existing?.id ?? 901,
+          product_id: product.id,
+          product_sku: product.sku,
+          product_name: product.name,
+          package_id: pkg.id,
+          package_name: pkg.name,
+          package_factor: factor.toFixed(6),
+          quantity_packages: quantityPackages.toFixed(6),
+          quantity_base: quantityBase.toFixed(6),
+          quantity_returned: '0.000000',
+          package_price: (factor * unitPrice).toFixed(6),
+          unit_price: unitPrice.toFixed(6),
+          tax_rate: product.tax_rate,
+          discount_rate: '0.000000',
+          subtotal: lineTotal.toFixed(6),
+          discount_amount: '0.000000',
+          tax_amount: '0.000000',
+          total: lineTotal.toFixed(6),
+        };
+        const lines = existing
+          ? existingLines.map((candidate) => (candidate.package_id === pkg.id ? line : candidate))
+          : [...existingLines, line];
+        sale = {
+          ...emptySale(targetId),
+          lines,
+          total: lines.reduce((total, candidate) => total + Number(candidate.total), 0).toFixed(6),
+        };
+        return Promise.resolve(jsonResponse(sale, { status: 201 }));
+      }
       if (method === 'POST' && /\/sales\/\d+\/lines$/.test(url)) {
         addLineCalls.push(
           init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
@@ -210,7 +277,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
     }),
   );
 
-  return { postSalesCalls, addLineCalls, barcodeCalls };
+  return { postSalesCalls, addLineCalls, barcodeLineCalls, barcodeCalls };
 }
 
 function renderPage() {
@@ -410,7 +477,32 @@ describe('PosHomePage', () => {
     // que nadie haya pinchado en ningún sitio.
     scan('8410000000010', { terminator: 'Enter' });
 
-    await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
+    await waitFor(() =>
+      expect(backend.barcodeLineCalls).toEqual([
+        { barcode: '8410000000010', quantity_packages: '1' },
+      ]),
+    );
+    const cart = screen.getByRole('button', { name: /cancelar venta/i }).closest('aside')!;
+    expect(within(cart).getByText(/1 × brick/i)).toHaveTextContent('1,20 €');
+  });
+
+  it('keeps the exact box presentation and price returned by the barcode endpoint', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await waitForScannerReady();
+
+    scan('8410000000065', { terminator: 'Enter' });
+
+    await waitFor(() =>
+      expect(backend.barcodeLineCalls).toEqual([
+        { barcode: '8410000000065', quantity_packages: '1' },
+      ]),
+    );
+    expect(backend.addLineCalls).toEqual([]);
+    const cart = screen.getByRole('button', { name: /cancelar venta/i }).closest('aside')!;
+    expect(within(cart).getByText(/1 × caja 6/i)).toBeInTheDocument();
+    expect(within(cart).getByText(/6 uds\. base/i)).toBeInTheDocument();
+    expect(within(cart).getAllByText('7,20 €').length).toBeGreaterThan(0);
   });
 
   it('asks for the grams when what was scanned is sold by weight', async () => {
@@ -424,7 +516,15 @@ describe('PosHomePage', () => {
 
     expect(await screen.findByRole('dialog', { name: /cantidad de tomate/i })).toBeInTheDocument();
     expect(backend.addLineCalls).toEqual([]);
+    expect(backend.barcodeLineCalls).toEqual([]);
     expect(backend.barcodeCalls).toEqual(['2000000000015']);
+
+    const dialog = screen.getByRole('dialog', { name: /cantidad de tomate/i });
+    await userEvent.type(within(dialog).getByLabelText('Gramos'), '500');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Añadir' }));
+    expect(backend.barcodeLineCalls).toEqual([
+      { barcode: '2000000000015', quantity_packages: '0.500' },
+    ]);
   });
 
   it('applies the typed quantity to what was scanned', async () => {
@@ -436,10 +536,45 @@ describe('PosHomePage', () => {
     scan('8410000000010', { terminator: 'Enter' });
 
     await waitFor(() =>
-      expect(backend.addLineCalls).toEqual([
-        { product_id: 1, package_id: 10, quantity_packages: '3' },
+      expect(backend.barcodeLineCalls).toEqual([
+        { barcode: '8410000000010', quantity_packages: '3' },
       ]),
     );
+    expect(backend.addLineCalls).toEqual([]);
+  });
+
+  it('merges two consecutive box scans as two boxes and twelve base units', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await waitForScannerReady();
+
+    scan('8410000000065', { terminator: 'Enter' });
+    await waitFor(() => expect(backend.barcodeLineCalls).toHaveLength(1));
+    await waitForScannerReady();
+    scan('8410000000065', { terminator: 'Enter' });
+
+    await waitFor(() => expect(backend.barcodeLineCalls).toHaveLength(2));
+    const cart = screen.getByRole('button', { name: /cancelar venta/i }).closest('aside')!;
+    expect(within(cart).getByText(/2 × caja 6/i)).toBeInTheDocument();
+    expect(within(cart).getByText(/6 uds\. base/i)).toBeInTheDocument();
+    expect(within(cart).getAllByText('14,40 €').length).toBeGreaterThan(0);
+  });
+
+  it('leaves the cart unchanged and clears an unknown barcode for the next scan', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    const input = await screen.findByPlaceholderText('Escanear o introducir código de barras');
+
+    await userEvent.type(input, 'NO-EXISTE');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'El código NO-EXISTE no está dado de alta en ningún producto.',
+    );
+    expect(input).toHaveValue('');
+    expect(input).toBeEnabled();
+    expect(screen.getByText(/el carrito está vacío/i)).toBeInTheDocument();
+    expect(backend.barcodeLineCalls).toEqual([]);
   });
 
   it('reads a slower scanner too, and one that sends no Enter at all', async () => {
