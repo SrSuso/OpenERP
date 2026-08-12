@@ -6,6 +6,8 @@ import { RoleCard } from '@/features/roles/RoleCard';
 import { createRole, permissionsQuery, rolesQuery, setRolePermissions } from '@/features/roles/api';
 import { ApiError } from '@/lib/api';
 
+import { pageTitleRow, primaryAction } from './pageActions';
+
 /** `/admin/roles` — gated by `roles.manage` in routes.tsx (only ADMIN has
  * it by default). Backend already had full role/permission CRUD (phase 1);
  * this is the panel screen for it. */
@@ -45,14 +47,10 @@ export function RolesPage() {
 
   return (
     <section>
-      <div className="mb-6 flex items-center justify-between">
+      <div className={pageTitleRow}>
         <h1 className="text-2xl font-semibold">Roles</h1>
         {!showCreateForm && (
-          <button
-            type="button"
-            onClick={() => setShowCreateForm(true)}
-            className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
+          <button type="button" onClick={() => setShowCreateForm(true)} className={primaryAction}>
             Nuevo rol
           </button>
         )}

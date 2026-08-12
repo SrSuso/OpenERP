@@ -20,6 +20,8 @@ import { setManualPrice, setProductPricing, taxesQuery } from '@/features/pricin
 import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
 
+import { pageHeaderRow, primaryAction } from './pageActions';
+
 export function ProductsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('product.manage');
@@ -140,7 +142,7 @@ export function ProductsPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className={pageHeaderRow}>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm text-slate-600">
             Buscar
@@ -209,11 +211,7 @@ export function ProductsPage() {
         </div>
 
         {canManage && !showCreateForm && (
-          <button
-            type="button"
-            onClick={() => setShowCreateForm(true)}
-            className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
+          <button type="button" onClick={() => setShowCreateForm(true)} className={primaryAction}>
             Nuevo producto
           </button>
         )}

@@ -35,6 +35,8 @@ import { ApiError } from '@/lib/api';
 import { ImagePicker } from '@/features/images/ImagePicker';
 import { formatQuantity } from '@/lib/format';
 
+import { dangerAction, pageTitleRow, primaryAction } from './pageActions';
+
 type Tab = 'general' | 'pricing' | 'packages' | 'lots' | 'purchases';
 
 const tabClassName = (active: boolean) =>
@@ -199,7 +201,7 @@ export function ProductDetailPage() {
         ← Volver a productos
       </Link>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className={pageTitleRow}>
         <div className="flex items-center gap-3">
           <ImagePicker
             ownerType="product"
@@ -227,7 +229,7 @@ export function ProductDetailPage() {
               }
             }}
             disabled={deactivateMutation.isPending}
-            className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-600 disabled:opacity-50"
+            className={dangerAction}
           >
             Desactivar
           </button>
@@ -237,7 +239,7 @@ export function ProductDetailPage() {
             type="button"
             onClick={() => activateMutation.mutate()}
             disabled={activateMutation.isPending}
-            className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className={primaryAction}
           >
             Reactivar
           </button>

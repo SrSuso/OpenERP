@@ -15,6 +15,8 @@ import {
   type SupplierUpdateInput,
 } from '@/features/suppliers/api';
 
+import { pageHeaderRow, primaryAction } from './pageActions';
+
 /** `/admin/suppliers` — gated by `supplier.read`; mutations gated by
  * `supplier.manage` (backend/app/rbac/permissions.py's phase 5). */
 export function SuppliersPage() {
@@ -62,7 +64,7 @@ export function SuppliersPage() {
 
   return (
     <section>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className={pageHeaderRow}>
         <div>
           <h1 className="text-2xl font-semibold">Proveedores</h1>
           <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-600">
@@ -76,11 +78,7 @@ export function SuppliersPage() {
         </div>
 
         {canManage && !showCreateForm && (
-          <button
-            type="button"
-            onClick={() => setShowCreateForm(true)}
-            className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
+          <button type="button" onClick={() => setShowCreateForm(true)} className={primaryAction}>
             Nuevo proveedor
           </button>
         )}

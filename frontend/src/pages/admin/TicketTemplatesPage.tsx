@@ -16,6 +16,8 @@ import {
 } from '@/features/tickets/api';
 import { ApiError } from '@/lib/api';
 
+import { primaryAction } from './pageActions';
+
 /** `/admin/ticket-templates` — gated por `ticket.manage`, sin caso de uso
  * desde el TPV (backend/app/tickets/router.py).
  *
@@ -123,11 +125,7 @@ export function TicketTemplatesPage() {
       )}
 
       {active.isError && mode === 'none' && (
-        <button
-          type="button"
-          onClick={() => setMode('create')}
-          className="mb-4 rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-        >
+        <button type="button" onClick={() => setMode('create')} className={`mb-4 ${primaryAction}`}>
           Crear plantilla
         </button>
       )}

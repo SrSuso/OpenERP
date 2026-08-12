@@ -17,6 +17,8 @@ import {
   type RuleCreateInput,
 } from '@/features/notifications/api';
 
+import { pageHeaderRow, primaryAction, secondaryAction } from './pageActions';
+
 const tabClassName = (active: boolean) =>
   `border-b-2 px-4 py-2 text-sm font-medium ${
     active
@@ -96,7 +98,7 @@ export function NotificationsPage() {
             <button
               type="button"
               onClick={() => setShowCreateForm(true)}
-              className="mb-4 rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+              className={`mb-4 ${primaryAction}`}
             >
               Nueva regla
             </button>
@@ -127,7 +129,7 @@ export function NotificationsPage() {
 
       {tab === 'incidents' && (
         <div>
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div className={pageHeaderRow}>
             <label className="text-sm text-slate-600">
               Estado
               <select
@@ -146,7 +148,7 @@ export function NotificationsPage() {
                 type="button"
                 onClick={() => evaluateMutation.mutate()}
                 disabled={evaluateMutation.isPending}
-                className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className={secondaryAction}
               >
                 {evaluateMutation.isPending ? 'Evaluando…' : 'Evaluar ahora'}
               </button>

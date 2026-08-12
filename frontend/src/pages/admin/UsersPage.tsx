@@ -14,6 +14,8 @@ import {
 import { UsersTable } from '@/features/users/UsersTable';
 import { ApiError } from '@/lib/api';
 
+import { pageTitleRow, primaryAction } from './pageActions';
+
 /** `/admin/users` — gated by `users.manage` in routes.tsx. Full CRUD lives
  * on the backend already (phase 1); this is just the panel screen for it,
  * so users no longer have to go through Swagger UI/curl for the routine
@@ -58,14 +60,10 @@ export function UsersPage() {
 
   return (
     <section>
-      <div className="mb-6 flex items-center justify-between">
+      <div className={pageTitleRow}>
         <h1 className="text-2xl font-semibold">Usuarios</h1>
         {!showCreateForm && (
-          <button
-            type="button"
-            onClick={() => setShowCreateForm(true)}
-            className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
+          <button type="button" onClick={() => setShowCreateForm(true)} className={primaryAction}>
             Nuevo usuario
           </button>
         )}

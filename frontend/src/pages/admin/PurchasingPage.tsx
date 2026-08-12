@@ -13,6 +13,8 @@ import {
 } from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
 
+import { pageHeaderRow, primaryAction } from './pageActions';
+
 const STATUS_FILTERS = ['DRAFT', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'] as const;
 
 const STATUS_FILTER_LABELS: Record<(typeof STATUS_FILTERS)[number], string> = {
@@ -66,7 +68,7 @@ export function PurchasingPage() {
 
   return (
     <section>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className={pageHeaderRow}>
         <div>
           <h1 className="text-2xl font-semibold">Compras y recepciones</h1>
           <label className="mt-2 block text-sm text-slate-600">
@@ -87,11 +89,7 @@ export function PurchasingPage() {
         </div>
 
         {canManagePurchase && !showCreateForm && (
-          <button
-            type="button"
-            onClick={() => setShowCreateForm(true)}
-            className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
+          <button type="button" onClick={() => setShowCreateForm(true)} className={primaryAction}>
             Nuevo pedido
           </button>
         )}

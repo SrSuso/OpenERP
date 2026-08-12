@@ -12,6 +12,8 @@ import {
 import { Widget } from '@/features/dashboards/Widget';
 import { healthQuery } from '@/features/health/api';
 
+import { pageTitleRow, primaryAction } from './pageActions';
+
 /**
  * The admin home is the default dashboard (phase 16): a saved arrangement
  * of widgets, each running one metric from the whitelist in
@@ -63,14 +65,10 @@ export function AdminHomePage() {
       </dl>
 
       <div className="mt-8">
-        <div className="mb-4 flex items-center justify-between">
+        <div className={pageTitleRow}>
           <h2 className="text-lg font-semibold text-slate-800">Mi panel</h2>
           {dashboard && !showAddForm && (
-            <button
-              type="button"
-              onClick={() => setShowAddForm(true)}
-              className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-            >
+            <button type="button" onClick={() => setShowAddForm(true)} className={primaryAction}>
               Añadir widget
             </button>
           )}

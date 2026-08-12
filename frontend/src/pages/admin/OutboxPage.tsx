@@ -5,6 +5,8 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { OutboxTable } from '@/features/outbox/OutboxTable';
 import { outboxQuery, runOutbox } from '@/features/outbox/api';
 
+import { pageHeaderRow, secondaryAction } from './pageActions';
+
 /** `/admin/outbox` — gated by `job.read`; disparar un lote manual necesita
  * `job.manage`. El envío real de verdad lo hace `app.jobs.worker`, un
  * proceso aparte con su propio cadencia — esto es sólo observabilidad y
@@ -31,7 +33,7 @@ export function OutboxPage() {
     <section>
       <h1 className="mb-4 text-2xl font-semibold">Outbox / correo</h1>
 
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className={pageHeaderRow}>
         <label className="text-sm text-slate-600">
           Estado
           <select
@@ -58,7 +60,7 @@ export function OutboxPage() {
               type="button"
               onClick={() => runMutation.mutate()}
               disabled={runMutation.isPending}
-              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className={secondaryAction}
             >
               {runMutation.isPending ? 'Procesando…' : 'Procesar ahora'}
             </button>

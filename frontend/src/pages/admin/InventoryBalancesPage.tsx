@@ -18,6 +18,8 @@ import {
 } from '@/features/inventory/api';
 import { ApiError } from '@/lib/api';
 
+import { pageHeaderRow, primaryAction, secondaryAction } from './pageActions';
+
 export function InventoryBalancesPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('inventory.manage');
@@ -86,7 +88,7 @@ export function InventoryBalancesPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className={pageHeaderRow}>
         <div className="flex flex-wrap items-end gap-3">
           {/* Buscar por código de barras es lo natural aquí: se tiene el
             producto en la mano y se quiere saber cuánto queda. */}
@@ -138,7 +140,7 @@ export function InventoryBalancesPage() {
               <button
                 type="button"
                 onClick={() => setShowAdjustmentForm(true)}
-                className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+                className={primaryAction}
               >
                 Nuevo ajuste
               </button>
@@ -147,7 +149,7 @@ export function InventoryBalancesPage() {
               <button
                 type="button"
                 onClick={() => setShowTransferForm(true)}
-                className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600"
+                className={secondaryAction}
               >
                 Nueva transferencia
               </button>
