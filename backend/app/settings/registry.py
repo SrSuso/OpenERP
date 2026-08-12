@@ -403,6 +403,21 @@ SETTINGS: tuple[SettingDef, ...] = (
         default=True,
     ),
     SettingDef(
+        key="pos.catalog_refresh_seconds",
+        group=GROUP_POS,
+        label="Cada cuánto se refresca la caja",
+        help=(
+            "Cada cuántos segundos la caja vuelve a pedir precios, productos y "
+            "botones, para que un cambio hecho en el panel se vea sin recargar. "
+            "Si el panel y la caja están en el mismo navegador el cambio se ve al "
+            "instante igualmente; esto es para cuando la caja está en otro equipo."
+        ),
+        type=SettingType.INT,
+        default=10,
+        minimum=Decimal(2),
+        maximum=Decimal(600),
+    ),
+    SettingDef(
         key="pos.weighed_units",
         group=GROUP_POS,
         label="Unidades que se venden pesando",

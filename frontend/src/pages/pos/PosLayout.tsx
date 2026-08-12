@@ -5,6 +5,7 @@ import { Outlet } from 'react-router';
 import { useAuth } from '@/features/auth/AuthContext';
 import { warehousesQuery } from '@/features/inventory/api';
 import { CloseTillDialog } from '@/features/pos/CloseTillDialog';
+import { useLiveCatalog } from '@/features/pos/useLiveCatalog';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 
 /**
@@ -16,6 +17,8 @@ import { useShopSetting } from '@/features/settings/useShopSettings';
  */
 export function PosLayout() {
   const { user, logout } = useAuth();
+  // Lo que se cambie en el panel se ve aquí sin recargar la caja.
+  useLiveCatalog();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
   // Nadie sale de la caja sin cuadrarla: el botón abre el cierre, y sólo
   // desde ahí —con la Z ya guardada— se cierra la sesión.
