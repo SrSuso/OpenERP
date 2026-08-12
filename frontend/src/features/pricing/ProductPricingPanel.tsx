@@ -7,6 +7,16 @@ import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
 import { useUnsavedWarning } from '@/lib/unsaved';
 
+/** Si lo tecleado es *otra cantidad* que lo guardado. Vacío significa
+ * «hereda», y eso no es un número: sólo coincide con un guardado que
+ * también estuviera vacío. */
+function differs(typed: string, saved: string | null): boolean {
+  const isEmpty = typed.trim() === '';
+  if (isEmpty || saved === null) return isEmpty !== (saved === null);
+  const typedNumber = Number(typed.replace(',', '.'));
+  return Number.isNaN(typedNumber) || typedNumber !== Number(saved);
+}
+
 interface ProductPricingPanelProps {
   product: Product;
   category: ProductCategory | undefined;
@@ -52,10 +62,14 @@ export function ProductPricingPanel({
   const inheritsAmount = amountInput.trim() === '';
 
   // Lo tecleado difiere de lo guardado: si se sale ahora, se pierde.
+  //
+  // Se comparan cantidades, no cadenas: lo guardado viene como "0.300000"
+  // y quien lo repasa escribe "0,30", que es lo mismo. Comparando el texto,
+  // salir preguntaba «vas a perder los cambios» sin haber cambiado nada.
   const isDirty =
-    cost !== product.cost ||
-    marginInput !== (product.margin_rate ?? '') ||
-    amountInput !== (product.margin_amount ?? '') ||
+    differs(cost, product.cost) ||
+    differs(marginInput, product.margin_rate) ||
+    differs(amountInput, product.margin_amount) ||
     isOverride !== hasOwnTaxes;
   useUnsavedWarning(isDirty);
   useEffect(() => {

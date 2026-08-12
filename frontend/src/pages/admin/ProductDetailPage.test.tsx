@@ -466,6 +466,24 @@ describe('ProductDetailPage', () => {
     expect(screen.queryByDisplayValue('Agua 1L')).not.toBeInTheDocument();
   });
 
+  it('does not claim there are unsaved changes when the number is the same', async () => {
+    // Lo guardado es "0.300000" y quien repasa precios escribe "0,30": la
+    // misma cantidad. Comparando el texto, salir preguntaba si querías
+    // perder unos cambios que no existían.
+    stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+    const cost = screen.getByLabelText('Coste');
+    await userEvent.clear(cost);
+    await userEvent.type(cost, '0,30');
+    await userEvent.click(screen.getByRole('button', { name: 'Formatos' }));
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
   it('warns before a cost change, showing what is still in stock', async () => {
     const backend = stubBackend();
     renderPage();

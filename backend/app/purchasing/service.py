@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
+from app.catalog import stock as catalog_stock
 from app.catalog.models import Product, ProductPackage
 from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
@@ -369,10 +370,23 @@ async def create_goods_receipt(
                 f"the {remaining_packages} still pending."
             )
 
+        # Con la categoría, que es de donde puede salir si el producto
+        # lleva control de existencias (`app.catalog.stock`).
+        product = await session.get(
+            Product, po_line.product_id, options=[selectinload(Product.category)]
+        )
+        assert product is not None  # la clave ajena lo garantiza
+        # Un producto sin control de existencias no se agota: la venta no
+        # le descuenta nada, así que recibirlo tampoco puede sumarle. Si
+        # sumara, el saldo sólo crecería —nada lo consume nunca— y en la
+        # lista aparecería un número enorme justo en los productos que
+        # dijimos que no se cuentan. El pedido, la recepción y el lote
+        # quedan registrados igual; lo único que no se apunta es el
+        # movimiento de almacén.
+        restocks = catalog_stock.tracks_stock(product)
+
         lot_id = None
         if line_payload.lot_number:
-            product = await session.get(Product, po_line.product_id)
-            assert product is not None
             lot_id = await _get_or_create_lot(
                 session,
                 product_id=po_line.product_id,
@@ -387,18 +401,21 @@ async def create_goods_receipt(
         # snapshotted at order time), never recomputed from current cost.
         unit_cost_base = po_line.unit_cost / po_line.package_factor
 
-        movement = await inventory_service.record_movement(
-            session,
-            product_id=po_line.product_id,
-            warehouse_id=payload.warehouse_id,
-            location_id=payload.location_id,
-            quantity=received_base,
-            movement_type="PURCHASE_RECEIPT",
-            unit_cost=unit_cost_base,
-            lot_id=lot_id,
-            reference_type="goods_receipt",
-            reference_id=receipt.id,
-        )
+        movement_id: int | None = None
+        if restocks:
+            movement = await inventory_service.record_movement(
+                session,
+                product_id=po_line.product_id,
+                warehouse_id=payload.warehouse_id,
+                location_id=payload.location_id,
+                quantity=received_base,
+                movement_type="PURCHASE_RECEIPT",
+                unit_cost=unit_cost_base,
+                lot_id=lot_id,
+                reference_type="goods_receipt",
+                reference_id=receipt.id,
+            )
+            movement_id = movement.id
 
         po_line.quantity_received = po_line.quantity_received + received_base
 
@@ -408,7 +425,7 @@ async def create_goods_receipt(
                 purchase_order_line_id=po_line.id,
                 quantity_packages=line_payload.quantity_packages,
                 lot_id=lot_id,
-                stock_movement_id=movement.id,
+                stock_movement_id=movement_id,
             )
         )
 

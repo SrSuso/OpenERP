@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.catalog import stock as catalog_stock
 from app.catalog.models import Product
 from app.inventory.models import StockBalance
 from app.lots.models import Lot
@@ -99,6 +100,11 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
         .outerjoin(balances, balances.c.product_id == Product.id)
         .where(
             Product.is_active.is_(True),
+            # Lo que no lleva control de existencias está siempre «por
+            # debajo del mínimo» y no hay manera de reponerlo: el aviso se
+            # quedaría abierto para siempre (y mandando correo) hasta que
+            # nadie mire ninguno. Ver `app.catalog.stock`.
+            catalog_stock.tracks_stock_column().is_(True),
             Product.min_stock > 0,
             func.coalesce(balances.c.quantity, 0) < Product.min_stock,
         )

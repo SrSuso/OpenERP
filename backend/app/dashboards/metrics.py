@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Date, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.catalog import stock as catalog_stock
 from app.catalog.models import Product
 from app.core.errors import ValidationError
 from app.db.types import NUMERIC_EPSILON
@@ -229,6 +230,9 @@ async def low_stock_count(session: AsyncSession, params: LowStockCountParams) ->
         .outerjoin(balances, balances.c.product_id == Product.id)
         .where(
             Product.is_active.is_(True),
+            # Igual que en la regla de avisos: lo que no se agota no puede
+            # estar bajo mínimo. Ver `app.catalog.stock`.
+            catalog_stock.tracks_stock_column().is_(True),
             Product.min_stock > 0,
             func.coalesce(balances.c.quantity, 0) < Product.min_stock,
         )

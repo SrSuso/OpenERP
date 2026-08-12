@@ -473,6 +473,26 @@ describe('ProductsPage', () => {
     expect(await screen.findByDisplayValue('2,6')).toBeInTheDocument();
   });
 
+  it('says "sin control" instead of zero for what never runs out', async () => {
+    stubBackend({
+      products: [
+        {
+          ...baseProduct(),
+          id: 2,
+          name: 'Tomate',
+          base_unit_name: 'KG',
+          effective_tracks_stock: false,
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText('Tomate');
+
+    // Un «0» aquí se lee como «se ha terminado», y es justo lo contrario.
+    expect(screen.getByText('sin control')).toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+  });
+
   it('filters the list by base unit', async () => {
     stubBackend({
       products: [

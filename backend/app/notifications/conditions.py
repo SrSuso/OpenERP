@@ -157,12 +157,19 @@ SUBJECTS: dict[str, SubjectDef] = {
         label="Productos",
         subject_type="product",
         fields={
-            "stock": FieldDef("Stock actual", FieldType.NUMBER, "Unidades en todos los almacenes."),
+            "stock": FieldDef(
+                "Stock actual",
+                FieldType.NUMBER,
+                "Unidades en todos los almacenes. Ojo: lo que no lleva control de "
+                "existencias sale siempre a 0 —no se le cuenta nada a propósito—, "
+                "así que una regla sobre stock lo señalará todos los días.",
+            ),
             "min_stock": FieldDef("Stock mínimo", FieldType.NUMBER, "El que tenga fijado."),
             "stock_minus_min": FieldDef(
                 "Stock menos el mínimo",
                 FieldType.NUMBER,
-                'Negativo cuando está por debajo del mínimo: pon "< 0" para avisar de eso.',
+                'Negativo cuando está por debajo del mínimo: pon "< 0" para avisar de eso. '
+                "Lo que no lleva control de existencias sale siempre por debajo.",
             ),
             "cost": FieldDef("Coste", FieldType.NUMBER, "Lo que te cuesta a ti."),
             "list_price": FieldDef("PVP", FieldType.NUMBER, "Precio de venta."),

@@ -123,7 +123,13 @@ export function ProductsTable({
                 )}
               </td>
               <td className="px-4 py-2 whitespace-nowrap">
-                {stockByProduct === null ? (
+                {!product.effective_tracks_stock ? (
+                  // Un «0» aquí se lee como «se ha terminado», que es justo
+                  // lo contrario: este producto no se agota nunca.
+                  <span className="text-xs text-slate-400" title="No lleva control de existencias">
+                    sin control
+                  </span>
+                ) : stockByProduct === null ? (
                   <span className="text-slate-400">—</span>
                 ) : (
                   <>

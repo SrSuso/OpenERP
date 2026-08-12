@@ -326,3 +326,37 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/purchase-orders/1/receipts")
 
     assert response.status_code == 401
+
+
+async def test_receiving_a_product_without_stock_control_adds_no_stock(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Un producto sin control de existencias no se agota: la venta no le
+    descuenta nada. Si recibirlo sumara, el saldo sólo crecería —nada lo
+    consume nunca— y en Inventario aparecería un número enorme justo en
+    los productos que se marcaron como «no se cuentan». El pedido y la
+    recepción quedan registrados igual; lo único que no se apunta es el
+    movimiento de almacén."""
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+    order_id, line_id, product = await _ordered_order(client, quantity="40")
+    updated = await client.patch(f"/api/v1/products/{product['id']}", json={"tracks_stock": False})
+    assert updated.json()["effective_tracks_stock"] is False
+
+    response = await client.post(
+        f"/api/v1/purchase-orders/{order_id}/receipts",
+        json={
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "lines": [{"purchase_order_line_id": line_id, "quantity_packages": "40"}],
+        },
+    )
+
+    assert response.status_code == 201
+    # La recepción existe y cuenta como recibida para el pedido…
+    assert response.json()["lines"][0]["stock_movement_id"] is None
+    order = (await client.get(f"/api/v1/purchase-orders/{order_id}")).json()
+    assert order["status"] == "RECEIVED"
+    # …pero el almacén sigue sin saber nada de este producto.
+    balances = (await client.get(f"/api/v1/stock-balance?product_id={product['id']}")).json()
+    assert balances == []

@@ -137,6 +137,46 @@ async def test_low_stock_rule_does_not_flag_a_product_above_its_minimum(
     assert _incident_for(incidents, "product", product["id"]) is None
 
 
+async def test_low_stock_rule_ignores_a_product_without_stock_control(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Un producto que no se agota está siempre a 0 y siempre por debajo
+    del mínimo que tuviera puesto de antes, y no hay forma de reponerlo:
+    el aviso se quedaría abierto para siempre, mandando correo, hasta que
+    nadie mire ninguno."""
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-NOSTOCK", min_stock="10")
+    await client.patch(f"/api/v1/products/{product['id']}", json={"tracks_stock": False})
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+
+    incidents = await _evaluate(client)
+
+    assert _incident_for(incidents, "product", product["id"]) is None
+
+
+async def test_low_stock_rule_ignores_one_whose_category_turned_it_off(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """La decisión se hereda igual que el margen: si la categoría dice que
+    no se lleva stock, sus productos tampoco avisan."""
+    await login(role_name="ADMIN")
+    category_id = (
+        await client.post("/api/v1/product-categories", json={"name": "A granel (avisos)"})
+    ).json()["id"]
+    await client.patch(
+        f"/api/v1/product-categories/{category_id}",
+        json={"name": "A granel (avisos)", "tracks_stock": False},
+    )
+    product = await _create_product(
+        client, sku="NOTIF-CAT-NOSTOCK", min_stock="10", category_id=category_id
+    )
+    await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
+
+    incidents = await _evaluate(client)
+
+    assert _incident_for(incidents, "product", product["id"]) is None
+
+
 async def test_evaluating_twice_does_not_duplicate_the_incident(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
