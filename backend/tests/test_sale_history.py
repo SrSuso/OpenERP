@@ -14,11 +14,14 @@ from app.catalog.models import Product
 from app.users.models import User
 
 
-async def _default_location(client: AsyncClient) -> tuple[int, int]:
-    warehouses = (await client.get("/api/v1/warehouses")).json()
-    warehouse = next(item for item in warehouses if item["name"] == "Tienda principal")
-    locations = (await client.get(f"/api/v1/warehouses/{warehouse['id']}/locations")).json()
-    location = next(item for item in locations if item["name"] == "Almacén")
+async def _new_location(client: AsyncClient, warehouse_name: str) -> tuple[int, int]:
+    warehouse = (await client.post("/api/v1/warehouses", json={"name": warehouse_name})).json()
+    location = (
+        await client.post(
+            f"/api/v1/warehouses/{warehouse['id']}/locations",
+            json={"name": "Mostrador"},
+        )
+    ).json()
     return warehouse["id"], location["id"]
 
 
@@ -51,7 +54,7 @@ async def _create_completed_tax_included_sale(client: AsyncClient) -> dict[str, 
     ).json()
     assert product["list_price"] == "12.100000"
 
-    warehouse_id, location_id = await _default_location(client)
+    warehouse_id, location_id = await _new_location(client, "Histórico fiscal")
     stocked = await client.post(
         "/api/v1/stock-movements/adjustments",
         json={
@@ -200,7 +203,7 @@ async def test_completed_sale_keeps_product_category_cost_and_cashier_snapshots(
         json={"name": "Histórico identidad", "width_mm": 58, "show_cashier": True},
     )
     assert template.status_code == 201
-    warehouse_id, location_id = await _default_location(client)
+    warehouse_id, location_id = await _new_location(client, "Histórico identidad")
     stocked = await client.post(
         "/api/v1/stock-movements/adjustments",
         json={
