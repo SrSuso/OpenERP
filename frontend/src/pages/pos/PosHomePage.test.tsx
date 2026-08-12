@@ -40,7 +40,7 @@ const TOMATO = {
       name: 'KG',
       factor: '1.000000',
       is_base: true,
-      barcodes: [],
+      barcodes: [{ id: 200, barcode: '2000000000015' }],
     },
   ],
 };
@@ -141,6 +141,15 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
       if (url.includes('/pos-categories')) {
         return Promise.resolve(jsonResponse([POS_CATEGORY]));
       }
+      const lookup = /\/products\/barcode\/(.+)$/.exec(url);
+      if (method === 'GET' && lookup) {
+        barcodeCalls.push(decodeURIComponent(lookup[1]!));
+        const found = [MILK, TOMATO].find((product) =>
+          product.packages.some((pkg) => pkg.barcodes.some((b) => b.barcode === lookup[1])),
+        );
+        if (!found) return Promise.resolve(jsonResponse({}, { status: 404 }));
+        return Promise.resolve(jsonResponse(found));
+      }
       if (url.includes('/products')) {
         return Promise.resolve(jsonResponse([MILK, TOMATO]));
       }
@@ -172,11 +181,6 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
       if (method === 'POST' && /\/sales$/.test(url)) {
         postSalesCalls.count += 1;
         sale = emptySale(nextSaleId++);
-        return Promise.resolve(jsonResponse(sale, { status: 201 }));
-      }
-      if (method === 'POST' && /\/sales\/\d+\/lines\/by-barcode$/.test(url)) {
-        barcodeCalls.push((JSON.parse(init!.body as string) as { barcode: string }).barcode);
-        sale = saleWithMilkLine(sale?.id ?? nextSaleId);
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
       if (method === 'POST' && /\/sales\/\d+\/lines$/.test(url)) {
@@ -404,6 +408,35 @@ describe('PosHomePage', () => {
     scan('8410000000010', { terminator: 'Enter' });
 
     await waitFor(() => expect(backend.barcodeCalls).toEqual(['8410000000010']));
+  });
+
+  it('asks for the grams when what was scanned is sold by weight', async () => {
+    // Escanear no puede saltarse la regla del peso: por código entraba un
+    // kilo en silencio.
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await waitForScannerReady();
+
+    scan('2000000000015', { terminator: 'Enter' });
+
+    expect(await screen.findByRole('dialog', { name: /cantidad de tomate/i })).toBeInTheDocument();
+    expect(backend.addLineCalls).toEqual([]);
+    expect(backend.barcodeCalls).toEqual(['2000000000015']);
+  });
+
+  it('applies the typed quantity to what was scanned', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42) });
+    renderPage();
+    await waitForScannerReady();
+
+    await userEvent.click(screen.getByRole('button', { name: '3' }));
+    scan('8410000000010', { terminator: 'Enter' });
+
+    await waitFor(() =>
+      expect(backend.addLineCalls).toEqual([
+        { product_id: 1, package_id: 10, quantity_packages: '3' },
+      ]),
+    );
   });
 
   it('reads a slower scanner too, and one that sends no Enter at all', async () => {

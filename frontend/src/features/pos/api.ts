@@ -191,6 +191,23 @@ export interface SalesFilters {
   status?: 'DRAFT' | 'COMPLETED' | 'CANCELLED';
 }
 
+/** El día de la tienda, de medianoche a medianoche **en hora local**, como
+ * dos instantes exactos.
+ *
+ * Mandar la fecha a secas ("2026-08-11") tenía dos fallos. Uno, el
+ * servidor la entendía como medianoche UTC, así que en España las ventas
+ * de después de medianoche caían en el día anterior. Y dos, convertir el
+ * día siguiente con `toISOString()` lo devolvía al huso de Madrid: el
+ * "hasta" salía el mismo día que el "desde" y el rango quedaba vacío — la
+ * pantalla no enseñaba ni una venta. */
+function localDayBounds(day: string): { from: string; to: string } {
+  const [year, month, dayOfMonth] = day.split('-').map(Number) as [number, number, number];
+  return {
+    from: new Date(year, month - 1, dayOfMonth).toISOString(),
+    to: new Date(year, month - 1, dayOfMonth + 1).toISOString(),
+  };
+}
+
 /** Las ventas de un día, para la pantalla de Ventas del panel. El rango va
  * de ese día al siguiente porque el servidor lo trata cerrado por abajo y
  * abierto por arriba: así entra el día entero sin pelearse con la última
@@ -198,10 +215,9 @@ export interface SalesFilters {
 export function salesQuery(filters: SalesFilters) {
   const params = new URLSearchParams({ limit: '500' });
   if (filters.day) {
-    const next = new Date(`${filters.day}T00:00:00`);
-    next.setDate(next.getDate() + 1);
-    params.set('created_from', filters.day);
-    params.set('created_to', next.toISOString().slice(0, 10));
+    const { from, to } = localDayBounds(filters.day);
+    params.set('created_from', from);
+    params.set('created_to', to);
   }
   if (filters.status) params.set('status', filters.status);
 
@@ -212,6 +228,18 @@ export function salesQuery(filters: SalesFilters) {
         schema: z.array(saleSchema),
         signal,
       }),
+  });
+}
+
+/** El producto al que pertenece un código de barras.
+ *
+ * El TPV lo necesita *antes* de meterlo en la venta: si se vende al peso
+ * hay que preguntar los gramos en vez de colar un kilo, y si hay una
+ * cantidad tecleada hay que aplicarla. Añadirlo directamente por código
+ * (`POST .../lines/by-barcode`) se saltaba las dos cosas. */
+export async function findProductByBarcode(barcode: string): Promise<Product> {
+  return apiFetch(`${API_V1}/products/barcode/${encodeURIComponent(barcode)}`, {
+    schema: productSchema,
   });
 }
 

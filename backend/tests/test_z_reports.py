@@ -12,18 +12,47 @@ from typing import Any
 
 from httpx import AsyncClient
 
+_till_counter = 0
+
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
-    warehouses = (await client.get("/api/v1/warehouses")).json()
-    warehouse = next(w for w in warehouses if w["name"] == "Tienda principal")
-    locations = (await client.get(f"/api/v1/warehouses/{warehouse['id']}/locations")).json()
-    location = next(loc for loc in locations if loc["name"] == "Almacén")
+    """Una caja recién estrenada para cada prueba.
+
+    Una Z cuenta *todo* lo que haya en su almacén desde el cierre anterior,
+    así que usar la tienda de siempre hacía que estas pruebas dependieran
+    de lo que hubieran dejado otras — y alguna deja cosas a propósito, con
+    su propia conexión (ver `committing_sessionmaker` en conftest). Con un
+    almacén propio cada una cuenta sólo lo suyo, salga en el orden que
+    salga.
+    """
+    global _till_counter
+    _till_counter += 1
+    warehouse = (
+        await client.post("/api/v1/warehouses", json={"name": f"Caja Z {_till_counter}"})
+    ).json()
+    location = (
+        await client.post(
+            f"/api/v1/warehouses/{warehouse['id']}/locations", json={"name": "Mostrador"}
+        )
+    ).json()
     return warehouse["id"], location["id"]
 
 
-async def _sell(client: AsyncClient, *, sku: str, price: str, method: str = "CASH") -> int:
-    """Una venta cobrada entera, de un producto que se crea al vuelo."""
-    warehouse_id, location_id = await _default_location(client)
+async def _sell(
+    client: AsyncClient,
+    warehouse_id: int,
+    location_id: int,
+    *,
+    sku: str,
+    price: str,
+    method: str = "CASH",
+    tendered: str | None = None,
+) -> int:
+    """Una venta cobrada entera, de un producto que se crea al vuelo.
+
+    `tendered` es lo que entrega el cliente: si es más que el precio, la
+    diferencia vuelve como cambio y **no** se queda en el cajón.
+    """
     product = (
         await client.post(
             "/api/v1/products",
@@ -62,7 +91,7 @@ async def _sell(client: AsyncClient, *, sku: str, price: str, method: str = "CAS
     )
     checkout = await client.post(
         f"/api/v1/sales/{sale['id']}/checkout",
-        json={"payments": [{"method": method, "amount": price}]},
+        json={"payments": [{"method": method, "amount": tendered or price}]},
     )
     assert checkout.status_code == 200, checkout.text
     sale_id: int = sale["id"]
@@ -73,9 +102,9 @@ async def test_a_close_adds_up_what_was_taken(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
-    warehouse_id, _ = await _default_location(client)
-    await _sell(client, sku="Z-1", price="10.00", method="CASH")
-    await _sell(client, sku="Z-2", price="5.00", method="CARD")
+    warehouse_id, location_id = await _default_location(client)
+    await _sell(client, warehouse_id, location_id, sku="Z-1", price="10.00", method="CASH")
+    await _sell(client, warehouse_id, location_id, sku="Z-2", price="5.00", method="CARD")
 
     closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
 
@@ -95,11 +124,11 @@ async def test_the_next_close_only_covers_what_came_after(
 ) -> None:
     """Encadenando por el cierre anterior no hay huecos ni solapes."""
     await login(role_name="ADMIN")
-    warehouse_id, _ = await _default_location(client)
-    await _sell(client, sku="Z-3", price="10.00")
+    warehouse_id, location_id = await _default_location(client)
+    await _sell(client, warehouse_id, location_id, sku="Z-3", price="10.00")
     first = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
 
-    await _sell(client, sku="Z-4", price="7.00")
+    await _sell(client, warehouse_id, location_id, sku="Z-4", price="7.00")
     second = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
 
     assert second["number"] == 2
@@ -114,8 +143,8 @@ async def test_a_frozen_close_does_not_change_afterwards(
     """Es el papel con el que se cuadró el cajón esa noche: tiene que decir
     lo mismo dentro de un año."""
     await login(role_name="ADMIN")
-    warehouse_id, _ = await _default_location(client)
-    sale_id = await _sell(client, sku="Z-5", price="10.00")
+    warehouse_id, location_id = await _default_location(client)
+    sale_id = await _sell(client, warehouse_id, location_id, sku="Z-5", price="10.00")
     closed = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
 
     sale = (await client.get(f"/api/v1/sales/{sale_id}")).json()
@@ -192,8 +221,8 @@ async def test_the_preview_says_what_would_be_closed(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
-    warehouse_id, _ = await _default_location(client)
-    await _sell(client, sku="Z-6", price="4.00")
+    warehouse_id, location_id = await _default_location(client)
+    await _sell(client, warehouse_id, location_id, sku="Z-6", price="4.00")
 
     preview = (
         await client.get("/api/v1/z-reports/preview", params={"warehouse_id": warehouse_id})
@@ -212,9 +241,26 @@ async def test_a_cashier_can_close_their_own_till(
     """Cerrar la caja es parte de vender: si pidiera permisos de
     administración, nadie podría irse a su hora."""
     await login(role_name="ADMIN")
-    warehouse_id, _ = await _default_location(client)
+    warehouse_id, _location_id = await _default_location(client)
 
     await login(role_name="CASHIER")
     closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
 
     assert closed.status_code == 201
+
+
+async def test_the_change_given_back_is_not_counted_as_cash(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Un billete de 20 por una compra de 12,40 deja 12,40 en el cajón, no
+    20. Contar lo entregado descuadraría la Z justo por el importe del
+    cambio, en el papel que sirve para contar el cajón."""
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+    await _sell(client, warehouse_id, location_id, sku="Z-CHANGE", price="12.40", tendered="20.00")
+
+    report = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
+
+    assert report["cash_total"] == "12.400000"
+    # Y lo cobrado cuadra con el desglose por forma de pago.
+    assert report["gross_total"] == "12.400000"

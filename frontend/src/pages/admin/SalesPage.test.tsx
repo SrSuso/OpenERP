@@ -101,8 +101,16 @@ describe('SalesPage', () => {
     const summary = screen.getByText(/cobradas/).closest('p')!;
     expect(summary).toHaveTextContent('1 cobradas · 12,40 €');
 
-    // El día sale ya puesto, así que la lista se pide acotada de entrada.
-    expect(backend.listUrls[0]).toMatch(/created_from=\d{4}-\d{2}-\d{2}&created_to=/);
+    // El día sale ya puesto y se pide como dos instantes exactos, de
+    // medianoche a medianoche en hora local. Mandando la fecha a secas, el
+    // "hasta" acababa siendo el mismo día que el "desde" —el rango quedaba
+    // vacío— y la pantalla no enseñaba ni una venta.
+    const [from, to] = ['created_from', 'created_to'].map((param) =>
+      new URL(backend.listUrls[0]!, 'http://x').searchParams.get(param),
+    );
+    expect(from).not.toBeNull();
+    expect(new Date(to!).getTime() - new Date(from!).getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(new Date(from!).getHours()).toBe(0);
 
     const cancelled = screen.getByText('#1044').closest('tr')!;
     expect(within(cancelled).queryByRole('button')).not.toBeInTheDocument();

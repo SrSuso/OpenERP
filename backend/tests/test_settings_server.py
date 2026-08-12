@@ -106,5 +106,5 @@ async def test_secrets_stay_out_of_the_staff_wide_values(
     assert "server.bootstrap_admin_password" not in values
     assert "server.database_url" not in values
     # Lo que no es secreto sí sigue estando.
-    assert "store.name" in values
+    assert "app.display_name" in values
     assert "server.log_level" in values

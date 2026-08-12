@@ -90,28 +90,50 @@ async def _totals(
     sale_ids = [sale.id for sale in sales]
 
     gross = tax = discount = Decimal(0)
+    by_method = {method: Decimal(0) for method in PaymentMethod}
+
     if sale_ids:
+        totals_by_sale: dict[int, Decimal] = dict.fromkeys(sale_ids, Decimal(0))
         lines = (
             await session.execute(select(SaleLine).where(SaleLine.sale_id.in_(sale_ids)))
         ).scalars()
         for line in lines:
-            totals = compute_line_totals(line, prices_include_tax=prices_include_tax)
-            gross += totals.total
-            tax += totals.tax_amount
-            discount += totals.discount_amount
+            amounts = compute_line_totals(line, prices_include_tax=prices_include_tax)
+            gross += amounts.total
+            tax += amounts.tax_amount
+            discount += amounts.discount_amount
+            totals_by_sale[line.sale_id] += amounts.total
 
-    by_method = {method: Decimal(0) for method in PaymentMethod}
-    if sale_ids:
+        tendered_by_sale: dict[int, dict[PaymentMethod, Decimal]] = {
+            sale_id: {method: Decimal(0) for method in PaymentMethod} for sale_id in sale_ids
+        }
         payments = (
             await session.execute(select(Payment).where(Payment.sale_id.in_(sale_ids)))
         ).scalars()
         for payment in payments:
-            by_method[PaymentMethod(payment.method)] += payment.amount
+            tendered_by_sale[payment.sale_id][PaymentMethod(payment.method)] += payment.amount
+
+        for sale_id, tendered in tendered_by_sale.items():
+            # Lo guardado en cada pago es lo que **entregó el cliente**, y en
+            # efectivo eso suele ser de más: la vuelta sale del cajón. Un
+            # billete de 20 por una compra de 12,40 deja 12,40 en el cajón, no
+            # 20 — contar lo entregado descuadraría por el importe del cambio
+            # justo en el papel que sirve para contarlo. La vuelta sólo puede
+            # darse en efectivo (lo impone `checkout`), así que se descuenta
+            # de ahí.
+            change = max(Decimal(0), sum(tendered.values()) - totals_by_sale[sale_id])
+            for method, amount in tendered.items():
+                by_method[method] += amount - change if method is PaymentMethod.CASH else amount
 
     # Las devoluciones del turno se cuentan por cuándo se hicieron, no por
     # cuándo se vendió lo devuelto: el dinero sale del cajón hoy aunque la
-    # compra fuera de la semana pasada.
-    returns_stmt = select(Return)
+    # compra fuera de la semana pasada. Y sólo las de esta caja: con dos
+    # almacenes, sin filtrar, las dos Z se restarían las mismas.
+    returns_stmt = (
+        select(Return)
+        .join(Sale, Sale.id == Return.sale_id)
+        .where(Sale.warehouse_id == warehouse_id)
+    )
     if since is not None:
         returns_stmt = returns_stmt.where(Return.created_at > since)
     returns = list((await session.execute(returns_stmt)).scalars())

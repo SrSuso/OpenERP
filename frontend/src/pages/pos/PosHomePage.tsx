@@ -12,9 +12,9 @@ import { WeightPrompt } from '@/features/pos/WeightPrompt';
 import { useBarcodeScanner } from '@/features/pos/useBarcodeScanner';
 import {
   addLine,
-  addLineByBarcode,
   basePackage,
   cancelSale,
+  findProductByBarcode,
   checkout,
   createSale,
   draftSalesQuery,
@@ -182,12 +182,15 @@ export function PosHomePage() {
     setPendingQuantity('');
   }
 
+  // Pasa por el mismo camino que pulsar el producto: busca cuál es y deja
+  // que `pickProduct` decida. Añadirlo directamente por código se saltaba
+  // el peso (colaba un kilo) y la cantidad tecleada.
   const addBarcodeMutation = useMutation({
-    mutationFn: (code: string) => addLineByBarcode(sale!.id, code),
-    onSuccess: (updated) => {
+    mutationFn: (code: string) => findProductByBarcode(code),
+    onSuccess: (product) => {
       setLineError(null);
-      syncSale(updated);
       setBarcode('');
+      pickProduct(product);
     },
     // Con el lector, el error que sale casi siempre es que ese código no
     // está dado de alta — y hay que decirlo con el código delante, para no
