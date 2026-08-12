@@ -1,4 +1,4 @@
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { PricingSettingsPanel } from '@/features/pricing/PricingSettingsPanel';
 
 export function PricingFormulaPage() {

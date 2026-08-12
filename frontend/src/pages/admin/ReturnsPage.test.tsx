@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AuthProvider } from '@/features/auth/AuthContext';
+import { AuthProvider } from '@/features/auth/AuthProvider';
 import { type Return, type Sale } from '@/features/returns/api';
 
 import { ReturnsPage } from './ReturnsPage';

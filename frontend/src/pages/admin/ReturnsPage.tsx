@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { CreateReturnForm } from '@/features/returns/CreateReturnForm';
 import { ReturnsHistory } from '@/features/returns/ReturnsHistory';
 import { saleByNumberQuery } from '@/features/pos/api';

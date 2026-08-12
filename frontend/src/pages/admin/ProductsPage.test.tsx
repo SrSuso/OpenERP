@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AuthProvider } from '@/features/auth/AuthContext';
+import { AuthProvider } from '@/features/auth/AuthProvider';
 import {
   type PosCategory,
   type Product,

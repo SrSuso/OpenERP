@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { CreateRuleForm } from '@/features/notifications/CreateRuleForm';
 import { IncidentsTable } from '@/features/notifications/IncidentsTable';
 import { RulesTable } from '@/features/notifications/RulesTable';

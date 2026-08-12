@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { ChangePasswordForm } from '@/features/users/ChangePasswordForm';
 import { changeMyPassword } from '@/features/users/api';
 import { ApiError } from '@/lib/api';

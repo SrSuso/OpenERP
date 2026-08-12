@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { useBaseFontSize } from '@/features/settings/useBaseFontSize';
 import { useButtonColors } from '@/features/settings/useButtonColors';
 

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet } from 'react-router';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { SEVERITY_STYLES, incidentsQuery, type Severity } from '@/features/notifications/api';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 

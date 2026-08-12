@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AuthProvider } from '@/features/auth/AuthContext';
+import { AuthProvider } from '@/features/auth/AuthProvider';
 import { type Product, type ProductCategory } from '@/features/catalog/api';
 import { type StockBalance } from '@/features/inventory/api';
 import { type ProductPurchaseHistoryEntry } from '@/features/purchasing/api';

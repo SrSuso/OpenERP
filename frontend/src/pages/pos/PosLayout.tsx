@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Outlet } from 'react-router';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { warehousesQuery } from '@/features/inventory/api';
 import { CloseTillDialog } from '@/features/pos/CloseTillDialog';
 import { useLiveCatalog } from '@/features/pos/useLiveCatalog';

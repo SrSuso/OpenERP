@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { productsQuery } from '@/features/catalog/api';
 import { CreateOrderForm } from '@/features/purchasing/CreateOrderForm';
 import { OrdersTable } from '@/features/purchasing/OrdersTable';

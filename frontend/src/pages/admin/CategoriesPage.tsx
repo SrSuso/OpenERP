@@ -1,4 +1,4 @@
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { PosCategoriesPanel } from '@/features/catalog/PosCategoriesPanel';
 import { ProductCategoriesPanel } from '@/features/catalog/ProductCategoriesPanel';
 import { UnitsPanel } from '@/features/catalog/UnitsPanel';

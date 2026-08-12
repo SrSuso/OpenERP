@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { rolesQuery } from '@/features/roles/api';
 import { CreateUserForm } from '@/features/users/CreateUserForm';
 import {

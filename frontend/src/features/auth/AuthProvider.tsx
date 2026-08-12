@@ -1,25 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
+import { AuthContext, type AuthContextValue } from '@/features/auth/AuthContext';
 import {
   login as loginRequest,
   logout as logoutRequest,
   meQuery,
   type Me,
 } from '@/features/auth/api';
-
-interface AuthContextValue {
-  /** `undefined` while the initial `/auth/me` call is in flight; `null`
-   * once it has resolved to "signed out"; the user otherwise. */
-  user: Me | null | undefined;
-  isLoading: boolean;
-  hasPermission: (key: string) => boolean;
-  login: (email: string, password: string) => Promise<Me>;
-  logout: () => Promise<void>;
-  markPasswordChanged: () => void;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
  * Hydrates the signed-in user (if any) from `GET /auth/me` and exposes
@@ -58,12 +46,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

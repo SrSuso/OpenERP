@@ -1,6 +1,6 @@
 import { NavLink, Navigate, Outlet } from 'react-router';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 
 const tabClassName = ({ isActive }: { isActive: boolean }) =>
   `border-b-2 px-4 py-2 text-sm font-medium ${

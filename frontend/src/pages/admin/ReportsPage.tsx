@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { productCategoriesQuery, productsQuery } from '@/features/catalog/api';
 import { warehousesQuery } from '@/features/inventory/api';
 import { ReportResultTable } from '@/features/reports/ReportResultTable';

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { CreateSupplierForm } from '@/features/suppliers/CreateSupplierForm';
 import { EditSupplierForm } from '@/features/suppliers/EditSupplierForm';
 import { SuppliersTable } from '@/features/suppliers/SuppliersTable';

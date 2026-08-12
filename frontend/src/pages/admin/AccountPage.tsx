@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 import { SessionsPanel } from '@/features/auth/SessionsPanel';
 import { ChangePasswordForm } from '@/features/users/ChangePasswordForm';
 import { changeMyPassword } from '@/features/users/api';
