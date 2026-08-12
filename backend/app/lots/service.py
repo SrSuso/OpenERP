@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
@@ -75,6 +75,32 @@ async def create_lot(session: AsyncSession, payload: LotCreate) -> Lot:
         },
     )
     return lot
+
+
+async def get_or_create_lot(session: AsyncSession, payload: LotCreate) -> Lot:
+    """Reuse a lot or create it safely inside a larger stock operation.
+
+    The unique constraint prevents duplicates, but by itself a concurrent
+    first creation would turn the loser into an ``IntegrityError``. The
+    transaction-scoped advisory lock closes that absent-row race. Callers
+    that resolve several lots must call this in ``product_id, lot_number``
+    order.
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"lot:{payload.product_id}:{payload.lot_number}"},
+    )
+    existing = (
+        await session.execute(
+            select(Lot).where(
+                Lot.product_id == payload.product_id,
+                Lot.lot_number == payload.lot_number,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    return await create_lot(session, payload)
 
 
 async def get_lot(session: AsyncSession, lot_id: int) -> Lot:
@@ -203,6 +229,16 @@ async def execute_fefo_consumption(
     directly for manual reductions (waste, adjustments) that should still
     respect FEFO.
     """
+    # Acquire the physical rows in the same order as checkout and every
+    # other multi-row stock operation (StockBalance primary key), then plan
+    # by expiry. A waiter therefore plans from the newly committed state
+    # instead of failing on a stale allocation when a later lot is usable.
+    await inventory_service.lock_and_get_available_quantity(
+        session,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+    )
     planned = await plan_fefo(
         session,
         product_id=product_id,

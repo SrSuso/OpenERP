@@ -6,9 +6,9 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import CurrentUser, SessionDep
 from app.purchasing import service
 from app.purchasing.models import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.purchasing.schemas import (
@@ -134,8 +134,23 @@ async def remove_line(order_id: int, line_id: int, session: SessionDep) -> Purch
     response_model=PurchaseOrderRead,
     dependencies=[_require_manage],
 )
-async def place_order(order_id: int, session: SessionDep) -> PurchaseOrderRead:
-    return _order_to_read(await service.place_order(session, order_id))
+async def place_order(
+    order_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=1, max_length=200),
+    ] = None,
+) -> PurchaseOrderRead:
+    return _order_to_read(
+        await service.place_order(
+            session,
+            order_id,
+            idempotency_key=idempotency_key,
+            actor_user_id=current_user.id,
+        )
+    )
 
 
 @router.post(
@@ -203,9 +218,24 @@ def _receipt_to_read(receipt: GoodsReceipt) -> GoodsReceiptRead:
     dependencies=[_require_receiving_manage],
 )
 async def create_goods_receipt(
-    order_id: int, payload: GoodsReceiptCreate, session: SessionDep
+    order_id: int,
+    payload: GoodsReceiptCreate,
+    session: SessionDep,
+    current_user: CurrentUser,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=1, max_length=200),
+    ] = None,
 ) -> GoodsReceiptRead:
-    return _receipt_to_read(await service.create_goods_receipt(session, order_id, payload))
+    return _receipt_to_read(
+        await service.create_goods_receipt(
+            session,
+            order_id,
+            payload,
+            idempotency_key=idempotency_key,
+            actor_user_id=current_user.id,
+        )
+    )
 
 
 @router.get(
