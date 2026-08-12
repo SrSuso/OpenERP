@@ -89,10 +89,12 @@ export interface ReturnLineInput {
 export async function createReturn(
   saleId: number,
   payload: { notes: string; lines: ReturnLineInput[] },
+  idempotencyKey: string,
 ): Promise<Return> {
   return apiFetch(`${API_V1}/sales/${saleId}/returns`, {
     method: 'POST',
     schema: returnSchema,
     body: payload,
+    headers: { 'Idempotency-Key': idempotencyKey },
   });
 }

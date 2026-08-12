@@ -23,7 +23,7 @@ const ME = {
   permissions: ['admin.access', 'return.read', 'return.manage'],
 };
 
-function stubBackend() {
+function stubBackend(options: { failReturnOnce?: boolean } = {}) {
   const sale: Sale = {
     id: 42,
     status: 'COMPLETED',
@@ -49,6 +49,8 @@ function stubBackend() {
   };
   let returns: Return[] = [];
   const createCalls: Record<string, unknown>[] = [];
+  const returnKeys: string[] = [];
+  let returnFailures = options.failReturnOnce ? 1 : 0;
 
   vi.stubGlobal(
     'fetch',
@@ -104,6 +106,11 @@ function stubBackend() {
         );
       }
       if (method === 'POST' && /\/sales\/42\/returns$/.test(url)) {
+        returnKeys.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
+        if (returnFailures > 0) {
+          returnFailures -= 1;
+          return Promise.reject(new TypeError('Network request failed'));
+        }
         const b = body();
         createCalls.push(b);
         const lines = b['lines'] as {
@@ -150,7 +157,7 @@ function stubBackend() {
     }),
   );
 
-  return { createCalls };
+  return { createCalls, returnKeys };
 }
 
 function renderPage() {
@@ -166,7 +173,7 @@ function renderPage() {
 
 describe('ReturnsPage', () => {
   it('looks up a completed sale and processes a partial, refund-and-restock return', async () => {
-    const backend = stubBackend();
+    const backend = stubBackend({ failReturnOnce: true });
     renderPage();
 
     await userEvent.type(screen.getByLabelText('Nº de venta'), '7');
@@ -183,8 +190,12 @@ describe('ReturnsPage', () => {
 
     await screen.findByText(/reembolso.*repone stock/);
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+    await screen.findByText('No se ha podido registrar la devolución.');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
 
     expect(await screen.findAllByText(/reembolso 4,00/)).not.toHaveLength(0);
+    expect(backend.returnKeys[0]).not.toBe('');
+    expect(backend.returnKeys[1]).toBe(backend.returnKeys[0]);
     expect(backend.createCalls).toEqual([
       {
         notes: '',

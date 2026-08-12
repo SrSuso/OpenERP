@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import { CreateReturnForm } from '@/features/returns/CreateReturnForm';
@@ -23,6 +23,7 @@ export function ReturnsPage() {
   //: carrito cancelado no gasta número, así que los dos ya no coinciden.
   const [saleNumber, setSaleNumber] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const returnAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const found = useQuery(saleByNumberQuery(saleNumber));
   const saleId = found.data?.id ?? null;
@@ -30,9 +31,15 @@ export function ReturnsPage() {
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
-    mutationFn: (payload: { notes: string; lines: ReturnLineInput[] }) =>
-      createReturn(saleId!, payload),
+    mutationFn: ({
+      payload,
+      key,
+    }: {
+      payload: { notes: string; lines: ReturnLineInput[] };
+      key: string;
+    }) => createReturn(saleId!, payload, key),
     onSuccess: () => {
+      returnAttemptRef.current = null;
       void queryClient.invalidateQueries({ queryKey: ['returns', 'sale', saleId] });
       void queryClient.invalidateQueries({ queryKey: ['returns', 'by-sale', saleId] });
       setCreateError(null);
@@ -46,6 +53,7 @@ export function ReturnsPage() {
   function search() {
     const number = Number(saleNumberInput);
     if (!Number.isInteger(number) || number <= 0) return;
+    returnAttemptRef.current = null;
     setSaleNumber(number);
   }
 
@@ -103,7 +111,16 @@ export function ReturnsPage() {
                   sale={sale.data}
                   isPending={createMutation.isPending}
                   submitError={createError}
-                  onSubmit={(payload) => createMutation.mutate(payload)}
+                  onSubmit={(payload) => {
+                    const fingerprint = JSON.stringify(payload);
+                    const existing = returnAttemptRef.current;
+                    const attempt =
+                      existing?.fingerprint === fingerprint
+                        ? existing
+                        : { fingerprint, key: crypto.randomUUID() };
+                    returnAttemptRef.current = attempt;
+                    createMutation.mutate({ payload, key: attempt.key });
+                  }}
                 />
               )}
               <h5 className="mb-1 text-xs font-semibold uppercase text-slate-500">

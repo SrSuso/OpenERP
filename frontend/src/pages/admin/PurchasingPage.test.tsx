@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -30,7 +30,7 @@ function orderTotal(order: PurchaseOrder): string {
   return order.lines.reduce((sum, line) => sum + Number(line.total), 0).toFixed(6);
 }
 
-function stubBackend() {
+function stubBackend(options: { failPlaceOnce?: boolean; failReceiptOnce?: boolean } = {}) {
   const supplier: Supplier = {
     id: 1,
     name: 'Distribuciones Ejemplo SL',
@@ -77,6 +77,10 @@ function stubBackend() {
   let nextOrderId = 1;
   let nextLineId = 1;
   const receipts: Record<number, unknown[]> = {};
+  const placeKeys: string[] = [];
+  const receiptKeys: string[] = [];
+  let placeFailures = options.failPlaceOnce ? 1 : 0;
+  let receiptFailures = options.failReceiptOnce ? 1 : 0;
 
   vi.stubGlobal(
     'fetch',
@@ -147,6 +151,11 @@ function stubBackend() {
       }
       const placeMatch = /\/purchase-orders\/(\d+)\/place$/.exec(url);
       if (method === 'POST' && placeMatch) {
+        placeKeys.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
+        if (placeFailures > 0) {
+          placeFailures -= 1;
+          return Promise.reject(new TypeError('Network request failed'));
+        }
         const order = orders.find((o) => o.id === Number(placeMatch[1]))!;
         order.status = 'ORDERED';
         order.ordered_at = new Date().toISOString();
@@ -157,6 +166,11 @@ function stubBackend() {
         return Promise.resolve(jsonResponse(receipts[Number(receiptsMatch[1])] ?? []));
       }
       if (method === 'POST' && receiptsMatch) {
+        receiptKeys.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
+        if (receiptFailures > 0) {
+          receiptFailures -= 1;
+          return Promise.reject(new TypeError('Network request failed'));
+        }
         const order = orders.find((o) => o.id === Number(receiptsMatch[1]))!;
         const b = body();
         const lines = b['lines'] as {
@@ -202,7 +216,7 @@ function stubBackend() {
     }),
   );
 
-  return { orders };
+  return { orders, placeKeys, receiptKeys };
 }
 
 function renderPage() {
@@ -218,7 +232,7 @@ function renderPage() {
 
 describe('PurchasingPage', () => {
   it('creates a purchase order, adds a line, places it and receives it', async () => {
-    stubBackend();
+    const backend = stubBackend({ failPlaceOnce: true, failReceiptOnce: true });
     renderPage();
 
     await screen.findByText('No hay pedidos de compra todavía.');
@@ -259,7 +273,11 @@ describe('PurchasingPage', () => {
 
     // Realizar pedido
     await userEvent.click(screen.getByRole('button', { name: 'Realizar pedido' }));
+    await waitFor(() => expect(backend.placeKeys).toHaveLength(1));
+    await userEvent.click(screen.getByRole('button', { name: 'Realizar pedido' }));
     await screen.findByText('Estado: Realizado');
+    expect(backend.placeKeys[0]).not.toBe('');
+    expect(backend.placeKeys[1]).toBe(backend.placeKeys[0]);
 
     // Registrar recepción
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
@@ -269,8 +287,12 @@ describe('PurchasingPage', () => {
     await userEvent.type(screen.getByLabelText('Cantidad'), '2');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir a la recepción' }));
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
+    await screen.findByText('No se ha podido registrar la recepción.');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
 
     expect(await screen.findByText('Estado: Recibido')).toBeInTheDocument();
+    expect(backend.receiptKeys[0]).not.toBe('');
+    expect(backend.receiptKeys[1]).toBe(backend.receiptKeys[0]);
     // Aparece dos veces: una en la tabla de líneas del pedido, otra en la
     // recepción recién registrada.
     expect(screen.getAllByText('P000010')).toHaveLength(2);

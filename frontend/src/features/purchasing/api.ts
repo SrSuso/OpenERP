@@ -97,10 +97,11 @@ export async function removeOrderLine(orderId: number, lineId: number): Promise<
   });
 }
 
-export async function placeOrder(orderId: number): Promise<PurchaseOrder> {
+export async function placeOrder(orderId: number, idempotencyKey: string): Promise<PurchaseOrder> {
   return apiFetch(`${API_V1}/purchase-orders/${orderId}/place`, {
     method: 'POST',
     schema: purchaseOrderSchema,
+    headers: { 'Idempotency-Key': idempotencyKey },
   });
 }
 
@@ -188,10 +189,12 @@ export async function createGoodsReceipt(
     notes: string;
     lines: GoodsReceiptLineInput[];
   },
+  idempotencyKey: string,
 ): Promise<GoodsReceipt> {
   return apiFetch(`${API_V1}/purchase-orders/${orderId}/receipts`, {
     method: 'POST',
     schema: goodsReceiptSchema,
     body: payload,
+    headers: { 'Idempotency-Key': idempotencyKey },
   });
 }

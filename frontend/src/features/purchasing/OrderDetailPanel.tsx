@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { type Product } from '@/features/catalog/api';
 import { AddOrderLineForm } from '@/features/purchasing/AddOrderLineForm';
@@ -41,6 +41,8 @@ export function OrderDetailPanel({
 }: OrderDetailPanelProps) {
   const [showReceiptForm, setShowReceiptForm] = useState(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
+  const placeAttemptRef = useRef<string | null>(null);
+  const receiptAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const queryClient = useQueryClient();
 
   const invalidateOrders = () =>
@@ -59,23 +61,37 @@ export function OrderDetailPanel({
   });
 
   const placeMutation = useMutation({
-    mutationFn: () => placeOrder(order.id),
-    onSuccess: invalidateOrders,
+    mutationFn: (key: string) => placeOrder(order.id, key),
+    onSuccess: () => {
+      placeAttemptRef.current = null;
+      invalidateOrders();
+    },
   });
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelOrder(order.id),
-    onSuccess: invalidateOrders,
+    onSuccess: () => {
+      placeAttemptRef.current = null;
+      receiptAttemptRef.current = null;
+      invalidateOrders();
+    },
   });
 
   const receiptMutation = useMutation({
-    mutationFn: (payload: {
-      warehouse_id: number;
-      location_id: number;
-      notes: string;
-      lines: GoodsReceiptLineInput[];
-    }) => createGoodsReceipt(order.id, payload),
+    mutationFn: ({
+      payload,
+      key,
+    }: {
+      payload: {
+        warehouse_id: number;
+        location_id: number;
+        notes: string;
+        lines: GoodsReceiptLineInput[];
+      };
+      key: string;
+    }) => createGoodsReceipt(order.id, payload, key),
     onSuccess: () => {
+      receiptAttemptRef.current = null;
       invalidateOrders();
       invalidateReceipts();
       setShowReceiptForm(false);
@@ -99,7 +115,11 @@ export function OrderDetailPanel({
         {canManagePurchase && order.status === 'DRAFT' && (
           <button
             type="button"
-            onClick={() => placeMutation.mutate()}
+            onClick={() => {
+              const key = placeAttemptRef.current ?? crypto.randomUUID();
+              placeAttemptRef.current = key;
+              placeMutation.mutate(key);
+            }}
             disabled={placeMutation.isPending || order.lines.length === 0}
             className="rounded bg-brand-700 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
           >
@@ -151,10 +171,20 @@ export function OrderDetailPanel({
             isPending={receiptMutation.isPending}
             submitError={receiptError}
             onCancel={() => {
+              receiptAttemptRef.current = null;
               setShowReceiptForm(false);
               setReceiptError(null);
             }}
-            onSubmit={(payload) => receiptMutation.mutate(payload)}
+            onSubmit={(payload) => {
+              const fingerprint = JSON.stringify(payload);
+              const existing = receiptAttemptRef.current;
+              const attempt =
+                existing?.fingerprint === fingerprint
+                  ? existing
+                  : { fingerprint, key: crypto.randomUUID() };
+              receiptAttemptRef.current = attempt;
+              receiptMutation.mutate({ payload, key: attempt.key });
+            }}
           />
         </div>
       )}
