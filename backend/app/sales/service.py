@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -55,6 +55,29 @@ class LineTotals:
     discount_amount: Decimal
     tax_amount: Decimal
     total: Decimal
+
+
+#: Lo que de verdad se puede cobrar: euros y céntimos. Los importes se
+#: calculan y se guardan con seis decimales (`NUMERIC(18,6)`, regla 8) para
+#: que un IVA o un descuento no pierdan precisión por el camino, pero lo
+#: que se le pide al cliente y lo que entra en el cajón no baja del
+#: céntimo.
+CENTS = Decimal("0.01")
+
+
+def payable(total: Decimal) -> Decimal:
+    """El total redondeado a céntimos: lo que se cobra y lo que se imprime.
+
+    Sin esto, una venta de 1,231560 € se enseñaba en el TPV como 1,23 —que
+    es lo único que se puede teclear y lo único que se puede dar— y luego
+    el cobro la rechazaba por no llegar a 1,23156. No había forma de cobrar
+    esa venta.
+
+    Se devuelve en la escala de siempre (seis decimales, con ceros detrás):
+    el valor ya es exacto en céntimos, y así todos los importes de la API
+    se siguen escribiendo igual.
+    """
+    return total.quantize(CENTS, rounding=ROUND_HALF_UP).quantize(NUMERIC_EPSILON)
 
 
 def _q(value: Decimal) -> Decimal:
@@ -438,7 +461,7 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
         raise ValidationError("Cannot check out a sale with no lines.")
 
     prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
-    sale_total = _q(
+    sale_total = payable(
         sum(
             (
                 compute_line_totals(line, prices_include_tax=prices_include_tax).total

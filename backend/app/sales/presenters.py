@@ -7,6 +7,7 @@ from decimal import Decimal
 from app.sales import service
 from app.sales.models import Payment, Sale, SaleLine
 from app.sales.schemas import PaymentRead, SaleLineRead, SaleRead
+from app.sales.service import payable
 
 
 def sale_line_to_read(line: SaleLine, *, prices_include_tax: bool) -> SaleLineRead:
@@ -40,7 +41,10 @@ def payment_to_read(payment: Payment) -> PaymentRead:
 
 def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
     lines = [sale_line_to_read(line, prices_include_tax=prices_include_tax) for line in sale.lines]
-    total = sum((line.total for line in lines), start=Decimal(0))
+    # A céntimos, que es lo que se cobra: el TPV enseña este total, el
+    # cajero teclea eso mismo y el cobro lo compara contra lo mismo (ver
+    # `app.sales.service.payable`).
+    total = payable(sum((line.total for line in lines), start=Decimal(0)))
     tendered = sum((p.amount for p in sale.payments), start=Decimal(0))
     return SaleRead(
         id=sale.id,
@@ -55,5 +59,8 @@ def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
         lines=lines,
         total=total,
         payments=[payment_to_read(p) for p in sale.payments],
-        change_due=max(Decimal(0), tendered - total),
+        # También a céntimos, y con la misma escala que el resto: es
+        # dinero que se devuelve en mano, y sin esto un "sin cambio" salía
+        # como "0" mientras todo lo demás lleva seis decimales.
+        change_due=payable(max(Decimal(0), tendered - total)),
     )

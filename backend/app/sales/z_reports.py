@@ -32,7 +32,7 @@ from app.db.types import NUMERIC_EPSILON
 from app.pricing.models import PricingSettings
 from app.returns.models import Return, ReturnLine
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus, ZReport
-from app.sales.service import compute_line_totals
+from app.sales.service import compute_line_totals, payable
 
 
 def _q(value: Decimal) -> Decimal:
@@ -99,10 +99,15 @@ async def _totals(
         ).scalars()
         for line in lines:
             amounts = compute_line_totals(line, prices_include_tax=prices_include_tax)
-            gross += amounts.total
             tax += amounts.tax_amount
             discount += amounts.discount_amount
             totals_by_sale[line.sale_id] += amounts.total
+
+        # Redondeado por venta, no al final: es lo que se cobró en cada una
+        # (ver `payable`), y lo que tiene que cuadrar con el cajón.
+        for sale_id, sale_total in totals_by_sale.items():
+            totals_by_sale[sale_id] = payable(sale_total)
+        gross = sum(totals_by_sale.values(), Decimal(0))
 
         tendered_by_sale: dict[int, dict[PaymentMethod, Decimal]] = {
             sale_id: {method: Decimal(0) for method in PaymentMethod} for sale_id in sale_ids

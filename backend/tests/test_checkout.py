@@ -572,3 +572,35 @@ async def test_concurrent_checkouts_never_oversell(
             session, product_id=product_id, warehouse_id=warehouse_id
         )
     assert balances[0].quantity == Decimal(0)
+
+
+async def test_a_total_with_more_than_two_decimals_can_actually_be_charged(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Una venta de 1,231560 € se enseña en la caja como 1,23 —que es lo
+    único que se puede teclear y lo único que se puede dar— así que 1,23
+    tiene que bastar para cobrarla. Antes el cobro la rechazaba por no
+    llegar a 1,23156 y no había forma humana de cobrar esa venta."""
+    await login(role_name="ADMIN")
+    product = await _create_product(
+        client, sku="CHECKOUT-ROUNDING", list_price="1.23156", tax_rate="0"
+    )
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="5",
+    )
+    sale = await _ready_sale(client, product=product, quantity="1")
+
+    assert sale["total"] == "1.230000"
+
+    charged = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": "1.23"}]},
+    )
+
+    assert charged.status_code == 200
+    assert charged.json()["change_due"] == "0.000000"
