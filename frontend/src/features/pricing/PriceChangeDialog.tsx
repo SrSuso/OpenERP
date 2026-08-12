@@ -10,6 +10,9 @@ interface PriceChangeDialogProps {
   unitName: string;
   /** Cuánto hay en almacén, o `null` si todavía no se sabe. */
   stock: string | null;
+  /** Una línea más de explicación, cuando cambiar esto arrastra algo que
+   * no se ve en el propio aviso (cambiar el coste recalcula el PVP). */
+  note?: string;
   onConfirm: () => void;
   onCancel: () => void;
   isPending: boolean;
@@ -39,6 +42,7 @@ export function PriceChangeDialog({
   next,
   unitName,
   stock,
+  note,
   onConfirm,
   onCancel,
   isPending,
@@ -69,6 +73,8 @@ export function PriceChangeDialog({
             {change && <span className="ml-2 font-normal text-amber-700">{change}</span>}
           </dd>
         </dl>
+
+        {note && <p className="mt-4 text-sm text-slate-600">{note}</p>}
 
         <p className="mt-4 text-sm text-slate-600">
           {stock === null

@@ -696,3 +696,36 @@ async def test_an_unsafe_category_formula_is_rejected_when_saved(
     )
 
     assert response.status_code == 422
+
+
+async def test_changing_the_cost_can_recompute_the_price_from_the_margin(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Repasar los costes del día en la lista de productos: se teclea lo
+    que ha costado y el PVP sale solo con el margen que tenga puesto, sea
+    suyo o de su categoría. Sin pedirlo, un precio manual se respeta."""
+    await login(role_name="ADMIN")
+    category_id = await _create_category(client, "Fruta")
+    await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing", json={"margin_rate": "50"}
+    )
+    product_id = (
+        await client.post(
+            "/api/v1/products", json=_product_payload(category_id=category_id, cost="10")
+        )
+    ).json()["id"]
+    # Precio puesto a mano: a partir de aquí el producto no tiene fórmula.
+    await client.put(
+        f"/api/v1/products/{product_id}/pricing/manual-price", json={"list_price": "9"}
+    )
+
+    # Cambiar el coste a secas no toca ese precio (comportamiento de siempre).
+    quiet = await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "20"})
+    assert Decimal(quiet.json()["list_price"]) == Decimal("9.000000")
+
+    # Pidiéndolo, sí: 20 * 1,5 = 30, con el margen heredado de la categoría.
+    loud = await client.patch(
+        f"/api/v1/products/{product_id}/pricing", json={"cost": "20", "recompute_price": True}
+    )
+    assert loud.status_code == 200
+    assert Decimal(loud.json()["list_price"]) == Decimal("30.000000")

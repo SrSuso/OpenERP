@@ -203,6 +203,14 @@ function stubBackend(options: { products?: Product[] } = {}) {
           const ids = body['tax_ids'] as number[];
           product.taxes = TAXES.filter((t) => ids.includes(t.id));
         }
+        if ('cost' in body) {
+          product.cost = `${Number(body['cost']).toFixed(6)}`;
+          // Como el backend con `recompute_price`: el PVP sale del margen
+          // heredado de "Bebidas" (30%), no se teclea.
+          if (body['recompute_price'] === true) {
+            product.list_price = `${(Number(body['cost']) * 1.3).toFixed(6)}`;
+          }
+        }
         return Promise.resolve(jsonResponse(product));
       }
 
@@ -435,6 +443,34 @@ describe('ProductsPage', () => {
     expect(await screen.findByText('Guardado')).toBeInTheDocument();
   });
 
+  it('typing a new cost in the row recomputes the price from the margin', async () => {
+    const backend = stubBackend({
+      products: [
+        { ...baseProduct(), id: 2, name: 'Tomate', base_unit_name: 'KG', cost: '1.000000' },
+      ],
+    });
+    renderPage();
+    await screen.findByText('Tomate');
+
+    const cost = screen.getByLabelText('Coste de Tomate');
+    await userEvent.clear(cost);
+    await userEvent.type(cost, '2{Enter}');
+
+    // Avisa igual que con el PVP: lo que ya está en la estantería pasa a
+    // venderse al precio nuevo.
+    const dialog = await screen.findByRole('dialog', { name: /cambiar el coste de tomate/i });
+    expect(backend.pricingCalls).toEqual([]);
+    expect(within(dialog).getByText(/El PVP se recalculará solo/)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cambiar' }));
+
+    // Y no se toca el PVP a mano: se pide que lo recalcule el margen.
+    expect(backend.pricingCalls).toEqual([{ id: 2, body: { cost: '2', recompute_price: true } }]);
+    expect(backend.manualPriceCalls).toEqual([]);
+    // 2 € de coste con el 30% de "Bebidas" = 2,60 € en la propia fila.
+    expect(await screen.findByDisplayValue('2,6')).toBeInTheDocument();
+  });
+
   it('filters the list by base unit', async () => {
     stubBackend({
       products: [
@@ -448,7 +484,8 @@ describe('ProductsPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Unidad'), 'KG');
 
     expect(screen.queryByText('Agua 1L')).not.toBeInTheDocument();
-    expect(screen.getByText('€/KG')).toBeInTheDocument();
+    // Coste y PVP, los dos tecleables en la fila y los dos en €/KG.
+    expect(screen.getAllByText('€/KG')).toHaveLength(2);
   });
 
   it('does not save a price that has not really changed', async () => {

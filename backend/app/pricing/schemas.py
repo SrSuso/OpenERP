@@ -44,6 +44,12 @@ class SetPricingInputsRequest(BaseModel):
     """
 
     cost: Decimal | None = Field(default=None, ge=0)
+    #: «He cambiado el coste, recalcúlame el PVP con el margen que tenga».
+    #: Sin esto un producto de precio manual conserva su precio pase lo que
+    #: pase con el coste, que es lo correcto por defecto (ver arriba) pero
+    #: no lo que se quiere al repasar los costes del día en la lista de
+    #: productos: allí la gracia es justo que el precio salga solo.
+    recompute_price: bool = False
     tax_rate: Decimal | None = Field(default=None, ge=0)
     surcharge_rate: Decimal | None = Field(default=None, ge=0)
     margin_rate: Decimal | None = Field(default=None, ge=0)

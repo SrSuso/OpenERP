@@ -123,6 +123,29 @@ export function ProductsPage() {
     },
   });
 
+  // Lo mismo con el coste, que se apunta al recibir el género: aquí el PVP
+  // no se teclea, sale solo del margen del producto (o del de su
+  // categoría) — `recompute_price`. Por eso son dos mutaciones y no una:
+  // el PVP se fija tal cual y el coste recalcula.
+  const [savedCostId, setSavedCostId] = useState<number | null>(null);
+  const [proposedCost, setProposedCost] = useState<{ product: Product; cost: string } | null>(null);
+
+  const costMutation = useMutation({
+    mutationFn: ({ id, cost }: { id: number; cost: string }) =>
+      setProductPricing(id, { cost, recompute_price: true }),
+    onSuccess: (_product, { id }) => {
+      invalidateProducts();
+      setSavedCostId(id);
+      setPriceError(null);
+      setProposedCost(null);
+    },
+    onError: () => {
+      setSavedCostId(null);
+      setPriceError('No se ha podido guardar el coste.');
+      setProposedCost(null);
+    },
+  });
+
   // El total de stock por producto vive en inventario y tiene su propio
   // permiso: quien no pueda verlo sigue viendo la lista, con la columna en
   // blanco.
@@ -261,6 +284,25 @@ export function ProductsPage() {
         />
       )}
 
+      {proposedCost !== null && (
+        <PriceChangeDialog
+          productName={proposedCost.product.name}
+          what="coste"
+          current={proposedCost.product.cost}
+          next={proposedCost.cost}
+          unitName={proposedCost.product.base_unit_name}
+          note="El PVP se recalculará solo, con el margen de este producto o el de su categoría."
+          stock={
+            stockByProduct === null ? null : (stockByProduct.get(proposedCost.product.id) ?? '0')
+          }
+          isPending={costMutation.isPending}
+          onCancel={() => setProposedCost(null)}
+          onConfirm={() =>
+            costMutation.mutate({ id: proposedCost.product.id, cost: proposedCost.cost })
+          }
+        />
+      )}
+
       {products.data && (
         <ProductsTable
           products={visibleProducts}
@@ -278,6 +320,9 @@ export function ProductsPage() {
           onSetPrice={(product, listPrice) => setProposedPrice({ product, listPrice })}
           savingPriceId={priceMutation.isPending ? priceMutation.variables.id : null}
           savedPriceId={savedPriceId}
+          onSetCost={(product, cost) => setProposedCost({ product, cost })}
+          savingCostId={costMutation.isPending ? costMutation.variables.id : null}
+          savedCostId={savedCostId}
         />
       )}
     </div>

@@ -28,6 +28,11 @@ interface ProductsTableProps {
   onSetPrice: (product: Product, listPrice: string) => void;
   savingPriceId: number | null;
   savedPriceId: number | null;
+  /** Lo mismo con el coste: se teclea lo que ha costado y el PVP se
+   * recalcula solo con el margen del producto (o el de su categoría). */
+  onSetCost: (product: Product, cost: string) => void;
+  savingCostId: number | null;
+  savedCostId: number | null;
 }
 
 /** El nombre de cada producto es el enlace a su ficha
@@ -52,6 +57,9 @@ export function ProductsTable({
   onSetPrice,
   savingPriceId,
   savedPriceId,
+  onSetCost,
+  savingCostId,
+  savedCostId,
 }: ProductsTableProps) {
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -62,6 +70,7 @@ export function ProductsTable({
             <th className="px-4 py-2 font-medium">Categoría</th>
             <th className="px-4 py-2 font-medium">Categoría POS</th>
             <th className="px-4 py-2 font-medium">Stock</th>
+            <th className="px-4 py-2 font-medium">Coste (por unidad base)</th>
             <th className="px-4 py-2 font-medium">Precio (por unidad base)</th>
             <th className="px-4 py-2 font-medium">Estado</th>
           </tr>
@@ -125,11 +134,33 @@ export function ProductsTable({
               <td className="px-4 py-2">
                 {canManagePricing &&
                 quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (
-                  <PriceCell
+                  <MoneyCell
+                    // Se remonta cuando el servidor devuelve otro coste.
+                    key={product.cost}
+                    product={product}
+                    label={`Coste de ${product.name}`}
+                    value={product.cost}
+                    onSave={onSetCost}
+                    isSaving={savingCostId === product.id}
+                    isSaved={savedCostId === product.id}
+                  />
+                ) : (
+                  <>
+                    {formatMoney(product.cost)}
+                    <span className="ml-1 text-xs text-slate-400">/{product.base_unit_name}</span>
+                  </>
+                )}
+              </td>
+              <td className="px-4 py-2">
+                {canManagePricing &&
+                quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (
+                  <MoneyCell
                     // Se remonta cuando el servidor devuelve otro precio, así
                     // el recuadro parte siempre de lo que hay guardado.
                     key={product.list_price}
                     product={product}
+                    label={`Precio de ${product.name}`}
+                    value={product.list_price}
                     onSave={onSetPrice}
                     isSaving={savingPriceId === product.id}
                     isSaved={savedPriceId === product.id}
@@ -160,33 +191,42 @@ export function ProductsTable({
   );
 }
 
-/** El PVP tecleado en la propia fila, para poder repasar los precios del
- * día de un tirón (la fruta y la carne cambian a diario): Intro o salir del
- * recuadro guarda, Escape deshace. Fija el precio tal cual, sin pasar por el
- * margen ni la fórmula —eso es lo que hace `setManualPrice`—; para calcularlo
- * a partir del coste está la ficha del producto. */
-function PriceCell({
+/** Un importe tecleado en la propia fila, para repasar los precios del día
+ * de un tirón (la fruta y la carne cambian a diario): Intro o salir del
+ * recuadro guarda, Escape deshace.
+ *
+ * Sirve para las dos columnas que se editan aquí. El PVP se fija tal cual,
+ * sin pasar por el margen ni la fórmula (eso es `setManualPrice`); el coste,
+ * al revés, recalcula el PVP con el margen del producto o el de su
+ * categoría — que es justo lo que se quiere al apuntar lo que ha costado
+ * el género de hoy. Quién hace qué lo decide la página, aquí sólo se
+ * teclea. */
+function MoneyCell({
   product,
+  label,
+  value,
   onSave,
   isSaving,
   isSaved,
 }: {
   product: Product;
-  onSave: (product: Product, listPrice: string) => void;
+  label: string;
+  value: string;
+  onSave: (product: Product, value: string) => void;
   isSaving: boolean;
   isSaved: boolean;
 }) {
-  const saved = decimalInputValue(product.list_price);
+  const saved = decimalInputValue(value);
   const [draft, setDraft] = useState(saved);
 
   const parsed = decimalString({ min: 0 }).safeParse(draft);
   const isValid = parsed.success;
 
   function save() {
-    if (!parsed.success || parsed.data === product.list_price) return;
+    if (!parsed.success || parsed.data === value) return;
     // Mismo número escrito de otra forma ("1,68" frente a "1.680000") no es
     // un cambio: proponerlo sólo sacaría un aviso para nada.
-    if (Number(parsed.data) === Number(product.list_price)) return;
+    if (Number(parsed.data) === Number(value)) return;
     onSave(product, parsed.data);
   }
 
@@ -195,7 +235,7 @@ function PriceCell({
       <input
         type="text"
         inputMode="decimal"
-        aria-label={`Precio de ${product.name}`}
+        aria-label={label}
         value={draft}
         disabled={isSaving}
         onChange={(event) => setDraft(event.target.value)}

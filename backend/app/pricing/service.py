@@ -250,7 +250,7 @@ async def set_pricing_inputs(
         product.taxes = await _taxes_by_id(session, payload.tax_ids or [])
         touched_margin_or_tax = True
 
-    if product.price_formula or touched_margin_or_tax:
+    if product.price_formula or touched_margin_or_tax or payload.recompute_price:
         _recompute_with(product, await get_settings(session))
 
     await session.flush()
