@@ -80,6 +80,12 @@ async def claim(
     return IdempotencyClaim(record=record, is_new=False)
 
 
-async def complete(session: AsyncSession, record: IdempotencyRecord) -> None:
+async def complete(
+    session: AsyncSession,
+    record: IdempotencyRecord,
+    *,
+    result_resource_id: int | None = None,
+) -> None:
+    record.result_resource_id = result_resource_id
     record.completed_at = datetime.now(UTC)
     await session.flush()

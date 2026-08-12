@@ -30,6 +30,11 @@ class IdempotencyRecord(IntPrimaryKeyMixin, Base):
     idempotency_key: Mapped[str] = mapped_column(String(200))
     request_fingerprint: Mapped[str] = mapped_column(String(64))
     resource_id: Mapped[int] = mapped_column(BigInteger)
+    #: Identifier returned by operations whose result is not the aggregate
+    #: named by ``resource_id`` (for example, a receipt created for a
+    #: purchase order).  Checkout and state transitions return their root
+    #: aggregate and therefore leave this null.
+    result_resource_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     actor_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

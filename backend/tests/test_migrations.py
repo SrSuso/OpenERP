@@ -157,6 +157,40 @@ def test_checkout_idempotency_migration_is_reversible(
     engine.dispose()
 
 
+def test_idempotency_result_resource_migration_is_reversible(
+    fresh_database: Callable[[], str],
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "51a2d7c9e4b6")
+    engine = _sync_engine(url)
+
+    run_alembic(url, "upgrade", "8c4e2a7f1b93")
+    with engine.begin() as connection:
+        columns = set(
+            connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'idempotency_records'"
+                )
+            ).scalars()
+        )
+    assert "result_resource_id" in columns
+
+    run_alembic(url, "downgrade", "51a2d7c9e4b6")
+    with engine.begin() as connection:
+        columns = set(
+            connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'idempotency_records'"
+                )
+            ).scalars()
+        )
+    assert "result_resource_id" not in columns
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
 def test_a_formula_naming_margin_amount_blocks_without_data_loss(
     fresh_database: Callable[[], str],
 ) -> None:
