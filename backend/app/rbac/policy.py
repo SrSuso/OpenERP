@@ -9,13 +9,14 @@ from app.core.errors import ConflictError, PermissionDeniedError
 from app.rbac.dependencies import user_permissions
 from app.rbac.models import Permission, Role
 from app.rbac.models import role_permissions as role_permissions_table
-from app.rbac.permissions import ADMIN_ACCESS, ROLES_MANAGE, USERS_MANAGE
+from app.rbac.permissions import ALL_PERMISSIONS
 from app.users.models import User
 
-# An active user must be able to enter the administration surface and repair
-# both user assignments and role definitions.  Deliberately capability-based:
-# a custom role can satisfy it; the literal name "ADMIN" has no special power.
-RECOVERABLE_ADMIN_PERMISSIONS = frozenset({ADMIN_ACCESS, USERS_MANAGE, ROLES_MANAGE})
+# With the no-grant-above-yourself rule, a permission absent from every active
+# administrator cannot be granted back.  Recovery therefore requires the full
+# runtime catalogue.  This remains capability-based: a custom full-access role
+# qualifies and the literal name "ADMIN" has no special power.
+RECOVERABLE_ADMIN_PERMISSIONS = frozenset(permission.key for permission in ALL_PERMISSIONS)
 
 # Serialises only mutations which can reduce the set above.  This is not a
 # general business-operation lock (A2); it protects one installation-wide
