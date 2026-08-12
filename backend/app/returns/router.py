@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import CurrentUser, SessionDep
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import RETURN_MANAGE, RETURN_READ
 from app.returns import service
@@ -29,8 +29,25 @@ _require_manage = Depends(require_permission(RETURN_MANAGE))
     status_code=201,
     dependencies=[_require_manage],
 )
-async def create_return(sale_id: int, payload: ReturnCreate, session: SessionDep) -> ReturnRead:
-    return _to_read(await service.create_return(session, sale_id, payload))
+async def create_return(
+    sale_id: int,
+    payload: ReturnCreate,
+    session: SessionDep,
+    current_user: CurrentUser,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=1, max_length=200),
+    ] = None,
+) -> ReturnRead:
+    return _to_read(
+        await service.create_return(
+            session,
+            sale_id,
+            payload,
+            idempotency_key=idempotency_key,
+            actor_user_id=current_user.id,
+        )
+    )
 
 
 @router.get(

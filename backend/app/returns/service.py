@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -11,12 +13,12 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.core.context import get_user_id
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
+from app.idempotency import service as idempotency_service
 from app.inventory import service as inventory_service
 from app.inventory.models import MovementType
 from app.lots import service as lots_service
-from app.lots.models import Lot
 from app.lots.schemas import LotCreate
 from app.returns.models import Return, ReturnLine
 from app.returns.schemas import ReturnCreate, ReturnLineCreate
@@ -26,6 +28,8 @@ _RETURN_OPTIONS = (
     selectinload(Return.lines).selectinload(ReturnLine.sale_line),
     selectinload(Return.lines).selectinload(ReturnLine.lot),
 )
+
+_CREATE_RETURN_OPERATION = "return.create"
 
 
 def _q(value: Decimal) -> Decimal:
@@ -68,28 +72,85 @@ async def list_returns(
 
 
 async def _get_or_create_lot(session: AsyncSession, *, product_id: int, lot_number: str) -> int:
-    existing = (
-        await session.execute(
-            select(Lot).where(Lot.product_id == product_id, Lot.lot_number == lot_number)
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        return existing.id
-
     # No supplier/purchase order to trace back to — this lot's provenance
     # is a customer return, not a delivery (both columns are nullable for
     # exactly this reason, see app.lots.models.Lot).
-    lot = await lots_service.create_lot(
+    lot = await lots_service.get_or_create_lot(
         session, LotCreate(product_id=product_id, lot_number=lot_number)
     )
     return lot.id
 
 
-async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCreate) -> Return:
-    sale_stmt = select(Sale).where(Sale.id == sale_id).options(selectinload(Sale.lines))
+def return_request_fingerprint(sale_id: int, payload: ReturnCreate) -> str:
+    lines = [
+        {
+            "sale_line_id": line.sale_line_id,
+            "quantity_packages": format(_q(line.quantity_packages), "f"),
+            "economic": line.economic,
+            "physical": line.physical,
+            "lot_number": line.lot_number,
+        }
+        for line in sorted(
+            payload.lines,
+            key=lambda line: (
+                line.sale_line_id,
+                line.lot_number or "",
+                format(_q(line.quantity_packages), "f"),
+                line.economic,
+                line.physical,
+            ),
+        )
+    ]
+    canonical = json.dumps(
+        {"sale_id": sale_id, "notes": payload.notes, "lines": lines},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def _get_sale_for_return(session: AsyncSession, sale_id: int) -> Sale:
+    sale_stmt = (
+        select(Sale)
+        .where(Sale.id == sale_id)
+        .options(selectinload(Sale.lines))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     sale = (await session.execute(sale_stmt)).scalar_one_or_none()
     if sale is None:
         raise ValidationError(f"Sale {sale_id} does not exist.")
+    return sale
+
+
+async def create_return(
+    session: AsyncSession,
+    sale_id: int,
+    payload: ReturnCreate,
+    *,
+    idempotency_key: str | None = None,
+    actor_user_id: int | None = None,
+) -> Return:
+    claim = None
+    if idempotency_key is not None:
+        actor_id = actor_user_id if actor_user_id is not None else get_user_id()
+        if actor_id is None:
+            raise ValidationError("An authenticated user is required for an idempotent return.")
+        claim = await idempotency_service.claim(
+            session,
+            operation=_CREATE_RETURN_OPERATION,
+            idempotency_key=idempotency_key,
+            request_fingerprint=return_request_fingerprint(sale_id, payload),
+            resource_id=sale_id,
+            actor_user_id=actor_id,
+        )
+        if not claim.is_new:
+            if claim.record.result_resource_id is None:
+                raise ConflictError("The idempotent return result is not available.")
+            return await get_return(session, claim.record.result_resource_id)
+
+    sale = await _get_sale_for_return(session, sale_id)
     if sale.status != SaleStatus.COMPLETED:
         raise ValidationError(
             f"Only a completed sale can be returned against (this one is {sale.status})."
@@ -102,7 +163,16 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
     # header. The request transaction would roll back a later error too, but
     # preflight keeps this multi-write service atomic even for direct callers
     # and prevents a bad line after a good one from leaving pending ORM rows.
-    for line_payload in payload.lines:
+    def execution_order(line: ReturnLineCreate) -> tuple[int, str, int]:
+        sale_line = lines_by_id.get(line.sale_line_id)
+        return (
+            sale_line.product_id if sale_line is not None else -1,
+            line.lot_number or "",
+            line.sale_line_id,
+        )
+
+    ordered_line_payloads = sorted(payload.lines, key=execution_order)
+    for line_payload in ordered_line_payloads:
         sale_line = lines_by_id.get(line_payload.sale_line_id)
         if sale_line is None:
             raise ValidationError(
@@ -112,7 +182,10 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
         remaining = sale_line.quantity_base - sale_line.quantity_returned
         if quantity_base > remaining:
             remaining_packages = remaining / sale_line.package_factor
-            raise ValidationError(
+            error_type = (
+                ConflictError if quantity_base <= sale_line.quantity_base else ValidationError
+            )
+            raise error_type(
                 f"Line {sale_line.id}: returning {line_payload.quantity_packages} would exceed "
                 f"the {remaining_packages} still returnable."
             )
@@ -136,17 +209,53 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
                 enforce_lot_policy=False,
             )
 
+    resolved_lot_ids: list[int | None] = []
+    for line_payload in ordered_line_payloads:
+        sale_line = lines_by_id[line_payload.sale_line_id]
+        lot_id = None
+        if line_payload.physical and sale_line.tracks_stock and sale_line.track_lots:
+            assert line_payload.lot_number is not None  # preflight above
+            lot_id = await _get_or_create_lot(
+                session,
+                product_id=sale_line.product_id,
+                lot_number=line_payload.lot_number,
+            )
+            await inventory_service.validate_inventory_context(
+                session,
+                product_id=sale_line.product_id,
+                warehouse_id=sale.warehouse_id,
+                location_id=sale.location_id,
+                lot_id=lot_id,
+            )
+        resolved_lot_ids.append(lot_id)
+
+    stock_product_ids = sorted(
+        {
+            lines_by_id[line.sale_line_id].product_id
+            for line in ordered_line_payloads
+            if line.physical and lines_by_id[line.sale_line_id].tracks_stock
+        }
+    )
+    for product_id in stock_product_ids:
+        await inventory_service.lock_and_get_available_quantity(
+            session,
+            product_id=product_id,
+            warehouse_id=sale.warehouse_id,
+            location_id=sale.location_id,
+        )
+
     ret = Return(sale_id=sale_id, notes=payload.notes, processed_by_user_id=get_user_id())
     session.add(ret)
     await session.flush()
 
-    for line_payload in payload.lines:
+    for line_payload, lot_id in zip(ordered_line_payloads, resolved_lot_ids, strict=True):
         await _apply_return_line(
             session,
             ret,
             sale,
             lines_by_id,
             line_payload,
+            resolved_lot_id=lot_id,
             prices_include_tax=sale.prices_include_tax,
         )
 
@@ -158,6 +267,8 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
         entity_id=ret.id,
         after={"sale_id": sale_id, "lines": len(payload.lines)},
     )
+    if claim is not None:
+        await idempotency_service.complete(session, claim.record, result_resource_id=ret.id)
     return await get_return(session, ret.id)
 
 
@@ -168,6 +279,7 @@ async def _apply_return_line(
     lines_by_id: dict[int, SaleLine],
     line_payload: ReturnLineCreate,
     *,
+    resolved_lot_id: int | None,
     prices_include_tax: bool,
 ) -> None:
     sale_line = lines_by_id.get(line_payload.sale_line_id)
@@ -180,7 +292,8 @@ async def _apply_return_line(
     remaining = sale_line.quantity_base - sale_line.quantity_returned
     if quantity_base > remaining:
         remaining_packages = remaining / sale_line.package_factor
-        raise ValidationError(
+        error_type = ConflictError if quantity_base <= sale_line.quantity_base else ValidationError
+        raise error_type(
             f"Line {sale_line.id}: returning {line_payload.quantity_packages} would exceed "
             f"the {remaining_packages} still returnable."
         )
@@ -203,7 +316,7 @@ async def _apply_return_line(
             tax_amount = after_discount * sale_line.tax_rate / Decimal(100)
             refund_amount = _q(after_discount + tax_amount)
 
-    lot_id: int | None = None
+    lot_id = resolved_lot_id
     movement_id: int | None = None
     if line_payload.physical:
         # Sin control de existencias no hay nada que devolver al almacén:
@@ -219,11 +332,10 @@ async def _apply_return_line(
                     f"Line {sale_line.id}: product {sale_line.product_sku} tracks lots — "
                     "lot_number is required to restock it."
                 )
-            lot_id = await _get_or_create_lot(
-                session,
-                product_id=sale_line.product_id,
-                lot_number=line_payload.lot_number,
-            )
+            if lot_id is None:
+                raise ValidationError(
+                    f"Line {sale_line.id}: the requested lot could not be resolved."
+                )
         if restocks and not sale_line.track_lots and line_payload.lot_number:
             raise ValidationError(
                 f"Line {sale_line.id}: product {sale_line.product_sku} does not track lots — "

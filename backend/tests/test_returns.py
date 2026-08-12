@@ -269,7 +269,10 @@ async def test_returning_cumulatively_over_the_limit_is_rejected(
         json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "2"}]},
     )
 
-    assert second.status_code == 422
+    # The payload was valid against the sold quantity, but now collides
+    # with a previous return: this is stale aggregate state, not malformed
+    # input.
+    assert second.status_code == 409
 
 
 async def test_return_line_must_be_economic_physical_or_both(
