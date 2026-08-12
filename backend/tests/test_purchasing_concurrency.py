@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.audit.models import AuditLog
 from app.catalog import service as catalog_service
 from app.catalog.schemas import ProductCreate
 from app.core.errors import ConflictError, ValidationError
@@ -35,6 +36,7 @@ class ReadyOrder:
     order_id: int
     line_id: int
     product_id: int
+    package_id: int
     warehouse_id: int
     location_id: int
     actor_user_id: int
@@ -72,6 +74,7 @@ async def _ready_order(
                 track_expiration=track_lots,
             ),
         )
+        package_id = product.packages[0].id
         warehouse = next(
             item
             for item in await inventory_service.list_warehouses(session)
@@ -90,7 +93,7 @@ async def _ready_order(
             order.id,
             PurchaseOrderLineCreate(
                 product_id=product.id,
-                package_id=product.packages[0].id,
+                package_id=package_id,
                 quantity_packages=quantity,
                 unit_cost=Decimal("1"),
             ),
@@ -101,6 +104,7 @@ async def _ready_order(
             order_id=order.id,
             line_id=line_id,
             product_id=product.id,
+            package_id=package_id,
             warehouse_id=warehouse.id,
             location_id=location.id,
             actor_user_id=actor.id,
@@ -124,6 +128,221 @@ def _receipt_payload(
             )
         ],
     )
+
+
+def _line_payload(ready: ReadyOrder, quantity: str = "1") -> PurchaseOrderLineCreate:
+    return PurchaseOrderLineCreate(
+        product_id=ready.product_id,
+        package_id=ready.package_id,
+        quantity_packages=Decimal(quantity),
+        unit_cost=Decimal("1"),
+    )
+
+
+async def _audit_count(session: AsyncSession, ready: ReadyOrder, action: str) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(AuditLog)
+        .where(
+            AuditLog.entity_type == "purchase_order",
+            AuditLog.entity_id == ready.order_id,
+            AuditLog.action == action,
+        )
+    )
+    assert count is not None
+    return count
+
+
+def test_purchase_orders_expose_no_line_edit_operation() -> None:
+    """P1 is not an executable race: the current API has add/delete only."""
+    assert not hasattr(purchasing_service, "update_line")
+
+
+async def test_place_order_wins_over_a_concurrent_line_add_without_stale_edit(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    ready = await _ready_order(committing_sessionmaker, tag="ADD-VS-PLACE")
+
+    async def add_after_lock() -> str:
+        async with committing_sessionmaker() as session:
+            try:
+                await purchasing_service.add_line(session, ready.order_id, _line_payload(ready))
+                await session.commit()
+                return "added"
+            except ConflictError:
+                await session.rollback()
+                return "conflict"
+
+    async with committing_sessionmaker() as winner:
+        await purchasing_service._get_order_for_update(winner, ready.order_id)
+        waiting_add = asyncio.create_task(add_after_lock())
+        await purchasing_service.place_order(winner, ready.order_id)
+        await winner.commit()
+
+    assert await asyncio.wait_for(waiting_add, timeout=10) == "conflict"
+    async with committing_sessionmaker() as session:
+        order = await purchasing_service.get_order(session, ready.order_id)
+        line_added_count = await _audit_count(session, ready, "line_added")
+        ordered_count = await _audit_count(session, ready, "ordered")
+    assert order.status == PurchaseOrderStatus.ORDERED
+    assert len(order.lines) == 1
+    assert line_added_count == 1  # setup only; rejected add wrote no false audit
+    assert ordered_count == 1
+
+
+async def test_place_order_wins_over_a_concurrent_line_delete_without_stale_edit(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    ready = await _ready_order(committing_sessionmaker, tag="DELETE-VS-PLACE")
+
+    async def remove_after_lock() -> str:
+        async with committing_sessionmaker() as session:
+            try:
+                await purchasing_service.remove_line(session, ready.order_id, ready.line_id)
+                await session.commit()
+                return "removed"
+            except ConflictError:
+                await session.rollback()
+                return "conflict"
+
+    async with committing_sessionmaker() as winner:
+        await purchasing_service._get_order_for_update(winner, ready.order_id)
+        waiting_remove = asyncio.create_task(remove_after_lock())
+        await purchasing_service.place_order(winner, ready.order_id)
+        await winner.commit()
+
+    assert await asyncio.wait_for(waiting_remove, timeout=10) == "conflict"
+    async with committing_sessionmaker() as session:
+        order = await purchasing_service.get_order(session, ready.order_id)
+        removed_count = await _audit_count(session, ready, "line_removed")
+        ordered_count = await _audit_count(session, ready, "ordered")
+    assert order.status == PurchaseOrderStatus.ORDERED
+    assert [line.id for line in order.lines] == [ready.line_id]
+    assert removed_count == 0
+    assert ordered_count == 1
+
+
+async def test_cancel_wins_over_concurrent_place_order(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    ready = await _ready_order(committing_sessionmaker, tag="CANCEL-VS-PLACE")
+
+    async def place_after_lock() -> str:
+        async with committing_sessionmaker() as session:
+            try:
+                await purchasing_service.place_order(session, ready.order_id)
+                await session.commit()
+                return "ordered"
+            except ConflictError:
+                await session.rollback()
+                return "conflict"
+
+    async with committing_sessionmaker() as winner:
+        await purchasing_service._get_order_for_update(winner, ready.order_id)
+        waiting_place = asyncio.create_task(place_after_lock())
+        await purchasing_service.cancel_order(winner, ready.order_id)
+        await winner.commit()
+
+    assert await asyncio.wait_for(waiting_place, timeout=10) == "conflict"
+    async with committing_sessionmaker() as session:
+        order = await purchasing_service.get_order(session, ready.order_id)
+        cancelled_count = await _audit_count(session, ready, "cancelled")
+        ordered_count = await _audit_count(session, ready, "ordered")
+    assert order.status == PurchaseOrderStatus.CANCELLED
+    assert order.ordered_at is None
+    assert cancelled_count == 1
+    assert ordered_count == 0
+
+
+async def test_cancel_wins_over_a_concurrent_receipt(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    ready = await _ready_order(committing_sessionmaker, tag="CANCEL-VS-RECEIPT")
+    async with committing_sessionmaker() as session:
+        await purchasing_service.place_order(session, ready.order_id)
+        await session.commit()
+
+    async def receive_after_lock() -> str:
+        async with committing_sessionmaker() as session:
+            try:
+                await purchasing_service.create_goods_receipt(
+                    session,
+                    ready.order_id,
+                    _receipt_payload(ready, "4"),
+                    idempotency_key="cancel-vs-receipt",
+                    actor_user_id=ready.actor_user_id,
+                )
+                await session.commit()
+                return "received"
+            except ConflictError:
+                await session.rollback()
+                return "conflict"
+
+    async with committing_sessionmaker() as winner:
+        await purchasing_service._get_order_for_update(winner, ready.order_id)
+        waiting_receipt = asyncio.create_task(receive_after_lock())
+        await purchasing_service.cancel_order(winner, ready.order_id)
+        await winner.commit()
+
+    assert await asyncio.wait_for(waiting_receipt, timeout=10) == "conflict"
+    async with committing_sessionmaker() as session:
+        order = await purchasing_service.get_order(session, ready.order_id)
+        receipt_count = await session.scalar(
+            select(func.count())
+            .select_from(GoodsReceipt)
+            .where(GoodsReceipt.purchase_order_id == ready.order_id)
+        )
+        received_count = await _audit_count(session, ready, "goods_received")
+        cancelled_count = await _audit_count(session, ready, "cancelled")
+        balances = await inventory_service.list_balances(
+            session, product_id=ready.product_id, warehouse_id=ready.warehouse_id
+        )
+    assert order.status == PurchaseOrderStatus.CANCELLED
+    assert receipt_count == received_count == 0
+    assert cancelled_count == 1
+    assert balances == []
+
+
+async def test_receipt_wins_over_a_concurrent_line_delete(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    ready = await _ready_order(committing_sessionmaker, tag="RECEIPT-VS-DELETE")
+    async with committing_sessionmaker() as session:
+        await purchasing_service.place_order(session, ready.order_id)
+        await session.commit()
+
+    async def remove_after_lock() -> str:
+        async with committing_sessionmaker() as session:
+            try:
+                await purchasing_service.remove_line(session, ready.order_id, ready.line_id)
+                await session.commit()
+                return "removed"
+            except ConflictError:
+                await session.rollback()
+                return "conflict"
+
+    async with committing_sessionmaker() as winner:
+        await purchasing_service._get_order_for_update(winner, ready.order_id)
+        waiting_remove = asyncio.create_task(remove_after_lock())
+        receipt = await purchasing_service.create_goods_receipt(
+            winner,
+            ready.order_id,
+            _receipt_payload(ready, "4"),
+            idempotency_key="receipt-vs-delete",
+            actor_user_id=ready.actor_user_id,
+        )
+        await winner.commit()
+
+    assert await asyncio.wait_for(waiting_remove, timeout=10) == "conflict"
+    async with committing_sessionmaker() as session:
+        order = await purchasing_service.get_order(session, ready.order_id)
+        removed_count = await _audit_count(session, ready, "line_removed")
+        received_count = await _audit_count(session, ready, "goods_received")
+    assert receipt.purchase_order_id == ready.order_id
+    assert order.status == PurchaseOrderStatus.PARTIALLY_RECEIVED
+    assert order.lines[0].quantity_received == Decimal("4")
+    assert removed_count == 0
+    assert received_count == 1
 
 
 def test_receipt_fingerprint_normalizes_decimal_and_line_order() -> None:

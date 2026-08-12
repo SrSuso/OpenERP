@@ -178,7 +178,7 @@ async def _package_or_422(
 async def add_line(
     session: AsyncSession, order_id: int, payload: PurchaseOrderLineCreate
 ) -> PurchaseOrder:
-    order = await get_order(session, order_id)
+    order = await _get_order_for_update(session, order_id)
     if order.status != PurchaseOrderStatus.DRAFT:
         raise ConflictError("Lines can only be added to a draft purchase order.")
     package = await _package_or_422(session, payload.product_id, payload.package_id)
@@ -212,7 +212,7 @@ async def add_line(
 
 
 async def remove_line(session: AsyncSession, order_id: int, line_id: int) -> PurchaseOrder:
-    order = await get_order(session, order_id)
+    order = await _get_order_for_update(session, order_id)
     if order.status != PurchaseOrderStatus.DRAFT:
         raise ConflictError("Lines can only be removed from a draft purchase order.")
     line = next((candidate for candidate in order.lines if candidate.id == line_id), None)
@@ -287,7 +287,7 @@ async def place_order(
 
 
 async def cancel_order(session: AsyncSession, order_id: int) -> PurchaseOrder:
-    order = await get_order(session, order_id)
+    order = await _get_order_for_update(session, order_id)
     if order.status not in (PurchaseOrderStatus.DRAFT, PurchaseOrderStatus.ORDERED):
         raise ConflictError(f"Cannot cancel an order that is already {order.status}.")
 
