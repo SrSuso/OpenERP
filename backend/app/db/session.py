@@ -114,14 +114,14 @@ async def _commit_request(session: AsyncSession) -> None:
                 extra={"sqlstate": sqlstate, "constraint": constraint},
             )
             raise ConflictError("The operation conflicts with the current database state.") from exc
-        logger.exception(
+        logger.error(
             "database.commit_integrity_error",
             extra={"sqlstate": sqlstate, "constraint": constraint},
         )
         raise
     except Exception:
         await _rollback_after_error(session)
-        logger.exception("database.commit_failed")
+        logger.error("database.commit_failed")
         raise
 
 

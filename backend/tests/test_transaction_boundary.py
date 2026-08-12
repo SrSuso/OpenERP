@@ -21,6 +21,7 @@ from app.auth.dependencies import SessionDep
 from app.core.config import Settings, get_settings
 from app.core.errors import ValidationError
 from app.db import session as session_module
+from app.inventory.models import Location, Warehouse
 from app.main import create_app
 from app.rbac.models import Role
 from app.sales.models import Sale, SaleStatus
@@ -125,6 +126,7 @@ class _TransactionHarness:
     admin_email: str
     admin_role_id: int
     commit_probe_email: str
+    check_probe_email: str
     rollback_probe_emails: tuple[str, str]
 
 
@@ -158,6 +160,7 @@ async def transaction_harness(postgres_server_url: str) -> AsyncIterator[_Transa
         suffix = uuid.uuid4().hex[:12]
         admin_email = f"transaction-admin-{suffix}@example.com"
         commit_probe_email = f"commit-probe-{suffix}@example.com"
+        check_probe_email = f"check-probe-{suffix}@example.com"
         rollback_probe_emails = (
             f"rollback-one-{suffix}@example.com",
             f"rollback-two-{suffix}@example.com",
@@ -166,6 +169,19 @@ async def transaction_harness(postgres_server_url: str) -> AsyncIterator[_Transa
         async with maker() as setup_session:
             admin_role = (
                 await setup_session.execute(select(Role).where(Role.name == "ADMIN"))
+            ).scalar_one()
+            warehouse = (
+                await setup_session.execute(
+                    select(Warehouse).where(Warehouse.name == "Tienda principal")
+                )
+            ).scalar_one()
+            location = (
+                await setup_session.execute(
+                    select(Location).where(
+                        Location.warehouse_id == warehouse.id,
+                        Location.name == "Almacén",
+                    )
+                )
             ).scalar_one()
             setup_session.add(
                 User(
@@ -200,6 +216,25 @@ async def transaction_harness(postgres_server_url: str) -> AsyncIterator[_Transa
             )
             return {"ok": True}
 
+        @app.post("/api/v1/_test/commit-check-failure")
+        async def commit_check_failure(session: SessionDep) -> dict[str, bool]:
+            session.add(
+                User(
+                    email=check_probe_email,
+                    full_name="Must Roll Back",
+                    password_hash="unused",
+                    role_id=admin_role.id,
+                )
+            )
+            session.add(
+                Sale(
+                    warehouse_id=warehouse.id,
+                    location_id=location.id,
+                    status=SaleStatus.COMPLETED,
+                )
+            )
+            return {"ok": True}
+
         @app.post("/api/v1/_test/rollback")
         async def rollback_probe(session: SessionDep) -> None:
             session.add_all(
@@ -224,6 +259,7 @@ async def transaction_harness(postgres_server_url: str) -> AsyncIterator[_Transa
             admin_email=admin_email,
             admin_role_id=admin_role.id,
             commit_probe_email=commit_probe_email,
+            check_probe_email=check_probe_email,
             rollback_probe_emails=rollback_probe_emails,
         )
     finally:
@@ -239,7 +275,7 @@ async def committed_client(
 ) -> AsyncIterator[AsyncClient]:
     monkeypatch.setattr(session_module, "_sessionmaker", transaction_harness.sessionmaker)
     async with AsyncClient(
-        transport=ASGITransport(app=transaction_harness.app),
+        transport=ASGITransport(app=transaction_harness.app, raise_app_exceptions=False),
         base_url="http://testserver",
     ) as client:
         response = await client.post(
@@ -380,6 +416,28 @@ async def test_failure_after_multiple_writes_rolls_everything_back(
             select(func.count())
             .select_from(User)
             .where(User.email.in_(transaction_harness.rollback_probe_emails))
+        )
+        assert count == 0
+
+
+async def test_unexpected_commit_integrity_failure_is_generic_and_rolls_back(
+    committed_client: AsyncClient,
+    transaction_harness: _TransactionHarness,
+) -> None:
+    response = await committed_client.post("/api/v1/_test/commit-check-failure")
+
+    assert response.status_code == 500
+    assert response.json()["error"] == {
+        "code": "internal_error",
+        "message": "An unexpected error occurred.",
+        "details": {},
+    }
+    assert "completed_has_fiscal_snapshot" not in response.text
+    async with transaction_harness.sessionmaker() as independent:
+        count = await independent.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.email == transaction_harness.check_probe_email)
         )
         assert count == 0
 
