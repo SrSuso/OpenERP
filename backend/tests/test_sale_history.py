@@ -10,7 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalog.models import Product
+from app.catalog.models import Product, ProductPackage
 from app.users.models import User
 
 
@@ -313,3 +313,81 @@ async def test_completed_sale_keeps_product_category_cost_and_cashier_snapshots(
     ).json()
     return_movement = next(item for item in movements if item["reference_type"] == "return")
     assert Decimal(return_movement["unit_cost"]) == Decimal("2.50")
+
+
+async def test_completed_barcode_sale_keeps_package_factor_and_price_snapshots(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json={
+                "sku": "HISTORY-BOX-BARCODE",
+                "name": "Leche histórica",
+                "base_unit_name": "UNIDAD",
+                "base_barcode": "8412345200013",
+                "cost": "0.50",
+                "list_price": "1.20",
+                "tax_rate": "0",
+            },
+        )
+    ).json()
+    product = (
+        await client.post(
+            f"/api/v1/products/{product['id']}/packages",
+            json={"name": "CAJA 6", "factor": "6", "barcode": "8412345200068"},
+        )
+    ).json()
+    box = next(package for package in product["packages"] if not package["is_base"])
+    warehouse_id, location_id = await _new_location(client, "Histórico formatos")
+    stocked = await client.post(
+        "/api/v1/stock-movements/adjustments",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "movement_type": "ADJUSTMENT",
+            "quantity": "12",
+            "unit_cost": "0.50",
+        },
+    )
+    assert stocked.status_code == 201
+    await login(role_name="CASHIER")
+    sale = (
+        await client.post(
+            "/api/v1/sales", json={"warehouse_id": warehouse_id, "location_id": location_id}
+        )
+    ).json()
+    added = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines/by-barcode",
+        json={"barcode": "8412345200068"},
+    )
+    assert added.status_code == 201
+    completed = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": added.json()["total"]}]},
+    )
+    assert completed.status_code == 200
+
+    await db_session.execute(
+        update(ProductPackage)
+        .where(ProductPackage.id == box["id"])
+        .values(name="CAJA 10 ACTUAL", factor=Decimal("10"))
+    )
+    await db_session.execute(
+        update(Product).where(Product.id == product["id"]).values(list_price=Decimal("99"))
+    )
+    await db_session.flush()
+
+    historical_line = (await client.get(f"/api/v1/sales/{sale['id']}")).json()["lines"][0]
+    assert historical_line["package_id"] == box["id"]
+    assert historical_line["package_name"] == "CAJA 6"
+    assert historical_line["package_factor"] == "6.000000"
+    assert historical_line["quantity_packages"] == "1.000000"
+    assert historical_line["quantity_base"] == "6.000000"
+    assert historical_line["unit_price"] == "1.200000"
+    assert historical_line["package_price"] == "7.200000"
+    assert historical_line["total"] == "7.200000"

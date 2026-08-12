@@ -139,6 +139,17 @@ def compute_line_totals(line: SaleLine, *, prices_include_tax: bool) -> LineTota
     )
 
 
+def package_price(line: SaleLine) -> Decimal:
+    """Catalogue price of one snapshotted package, before line discounts.
+
+    The current catalogue has one price per base unit rather than a price
+    override on each package.  Keeping this calculation here makes the API,
+    not the browser, authoritative for converting that price to the package
+    selected by the barcode.
+    """
+    return _q(line.unit_price * line.package_factor)
+
+
 def _sale_snapshot(sale: Sale) -> dict[str, Any]:
     return {
         "warehouse_id": sale.warehouse_id,

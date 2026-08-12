@@ -43,6 +43,9 @@ class SaleLineRead(BaseModel):
     quantity_base: Decimal
     #: Already given back through a return (phase 14) — 0 until one exists.
     quantity_returned: Decimal
+    #: Price of one selected package, computed from the line snapshots. The
+    #: current catalogue prices base units; packages have no price override.
+    package_price: Decimal
     unit_price: Decimal
     tax_rate: Decimal
     discount_rate: Decimal

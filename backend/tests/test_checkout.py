@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from decimal import Decimal
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -138,6 +139,82 @@ async def test_checkout_with_exact_cash_completes_the_sale_and_moves_stock(
     assert sale_movement["movement_type"] == "SALE"
     assert sale_movement["reference_id"] == sale["id"]
     assert sale_movement["quantity"] == "-3.000000"
+
+
+@pytest.mark.parametrize(
+    ("sku", "scanned_barcode", "package_factor", "expected_base_quantity"),
+    [
+        ("CHECKOUT-BARCODE-UNIT", "8412345100016", None, Decimal("1")),
+        ("CHECKOUT-BARCODE-BOX", "8412345100061", Decimal("6"), Decimal("6")),
+    ],
+)
+async def test_checkout_moves_the_base_quantity_of_the_scanned_package(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    sku: str,
+    scanned_barcode: str,
+    package_factor: Decimal | None,
+    expected_base_quantity: Decimal,
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(
+        client,
+        sku=sku,
+        base_barcode=scanned_barcode if package_factor is None else f"{scanned_barcode}-UNIT",
+        list_price="1.20",
+        tax_rate="0",
+    )
+    if package_factor is not None:
+        package_response = await client.post(
+            f"/api/v1/products/{product['id']}/packages",
+            json={
+                "name": "CAJA 6",
+                "factor": str(package_factor),
+                "barcode": scanned_barcode,
+            },
+        )
+        assert package_response.status_code == 200
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="20",
+    )
+    await login(role_name="CASHIER")
+    sale = (
+        await client.post(
+            "/api/v1/sales", json={"warehouse_id": warehouse_id, "location_id": location_id}
+        )
+    ).json()
+
+    added = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines/by-barcode",
+        json={"barcode": scanned_barcode},
+    )
+    assert added.status_code == 201
+    line = added.json()["lines"][0]
+    assert Decimal(line["package_factor"]) == expected_base_quantity
+    assert Decimal(line["quantity_packages"]) == Decimal(1)
+    assert Decimal(line["quantity_base"]) == expected_base_quantity
+    assert Decimal(line["package_price"]) == Decimal("1.20") * expected_base_quantity
+
+    checked_out = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": added.json()["total"]}]},
+    )
+
+    assert checked_out.status_code == 200
+    balances = (
+        await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
+    ).json()
+    assert Decimal(balances[0]["quantity"]) == Decimal(20) - expected_base_quantity
+    movements = (
+        await client.get("/api/v1/stock-movements", params={"product_id": product["id"]})
+    ).json()
+    sale_movement = next(movement for movement in movements if movement["reference_type"] == "sale")
+    assert Decimal(sale_movement["quantity"]) == -expected_base_quantity
 
 
 async def test_split_payment_across_cash_and_card(

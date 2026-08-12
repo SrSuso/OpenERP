@@ -23,6 +23,7 @@ def sale_line_to_read(line: SaleLine, *, prices_include_tax: bool) -> SaleLineRe
         quantity_packages=line.quantity_packages,
         quantity_base=line.quantity_base,
         quantity_returned=line.quantity_returned,
+        package_price=service.package_price(line),
         unit_price=line.unit_price,
         tax_rate=line.tax_rate,
         discount_rate=line.discount_rate,

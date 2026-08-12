@@ -181,7 +181,102 @@ async def test_add_line_by_barcode(
     assert response.status_code == 201
     line = response.json()["lines"][0]
     assert line["product_id"] == product["id"]
+    assert line["package_id"] == product["packages"][0]["id"]
+    assert line["package_name"] == "UNIDAD"
+    assert line["package_factor"] == "1.000000"
     assert line["quantity_packages"] == "2.000000"
+    assert line["quantity_base"] == "2.000000"
+    assert line["unit_price"] == "10.000000"
+    assert line["package_price"] == "10.000000"
+
+
+async def test_scanning_a_box_barcode_twice_keeps_its_package_and_factor(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(
+        client,
+        sku="SALE-TEST-BOX-BARCODE",
+        base_barcode="8412345000026",
+        list_price="1.20",
+        tax_rate="0",
+    )
+    package_response = await client.post(
+        f"/api/v1/products/{product['id']}/packages",
+        json={"name": "CAJA 6", "factor": "6", "barcode": "8412345000064"},
+    )
+    box = next(package for package in package_response.json()["packages"] if not package["is_base"])
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    for _ in range(2):
+        response = await client.post(
+            f"/api/v1/sales/{sale['id']}/lines/by-barcode",
+            json={"barcode": "8412345000064"},
+        )
+        assert response.status_code == 201
+
+    lines = response.json()["lines"]
+    assert len(lines) == 1
+    line = lines[0]
+    assert line["package_id"] == box["id"]
+    assert line["package_name"] == "CAJA 6"
+    assert line["package_factor"] == "6.000000"
+    assert line["quantity_packages"] == "2.000000"
+    assert line["quantity_base"] == "12.000000"
+    assert line["unit_price"] == "1.200000"
+    assert line["package_price"] == "7.200000"
+    assert line["total"] == "14.400000"
+
+
+async def test_scanning_unit_and_box_barcodes_keeps_two_presentations(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(
+        client,
+        sku="SALE-TEST-MIXED-BARCODES",
+        base_barcode="8412345000033",
+        list_price="1.20",
+        tax_rate="0",
+    )
+    package_response = await client.post(
+        f"/api/v1/products/{product['id']}/packages",
+        json={"name": "CAJA 6", "factor": "6", "barcode": "8412345000071"},
+    )
+    base = next(package for package in product["packages"] if package["is_base"])
+    box = next(package for package in package_response.json()["packages"] if not package["is_base"])
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    for barcode in ("8412345000033", "8412345000071"):
+        response = await client.post(
+            f"/api/v1/sales/{sale['id']}/lines/by-barcode", json={"barcode": barcode}
+        )
+        assert response.status_code == 201
+
+    lines = {line["package_id"]: line for line in response.json()["lines"]}
+    assert set(lines) == {base["id"], box["id"]}
+    assert lines[base["id"]]["quantity_base"] == "1.000000"
+    assert lines[box["id"]]["quantity_base"] == "6.000000"
+
+
+async def test_unknown_barcode_leaves_the_draft_sale_unchanged(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines/by-barcode",
+        json={"barcode": "UNKNOWN-A4"},
+    )
+
+    assert response.status_code == 404
+    reread = await client.get(f"/api/v1/sales/{sale['id']}")
+    assert reread.status_code == 200
+    assert reread.json()["lines"] == []
+    assert Decimal(reread.json()["total"]) == Decimal(0)
 
 
 async def test_removing_a_line_recomputes_the_total(
