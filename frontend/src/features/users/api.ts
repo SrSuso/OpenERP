@@ -8,6 +8,7 @@ export const userSchema = z.object({
   email: z.string(),
   full_name: z.string(),
   is_active: z.boolean(),
+  must_change_password: z.boolean().default(false),
   role_id: z.number(),
   role_name: z.string(),
 });
@@ -45,6 +46,21 @@ export async function deactivateUser(userId: number): Promise<User> {
   return apiFetch(`${API_V1}/users/${userId}/deactivate`, {
     method: 'POST',
     schema: userSchema,
+  });
+}
+
+export async function activateUser(userId: number): Promise<User> {
+  return apiFetch(`${API_V1}/users/${userId}/activate`, {
+    method: 'POST',
+    schema: userSchema,
+  });
+}
+
+export async function resetUserPassword(userId: number, temporaryPassword: string): Promise<void> {
+  await apiFetch(`${API_V1}/users/${userId}/reset-password`, {
+    method: 'POST',
+    schema: z.null(),
+    body: { temporary_password: temporaryPassword },
   });
 }
 

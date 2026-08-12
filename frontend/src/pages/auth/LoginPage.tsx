@@ -31,8 +31,8 @@ export function LoginPage() {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await login(values.email, values.password);
-      void navigate(from, { replace: true });
+      const user = await login(values.email, values.password);
+      void navigate(user.must_change_password ? '/change-password' : from, { replace: true });
     } catch (error) {
       setFormError(
         error instanceof ApiError && error.isUnauthenticated

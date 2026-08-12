@@ -37,6 +37,7 @@ import { RolesPage } from '@/pages/admin/RolesPage';
 import { SuppliersPage } from '@/pages/admin/SuppliersPage';
 import { UsersPage } from '@/pages/admin/UsersPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { ForcedPasswordChangePage } from '@/pages/auth/ForcedPasswordChangePage';
 import { PosHomePage } from '@/pages/pos/PosHomePage';
 import { PosLayout } from '@/pages/pos/PosLayout';
 
@@ -55,6 +56,7 @@ export const routes: RouteObject[] = [
   {
     element: <RequireAuth />,
     children: [
+      { path: '/change-password', element: <ForcedPasswordChangePage /> },
       {
         element: <RequirePermission permission="admin.access" />,
         children: [

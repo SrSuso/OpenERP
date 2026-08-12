@@ -16,6 +16,7 @@ interface AuthContextValue {
   hasPermission: (key: string) => boolean;
   login: (email: string, password: string) => Promise<Me>;
   logout: () => Promise<void>;
+  markPasswordChanged: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -46,6 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // `null` (see its queryFn), so this is a real, type-safe value —
         // not a hope that some later background refetch clears stale data.
         queryClient.setQueryData(meQuery.queryKey, null);
+      },
+      markPasswordChanged: () => {
+        queryClient.setQueryData<Me | null>(meQuery.queryKey, (current) =>
+          current ? { ...current, must_change_password: false } : current,
+        );
       },
     }),
     [user, isPending, queryClient],

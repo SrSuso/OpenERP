@@ -9,6 +9,7 @@ export const meSchema = z.object({
   full_name: z.string(),
   role: z.string(),
   permissions: z.array(z.string()),
+  must_change_password: z.boolean().default(false),
 });
 
 export type Me = z.infer<typeof meSchema>;

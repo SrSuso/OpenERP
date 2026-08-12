@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -21,12 +21,17 @@ const ME = {
   email: 'admin@example.com',
   full_name: 'Admin Uno',
   role: 'ADMIN',
-  permissions: ['admin.access', 'users.manage', 'roles.manage'],
+  permissions: ['admin.access', 'pos.access', 'users.manage', 'roles.manage'],
 };
 
 const ROLES: Role[] = [
-  { id: 1, name: 'ADMIN', description: '', permissions: [] },
-  { id: 3, name: 'CASHIER', description: '', permissions: [] },
+  {
+    id: 1,
+    name: 'ADMIN',
+    description: '',
+    permissions: ['admin.access', 'pos.access', 'users.manage', 'roles.manage'],
+  },
+  { id: 3, name: 'CASHIER', description: '', permissions: ['pos.access'] },
 ];
 
 function baseUsers(): User[] {
@@ -36,6 +41,7 @@ function baseUsers(): User[] {
       email: 'admin@example.com',
       full_name: 'Admin Uno',
       is_active: true,
+      must_change_password: false,
       role_id: 1,
       role_name: 'ADMIN',
     },
@@ -44,6 +50,7 @@ function baseUsers(): User[] {
       email: 'cajero@example.com',
       full_name: 'Cajero Dos',
       is_active: true,
+      must_change_password: false,
       role_id: 3,
       role_name: 'CASHIER',
     },
@@ -51,11 +58,14 @@ function baseUsers(): User[] {
 }
 
 /** Same style as pages/admin/AdminHomePage.test.tsx's stubBackend. */
-function stubBackend(options: { users?: User[] } = {}) {
+function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] } = {}) {
   const users: User[] = options.users ?? baseUsers();
+  const roles = options.roles ?? ROLES;
   const createCalls: unknown[] = [];
   const patchCalls: { userId: number; roleId: number }[] = [];
   const deactivateCalls: number[] = [];
+  const activateCalls: number[] = [];
+  const resetCalls: { userId: number; temporaryPassword: string }[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -64,10 +74,10 @@ function stubBackend(options: { users?: User[] } = {}) {
       const method = init?.method ?? 'GET';
 
       if (url.includes('/auth/me')) {
-        return Promise.resolve(jsonResponse(ME));
+        return Promise.resolve(jsonResponse(options.me ?? ME));
       }
       if (method === 'GET' && /\/roles$/.test(url)) {
-        return Promise.resolve(jsonResponse(ROLES));
+        return Promise.resolve(jsonResponse(roles));
       }
       if (method === 'GET' && /\/users$/.test(url)) {
         return Promise.resolve(jsonResponse(users));
@@ -88,6 +98,7 @@ function stubBackend(options: { users?: User[] } = {}) {
           email: body['email'] as string,
           full_name: body['full_name'] as string,
           is_active: true,
+          must_change_password: false,
           role_id: body['role_id'] as number,
           role_name: 'CASHIER',
         };
@@ -111,12 +122,25 @@ function stubBackend(options: { users?: User[] } = {}) {
         user.is_active = false;
         return Promise.resolve(jsonResponse(user));
       }
+      if (method === 'POST' && /\/users\/(\d+)\/activate$/.test(url)) {
+        const userId = Number(/\/users\/(\d+)\/activate$/.exec(url)![1]);
+        activateCalls.push(userId);
+        const user = users.find((u) => u.id === userId)!;
+        user.is_active = true;
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (method === 'POST' && /\/users\/(\d+)\/reset-password$/.test(url)) {
+        const userId = Number(/\/users\/(\d+)\/reset-password$/.exec(url)![1]);
+        const body = JSON.parse(init?.body as string) as { temporary_password: string };
+        resetCalls.push({ userId, temporaryPassword: body.temporary_password });
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createCalls, patchCalls, deactivateCalls };
+  return { createCalls, patchCalls, deactivateCalls, activateCalls, resetCalls };
 }
 
 function renderPage() {
@@ -206,5 +230,48 @@ describe('UsersPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Rol de Cajero Dos'), 'ADMIN');
 
     expect(backend.patchCalls).toEqual([{ userId: 2, roleId: 1 }]);
+  });
+
+  it('only offers roles whose permissions the signed-in user can grant', async () => {
+    stubBackend({
+      me: {
+        ...ME,
+        id: 10,
+        role: 'DELEGATED-MANAGER',
+        permissions: ['admin.access', 'pos.access', 'users.manage'],
+      },
+    });
+    renderPage();
+    await screen.findByText('Cajero Dos');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }));
+    const rolePicker = screen.getByLabelText('Rol');
+    expect(within(rolePicker).queryByRole('option', { name: 'ADMIN' })).not.toBeInTheDocument();
+    expect(within(rolePicker).getByRole('option', { name: 'CASHIER' })).toBeInTheDocument();
+  });
+
+  it('reactivates an inactive user from the existing users table', async () => {
+    const users = baseUsers();
+    users[1]!.is_active = false;
+    const backend = stubBackend({ users });
+    renderPage();
+    await screen.findByText('Inactivo');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
+
+    await screen.findAllByText('Activo');
+    expect(backend.activateCalls).toEqual([2]);
+  });
+
+  it('submits an administrative temporary-password reset', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Cajero Dos');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restablecer contraseña' }));
+    await userEvent.type(screen.getByLabelText('Contraseña temporal'), 'temporary-password-42');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar contraseña temporal' }));
+
+    expect(backend.resetCalls).toEqual([{ userId: 2, temporaryPassword: 'temporary-password-42' }]);
   });
 });

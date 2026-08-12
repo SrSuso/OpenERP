@@ -15,18 +15,27 @@ import { useButtonColors } from '@/features/settings/useButtonColors';
 export function RequireAuth() {
   const { user, isLoading } = useAuth();
   const location = useLocation();
-  // Aquí y no más abajo: es el único punto por el que pasan tanto el panel
-  // como la caja, y el primero en el que ya hay sesión para poder leer los
-  // ajustes de la tienda.
-  useBaseFontSize();
-  useButtonColors();
-
   if (isLoading) {
     return null;
   }
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+  if (user.must_change_password && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+  if (!user.must_change_password && location.pathname === '/change-password') {
+    return <Navigate to="/" replace />;
+  }
+  // A temporary-password session may only load the change form, so it must
+  // not trigger ordinary shop-settings requests before that change happens.
+  return user.must_change_password ? <Outlet /> : <AuthenticatedContent />;
+}
+
+function AuthenticatedContent() {
+  // El único punto normal por el que pasan tanto el panel como la caja.
+  useBaseFontSize();
+  useButtonColors();
   return <Outlet />;
 }
 

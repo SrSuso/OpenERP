@@ -52,7 +52,7 @@ export class ApiError extends Error {
 
 export interface RequestOptions<T> extends Omit<RequestInit, 'body'> {
   /** Zod schema the response body must satisfy. */
-  schema: z.ZodType<T>;
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>;
   /** JSON request body; serialised automatically. */
   body?: unknown;
 }

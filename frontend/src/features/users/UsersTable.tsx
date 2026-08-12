@@ -7,8 +7,11 @@ interface UsersTableProps {
   currentUserId: number;
   onChangeRole: (userId: number, roleId: number) => void;
   onDeactivate: (userId: number) => void;
+  onActivate: (userId: number) => void;
+  onResetPassword: (userId: number) => void;
   isChangingRole: boolean;
   isDeactivating: boolean;
+  isActivating: boolean;
 }
 
 export function UsersTable({
@@ -17,8 +20,11 @@ export function UsersTable({
   currentUserId,
   onChangeRole,
   onDeactivate,
+  onActivate,
+  onResetPassword,
   isChangingRole,
   isDeactivating,
+  isActivating,
 }: UsersTableProps) {
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -34,6 +40,7 @@ export function UsersTable({
         <tbody>
           {users.map((user) => {
             const isSelf = user.id === currentUserId;
+            const currentRoleIsAssignable = roles.some((role) => role.id === user.role_id);
             return (
               <tr key={user.id} className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-2">
@@ -41,7 +48,7 @@ export function UsersTable({
                   <p className="text-slate-500">{user.email}</p>
                 </td>
                 <td className="px-4 py-2">
-                  {roles.length > 0 ? (
+                  {roles.length > 0 && currentRoleIsAssignable ? (
                     <select
                       value={user.role_id}
                       disabled={!user.is_active || isChangingRole}
@@ -71,15 +78,35 @@ export function UsersTable({
                   )}
                 </td>
                 <td className="px-4 py-2 text-right">
-                  {user.is_active && !isSelf && (
-                    <button
-                      type="button"
-                      onClick={() => onDeactivate(user.id)}
-                      disabled={isDeactivating}
-                      className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Desactivar
-                    </button>
+                  {!isSelf && (
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => onResetPassword(user.id)}
+                        className="text-sm font-medium text-brand-700 hover:underline"
+                      >
+                        Restablecer contraseña
+                      </button>
+                      {user.is_active ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeactivate(user.id)}
+                          disabled={isDeactivating}
+                          className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Desactivar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onActivate(user.id)}
+                          disabled={isActivating}
+                          className="text-sm font-medium text-green-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Reactivar
+                        </button>
+                      )}
+                    </div>
                   )}
                   {isSelf && <span className="text-xs text-slate-400">(tú)</span>}
                 </td>
