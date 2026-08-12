@@ -15,8 +15,8 @@ def sale_line_to_read(line: SaleLine, *, prices_include_tax: bool) -> SaleLineRe
     return SaleLineRead(
         id=line.id,
         product_id=line.product_id,
-        product_sku=line.product.sku,
-        product_name=line.product.name,
+        product_sku=line.product_sku,
+        product_name=line.product_name,
         package_id=line.package_id,
         package_name=line.package_name,
         package_factor=line.package_factor,
@@ -57,6 +57,7 @@ def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
         status=sale.status,
         notes=sale.notes,
         cashier_user_id=sale.cashier_user_id,
+        cashier_name=sale.cashier_name,
         prices_include_tax=sale.prices_include_tax,
         completed_at=sale.completed_at,
         created_at=sale.created_at,

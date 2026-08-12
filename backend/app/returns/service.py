@@ -10,8 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
-from app.catalog import stock as catalog_stock
-from app.catalog.models import Product
 from app.core.context import get_user_id
 from app.core.errors import NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
@@ -25,7 +23,7 @@ from app.returns.schemas import ReturnCreate, ReturnLineCreate
 from app.sales.models import Sale, SaleLine, SaleStatus
 
 _RETURN_OPTIONS = (
-    selectinload(Return.lines).selectinload(ReturnLine.product),
+    selectinload(Return.lines).selectinload(ReturnLine.sale_line),
     selectinload(Return.lines).selectinload(ReturnLine.lot),
 )
 
@@ -170,28 +168,23 @@ async def _apply_return_line(
     lot_id: int | None = None
     movement_id: int | None = None
     if line_payload.physical:
-        # La categoría, porque de ella puede salir si el producto lleva
-        # control de existencias (`app.catalog.stock`): sin cargarla, leerla
-        # aquí reventaría con MissingGreenlet.
-        product = await session.get(
-            Product, sale_line.product_id, options=[selectinload(Product.category)]
-        )
-        assert product is not None  # FK guarantees this
         # Sin control de existencias no hay nada que devolver al almacén:
         # la venta tampoco descontó nada. Sumar aquí dejaba stock salido de
         # la nada justo en los productos que no deberían tener ninguno —se
         # vendían 3, se devolvía 1, y el saldo pasaba de vacío a 1—. La
         # devolución sigue siendo física (la mercancía vuelve al montón),
         # simplemente no se apunta en ningún sitio.
-        restocks = catalog_stock.tracks_stock(product)
-        if restocks and product.track_lots:
+        restocks = sale_line.tracks_stock
+        if restocks and sale_line.track_lots:
             if not line_payload.lot_number:
                 raise ValidationError(
-                    f"Line {sale_line.id}: product {product.sku} tracks lots — "
+                    f"Line {sale_line.id}: product {sale_line.product_sku} tracks lots — "
                     "lot_number is required to restock it."
                 )
             lot_id = await _get_or_create_lot(
-                session, product_id=product.id, lot_number=line_payload.lot_number
+                session,
+                product_id=sale_line.product_id,
+                lot_number=line_payload.lot_number,
             )
         if restocks:
             movement = await inventory_service.record_movement(
@@ -202,7 +195,7 @@ async def _apply_return_line(
                 lot_id=lot_id,
                 quantity=quantity_base,
                 movement_type=MovementType.RETURN,
-                unit_cost=product.cost,
+                unit_cost=sale_line.unit_cost,
                 reference_type="return",
                 reference_id=ret.id,
             )

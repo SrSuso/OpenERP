@@ -21,14 +21,13 @@ from pydantic import BaseModel
 from sqlalchemy import Date, Select, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalog.models import Product, ProductCategory
+from app.catalog.models import Product
 from app.core.errors import ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.inventory.models import StockMovement, Warehouse
 from app.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus
 from app.sales.models import Sale, SaleLine, SaleStatus
 from app.suppliers.models import Supplier
-from app.users.models import User
 
 
 class ReportSubject(StrEnum):
@@ -109,9 +108,6 @@ def _sales_build_from(stmt: Select[Any]) -> Select[Any]:
     return (
         stmt.select_from(SaleLine)
         .join(Sale, Sale.id == SaleLine.sale_id)
-        .join(Product, Product.id == SaleLine.product_id)
-        .outerjoin(ProductCategory, ProductCategory.id == Product.category_id)
-        .outerjoin(User, User.id == Sale.cashier_user_id)
         .join(Warehouse, Warehouse.id == Sale.warehouse_id)
         .where(Sale.status == SaleStatus.COMPLETED)
     )
@@ -123,12 +119,16 @@ _SALES = SubjectDef(
     label="Ventas",
     dimensions={
         "date": FieldDef("Fecha", {"date": _SALES_DATE}),
-        "product": FieldDef("Producto", {"product_sku": Product.sku, "product_name": Product.name}),
+        "product": FieldDef(
+            "Producto",
+            {"product_sku": SaleLine.product_sku, "product_name": SaleLine.product_name},
+        ),
         "category": FieldDef(
-            "Categoría", {"category_name": func.coalesce(ProductCategory.name, "Sin categoría")}
+            "Categoría",
+            {"category_name": func.coalesce(SaleLine.product_category_name, "Sin categoría")},
         ),
         "warehouse": FieldDef("Almacén", {"warehouse_name": Warehouse.name}),
-        "cashier": FieldDef("Cajero", {"cashier_name": func.coalesce(User.full_name, "—")}),
+        "cashier": FieldDef("Cajero", {"cashier_name": func.coalesce(Sale.cashier_name, "—")}),
     },
     metrics={
         "quantity": FieldDef(
@@ -144,8 +144,8 @@ _SALES = SubjectDef(
     build_from=_sales_build_from,
     filter_appliers={
         "warehouse_id": lambda v: Sale.warehouse_id == v,
-        "category_id": lambda v: Product.category_id == v,
-        "product_id": lambda v: Product.id == v,
+        "category_id": lambda v: SaleLine.product_category_id == v,
+        "product_id": lambda v: SaleLine.product_id == v,
         "cashier_user_id": lambda v: Sale.cashier_user_id == v,
     },
 )

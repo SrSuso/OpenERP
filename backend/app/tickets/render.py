@@ -160,7 +160,7 @@ def render_ticket(
         net_by_rate[line.tax_rate] = net_by_rate.get(line.tax_rate, Decimal(0)) + net
         tax_by_rate[line.tax_rate] = tax_by_rate.get(line.tax_rate, Decimal(0)) + tax_amount
         subtotal += net
-        rows.extend(_two_column(line.product.name, _money(total), width))
+        rows.extend(_two_column(line.product_name, _money(total), width))
         if template.show_unit_price:
             rows.append(f"{_quantity(line.quantity_packages)} x {_money(line.unit_price)}")
         if template.show_line_discounts and line.discount_rate > 0:

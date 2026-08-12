@@ -7,6 +7,11 @@ from decimal import Decimal
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.catalog.models import Product
+from app.users.models import User
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
@@ -163,3 +168,145 @@ async def test_completed_sale_keeps_its_fiscal_interpretation_after_settings_cha
     )
     assert returned.status_code == 201
     assert Decimal(returned.json()["total_refund"]) == Decimal(sale["total"])
+
+
+async def test_completed_sale_keeps_product_category_cost_and_cashier_snapshots(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    original_category = (
+        await client.post("/api/v1/product-categories", json={"name": "Categoría original"})
+    ).json()
+    replacement_category = (
+        await client.post("/api/v1/product-categories", json={"name": "Categoría nueva"})
+    ).json()
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json={
+                "sku": "HISTORY-IDENTITY-1",
+                "name": "Nombre original",
+                "category_id": original_category["id"],
+                "base_unit_name": "UNIDAD",
+                "cost": "2.50",
+                "list_price": "10.00",
+            },
+        )
+    ).json()
+    template = await client.post(
+        "/api/v1/ticket-templates",
+        json={"name": "Histórico identidad", "width_mm": 58, "show_cashier": True},
+    )
+    assert template.status_code == 201
+    warehouse_id, location_id = await _default_location(client)
+    stocked = await client.post(
+        "/api/v1/stock-movements/adjustments",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "movement_type": "ADJUSTMENT",
+            "quantity": "10",
+            "unit_cost": "2.50",
+        },
+    )
+    assert stocked.status_code == 201
+
+    cashier = await login(role_name="CASHIER")
+    await db_session.execute(
+        update(User).where(User.id == cashier["id"]).values(full_name="Cajera original")
+    )
+    await db_session.flush()
+    sale = (
+        await client.post(
+            "/api/v1/sales",
+            json={"warehouse_id": warehouse_id, "location_id": location_id},
+        )
+    ).json()
+    package_id = next(item["id"] for item in product["packages"] if item["is_base"])
+    added = (
+        await client.post(
+            f"/api/v1/sales/{sale['id']}/lines",
+            json={
+                "product_id": product["id"],
+                "package_id": package_id,
+                "quantity_packages": "1",
+            },
+        )
+    ).json()
+    completed_response = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": added["total"]}]},
+    )
+    assert completed_response.status_code == 200
+    completed = completed_response.json()
+    assert completed["cashier_name"] == "Cajera original"
+
+    await db_session.execute(
+        update(Product)
+        .where(Product.id == product["id"])
+        .values(
+            sku="HISTORY-IDENTITY-CHANGED",
+            name="Nombre cambiado",
+            category_id=replacement_category["id"],
+            cost=Decimal("99.00"),
+        )
+    )
+    await db_session.execute(
+        update(User).where(User.id == cashier["id"]).values(full_name="Cajera cambiada")
+    )
+    await db_session.flush()
+
+    reread = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
+    assert reread["lines"][0]["product_sku"] == "HISTORY-IDENTITY-1"
+    assert reread["lines"][0]["product_name"] == "Nombre original"
+    assert reread["cashier_name"] == "Cajera original"
+
+    ticket = (await client.post(f"/api/v1/sales/{sale['id']}/tickets")).json()
+    assert "Nombre original" in ticket["rendered_text"]
+    assert "Nombre cambiado" not in ticket["rendered_text"]
+    assert "Cajera original" in ticket["rendered_text"]
+    assert "Cajera cambiada" not in ticket["rendered_text"]
+
+    await login(role_name="ADMIN")
+    report = await client.post(
+        "/api/v1/reports/run",
+        json={
+            "subject": "SALES",
+            "dimensions": ["product", "category", "cashier"],
+            "metrics": ["revenue"],
+            "filters": {"product_id": product["id"]},
+        },
+    )
+    assert report.status_code == 200
+    row = report.json()["rows"][0]
+    assert row["product_sku"] == "HISTORY-IDENTITY-1"
+    assert row["product_name"] == "Nombre original"
+    assert row["category_name"] == "Categoría original"
+    assert row["cashier_name"] == "Cajera original"
+
+    returned = await client.post(
+        f"/api/v1/sales/{sale['id']}/returns",
+        json={
+            "lines": [
+                {
+                    "sale_line_id": completed["lines"][0]["id"],
+                    "quantity_packages": "1",
+                    "economic": True,
+                    "physical": True,
+                }
+            ]
+        },
+    )
+    assert returned.status_code == 201
+    returned_line = returned.json()["lines"][0]
+    assert returned_line["product_sku"] == "HISTORY-IDENTITY-1"
+    assert returned_line["product_name"] == "Nombre original"
+
+    movements = (
+        await client.get("/api/v1/stock-movements", params={"product_id": product["id"]})
+    ).json()
+    return_movement = next(item for item in movements if item["reference_type"] == "return")
+    assert Decimal(return_movement["unit_cost"]) == Decimal("2.50")

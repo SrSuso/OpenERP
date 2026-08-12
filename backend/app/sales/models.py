@@ -60,6 +60,10 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
             "status <> 'COMPLETED' OR prices_include_tax IS NOT NULL",
             name="completed_has_fiscal_snapshot",
         ),
+        CheckConstraint(
+            "status <> 'COMPLETED' OR cashier_user_id IS NULL OR cashier_name IS NOT NULL",
+            name="completed_has_cashier_snapshot",
+        ),
     )
 
     #: El número que ve el cliente, el que va impreso en el ticket.
@@ -85,6 +89,10 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
     cashier_user_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=True
     )
+    #: Display identity frozen at checkout.  The user id remains useful for
+    #: filtering, while this value keeps old tickets/reports stable if that
+    #: user's profile is edited later.
+    cashier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: Set exclusively by phase 13, once a payment completes the sale.
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: Fiscal interpretation frozen at checkout.  Drafts deliberately keep
@@ -107,6 +115,13 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     sale_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sales.id"), index=True)
     product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id"), index=True)
+    #: Minimal identity/classification snapshots used by historical sale
+    #: views, receipts and reports.  ``product_id`` remains the stable link
+    #: to today's catalogue; these values describe what was sold then.
+    product_sku: Mapped[str] = mapped_column(String(50))
+    product_name: Mapped[str] = mapped_column(String(255))
+    product_category_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    product_category_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     package_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("product_packages.id"))
     #: Snapshots of the package as it was when the line was rung up — a
     #: later change to the package's name/factor must not reshape this line.
@@ -129,6 +144,12 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: the moment the line was added, never recomputed from it afterwards
     #: (rule 7).
     unit_price: Mapped[Money]
+    #: Cost and stock policy used by the original sale and by any later
+    #: physical reversal.  Without these, editing the current product could
+    #: make a return value or move stock differently from the sale it undoes.
+    unit_cost: Mapped[Money]
+    tracks_stock: Mapped[bool] = mapped_column(Boolean)
+    track_lots: Mapped[bool] = mapped_column(Boolean)
     tax_rate: Mapped[Decimal] = mapped_column(numeric(), default=Decimal(0))
     discount_rate: Mapped[Decimal] = mapped_column(numeric(), default=Decimal(0))
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from app.catalog.models import Product
 from app.sales.models import Payment, Sale, SaleLine, SaleStatus
 from app.tickets.models import TicketTaxDisplay, TicketTemplate
 from app.tickets.render import CHARS_PER_WIDTH, render_ticket
@@ -14,16 +13,22 @@ from app.tickets.render import CHARS_PER_WIDTH, render_ticket
 def _line(name: str, qty: str, price: str, tax: str = "0", discount: str = "0") -> SaleLine:
     line = SaleLine(
         product_id=1,
+        product_sku="SKU",
+        product_name=name,
+        product_category_id=None,
+        product_category_name=None,
         package_id=1,
         package_name="UNIDAD",
         package_factor=Decimal(1),
         quantity_packages=Decimal(qty),
         quantity_base=Decimal(qty),
         unit_price=Decimal(price),
+        unit_cost=Decimal("0.50"),
+        tracks_stock=True,
+        track_lots=False,
         tax_rate=Decimal(tax),
         discount_rate=Decimal(discount),
     )
-    line.product = Product(sku="SKU", name=name, base_unit_name="UNIDAD")
     return line
 
 

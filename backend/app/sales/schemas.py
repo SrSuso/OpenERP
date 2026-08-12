@@ -82,6 +82,7 @@ class SaleRead(BaseModel):
     status: str
     notes: str
     cashier_user_id: int | None
+    cashier_name: str | None
     #: Null while the sale is a draft; frozen to the checkout setting once
     #: completed so historical totals never depend on current configuration.
     prices_include_tax: bool | None

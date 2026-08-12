@@ -42,13 +42,10 @@ from app.sales.schemas import (
     SaleLineCreate,
 )
 from app.settings import store as settings_store
+from app.users.models import User
 
 _SALE_OPTIONS = (
-    # Con su categoría: al cobrar hay que saber si ese producto lleva
-    # control de existencias, y eso puede decirlo su categoría
-    # (`app.catalog.stock`).
-    selectinload(Sale.lines).selectinload(SaleLine.product).selectinload(Product.category),
-    selectinload(Sale.lines).selectinload(SaleLine.package),
+    selectinload(Sale.lines),
     selectinload(Sale.payments),
 )
 
@@ -235,7 +232,7 @@ async def _package_or_422(
 
 
 async def _sellable_product_or_422(session: AsyncSession, product_id: int) -> Product:
-    product = await session.get(Product, product_id)
+    product = await session.get(Product, product_id, options=[selectinload(Product.category)])
     if product is None:
         raise ValidationError(f"Product {product_id} does not exist.")
     if not product.is_active:
@@ -255,6 +252,10 @@ def _new_line(
     return SaleLine(
         sale_id=sale_id,
         product_id=product.id,
+        product_sku=product.sku,
+        product_name=product.name,
+        product_category_id=product.category_id,
+        product_category_name=product.category.name if product.category is not None else None,
         package_id=package.id,
         package_name=package.name,
         package_factor=package.factor,
@@ -270,6 +271,9 @@ def _new_line(
         # panel carries 0 there and its line would land on the receipt
         # with no tax to report at all.
         unit_price=product.list_price,
+        unit_cost=product.cost,
+        tracks_stock=catalog_stock.tracks_stock(product),
+        track_lots=product.track_lots,
         tax_rate=tax_rate,
         discount_rate=discount_rate,
     )
@@ -297,6 +301,13 @@ def _add_or_merge(sale: Sale, line: SaleLine, session: AsyncSession) -> SaleLine
             and existing.unit_price == line.unit_price
             and existing.discount_rate == line.discount_rate
             and existing.tax_rate == line.tax_rate
+            and existing.product_sku == line.product_sku
+            and existing.product_name == line.product_name
+            and existing.product_category_id == line.product_category_id
+            and existing.product_category_name == line.product_category_name
+            and existing.unit_cost == line.unit_cost
+            and existing.tracks_stock == line.tracks_stock
+            and existing.track_lots == line.track_lots
         ):
             existing.quantity_packages += line.quantity_packages
             existing.quantity_base += line.quantity_base
@@ -509,12 +520,11 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
     # the sale itself yet, so a DRAFT sale that fails checkout is exactly
     # as it was, ready to retry (e.g. after a restock).
     for line in sale.lines:
-        product = line.product
         # Lo que no lleva control de existencias no se agota ni mueve el
         # almacén: se vende y ya (ver `app.catalog.stock`). Se sigue
         # cobrando y saliendo en el ticket y en la Z, que es lo que importa
         # para el dinero.
-        if not catalog_stock.tracks_stock(product):
+        if not line.tracks_stock:
             continue
         available = await inventory_service.lock_and_get_available_quantity(
             session,
@@ -524,11 +534,11 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
         )
         if available < line.quantity_base and not allow_negative_stock:
             raise ConflictError(
-                f"Not enough stock for {product.sku}: needs {line.quantity_base}, "
+                f"Not enough stock for {line.product_sku}: needs {line.quantity_base}, "
                 f"only {available} available at this location."
             )
 
-        if product.track_lots:
+        if line.track_lots:
             await lots_service.execute_fefo_consumption(
                 session,
                 product_id=line.product_id,
@@ -536,7 +546,7 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
                 location_id=sale.location_id,
                 quantity=line.quantity_base,
                 movement_type=MovementType.SALE,
-                unit_cost=product.cost,
+                unit_cost=line.unit_cost,
                 reference_type="sale",
                 reference_id=sale.id,
             )
@@ -548,7 +558,7 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
                 location_id=sale.location_id,
                 quantity=-line.quantity_base,
                 movement_type=MovementType.SALE,
-                unit_cost=product.cost,
+                unit_cost=line.unit_cost,
                 reference_type="sale",
                 reference_id=sale.id,
             )
@@ -560,6 +570,10 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
     sale.status = SaleStatus.COMPLETED
     sale.completed_at = datetime.now(UTC)
     sale.prices_include_tax = prices_include_tax
+    if sale.cashier_user_id is not None:
+        cashier = await session.get(User, sale.cashier_user_id)
+        assert cashier is not None  # foreign key invariant
+        sale.cashier_name = cashier.full_name
     sale.number = await _next_sale_number(session)
     await session.flush()
     await audit.record(

@@ -152,6 +152,7 @@ export const saleSchema = z.object({
   status: z.enum(['DRAFT', 'COMPLETED', 'CANCELLED']),
   notes: z.string(),
   prices_include_tax: z.boolean().nullable().optional(),
+  cashier_name: z.string().nullable().optional(),
   // Cuándo se abrió: es por lo que se listan y se filtran en la pantalla
   // de Ventas, y lo único que tienen también las que se quedaron sin
   // cobrar.
