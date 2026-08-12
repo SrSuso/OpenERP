@@ -121,12 +121,15 @@ async def test_manual_price_clears_the_formula(
     assert body["list_price"] == "9.990000"
     assert body["price_formula"] is None
 
-    # Changing cost afterwards must NOT recompute a price from a formula
-    # that no longer applies.
+    # Cambiar el coste después sí recalcula, pero ya no con la fórmula
+    # propia (se la llevó el precio manual): con la de la tienda y el
+    # margen del producto. Si el coste sube, el PVP sube — decisión
+    # explícita del tendero, ver SetPricingInputsRequest.
     after_cost_change = await client.patch(
         f"/api/v1/products/{product_id}/pricing", json={"cost": "50"}
     )
-    assert after_cost_change.json()["list_price"] == "9.990000"
+    # 50 + 10% de IVA, sin margen: 55. Ya no son los 9,99 de antes.
+    assert after_cost_change.json()["list_price"] == "55.000000"
 
 
 async def test_clearing_the_formula_keeps_the_last_computed_price(

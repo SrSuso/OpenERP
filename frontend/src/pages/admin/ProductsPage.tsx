@@ -123,16 +123,15 @@ export function ProductsPage() {
     },
   });
 
-  // Lo mismo con el coste, que se apunta al recibir el género: aquí el PVP
-  // no se teclea, sale solo del margen del producto (o del de su
-  // categoría) — `recompute_price`. Por eso son dos mutaciones y no una:
-  // el PVP se fija tal cual y el coste recalcula.
+  // Lo mismo con el coste, que es lo que se apunta al recibir el género:
+  // aquí el PVP no se teclea, sale solo del margen del producto (o del de
+  // su categoría). Por eso son dos mutaciones y no una: el PVP se fija tal
+  // cual y el coste recalcula.
   const [savedCostId, setSavedCostId] = useState<number | null>(null);
   const [proposedCost, setProposedCost] = useState<{ product: Product; cost: string } | null>(null);
 
   const costMutation = useMutation({
-    mutationFn: ({ id, cost }: { id: number; cost: string }) =>
-      setProductPricing(id, { cost, recompute_price: true }),
+    mutationFn: ({ id, cost }: { id: number; cost: string }) => setProductPricing(id, { cost }),
     onSuccess: (_product, { id }) => {
       invalidateProducts();
       setSavedCostId(id);

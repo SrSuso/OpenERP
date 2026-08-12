@@ -134,14 +134,10 @@ export interface CategoryPricingInput extends PricingOverrideInput {
 
 export async function setProductPricing(
   productId: number,
-  input: PricingOverrideInput & {
-    cost?: string;
-    /** «He cambiado el coste, recalcúlame el PVP con el margen que tenga».
-     * Sin esto un producto de precio manual conserva su precio aunque suba
-     * el coste, que es lo correcto salvo cuando se están repasando los
-     * costes del día justo para que el precio salga solo. */
-    recompute_price?: boolean;
-  },
+  /** Cualquiera de estos campos recalcula el PVP: son los ingredientes
+   * del precio. Para dejar otro precio distinto está `setManualPrice`,
+   * que se fija después y a sabiendas. */
+  input: PricingOverrideInput & { cost?: string },
 ): Promise<Product> {
   return apiFetch(`${API_V1}/products/${productId}/pricing`, {
     method: 'PATCH',

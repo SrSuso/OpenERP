@@ -205,11 +205,9 @@ function stubBackend(options: { products?: Product[] } = {}) {
         }
         if ('cost' in body) {
           product.cost = `${Number(body['cost']).toFixed(6)}`;
-          // Como el backend con `recompute_price`: el PVP sale del margen
-          // heredado de "Bebidas" (30%), no se teclea.
-          if (body['recompute_price'] === true) {
-            product.list_price = `${(Number(body['cost']) * 1.3).toFixed(6)}`;
-          }
+          // Como el backend: cambiar el coste recalcula el PVP con el
+          // margen heredado de "Bebidas" (30%). No se teclea.
+          product.list_price = `${(Number(body['cost']) * 1.3).toFixed(6)}`;
         }
         return Promise.resolve(jsonResponse(product));
       }
@@ -465,7 +463,7 @@ describe('ProductsPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cambiar' }));
 
     // Y no se toca el PVP a mano: se pide que lo recalcule el margen.
-    expect(backend.pricingCalls).toEqual([{ id: 2, body: { cost: '2', recompute_price: true } }]);
+    expect(backend.pricingCalls).toEqual([{ id: 2, body: { cost: '2' } }]);
     expect(backend.manualPriceCalls).toEqual([]);
     // 2 € de coste con el 30% de "Bebidas" = 2,60 € en la propia fila.
     expect(await screen.findByDisplayValue('2,6')).toBeInTheDocument();

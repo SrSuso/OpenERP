@@ -310,6 +310,7 @@ export function ProductDetailPage() {
           current={data.cost}
           next={proposedPricing.cost}
           unitName={data.base_unit_name}
+          note="El PVP se recalculará solo, con el margen de este producto o el de su categoría."
           stock={totalStock === null ? null : String(totalStock)}
           isPending={savePricingMutation.isPending}
           onCancel={() => setProposedPricing(null)}

@@ -26,16 +26,17 @@ class FormulaPreviewResponse(BaseModel):
 
 class SetPricingInputsRequest(BaseModel):
     """Updates whichever pricing inputs are given (a field simply absent
-    from the JSON body is left untouched). If the product already has a
-    formula, changing ``cost``/``tax_rate``/``surcharge_rate`` recomputes
-    its price from it, same as before this had ``margin_rate``/
-    ``tax_ids``. Those last two are new and behave differently on purpose:
-    touching either one *always* recomputes the price (using the
-    product's own formula, or the store-wide default if it has none) even
-    without one set — margin/taxes changing is exactly the moment "PVP
-    calculado automáticamente" is supposed to kick in. A manually-priced
-    product (``PUT .../manual-price``) that never has its margin/taxes
-    touched again keeps that exact price forever.
+    from the JSON body is left untouched). Any of them recomputes the
+    price, with the product's own formula or the inherited one (its
+    category's, or the store's).
+
+    Coste, impuestos y margen son *lo que forma el precio*: si cambia
+    cualquiera de ellos, el PVP cambia. Decisión explícita del tendero
+    ("si cambia el coste ha de cambiar el PVP, si quiero otro PVP lo
+    modifico a mano después") — antes un producto con precio puesto a mano
+    conservaba ese precio aunque le subiera el coste, y eso hacía que se
+    vendiera barato sin enterarse. Para dejar un precio distinto está
+    ``PUT .../manual-price``, que se fija después y a sabiendas.
 
     ``margin_rate: null`` (present, explicitly null) clears the product's
     own margin back to "inherit the category's"; omitting the key leaves
@@ -44,12 +45,6 @@ class SetPricingInputsRequest(BaseModel):
     """
 
     cost: Decimal | None = Field(default=None, ge=0)
-    #: «He cambiado el coste, recalcúlame el PVP con el margen que tenga».
-    #: Sin esto un producto de precio manual conserva su precio pase lo que
-    #: pase con el coste, que es lo correcto por defecto (ver arriba) pero
-    #: no lo que se quiere al repasar los costes del día en la lista de
-    #: productos: allí la gracia es justo que el precio salga solo.
-    recompute_price: bool = False
     tax_rate: Decimal | None = Field(default=None, ge=0)
     surcharge_rate: Decimal | None = Field(default=None, ge=0)
     margin_rate: Decimal | None = Field(default=None, ge=0)

@@ -221,36 +221,38 @@ def _recompute_with(product: Product, settings: PricingSettings) -> None:
 async def set_pricing_inputs(
     session: AsyncSession, product_id: int, payload: SetPricingInputsRequest
 ) -> Product:
-    """Update cost/tax/surcharge/margin/taxes.
+    """Update cost/tax/surcharge/margin/taxes — y recalcular el PVP.
 
-    ``cost``/``tax_rate``/``surcharge_rate`` only recompute the price if
-    the product already has its own formula (unchanged since phase 4 —
-    a manually-priced product stays manually priced through a cost
-    change). ``margin_rate``/``tax_ids`` are new and always recompute,
-    using the store's default formula if the product has none of its own
-    — see this module's own docstring and `SetPricingInputsRequest`'s.
+    Cualquiera de esos campos es un ingrediente del precio, así que tocar
+    cualquiera lo recalcula, con la fórmula del producto o con la que
+    hereda (la de su categoría, o la de la tienda). Antes un producto con
+    precio puesto a mano lo conservaba aunque le cambiara el coste; ver
+    `SetPricingInputsRequest` para por qué ya no.
     """
     product = await _product_or_404(session, product_id)
     before = _snapshot(product)
-    touched_margin_or_tax = False
+    touched = False
 
     if payload.cost is not None:
         product.cost = payload.cost
+        touched = True
     if payload.tax_rate is not None:
         product.tax_rate = payload.tax_rate
+        touched = True
     if payload.surcharge_rate is not None:
         product.surcharge_rate = payload.surcharge_rate
+        touched = True
     if "margin_rate" in payload.model_fields_set:
         product.margin_rate = payload.margin_rate
-        touched_margin_or_tax = True
+        touched = True
     if "margin_amount" in payload.model_fields_set:
         product.margin_amount = payload.margin_amount
-        touched_margin_or_tax = True
+        touched = True
     if "tax_ids" in payload.model_fields_set:
         product.taxes = await _taxes_by_id(session, payload.tax_ids or [])
-        touched_margin_or_tax = True
+        touched = True
 
-    if product.price_formula or touched_margin_or_tax or payload.recompute_price:
+    if touched:
         _recompute_with(product, await get_settings(session))
 
     await session.flush()

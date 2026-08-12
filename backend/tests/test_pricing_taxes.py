@@ -698,12 +698,13 @@ async def test_an_unsafe_category_formula_is_rejected_when_saved(
     assert response.status_code == 422
 
 
-async def test_changing_the_cost_can_recompute_the_price_from_the_margin(
+async def test_changing_the_cost_always_recomputes_the_price_from_the_margin(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Repasar los costes del día en la lista de productos: se teclea lo
-    que ha costado y el PVP sale solo con el margen que tenga puesto, sea
-    suyo o de su categoría. Sin pedirlo, un precio manual se respeta."""
+    """Repasar los costes del día: se teclea lo que ha costado y el PVP
+    sale solo con el margen que tenga puesto, sea suyo o de su categoría.
+    Vale incluso si el precio se había puesto a mano — si el género sube y
+    el precio se queda, se vende barato sin enterarse."""
     await login(role_name="ADMIN")
     category_id = await _create_category(client, "Fruta")
     await client.patch(
@@ -719,13 +720,15 @@ async def test_changing_the_cost_can_recompute_the_price_from_the_margin(
         f"/api/v1/products/{product_id}/pricing/manual-price", json={"list_price": "9"}
     )
 
-    # Cambiar el coste a secas no toca ese precio (comportamiento de siempre).
-    quiet = await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "20"})
-    assert Decimal(quiet.json()["list_price"]) == Decimal("9.000000")
+    # 20 * 1,5 = 30, con el margen heredado de la categoría. Los 9 € que
+    # se habían fijado a mano se quedan atrás: el coste manda.
+    response = await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "20"})
 
-    # Pidiéndolo, sí: 20 * 1,5 = 30, con el margen heredado de la categoría.
-    loud = await client.patch(
-        f"/api/v1/products/{product_id}/pricing", json={"cost": "20", "recompute_price": True}
+    assert response.status_code == 200
+    assert Decimal(response.json()["list_price"]) == Decimal("30.000000")
+
+    # Y si se quiere otro PVP, se pone a mano después, a sabiendas.
+    manual = await client.put(
+        f"/api/v1/products/{product_id}/pricing/manual-price", json={"list_price": "28"}
     )
-    assert loud.status_code == 200
-    assert Decimal(loud.json()["list_price"]) == Decimal("30.000000")
+    assert Decimal(manual.json()["list_price"]) == Decimal("28.000000")
