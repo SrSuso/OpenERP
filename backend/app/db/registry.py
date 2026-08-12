@@ -18,6 +18,7 @@ from app.auth import models as auth_models
 from app.catalog import models as catalog_models
 from app.dashboards import models as dashboard_models
 from app.db.base import Base
+from app.idempotency import models as idempotency_models
 from app.inventory import models as inventory_models
 from app.jobs import models as job_models
 from app.lots import models as lot_models
@@ -41,6 +42,7 @@ __all__ = [
     "auth_models",
     "catalog_models",
     "dashboard_models",
+    "idempotency_models",
     "inventory_models",
     "job_models",
     "lot_models",

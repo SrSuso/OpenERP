@@ -113,6 +113,50 @@ def test_downgrade_and_upgrade_round_trip(fresh_database: Callable[[], str]) -> 
     assert "(head)" in run_alembic(url, "current")
 
 
+def test_checkout_idempotency_migration_is_reversible(
+    fresh_database: Callable[[], str],
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "72f3c8a91d04")
+    engine = _sync_engine(url)
+
+    run_alembic(url, "upgrade", "51a2d7c9e4b6")
+    with engine.begin() as connection:
+        columns = set(
+            connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'idempotency_records'"
+                )
+            ).scalars()
+        )
+        constraints = set(
+            connection.execute(
+                text(
+                    "SELECT constraint_name FROM information_schema.table_constraints "
+                    "WHERE table_schema = 'public' AND table_name = 'idempotency_records'"
+                )
+            ).scalars()
+        )
+    assert {
+        "id",
+        "operation",
+        "idempotency_key",
+        "request_fingerprint",
+        "resource_id",
+        "actor_user_id",
+        "created_at",
+        "completed_at",
+    } == columns
+    assert "uq_idempotency_records_operation_key" in constraints
+
+    run_alembic(url, "downgrade", "72f3c8a91d04")
+    with engine.begin() as connection:
+        assert connection.scalar(text("SELECT to_regclass('public.idempotency_records')")) is None
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
 def test_a_formula_naming_margin_amount_blocks_without_data_loss(
     fresh_database: Callable[[], str],
 ) -> None:
