@@ -94,17 +94,24 @@ export function ProductDetailPage() {
   };
 
   // Cuántas veces se ha guardado la ficha. Va como `key` del formulario:
-  // guardar lo remonta con los datos recién guardados, y así deja de
-  // contar como «tiene cambios sin guardar» —si no, el aviso al cerrar y
-  // el «¿perder los cambios?» de Cancelar seguirían saltando después de
-  // haber guardado, que es lo contrario de lo que hacen falta—. Se remonta
+  // guardar lo remonta, y así deja de contar como «tiene cambios sin
+  // guardar» —si no, el aviso al cerrar y el «¿perder los cambios?» de
+  // Cancelar seguirían saltando después de haber guardado—. Se remonta
   // sólo al guardar, no en cada recarga de la ficha: escribir mientras
   // llega una respuesta de fondo no borra nada.
   const [savedGeneral, setSavedGeneral] = useState(0);
 
   const updateMutation = useMutation({
     mutationFn: (payload: ProductUpdateInput) => updateProduct(productId, payload),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // El producto guardado se mete en la caché *antes* de remontar el
+      // formulario. Sin esto, remontar lo reiniciaba con lo que hubiera
+      // cacheado, que todavía era lo de antes de guardar: la ficha se
+      // quedaba enseñando el nombre viejo debajo de un título con el
+      // nuevo, y volver a darle a Guardar devolvía el viejo. La respuesta
+      // del PATCH ya trae el producto entero, así que no hay que esperar
+      // a que llegue nada.
+      queryClient.setQueryData(productQuery(productId).queryKey, saved);
       invalidateProduct();
       setEditError(null);
       setSavedGeneral((count) => count + 1);

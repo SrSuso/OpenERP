@@ -97,6 +97,21 @@ def _variables(product: Product) -> dict[str, Decimal]:
     }
 
 
+def _product_state(product: Product) -> tuple[Any, ...]:
+    """Los ingredientes del precio, con los números como `Decimal` — para
+    *comparar*. Con texto no vale: lo que llega en el JSON es
+    `Decimal("20")` y lo que hay guardado `Decimal("20.000000")`, misma
+    cantidad y distinta cadena. Mismo motivo que `_category_state`."""
+    return (
+        product.cost,
+        product.tax_rate,
+        product.surcharge_rate,
+        product.margin_rate,
+        product.margin_amount,
+        tuple(sorted(t.id for t in product.taxes)),
+    )
+
+
 def _snapshot(product: Product) -> dict[str, Any]:
     return {
         "cost": str(product.cost),
@@ -237,30 +252,30 @@ async def set_pricing_inputs(
     """
     product = await _product_or_404(session, product_id)
     before = _snapshot(product)
-    touched = False
+    state_before = _product_state(product)
 
     if payload.cost is not None:
         product.cost = payload.cost
-        touched = True
     if payload.tax_rate is not None:
         product.tax_rate = payload.tax_rate
-        touched = True
     if payload.surcharge_rate is not None:
         product.surcharge_rate = payload.surcharge_rate
-        touched = True
     if "margin_rate" in payload.model_fields_set:
         product.margin_rate = payload.margin_rate
-        touched = True
     if "margin_amount" in payload.model_fields_set:
         product.margin_amount = payload.margin_amount
-        touched = True
     if "tax_ids" in payload.model_fields_set:
         product.taxes = await _taxes_by_id(session, payload.tax_ids or [])
-        touched = True
 
-    if touched:
-        _recompute_with(product, await get_settings(session))
+    # Sólo si algo ha quedado distinto. El panel de precios manda el coste
+    # siempre, así que darle a «Guardar precio» sin tocar nada apuntaba un
+    # cambio de precio que no lo era. El histórico está para mirar por qué
+    # cambió un precio (regla 7): llenarlo de no-cambios lo hace inútil.
 
+    if _product_state(product) == state_before:
+        return await catalog.get_product(session, product_id)
+
+    _recompute_with(product, await get_settings(session))
     await session.flush()
     await _record_history(session, product)
     await audit.record(

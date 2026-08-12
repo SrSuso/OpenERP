@@ -96,6 +96,16 @@ TPV desde una pestaña normal del navegador en vez de con ese acceso
 directo — díselo a tu administrador, en `docs/ADMIN_GUIDE.md` está cómo
 dejarlo puesto para que arranque solo.
 
+### 2.6. La caja se entera sola de los cambios
+
+No hay que recargar el TPV ni cerrarlo y abrirlo. Lo que cambies en el panel
+—un precio, el nombre de un producto, un botón, una foto, los colores— llega
+a la caja en unos segundos, aunque esté en otro ordenador. Sigue vendiendo
+mientras tanto: la venta que tengas empezada no se toca.
+
+Cada cuántos segundos mira si hay novedades se ajusta en Configuración →
+TPV; de fábrica, cada 3.
+
 ---
 
 ## 3. El panel de administración — `/admin`
@@ -199,7 +209,54 @@ Enlace **Precios** — sólo lo ves si puedes gestionar precios (`ADMIN` o
   de guardarla; al guardarla se recalculan en el momento todos los
   productos afectados.
 
-### 3.8. Compras, proveedores, inventario...
+### 3.8. Poner precios: las tres maneras
+
+Un producto puede sacar su precio de venta de tres formas, y **eliges tú
+cuál** — en el producto, o en su categoría para que la hereden todos los
+suyos:
+
+1. **Margen en %** — lo de siempre. Un 30% sobre el coste con impuestos.
+2. **Margen fijo en €** — «este me deja 25 céntimos y punto». Se suma al
+   final, después de impuestos y del porcentaje, así que es lo que te
+   queda limpio con cada unidad. Puedes usarla sola o junto al porcentaje.
+3. **Fórmula** — para cuando ninguna de las dos sirve. También se puede
+   poner en la categoría, y así no la repites en cada artículo.
+
+En las tres, dejar el hueco **en blanco** significa «hereda lo que diga mi
+categoría», que no es lo mismo que poner 0.
+
+**Si cambias el coste, cambia el precio de venta.** Sube el género, sube la
+etiqueta, automáticamente y desde donde lo cambies. Si después quieres otro
+precio distinto, lo pones a mano y ese se respeta hasta el próximo cambio de
+coste.
+
+### 3.9. Los precios del día, en la propia lista
+
+Para lo que se vende al peso (la fruta, la carne), Inventario → Productos
+lleva dos columnas que se teclean en la propia fila, sin abrir la ficha:
+**Coste** y **Precio**. Intro o salir del recuadro guarda; Escape deshace.
+
+Tecleando el **coste**, el precio de venta sale solo con el margen que tenga
+ese producto (o el de su categoría). Antes de guardar avisa y te dice cuánto
+te queda de ese producto en almacén: cambiar el precio afecta también a lo
+que ya está en la estantería, y a veces prefieres despachar antes lo que
+compraste barato.
+
+Qué unidades salen tecleables se configura en Configuración → Productos
+(«KG» de fábrica).
+
+### 3.10. Productos que no se agotan
+
+Lo que se repone del saco sin contarlo no necesita que le lleves stock. En
+la **categoría** («Llevar control de existencias») o en cada **producto**
+(«Control de existencias»: lo que diga su categoría / sí / no) puedes
+apagarlo. Apagado, ese producto se vende sin comprobar ni descontar
+existencias — la caja no se planta nunca por falta de stock.
+
+Lo decides producto a producto: puedes tener «Fruta» sin control y dejar dos
+o tres piezas concretas contadas, o al revés.
+
+### 3.11. Compras, proveedores, inventario...
 
 Estas áreas todavía no tienen pantallas propias en el panel — las gestiona
 tu administrador directamente. Si necesitas dar de alta un proveedor o un

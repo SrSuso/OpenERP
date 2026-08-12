@@ -99,6 +99,7 @@ describe('useLiveCatalog', () => {
   it('refreshes at once when another tab of the same browser saves something', async () => {
     const { backend, invalidate } = setup();
     await waitFor(() => expect(backend.versionCalls).toBeGreaterThan(0));
+    backend.version = 'v2';
     invalidate.mockClear();
 
     // Lo que hace el panel al guardar, desde su propia pestaña.
@@ -109,6 +110,22 @@ describe('useLiveCatalog', () => {
     await waitFor(() => {
       expect(invalidatedKeys(invalidate)).toContain('pos/products');
     });
+  });
+
+  it('does not reload the catalogue when the other tab saved something the till does not show', async () => {
+    // Una venta, un pedido de compra, un informe: el panel avisa igual —el
+    // aviso sale de cualquier escritura—, pero la huella no se mueve y aquí
+    // no hay nada que volver a pedir.
+    const { backend, invalidate } = setup();
+    await waitFor(() => expect(backend.versionCalls).toBeGreaterThan(0));
+    invalidate.mockClear();
+
+    const bus = new BroadcastChannel('openerp-changes');
+    bus.postMessage('changed');
+    bus.close();
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(invalidatedKeys(invalidate)).not.toContain('pos/products');
   });
 
   it('checks again when the till window comes back to the front', async () => {

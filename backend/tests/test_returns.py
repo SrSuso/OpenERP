@@ -597,3 +597,44 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
     response = await client.get("/api/v1/returns")
 
     assert response.status_code == 401
+
+
+async def test_returning_a_product_without_stock_control_creates_no_stock(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Las dos mitades tienen que ser simétricas. Vender no descuenta nada
+    de un producto sin control de existencias (esa es toda la gracia del
+    stock infinito), así que devolver tampoco puede sumar: si sumara,
+    aparecería stock salido de la nada justo en los productos que no
+    deberían tener ninguno, y el inventario del resto dejaría de ser
+    creíble."""
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="RETURN-NO-STOCK")
+    updated = await client.patch(f"/api/v1/products/{product['id']}", json={"tracks_stock": False})
+    assert updated.json()["effective_tracks_stock"] is False
+
+    # Se vende sin tener nada en el almacén: la caja no se planta.
+    sale = await _completed_sale(client, product=product, quantity="3")
+    assert (await client.get(f"/api/v1/stock-balance?product_id={product['id']}")).json() == []
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/returns",
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale["lines"][0]["id"],
+                    "quantity_packages": "1",
+                    "economic": True,
+                    "physical": True,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 201
+    line = response.json()["lines"][0]
+    # La devolución se registra como física —la mercancía vuelve al
+    # montón— pero sin movimiento de almacén detrás.
+    assert line["is_physical"] is True
+    assert line["stock_movement_id"] is None
+    assert (await client.get(f"/api/v1/stock-balance?product_id={product['id']}")).json() == []

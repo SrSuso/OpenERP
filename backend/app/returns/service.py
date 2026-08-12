@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
+from app.catalog import stock as catalog_stock
 from app.catalog.models import Product
 from app.core.context import get_user_id
 from app.core.errors import NotFoundError, ValidationError
@@ -165,9 +166,21 @@ async def _apply_return_line(
     lot_id: int | None = None
     movement_id: int | None = None
     if line_payload.physical:
-        product = await session.get(Product, sale_line.product_id)
+        # La categoría, porque de ella puede salir si el producto lleva
+        # control de existencias (`app.catalog.stock`): sin cargarla, leerla
+        # aquí reventaría con MissingGreenlet.
+        product = await session.get(
+            Product, sale_line.product_id, options=[selectinload(Product.category)]
+        )
         assert product is not None  # FK guarantees this
-        if product.track_lots:
+        # Sin control de existencias no hay nada que devolver al almacén:
+        # la venta tampoco descontó nada. Sumar aquí dejaba stock salido de
+        # la nada justo en los productos que no deberían tener ninguno —se
+        # vendían 3, se devolvía 1, y el saldo pasaba de vacío a 1—. La
+        # devolución sigue siendo física (la mercancía vuelve al montón),
+        # simplemente no se apunta en ningún sitio.
+        restocks = catalog_stock.tracks_stock(product)
+        if restocks and product.track_lots:
             if not line_payload.lot_number:
                 raise ValidationError(
                     f"Line {sale_line.id}: product {product.sku} tracks lots — "
@@ -176,19 +189,20 @@ async def _apply_return_line(
             lot_id = await _get_or_create_lot(
                 session, product_id=product.id, lot_number=line_payload.lot_number
             )
-        movement = await inventory_service.record_movement(
-            session,
-            product_id=sale_line.product_id,
-            warehouse_id=sale.warehouse_id,
-            location_id=sale.location_id,
-            lot_id=lot_id,
-            quantity=quantity_base,
-            movement_type=MovementType.RETURN,
-            unit_cost=product.cost,
-            reference_type="return",
-            reference_id=ret.id,
-        )
-        movement_id = movement.id
+        if restocks:
+            movement = await inventory_service.record_movement(
+                session,
+                product_id=sale_line.product_id,
+                warehouse_id=sale.warehouse_id,
+                location_id=sale.location_id,
+                lot_id=lot_id,
+                quantity=quantity_base,
+                movement_type=MovementType.RETURN,
+                unit_cost=product.cost,
+                reference_type="return",
+                reference_id=ret.id,
+            )
+            movement_id = movement.id
 
     sale_line.quantity_returned = sale_line.quantity_returned + quantity_base
 

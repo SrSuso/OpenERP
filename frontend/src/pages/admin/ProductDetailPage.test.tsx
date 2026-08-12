@@ -103,8 +103,19 @@ function baseProduct(): Product {
   };
 }
 
-function stubBackend(options: { categories?: ProductCategory[] } = {}) {
+/** `productFetchDelayMs`: lo que tarda en llegar la ficha recargada. Cero
+ * —una red que responde antes de que React pinte— esconde cualquier
+ * problema de «qué se enseña mientras tanto»; una tienda de verdad no es
+ * así. */
+function stubBackend(
+  options: { categories?: ProductCategory[]; productFetchDelayMs?: number } = {},
+) {
   const categories = options.categories ?? CATEGORIES;
+  const delay = options.productFetchDelayMs ?? 0;
+  const afterDelay = (response: Response) =>
+    delay === 0
+      ? Promise.resolve(response)
+      : new Promise<Response>((resolve) => setTimeout(() => resolve(response), delay));
   const product = baseProduct();
   const supplier: Supplier = {
     id: 5,
@@ -160,8 +171,7 @@ function stubBackend(options: { categories?: ProductCategory[] } = {}) {
         init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
 
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
-      if (method === 'GET' && /\/products\/1$/.test(url))
-        return Promise.resolve(jsonResponse(product));
+      if (method === 'GET' && /\/products\/1$/.test(url)) return afterDelay(jsonResponse(product));
       if (method === 'GET' && url.includes('/product-categories')) {
         return Promise.resolve(jsonResponse(categories));
       }
@@ -427,6 +437,33 @@ describe('ProductDetailPage', () => {
 
     expect(confirmSpy).toHaveBeenCalled();
     expect(screen.getByLabelText('Coste')).toHaveValue('0.45');
+  });
+
+  it('keeps showing what was just saved, even if the reload is slow', async () => {
+    // Con la recarga instantánea esto no se ve nunca; con una red de
+    // tienda, la ficha se quedaba con el nombre de antes debajo de un
+    // título con el nuevo, y volver a guardar lo devolvía.
+    const backend = stubBackend({ productFetchDelayMs: 300 });
+    renderPage();
+
+    const nameInput = await screen.findByDisplayValue('Agua 1L');
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'Agua mineral');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(backend.updateCalls[0]).toMatchObject({ name: 'Agua mineral' });
+    // Nada más guardar, y sin esperar a que llegue la recarga.
+    expect(await screen.findByDisplayValue('Agua mineral')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Agua 1L')).not.toBeInTheDocument();
+
+    // Y cuando la recarga por fin llega, sigue igual.
+    await waitFor(
+      () => {
+        expect(screen.getByDisplayValue('Agua mineral')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+    expect(screen.queryByDisplayValue('Agua 1L')).not.toBeInTheDocument();
   });
 
   it('warns before a cost change, showing what is still in stock', async () => {

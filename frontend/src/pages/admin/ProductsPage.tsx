@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import {
@@ -148,6 +148,18 @@ export function ProductsPage() {
   // El total de stock por producto vive en inventario y tiene su propio
   // permiso: quien no pueda verlo sigue viendo la lista, con la columna en
   // blanco.
+  // El «Guardado» verde de la fila es un acuse de recibo, no un estado: se
+  // va solo. Quedándose puesto, al rato la lista entera parecía recién
+  // tocada y dejaba de decir nada.
+  useEffect(() => {
+    if (savedPriceId === null && savedCostId === null) return;
+    const timer = setTimeout(() => {
+      setSavedPriceId(null);
+      setSavedCostId(null);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [savedPriceId, savedCostId]);
+
   const stockTotals = useQuery({ ...stockTotalsQuery, enabled: hasPermission('inventory.read') });
   const stockByProduct = stockTotals.data
     ? new Map(stockTotals.data.map((total) => [total.product_id, total.quantity]))

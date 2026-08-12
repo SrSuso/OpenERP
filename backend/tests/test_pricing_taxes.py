@@ -757,12 +757,13 @@ async def test_the_fixed_amount_applies_whatever_formula_is_in_use(
             "/api/v1/products", json=_product_payload(category_id=category_id, cost="10")
         )
     ).json()["id"]
+    # Se le cambia el coste, que es lo que dispara el recálculo.
     product = (
-        await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "10"})
+        await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "12"})
     ).json()
 
-    # 10 * 2 = 20, más los 25 céntimos heredados de la categoría.
-    assert Decimal(product["list_price"]) == Decimal("20.250000")
+    # 12 * 2 = 24, más los 25 céntimos heredados de la categoría.
+    assert Decimal(product["list_price"]) == Decimal("24.250000")
 
 
 async def test_saving_a_category_without_changing_its_prices_leaves_no_trace(
@@ -800,4 +801,34 @@ async def test_saving_a_category_without_changing_its_prices_leaves_no_trace(
     await client.patch(
         f"/api/v1/product-categories/{category_id}/pricing", json={"margin_rate": "30"}
     )
+    assert len((await client.get(f"/api/v1/products/{product_id}/pricing/history")).json()) > before
+
+
+async def test_saving_a_products_price_without_changing_anything_leaves_no_trace(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Igual que con las categorías: el panel de precios manda el coste
+    siempre, así que darle a «Guardar precio» sin tocar nada apuntaba un
+    cambio de precio que no lo era. El histórico está para mirar por qué
+    cambió un precio; lleno de no-cambios no sirve."""
+    await login(role_name="ADMIN")
+    product_id = (await client.post("/api/v1/products", json=_product_payload(cost="10"))).json()[
+        "id"
+    ]
+    await client.patch(f"/api/v1/products/{product_id}/pricing", json={"margin_rate": "20"})
+    before = len((await client.get(f"/api/v1/products/{product_id}/pricing/history")).json())
+
+    # Lo mismo que ya tenía, escrito con otros decimales — es lo que manda
+    # el panel al volver a guardar sin cambiar nada.
+    response = await client.patch(
+        f"/api/v1/products/{product_id}/pricing",
+        json={"cost": "10.000000", "margin_rate": "20.000000", "tax_ids": []},
+    )
+
+    assert response.status_code == 200
+    after = len((await client.get(f"/api/v1/products/{product_id}/pricing/history")).json())
+    assert after == before
+
+    # Y cambiar el coste de verdad sí queda apuntado.
+    await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "12"})
     assert len((await client.get(f"/api/v1/products/{product_id}/pricing/history")).json()) > before

@@ -362,6 +362,100 @@ primer cambio.
 
 ---
 
+## 4bis. La tienda de verdad: lo pedido sobre la marcha (agosto 2026)
+
+Todo esto se pidió con el programa ya en uso, no estaba en las 22 fases. Va
+junto porque comparte una idea: el que manda es el tendero, y el programa
+tiene que dejarle elegir producto a producto en vez de imponer una regla.
+
+### 4bis.1. Existencias opcionales por producto o por categoría
+
+Lo que se vende a granel se repone del saco sin contarlo, así que llevarle
+un stock exacto obliga a ajustarlo a mano cada mañana para que la caja no se
+plante. `ProductCategory.tracks_stock` (booleano, por defecto sí) y
+`Product.tracks_stock` (anulable — `None` = lo que diga su categoría). Se
+resuelve en un único sitio, `app/catalog/stock.py`, con la misma prioridad
+de siempre: producto → categoría → sí.
+
+**Los dos lados tienen que ser simétricos.** El cobro
+(`app.sales.service.checkout`) no comprueba ni descuenta existencias de un
+producto sin control; la devolución física (`app.returns.service`) tampoco
+las suma. Saltarse el segundo dejaba stock salido de la nada justo en los
+productos que no deberían tener ninguno — se vendían 3, se devolvía 1, y el
+saldo pasaba de vacío a 1.
+
+### 4bis.2. Tres formas de poner precio, las tres heredables
+
+Además del margen en porcentaje, que ya estaba:
+
+- `margin_amount` (`Money`, anulable, en producto y categoría): euros sobre
+  el coste. «Este me deja 25 céntimos y punto».
+- `ProductCategory.price_formula`: la fórmula deja de ser sólo por producto
+  — una familia entera puede compartirla (`effective_formula`: producto →
+  categoría → tienda).
+
+El margen en euros **no es una variable de fórmula**, y eso es deliberado:
+se suma *fuera*, a lo que dé la fórmula (`_recompute_with`). Cuando era una
+variable más, una fórmula que no la nombrara —la de la tienda cambiada a
+mano, o la propia de un producto escrita antes— la dejaba sin efecto en
+silencio: poner 25 céntimos no hacía nada y no había forma de saber por qué.
+
+Y **si cambia el coste, cambia el PVP**, desde donde sea. Coste, impuestos y
+margen son los ingredientes del precio: tocar cualquiera lo recalcula. Antes
+un producto con precio puesto a mano lo conservaba aunque le subiera el
+coste, y eso deja vendiendo barato sin enterarse. Para dejar otro precio
+está `PUT .../manual-price`, que se fija después y a sabiendas.
+
+Guardar sin cambiar nada **no** recalcula ni apunta nada: el panel manda el
+bloque entero de precios cada vez, y sin comparar antes/después renombrar
+una categoría dejaba una línea de histórico en cada uno de sus productos. La
+comparación es numérica (`_product_state`/`_category_state`) y no de texto:
+`Decimal("20")` y `Decimal("20.000000")` son la misma cantidad.
+
+### 4bis.3. La caja al día sin que nadie la toque
+
+La caja está en otro equipo, dedicada, y nadie la recarga en todo el día.
+`GET /catalog-version` (`app/catalog/version.py`) devuelve una huella de
+`count(*)` + `max(updated_at)` sobre las tablas que la caja enseña; el TPV
+la pregunta cada pocos segundos (`pos.catalog_refresh_seconds`, 3 por
+defecto) y sólo cuando cambia vuelve a pedir el catálogo. Preguntar es
+diminuto; traerse el catálogo entero cada vez, no.
+
+Dos atajos encima: un `BroadcastChannel` avisa a las demás pestañas del
+mismo navegador (`lib/changeBroadcast.ts`, disparado desde el
+`MutationCache` en `lib/queryClient.ts`), y volver a la ventana de la caja
+comprueba sin esperar al siguiente turno. Los tres caminos acaban en lo
+mismo, así que con que funcione uno la caja está al día.
+
+Dos cosas que cuestan un rato de depurar si no se saben:
+
+- `updated_at` lo mantiene el ORM (`TimestampMixin`), no un disparador de la
+  base de datos: una escritura en SQL crudo no lo mueve y la caja no se
+  entera hasta el siguiente cambio normal.
+- `BroadcastChannel` reparte a todos los canales del mismo nombre *menos al
+  que envía*. Con un canal para mandar y otro para escuchar —aunque estén en
+  la misma pestaña— la pestaña se avisa a sí misma: en el TPV eso era
+  recargar el catálogo entero en cada toque a un producto, porque cada línea
+  del carrito es una escritura. Por eso hay **uno solo por pestaña**.
+
+### 4bis.4. Cambios sin guardar
+
+`lib/unsaved.ts`: `cancelWithConfirm` envuelve el «Cancelar» de un
+formulario y `useUnsavedWarning` registra el aviso del navegador al cerrar o
+recargar. Está en las altas y ediciones de producto, proveedor, usuario, rol
+y regla de aviso; en el editor de categorías; y al cambiar de pestaña en la
+ficha con el panel de precios a medias.
+
+El detalle que importa: después de guardar no puede quedar «sucio». La ficha
+de producto se remonta al guardar (`key`), pero **antes hay que meter en la
+caché el producto que devuelve el PATCH** — si no, se remonta con lo que
+había cacheado, que todavía es lo de antes de guardar, y la ficha se queda
+enseñando el nombre viejo debajo de un título con el nuevo. Volver a darle a
+Guardar devolvía el viejo. Es un fallo que **no se ve con respuestas
+instantáneas**: la prueba que lo cubre usa una recarga lenta a propósito.
+
+---
+
 ## 5. Tests y calidad
 
 ```bash

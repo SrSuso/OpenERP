@@ -76,21 +76,18 @@ export function useLiveCatalog(): void {
   const seen = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    const refresh = () => {
-      for (const queryKey of LIVE_KEYS) {
-        void queryClient.invalidateQueries({ queryKey });
-      }
-    };
-
     const check = () => {
       void queryClient.invalidateQueries({ queryKey: catalogVersionQuery.queryKey });
     };
     const onVisible = () => {
       if (document.visibilityState === 'visible') check();
     };
-    // Un cambio guardado en otra pestaña del mismo navegador: no hay nada
-    // que preguntar, se sabe que hay algo nuevo.
-    const stopListening = onChangeBroadcast(refresh);
+    // Un cambio guardado en otra pestaña del mismo navegador: se vuelve a
+    // preguntar la huella en vez de refrescar a lo bruto. Refrescando
+    // directamente se hacía dos veces —una por el aviso y otra al sondeo
+    // siguiente, que veía la huella distinta—, y encima se refrescaba
+    // aunque lo guardado no fuera nada que la caja enseñe.
+    const stopListening = onChangeBroadcast(check);
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', check);
 
