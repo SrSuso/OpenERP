@@ -157,8 +157,9 @@ async def test_deleting_something_moves_it_too(
 async def test_a_cashier_may_ask(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Quien cobra no tiene `product.read` y la caja la pregunta cada pocos
-    segundos: si pidiera ese permiso, no serviría para nada."""
+    """La caja la pregunta cada pocos segundos con la sesión de quien esté
+    cobrando: si el cajero no pudiera, no serviría para nada. Le basta con
+    `product.read`, que ya tiene para poder mirar el catálogo."""
     await login(role_name="CASHIER")
 
     response = await client.get("/api/v1/catalog-version")

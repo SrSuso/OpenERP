@@ -52,9 +52,18 @@ function stubBackend(
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
       if (url.includes('/auth/logout')) {
         logoutCalls.push(url);
-        return Promise.resolve(jsonResponse({}));
+        // 204 sin cuerpo, como el backend de verdad
+        // (backend/app/auth/router.py). Devolviendo `{}` el esquema de
+        // `logout()` (z.null()) reventaba y el error salía por consola en
+        // cada ejecución del suite, sin que ninguna prueba se enterara.
+        return Promise.resolve(new Response(null, { status: 204 }));
       }
       if (url.includes('/settings/values')) return Promise.resolve(jsonResponse({}));
+      // La caja pregunta por esta huella cada pocos segundos para saber si
+      // el panel ha cambiado algo (ver `useLiveCatalog`).
+      if (url.includes('/catalog-version')) {
+        return Promise.resolve(jsonResponse({ version: 'v1' }));
+      }
       if (url.includes('/warehouses')) {
         return Promise.resolve(jsonResponse([{ id: 1, name: 'Tienda', is_active: true }]));
       }

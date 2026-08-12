@@ -70,7 +70,10 @@ export function ProductsTable({
             <th className="px-4 py-2 font-medium">Categoría</th>
             <th className="px-4 py-2 font-medium">Categoría POS</th>
             <th className="px-4 py-2 font-medium">Stock</th>
-            <th className="px-4 py-2 font-medium">Coste (por unidad base)</th>
+            {/* Lo que cuesta el género es cosa de quien pone los precios:
+                el rol de caja tiene `product.read` y llegaría a ver esta
+                lista, pero no tiene por qué saber el margen de la tienda. */}
+            {canManagePricing && <th className="px-4 py-2 font-medium">Coste (por unidad base)</th>}
             <th className="px-4 py-2 font-medium">Precio (por unidad base)</th>
             <th className="px-4 py-2 font-medium">Estado</th>
           </tr>
@@ -131,26 +134,27 @@ export function ProductsTable({
                   </>
                 )}
               </td>
-              <td className="px-4 py-2">
-                {canManagePricing &&
-                quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (
-                  <MoneyCell
-                    // Se remonta cuando el servidor devuelve otro coste.
-                    key={product.cost}
-                    product={product}
-                    label={`Coste de ${product.name}`}
-                    value={product.cost}
-                    onSave={onSetCost}
-                    isSaving={savingCostId === product.id}
-                    isSaved={savedCostId === product.id}
-                  />
-                ) : (
-                  <>
-                    {formatMoney(product.cost)}
-                    <span className="ml-1 text-xs text-slate-400">/{product.base_unit_name}</span>
-                  </>
-                )}
-              </td>
+              {canManagePricing && (
+                <td className="px-4 py-2">
+                  {quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (
+                    <MoneyCell
+                      // Se remonta cuando el servidor devuelve otro coste.
+                      key={product.cost}
+                      product={product}
+                      label={`Coste de ${product.name}`}
+                      value={product.cost}
+                      onSave={onSetCost}
+                      isSaving={savingCostId === product.id}
+                      isSaved={savedCostId === product.id}
+                    />
+                  ) : (
+                    <>
+                      {formatMoney(product.cost)}
+                      <span className="ml-1 text-xs text-slate-400">/{product.base_unit_name}</span>
+                    </>
+                  )}
+                </td>
+              )}
               <td className="px-4 py-2">
                 {canManagePricing &&
                 quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (

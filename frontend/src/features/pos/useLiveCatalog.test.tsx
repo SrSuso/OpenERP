@@ -66,13 +66,16 @@ describe('useLiveCatalog', () => {
     backend.version = 'v2';
     await vi.advanceTimersByTimeAsync(5_000);
 
-    // Precios y productos, botones del TPV, ajustes de tienda y la
+    // Precios y productos, botones del TPV, fotos, ajustes de tienda y la
     // plantilla del ticket: todo lo que se cambia desde el panel.
     await waitFor(() => {
       expect(invalidatedKeys(invalidate)).toEqual(
         expect.arrayContaining([
           'pos/products',
           'pos/categories',
+          'images',
+          // Las fotos van aparte: viajan como número de versión en la URL
+          // de la imagen, no dentro del producto.
           'settings/values',
           'tickets/templates',
         ]),

@@ -46,12 +46,15 @@ _require_manage = Depends(require_permission(PRODUCT_MANAGE))
 _require_pos_category_manage = Depends(require_permission(POS_CATEGORY_MANAGE))
 
 
-@router.get("/catalog-version", response_model=dict[str, str])
-async def get_catalog_version(session: SessionDep, user: CurrentUser) -> dict[str, str]:
+@router.get("/catalog-version", response_model=dict[str, str], dependencies=[_require_read])
+async def get_catalog_version(session: SessionDep) -> dict[str, str]:
     """Para que la caja, que está en otro equipo y nadie recarga, sepa si
-    ha cambiado algo sin traerse el catálogo entero cada vez. Basta con
-    estar dentro: quien cobra no tiene `product.read` y la necesita igual.
-    Ver `app.catalog.version`."""
+    ha cambiado algo sin traerse el catálogo entero cada vez. Ver
+    `app.catalog.version`.
+
+    Pide `product.read`, el mismo permiso que listar productos: quien está
+    en la caja ya lo tiene (es lo que le deja mirar el catálogo), y a quien
+    no puede ver productos no le sirve de nada saber que han cambiado."""
     return {"version": await catalog_version(session)}
 
 

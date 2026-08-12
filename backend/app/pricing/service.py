@@ -493,6 +493,21 @@ async def _recompute_category_products(
     await session.flush()
 
 
+def _category_state(category: ProductCategory) -> tuple[Any, ...]:
+    """Lo mismo que `_category_snapshot`, pero con los números como
+    `Decimal` en vez de como texto — para *comparar*.
+
+    Con texto no vale: lo que llega en el JSON es `Decimal("20")` y lo que
+    hay guardado es `Decimal("20.000000")`, misma cantidad y distinta
+    cadena, así que guardar sin cambiar nada parecía un cambio."""
+    return (
+        category.margin_rate,
+        category.margin_amount,
+        category.price_formula,
+        tuple(sorted(t.id for t in category.taxes)),
+    )
+
+
 def _category_snapshot(category: ProductCategory) -> dict[str, Any]:
     return {
         "margin_rate": str(category.margin_rate) if category.margin_rate is not None else None,
@@ -509,14 +524,12 @@ async def update_category_pricing(
 ) -> ProductCategory:
     category = await catalog.get_category(session, category_id)
     before = _category_snapshot(category)
+    state_before = _category_state(category)
 
-    touched = False
     if "margin_rate" in payload.model_fields_set:
         category.margin_rate = payload.margin_rate
-        touched = True
     if "margin_amount" in payload.model_fields_set:
         category.margin_amount = payload.margin_amount
-        touched = True
     if "price_formula" in payload.model_fields_set:
         # Se valida aquí y no al evaluarla: si está mal, el error tiene que
         # salir al guardarla, no días después al recalcular un producto.
@@ -526,22 +539,26 @@ async def update_category_pricing(
             except FormulaError as exc:
                 raise ValidationError(str(exc)) from exc
         category.price_formula = payload.price_formula or None
-        touched = True
     if "tax_ids" in payload.model_fields_set:
         category.taxes = await _taxes_by_id(session, payload.tax_ids or [])
-        touched = True
 
     await session.flush()
-    await audit.record(
-        session,
-        action="category_pricing_changed",
-        entity_type="product_category",
-        entity_id=category_id,
-        before=before,
-        after=_category_snapshot(category),
-    )
 
-    if touched:
+    # Sólo si algo ha quedado *distinto*. El panel manda margen, impuestos y
+    # fórmula juntos cada vez que se guarda la categoría, aunque sólo se le
+    # haya cambiado el nombre: sin esta comparación, renombrar «Bebidas»
+    # recalculaba y dejaba una línea de histórico de precios en cada uno de
+    # sus productos. El histórico es para mirar por qué cambió un precio, y
+    # así se llenaba de cambios que no lo eran.
+    if _category_state(category) != state_before:
+        await audit.record(
+            session,
+            action="category_pricing_changed",
+            entity_type="product_category",
+            entity_id=category_id,
+            before=before,
+            after=_category_snapshot(category),
+        )
         await _recompute_category_products(session, category_id, await get_settings(session))
 
     return await catalog.get_category(session, category_id)

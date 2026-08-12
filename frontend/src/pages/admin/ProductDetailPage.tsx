@@ -93,11 +93,21 @@ export function ProductDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
   };
 
+  // Cuántas veces se ha guardado la ficha. Va como `key` del formulario:
+  // guardar lo remonta con los datos recién guardados, y así deja de
+  // contar como «tiene cambios sin guardar» —si no, el aviso al cerrar y
+  // el «¿perder los cambios?» de Cancelar seguirían saltando después de
+  // haber guardado, que es lo contrario de lo que hacen falta—. Se remonta
+  // sólo al guardar, no en cada recarga de la ficha: escribir mientras
+  // llega una respuesta de fondo no borra nada.
+  const [savedGeneral, setSavedGeneral] = useState(0);
+
   const updateMutation = useMutation({
     mutationFn: (payload: ProductUpdateInput) => updateProduct(productId, payload),
     onSuccess: () => {
       invalidateProduct();
       setEditError(null);
+      setSavedGeneral((count) => count + 1);
     },
     onError: () => setEditError('No se ha podido guardar el producto.'),
   });
@@ -302,6 +312,7 @@ export function ProductDetailPage() {
 
       {tab === 'general' && (
         <EditProductForm
+          key={savedGeneral}
           product={data}
           categories={categories.data ?? []}
           posCategories={posCategories.data ?? []}

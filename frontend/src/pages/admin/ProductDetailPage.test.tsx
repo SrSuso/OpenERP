@@ -410,6 +410,13 @@ describe('ProductDetailPage', () => {
     expect(screen.getByDisplayValue('Agua 1L fresca')).toBeInTheDocument();
     expect(backend.updateCalls).toEqual([]);
 
+    // Y una vez guardado ya no hay nada que perder: Cancelar no pregunta.
+    confirmSpy.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await screen.findByDisplayValue('Agua 1L fresca');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(confirmSpy).not.toHaveBeenCalled();
+
     // Y lo mismo tecleando un precio y saltando a otra pestaña.
     confirmSpy.mockClear();
     await userEvent.click(screen.getByRole('button', { name: 'Precios' }));

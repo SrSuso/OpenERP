@@ -763,3 +763,41 @@ async def test_the_fixed_amount_applies_whatever_formula_is_in_use(
 
     # 10 * 2 = 20, más los 25 céntimos heredados de la categoría.
     assert Decimal(product["list_price"]) == Decimal("20.250000")
+
+
+async def test_saving_a_category_without_changing_its_prices_leaves_no_trace(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """El panel manda margen, impuestos y fórmula juntos cada vez que se
+    guarda una categoría, aunque sólo se le haya tocado el nombre. Si eso
+    recalculara, renombrar «Bebidas» dejaría una línea de histórico de
+    precios en cada uno de sus productos — y el histórico está para mirar
+    por qué cambió un precio, no para llenarse de cambios que no lo son."""
+    await login(role_name="ADMIN")
+    category_id = await _create_category(client, "Lácteos")
+    await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing", json={"margin_rate": "20"}
+    )
+    product_id = (
+        await client.post(
+            "/api/v1/products", json=_product_payload(category_id=category_id, cost="10")
+        )
+    ).json()["id"]
+    before = len((await client.get(f"/api/v1/products/{product_id}/pricing/history")).json())
+
+    # Exactamente lo mismo que ya tenía, que es lo que manda el panel al
+    # guardar sólo el nombre.
+    response = await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing",
+        json={"margin_rate": "20", "margin_amount": None, "price_formula": "", "tax_ids": []},
+    )
+
+    assert response.status_code == 200
+    after = len((await client.get(f"/api/v1/products/{product_id}/pricing/history")).json())
+    assert after == before
+
+    # Y cuando de verdad cambia algo, sí recalcula.
+    await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing", json={"margin_rate": "30"}
+    )
+    assert len((await client.get(f"/api/v1/products/{product_id}/pricing/history")).json()) > before

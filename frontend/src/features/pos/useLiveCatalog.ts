@@ -7,9 +7,15 @@ import { API_V1, apiFetch } from '@/lib/api';
 import { onChangeBroadcast } from '@/lib/changeBroadcast';
 
 /** Lo que la caja enseña y que se cambia desde el panel: productos y sus
- * precios, los botones del TPV, los ajustes de tienda (colores, tamaño de
- * letra, nombres de las formas de pago, si el ticket sale solo) y la
- * plantilla del ticket.
+ * precios, los botones del TPV, las fotos de unos y otros, los ajustes de
+ * tienda (colores, tamaño de letra, nombres de las formas de pago, si el
+ * ticket sale solo) y la plantilla del ticket.
+ *
+ * `['images']` a secas cubre las dos clases de foto (producto y categoría
+ * POS) y cualquiera que se añada después. Hace falta aparte de los
+ * productos: la foto no viaja en el producto, sino como un número de
+ * versión que forma la URL de la imagen — sin refrescar ese número, la
+ * caja sigue pidiendo la foto vieja aunque el producto ya esté al día.
  *
  * No entra nada de la venta en curso: el carrito y los tickets abiertos
  * viven en el servidor y se refrescan solos al operar con ellos. Recargar
@@ -18,6 +24,7 @@ import { onChangeBroadcast } from '@/lib/changeBroadcast';
 const LIVE_KEYS = [
   ['pos', 'products'],
   ['pos', 'categories'],
+  ['images'],
   ['settings', 'values'],
   ['tickets', 'templates'],
 ] as const;

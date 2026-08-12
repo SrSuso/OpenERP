@@ -409,6 +409,10 @@ describe('ProductsPage', () => {
     expect(screen.getByRole('link', { name: 'Agua 1L' })).toBeInTheDocument();
     // Sin pricing.manage el precio se ve, pero no se teclea.
     expect(screen.queryByLabelText('Precio de Agua 1L')).not.toBeInTheDocument();
+    // Y el coste no se ve siquiera: lo que cuesta el género es cosa de
+    // quien pone los precios, no de quien sólo mira el catálogo.
+    expect(screen.queryByText('Coste (por unidad base)')).not.toBeInTheDocument();
+    expect(screen.queryByText('0,30 €')).not.toBeInTheDocument();
   });
 
   it('only the products sold by weight get the price editable in the row', async () => {
