@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -26,7 +26,7 @@ const ME = {
   permissions: ['admin.access', 'lot.read', 'lot.manage'],
 };
 
-function stubBackend() {
+function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean } = {}) {
   const product: Product = {
     id: 10,
     sku: 'P000010',
@@ -69,6 +69,7 @@ function stubBackend() {
   const lots: Lot[] = [];
   let nextLotId = 1;
   const balances: LotBalance[] = [];
+  const consumeKeys: string[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -119,6 +120,10 @@ function stubBackend() {
         return Promise.resolve(jsonResponse({ allocations }));
       }
       if (method === 'POST' && /\/fefo-consume$/.test(url)) {
+        consumeKeys.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
+        if (failFirstConsume && consumeKeys.length === 1) {
+          return Promise.reject(new TypeError('Connection lost after sending request'));
+        }
         const allocations: FefoAllocation[] = balances.map((b) => ({
           lot_id: b.lot.id,
           lot_number: b.lot.lot_number,
@@ -131,6 +136,7 @@ function stubBackend() {
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
+  return { consumeKeys };
 }
 
 function renderPage() {
@@ -146,7 +152,7 @@ function renderPage() {
 
 describe('LotsPage', () => {
   it('creates a lot with an expiration date and shows the FEFO plan for it', async () => {
-    stubBackend();
+    const { consumeKeys } = stubBackend({ failFirstConsume: true });
     renderPage();
 
     await screen.findByText(/P000010/);
@@ -175,6 +181,11 @@ describe('LotsPage', () => {
     expect(within(fefoList.closest('ul')!).getByText(/Lote L2026-01/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar salida' }));
+    await screen.findByText('No se ha podido consumir el stock.');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar salida' }));
+    await waitFor(() => expect(consumeKeys).toHaveLength(2));
+    expect(consumeKeys[0]).not.toBe('');
+    expect(consumeKeys[1]).toBe(consumeKeys[0]);
     expect(await screen.findByText(/Lote L2026-01 \(caduca 2026-09-01\)/)).toBeInTheDocument();
   });
 });

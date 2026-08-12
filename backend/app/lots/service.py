@@ -8,6 +8,8 @@ calls to decide which lots a sale draws from.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -17,13 +19,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
 from app.catalog.models import Product
+from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.db.types import NUMERIC_EPSILON
+from app.idempotency import service as idempotency_service
 from app.inventory import service as inventory_service
-from app.inventory.models import StockBalance
+from app.inventory.models import StockBalance, StockMovement
 from app.lots.models import Lot
-from app.lots.schemas import LotCreate
+from app.lots.schemas import FefoConsumeRequest, LotCreate
 from app.purchasing.models import PurchaseOrder
 from app.suppliers.models import Supplier
+
+_MANUAL_FEFO_OPERATION = "lot.fefo_consume"
+_MANUAL_FEFO_REFERENCE = "fefo_consume"
 
 
 async def _product_or_422(session: AsyncSession, product_id: int) -> Product:
@@ -177,6 +185,25 @@ class FefoAllocation:
     movement_id: int | None = None
 
 
+def manual_fefo_request_fingerprint(product_id: int, payload: FefoConsumeRequest) -> str:
+    """Identify the exact manual stock-reduction intention."""
+    canonical = json.dumps(
+        {
+            "product_id": product_id,
+            "warehouse_id": payload.warehouse_id,
+            "location_id": payload.location_id,
+            "quantity": format(payload.quantity.quantize(NUMERIC_EPSILON), "f"),
+            "movement_type": payload.movement_type,
+            "unit_cost": format(payload.unit_cost.quantize(NUMERIC_EPSILON), "f"),
+            "reason": payload.reason,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 async def plan_fefo(
     session: AsyncSession,
     *,
@@ -281,3 +308,69 @@ async def execute_fefo_consumption(
         after=audit_after,
     )
     return executed
+
+
+async def execute_manual_fefo_consumption(
+    session: AsyncSession,
+    *,
+    product_id: int,
+    payload: FefoConsumeRequest,
+    idempotency_key: str | None = None,
+    actor_user_id: int | None = None,
+) -> list[FefoAllocation]:
+    """Execute the user-facing FEFO reduction with safe request replay.
+
+    Checkout deliberately keeps calling :func:`execute_fefo_consumption`
+    directly under the sale's own idempotency boundary.
+    """
+    claim = None
+    if idempotency_key is not None:
+        actor_id = actor_user_id if actor_user_id is not None else get_user_id()
+        if actor_id is None:
+            raise ValidationError("An authenticated user is required for idempotent FEFO.")
+        claim = await idempotency_service.claim(
+            session,
+            operation=_MANUAL_FEFO_OPERATION,
+            idempotency_key=idempotency_key,
+            request_fingerprint=manual_fefo_request_fingerprint(product_id, payload),
+            resource_id=product_id,
+            actor_user_id=actor_id,
+        )
+        if not claim.is_new:
+            rows = (
+                await session.execute(
+                    select(StockMovement, Lot)
+                    .join(Lot, Lot.id == StockMovement.lot_id)
+                    .where(
+                        StockMovement.reference_type == _MANUAL_FEFO_REFERENCE,
+                        StockMovement.reference_id == claim.record.id,
+                    )
+                    .order_by(StockMovement.id)
+                )
+            ).all()
+            if not rows:
+                raise ConflictError("The idempotent FEFO result is not available.")
+            return [
+                FefoAllocation(
+                    lot=lot,
+                    quantity=-movement.quantity,
+                    movement_id=movement.id,
+                )
+                for movement, lot in rows
+            ]
+
+    allocations = await execute_fefo_consumption(
+        session,
+        product_id=product_id,
+        warehouse_id=payload.warehouse_id,
+        location_id=payload.location_id,
+        quantity=payload.quantity,
+        movement_type=payload.movement_type,
+        unit_cost=payload.unit_cost,
+        reference_type=_MANUAL_FEFO_REFERENCE if claim is not None else None,
+        reference_id=claim.record.id if claim is not None else None,
+        reason=payload.reason,
+    )
+    if claim is not None:
+        await idempotency_service.complete(session, claim.record)
+    return allocations

@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import CurrentUser, SessionDep
 from app.catalog.service import get_product
 from app.lots import service
 from app.lots.models import Lot
@@ -117,17 +117,21 @@ async def fefo_plan(
     dependencies=[_require_manage],
 )
 async def fefo_consume(
-    product_id: int, payload: FefoConsumeRequest, session: SessionDep
+    product_id: int,
+    payload: FefoConsumeRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=1, max_length=200),
+    ] = None,
 ) -> FefoConsumeResponse:
-    allocations = await service.execute_fefo_consumption(
+    allocations = await service.execute_manual_fefo_consumption(
         session,
         product_id=product_id,
-        warehouse_id=payload.warehouse_id,
-        location_id=payload.location_id,
-        quantity=payload.quantity,
-        movement_type=payload.movement_type,
-        unit_cost=payload.unit_cost,
-        reason=payload.reason,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        actor_user_id=current_user.id,
     )
     return FefoConsumeResponse(
         allocations=[

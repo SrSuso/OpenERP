@@ -92,9 +92,11 @@ export interface FefoConsumeInput {
 export async function consumeFefo(
   productId: number,
   payload: FefoConsumeInput,
+  idempotencyKey: string,
 ): Promise<FefoAllocation[]> {
   const result = await apiFetch(`${API_V1}/products/${productId}/fefo-consume`, {
     method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
     schema: z.object({
       allocations: z.array(fefoAllocationSchema),
       movement_ids: z.array(z.number()),

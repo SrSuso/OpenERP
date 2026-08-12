@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
-import { consumeFefo, lotBalancesQuery, planFefo, type FefoAllocation } from '@/features/lots/api';
+import {
+  consumeFefo,
+  lotBalancesQuery,
+  planFefo,
+  type FefoAllocation,
+  type FefoConsumeInput,
+} from '@/features/lots/api';
 import { ApiError } from '@/lib/api';
 import { decimalString } from '@/lib/decimal';
 import { formatQuantity } from '@/lib/format';
@@ -24,6 +30,7 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
   const [reason, setReason] = useState('');
   const [plan, setPlan] = useState<FefoAllocation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const consumeAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const queryClient = useQueryClient();
 
   const warehouses = useQuery(warehousesQuery);
@@ -53,16 +60,10 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
   });
 
   const consumeMutation = useMutation({
-    mutationFn: () =>
-      consumeFefo(productId, {
-        warehouse_id: Number(warehouseId),
-        location_id: Number(locationId),
-        quantity,
-        movement_type: movementType,
-        unit_cost: unitCost,
-        reason,
-      }),
+    mutationFn: ({ payload, key }: { payload: FefoConsumeInput; key: string }) =>
+      consumeFefo(productId, payload, key),
     onSuccess: (allocations) => {
+      consumeAttemptRef.current = null;
       setPlan(allocations);
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['lots', 'balances', productId] });
@@ -222,7 +223,24 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
                   </label>
                   <button
                     type="button"
-                    onClick={() => consumeMutation.mutate()}
+                    onClick={() => {
+                      const payload: FefoConsumeInput = {
+                        warehouse_id: Number(warehouseId),
+                        location_id: Number(locationId),
+                        quantity,
+                        movement_type: movementType,
+                        unit_cost: unitCost,
+                        reason,
+                      };
+                      const fingerprint = JSON.stringify({ productId, payload });
+                      const existing = consumeAttemptRef.current;
+                      const attempt =
+                        existing?.fingerprint === fingerprint
+                          ? existing
+                          : { fingerprint, key: crypto.randomUUID() };
+                      consumeAttemptRef.current = attempt;
+                      consumeMutation.mutate({ payload, key: attempt.key });
+                    }}
                     disabled={consumeMutation.isPending}
                     className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
