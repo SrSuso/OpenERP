@@ -9,6 +9,7 @@ import {
   type PosCategory,
 } from '@/features/catalog/api';
 import { decimalString } from '@/lib/decimal';
+import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
 // Mirrors backend/app/catalog/schemas.py's ProductUpdate exactly — no
 // cost/price/tax here on purpose, see that schema's own docstring
@@ -54,7 +55,7 @@ export function EditProductForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<EditProductFormValues>({
     resolver: zodResolver(editProductSchema),
     defaultValues: {
@@ -69,6 +70,8 @@ export function EditProductForm({
       tracks_stock: product.tracks_stock === null ? 'inherit' : product.tracks_stock ? 'yes' : 'no',
     },
   });
+
+  useUnsavedWarning(isDirty);
 
   const submit = handleSubmit((values) =>
     onSubmit({
@@ -220,7 +223,7 @@ export function EditProductForm({
         </button>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancelWithConfirm(isDirty, onCancel)}
           className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
         >
           Cancelar

@@ -396,6 +396,32 @@ describe('ProductDetailPage', () => {
     });
   });
 
+  it('asks before throwing away edits, both on cancel and on leaving the tab', async () => {
+    const backend = stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPage();
+
+    const nameInput = await screen.findByDisplayValue('Agua 1L');
+    await userEvent.type(nameInput, ' fresca');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('no has guardado'));
+    // Se dijo que no: lo escrito sigue ahí.
+    expect(screen.getByDisplayValue('Agua 1L fresca')).toBeInTheDocument();
+    expect(backend.updateCalls).toEqual([]);
+
+    // Y lo mismo tecleando un precio y saltando a otra pestaña.
+    confirmSpy.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+    const cost = screen.getByLabelText('Coste');
+    await userEvent.clear(cost);
+    await userEvent.type(cost, '0.45');
+    await userEvent.click(screen.getByRole('button', { name: 'Formatos' }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(screen.getByLabelText('Coste')).toHaveValue('0.45');
+  });
+
   it('warns before a cost change, showing what is still in stock', async () => {
     const backend = stubBackend();
     renderPage();

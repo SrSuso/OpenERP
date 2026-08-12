@@ -732,3 +732,34 @@ async def test_changing_the_cost_always_recomputes_the_price_from_the_margin(
         f"/api/v1/products/{product_id}/pricing/manual-price", json={"list_price": "28"}
     )
     assert Decimal(manual.json()["list_price"]) == Decimal("28.000000")
+
+
+async def test_the_fixed_amount_applies_whatever_formula_is_in_use(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """El margen en euros no depende de que la fórmula lo nombre: se suma
+    a lo que salga de ella. Si dependiera, cambiar la fórmula de la tienda
+    (o tener el producto la suya) lo dejaría sin efecto en silencio, que es
+    justo lo que pasaba."""
+    await login(role_name="ADMIN")
+    # Una fórmula de la tienda escrita a mano, sin rastro del margen fijo.
+    await client.put(
+        "/api/v1/pricing/settings",
+        json={"formula": "cost * 2", "prices_include_tax": True},
+    )
+    category_id = await _create_category(client, "A granel")
+    await client.patch(
+        f"/api/v1/product-categories/{category_id}/pricing", json={"margin_amount": "0.25"}
+    )
+
+    product_id = (
+        await client.post(
+            "/api/v1/products", json=_product_payload(category_id=category_id, cost="10")
+        )
+    ).json()["id"]
+    product = (
+        await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "10"})
+    ).json()
+
+    # 10 * 2 = 20, más los 25 céntimos heredados de la categoría.
+    assert Decimal(product["list_price"]) == Decimal("20.250000")

@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
 const createRoleSchema = z.object({
   name: z.string().min(1, 'Introduce un nombre.').max(50),
@@ -25,8 +26,10 @@ export function CreateRoleForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateRoleFormValues>({ resolver: zodResolver(createRoleSchema) });
+
+  useUnsavedWarning(isDirty);
 
   const submit = handleSubmit((values) => onSubmit(values.name, values.description ?? ''));
 
@@ -71,7 +74,7 @@ export function CreateRoleForm({
         </button>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancelWithConfirm(isDirty, onCancel)}
           className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
         >
           Cancelar

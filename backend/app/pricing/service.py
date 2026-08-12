@@ -94,7 +94,6 @@ def _variables(product: Product) -> dict[str, Decimal]:
         "tax_rate": effective_tax_rate(product),
         "surcharge_rate": effective_surcharge_rate(product),
         "margin_rate": effective_margin_rate(product),
-        "margin_amount": effective_margin_amount(product),
     }
 
 
@@ -134,12 +133,13 @@ def preview(payload: FormulaPreviewRequest) -> Decimal:
                 "tax_rate": payload.tax_rate,
                 "surcharge_rate": payload.surcharge_rate,
                 "margin_rate": payload.margin_rate,
-                "margin_amount": payload.margin_amount,
             },
         )
     except FormulaError as exc:
         raise ValidationError(str(exc)) from exc
-    return _quantize_price(result)
+    # Igual que en un guardado de verdad: el margen fijo se suma al
+    # resultado, no entra en la fórmula (ver `_recompute_with`).
+    return _quantize_price(result + payload.margin_amount)
 
 
 #: Everything effective_tax_rate/effective_margin_rate need loaded —
@@ -206,16 +206,22 @@ async def _taxes_by_id(session: AsyncSession, tax_ids: list[int]) -> list[Tax]:
 
 
 def _recompute_with(product: Product, settings: PricingSettings) -> None:
-    """Evaluates the product's own formula, or the store-wide default if
-    it has none, against its *effective* inputs — the actual "PVP
-    calculado automáticamente" the margin/tax panels trigger. Result is
-    always rounded to 2 decimals — see `_quantize_price`."""
+    """Evaluates the product's own formula, or the one it inherits (its
+    category's, or the store's), against its *effective* inputs — the
+    actual "PVP calculado automáticamente" the margin/tax panels trigger.
+
+    El margen en euros se suma **después**, fuera de la fórmula: así vale
+    con cualquiera, incluida una escrita a mano que no lo nombre. Cuando
+    era una variable más, poner 25 céntimos en una categoría no hacía nada
+    salvo que la fórmula los mencionara — ver `app.pricing.formula`.
+
+    Result is always rounded to 2 decimals — see `_quantize_price`."""
     text = effective_formula(product, settings)
     try:
         result = formula.evaluate(text, _variables(product))
     except FormulaError as exc:
         raise ValidationError(str(exc)) from exc
-    product.list_price = _quantize_price(result)
+    product.list_price = _quantize_price(result + effective_margin_amount(product))
 
 
 async def set_pricing_inputs(

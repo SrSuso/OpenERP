@@ -14,6 +14,7 @@ import {
   type RuleCreateInput,
   type RuleType,
 } from '@/features/notifications/api';
+import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
 const RULE_TYPE_LABELS: Record<RuleType, string> = {
   LOW_STOCK: 'Stock bajo mínimo',
@@ -64,13 +65,15 @@ export function CreateRuleForm({
     register,
     handleSubmit,
     watch,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateRuleFormValues>({
     resolver: zodResolver(createRuleSchema),
     defaultValues: { rule_type: 'LOW_STOCK', severity: 'MEDIUM_LOW', days_before_expiration: 7 },
   });
 
   const ruleType = watch('rule_type');
+
+  useUnsavedWarning(isDirty);
 
   const submit = handleSubmit((values) => {
     let params: Record<string, unknown>;
@@ -303,7 +306,7 @@ export function CreateRuleForm({
         </button>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancelWithConfirm(isDirty, onCancel)}
           className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
         >
           Cancelar

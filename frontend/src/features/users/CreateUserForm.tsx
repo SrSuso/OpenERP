@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { type Role } from '@/features/roles/api';
 import { type UserCreate } from '@/features/users/api';
+import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
 // Mirrors backend/app/users/schemas.py's UserCreate — the backend is the
 // real boundary (rule 11), this only gives the person a faster "no" than
@@ -37,8 +38,10 @@ export function CreateUserForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateUserFormValues>({ resolver: zodResolver(createUserSchema) });
+
+  useUnsavedWarning(isDirty);
 
   const submit = handleSubmit((values) => onSubmit(values));
 
@@ -119,7 +122,7 @@ export function CreateUserForm({
         </button>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancelWithConfirm(isDirty, onCancel)}
           className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
         >
           Cancelar

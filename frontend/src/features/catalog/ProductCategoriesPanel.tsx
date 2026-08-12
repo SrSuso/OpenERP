@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 
 import {
   activateProductCategory,
@@ -14,6 +14,7 @@ import { ImagePicker } from '@/features/images/ImagePicker';
 import { setCategoryPricing, taxesQuery, type Tax } from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
 import { ApiError } from '@/lib/api';
+import { cancelWithConfirm, confirmDiscard, useUnsavedWarning } from '@/lib/unsaved';
 
 /** Categorías de estantería (independientes de las categorías POS del TPV
  * — ver `PosCategoriesPanel`).
@@ -31,6 +32,16 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   const [error, setError] = useState<string | null>(null);
   //: Cuál está abierta para editar (ninguna = null).
   const [editingId, setEditingId] = useState<number | null>(null);
+  //: Si lo abierto tiene algo tecleado sin guardar, para preguntar antes
+  //: de cerrarlo o de saltar a otra categoría.
+  const [editorDirty, setEditorDirty] = useState(false);
+
+  const closeEditor = (next: number | null) => {
+    if (editorDirty && !confirmDiscard()) return;
+    setEditorDirty(false);
+    setEditingId(next);
+    setError(null);
+  };
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
@@ -83,10 +94,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
                 <button
                   type="button"
                   aria-label={`Editar «${category.name}»`}
-                  onClick={() => {
-                    setEditingId((current) => (current === category.id ? null : category.id));
-                    setError(null);
-                  }}
+                  onClick={() => closeEditor(editingId === category.id ? null : category.id)}
                   className="text-xs font-medium text-brand-700 hover:underline"
                 >
                   {editingId === category.id ? 'Cerrar' : 'Editar'}
@@ -98,7 +106,11 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
               <CategoryEditor
                 category={category}
                 taxes={taxes.data ?? []}
-                onDone={() => setEditingId(null)}
+                onDone={() => {
+                  setEditorDirty(false);
+                  setEditingId(null);
+                }}
+                onDirtyChange={setEditorDirty}
                 onError={setError}
                 invalidate={invalidate}
               />
@@ -140,12 +152,14 @@ function CategoryEditor({
   category,
   taxes,
   onDone,
+  onDirtyChange,
   onError,
   invalidate,
 }: {
   category: ProductCategory;
   taxes: Tax[];
   onDone: () => void;
+  onDirtyChange: (isDirty: boolean) => void;
   onError: (message: string | null) => void;
   invalidate: () => void;
 }) {
@@ -156,6 +170,21 @@ function CategoryEditor({
   const [formulaInput, setFormulaInput] = useState(category.price_formula ?? '');
   const [taxIds, setTaxIds] = useState<Set<number>>(new Set(category.taxes.map((t) => t.id)));
   const formulaFieldId = useId();
+
+  // Lo tecleado difiere de lo guardado: cerrar ahora lo perdería.
+  const savedTaxIds = new Set(category.taxes.map((t) => t.id));
+  const isDirty =
+    name !== category.name ||
+    tracksStock !== category.tracks_stock ||
+    marginInput !== (category.margin_rate ?? '') ||
+    amountInput !== (category.margin_amount ?? '') ||
+    formulaInput !== (category.price_formula ?? '') ||
+    taxIds.size !== savedTaxIds.size ||
+    [...taxIds].some((id) => !savedTaxIds.has(id));
+  useUnsavedWarning(isDirty);
+  useEffect(() => {
+    onDirtyChange(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -299,7 +328,8 @@ function CategoryEditor({
         />
         <span className="mt-1 block text-slate-400">
           Se aplica a sus productos, salvo a los que tengan la suya propia. Variables: cost,
-          tax_rate, surcharge_rate, margin_rate, margin_amount.
+          tax_rate, surcharge_rate, margin_rate. El margen fijo en euros se suma aparte, a lo que dé
+          la fórmula.
         </span>
       </div>
 
@@ -317,7 +347,7 @@ function CategoryEditor({
         </button>
         <button
           type="button"
-          onClick={onDone}
+          onClick={cancelWithConfirm(isDirty, onDone)}
           className="rounded px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
         >
           Cancelar

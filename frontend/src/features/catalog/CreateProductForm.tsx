@@ -14,6 +14,7 @@ import { previewFormula, type Tax } from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
 import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
+import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
 // Mirrors backend/app/catalog/schemas.py's ProductCreate — sin sku (lo
 // genera el backend) ni tax_rate (los impuestos se eligen del catálogo de
@@ -112,7 +113,7 @@ export function CreateProductForm({
     handleSubmit,
     watch,
     setValue,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateProductFormValues>({
     resolver: zodResolver(createProductSchema),
     defaultValues: {
@@ -148,7 +149,7 @@ export function CreateProductForm({
         // fórmula por defecto de la tienda para que la vista previa sea
         // exactamente lo que el backend calcularía al guardar el margen.
         formula:
-          '(cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100) + margin_amount',
+          '(cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)',
         cost: input.cost,
         tax_rate: input.tax_rate,
         surcharge_rate: '0',
@@ -188,6 +189,8 @@ export function CreateProductForm({
     (categories.find((c) => String(c.id) === categoryId)?.taxes ?? []).map((t) => t.id),
   );
   const displayedTaxIds = isOverride ? taxIds : categoryTaxIds;
+
+  useUnsavedWarning(isDirty);
 
   const submit = handleSubmit((values) =>
     onSubmit(
@@ -434,7 +437,7 @@ export function CreateProductForm({
         </button>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancelWithConfirm(isDirty, onCancel)}
           className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
         >
           Cancelar

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { type Product, type ProductCategory } from '@/features/catalog/api';
 import { type PricingOverrideInput, type Tax } from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
 import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
+import { useUnsavedWarning } from '@/lib/unsaved';
 
 interface ProductPricingPanelProps {
   product: Product;
@@ -12,6 +13,9 @@ interface ProductPricingPanelProps {
   taxes: Tax[];
   onSave: (input: PricingOverrideInput & { cost?: string }) => void;
   isSaving: boolean;
+  /** Para que la ficha pueda preguntar antes de cambiar de pestaña con
+   * algo tecleado sin guardar. */
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 /** Coste, margen e impuestos de un producto — el margen/impuestos vacíos
@@ -26,6 +30,7 @@ export function ProductPricingPanel({
   taxes,
   onSave,
   isSaving,
+  onDirtyChange,
 }: ProductPricingPanelProps) {
   const [cost, setCost] = useState(product.cost);
   const [costError, setCostError] = useState<string | null>(null);
@@ -45,6 +50,17 @@ export function ProductPricingPanel({
 
   const inheritsMargin = marginInput.trim() === '';
   const inheritsAmount = amountInput.trim() === '';
+
+  // Lo tecleado difiere de lo guardado: si se sale ahora, se pierde.
+  const isDirty =
+    cost !== product.cost ||
+    marginInput !== (product.margin_rate ?? '') ||
+    amountInput !== (product.margin_amount ?? '') ||
+    isOverride !== hasOwnTaxes;
+  useUnsavedWarning(isDirty);
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   function chooseTax(next: Set<number>) {
     setIsOverride(true);

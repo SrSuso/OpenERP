@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type SupplierCreateInput } from '@/features/suppliers/api';
+import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
 const createSupplierSchema = z.object({
   name: z.string().min(1, 'Introduce un nombre.').max(255),
@@ -30,8 +31,10 @@ export function CreateSupplierForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateSupplierFormValues>({ resolver: zodResolver(createSupplierSchema) });
+
+  useUnsavedWarning(isDirty);
 
   const submit = handleSubmit((values) =>
     onSubmit({
@@ -111,7 +114,7 @@ export function CreateSupplierForm({
         </button>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancelWithConfirm(isDirty, onCancel)}
           className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
         >
           Cancelar

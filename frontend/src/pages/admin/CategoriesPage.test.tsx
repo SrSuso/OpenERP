@@ -308,6 +308,9 @@ describe('CategoriesPage', () => {
 
   it('renames a category already created, and can back out without saving', async () => {
     const backend = stubBackend();
+    // Salir con algo escrito y sin guardar pregunta antes: aquí se dice
+    // que sí, que se descarte.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
     await screen.findByText('Bebidas');
 
@@ -316,8 +319,10 @@ describe('CategoriesPage', () => {
     await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
 
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('no has guardado'));
     expect(backend.updateCategoryCalls).toEqual([]);
     expect(screen.getByText('Bebidas')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Nombre de «Bebidas»')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
     await userEvent.clear(screen.getByLabelText('Nombre de «Bebidas»'));
@@ -371,6 +376,34 @@ describe('CategoriesPage', () => {
         { id: 1, name: 'Bebidas', tracks_stock: false },
       ]);
     });
+  });
+
+  it('keeps what was typed when the discard confirmation is refused', async () => {
+    stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    await userEvent.type(screen.getByPlaceholderText('p. ej. 0,25'), '0.25');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    // Sigue abierto y con lo tecleado: nadie ha perdido nada.
+    expect(screen.getByPlaceholderText('p. ej. 0,25')).toHaveValue('0.25');
+  });
+
+  it('closes without asking when nothing was touched', async () => {
+    stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Nombre de «Bebidas»')).not.toBeInTheDocument();
   });
 
   it('applies one tax at a time: choosing another replaces the one marked', async () => {

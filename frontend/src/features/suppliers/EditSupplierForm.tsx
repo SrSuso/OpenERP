@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type Supplier, type SupplierUpdateInput } from '@/features/suppliers/api';
+import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
 const editSupplierSchema = z.object({
   name: z.string().min(1, 'Introduce un nombre.').max(255),
@@ -32,7 +33,7 @@ export function EditSupplierForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<EditSupplierFormValues>({
     resolver: zodResolver(editSupplierSchema),
     defaultValues: {
@@ -43,6 +44,8 @@ export function EditSupplierForm({
       address: supplier.address,
     },
   });
+
+  useUnsavedWarning(isDirty);
 
   const submit = handleSubmit((values) =>
     onSubmit({
@@ -122,7 +125,7 @@ export function EditSupplierForm({
         </button>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancelWithConfirm(isDirty, onCancel)}
           className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
         >
           Cancelar

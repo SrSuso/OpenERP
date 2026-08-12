@@ -13,7 +13,6 @@ tree is never handed to Python's own evaluator.
 Example formula (from the spec)::
 
     (cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)
-      + margin_amount
 """
 
 from __future__ import annotations
@@ -22,14 +21,15 @@ import ast
 from collections.abc import Callable
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
-#: The only names a formula may reference. Every product carries all of
-#: them (see app.catalog.models.Product), so a formula can always be
-#: evaluated. ``margin_amount`` is money, not a percentage: euros on top
-#: of the cost, for what is priced "un poco por encima de lo que me
-#: cuesta" instead of by margin.
-ALLOWED_VARIABLES = frozenset(
-    {"cost", "tax_rate", "surcharge_rate", "margin_rate", "margin_amount"}
-)
+#: The only names a formula may reference. Every product carries all four
+#: (see app.catalog.models.Product), so a formula can always be evaluated.
+#:
+#: El margen en euros no está aquí a propósito: se suma *fuera* de la
+#: fórmula (`app.pricing.service._recompute_with`). Si fuera una variable,
+#: una fórmula que no la nombrara —la de la tienda cambiada a mano, o la
+#: propia de un producto escrita antes— la dejaría sin efecto en silencio,
+#: y el tendero vería que poner 25 céntimos no hace nada.
+ALLOWED_VARIABLES = frozenset({"cost", "tax_rate", "surcharge_rate", "margin_rate"})
 
 
 class FormulaError(ValueError):

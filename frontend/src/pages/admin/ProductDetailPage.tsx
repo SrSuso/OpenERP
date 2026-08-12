@@ -36,6 +36,7 @@ import { ImagePicker } from '@/features/images/ImagePicker';
 import { formatQuantity } from '@/lib/format';
 
 import { dangerAction, pageTitleRow, primaryAction } from './pageActions';
+import { confirmDiscard } from '@/lib/unsaved';
 
 type Tab = 'general' | 'pricing' | 'packages' | 'lots' | 'purchases';
 
@@ -62,6 +63,14 @@ export function ProductDetailPage() {
   const canManageLots = hasPermission('lot.manage');
 
   const [tab, setTab] = useState<Tab>('general');
+  // El panel de precios se teclea y no se guarda solo: cambiar de pestaña
+  // se lo llevaría por delante sin decir nada.
+  const [pricingDirty, setPricingDirty] = useState(false);
+  const goToTab = (next: Tab) => {
+    if (tab === 'pricing' && pricingDirty && !confirmDiscard()) return;
+    if (tab === 'pricing') setPricingDirty(false);
+    setTab(next);
+  };
   const [editError, setEditError] = useState<string | null>(null);
   const [createLotError, setCreateLotError] = useState<string | null>(null);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
@@ -252,7 +261,7 @@ export function ProductDetailPage() {
       >
         <button
           type="button"
-          onClick={() => setTab('general')}
+          onClick={() => goToTab('general')}
           className={tabClassName(tab === 'general')}
         >
           General
@@ -260,7 +269,7 @@ export function ProductDetailPage() {
         {canManagePricing && (
           <button
             type="button"
-            onClick={() => setTab('pricing')}
+            onClick={() => goToTab('pricing')}
             className={tabClassName(tab === 'pricing')}
           >
             Precios
@@ -268,7 +277,7 @@ export function ProductDetailPage() {
         )}
         <button
           type="button"
-          onClick={() => setTab('packages')}
+          onClick={() => goToTab('packages')}
           className={tabClassName(tab === 'packages')}
         >
           Formatos
@@ -276,7 +285,7 @@ export function ProductDetailPage() {
         {data.track_lots && (
           <button
             type="button"
-            onClick={() => setTab('lots')}
+            onClick={() => goToTab('lots')}
             className={tabClassName(tab === 'lots')}
           >
             Lotes
@@ -284,7 +293,7 @@ export function ProductDetailPage() {
         )}
         <button
           type="button"
-          onClick={() => setTab('purchases')}
+          onClick={() => goToTab('purchases')}
           className={tabClassName(tab === 'purchases')}
         >
           Compras
@@ -325,6 +334,7 @@ export function ProductDetailPage() {
             category={categories.data?.find((c) => c.id === data.category_id)}
             taxes={taxes.data ?? []}
             isSaving={savePricingMutation.isPending}
+            onDirtyChange={setPricingDirty}
             onSave={(input) => {
               // Sin tocar el coste no hay nada que avisar: el margen y los
               // impuestos se guardan directamente.
