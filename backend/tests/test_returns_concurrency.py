@@ -142,6 +142,7 @@ def test_return_fingerprint_normalizes_decimal_and_line_order() -> None:
                 quantity_packages=Decimal("2.0"),
                 economic=True,
                 physical=False,
+                lot_number="IGNORED-FOR-ECONOMIC-ONLY",
             ),
             ReturnLineCreate(
                 sale_line_id=10,

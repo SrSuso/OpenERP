@@ -88,13 +88,15 @@ def return_request_fingerprint(sale_id: int, payload: ReturnCreate) -> str:
             "quantity_packages": format(_q(line.quantity_packages), "f"),
             "economic": line.economic,
             "physical": line.physical,
-            "lot_number": line.lot_number,
+            # The service ignores lot_number for an economic-only return;
+            # an ignored spelling cannot define a different intention.
+            "lot_number": line.lot_number if line.physical else None,
         }
         for line in sorted(
             payload.lines,
             key=lambda line: (
                 line.sale_line_id,
-                line.lot_number or "",
+                line.lot_number if line.physical and line.lot_number else "",
                 format(_q(line.quantity_packages), "f"),
                 line.economic,
                 line.physical,
