@@ -222,6 +222,7 @@ async def test_listing_many_sales_stays_fast(
                     "warehouse_id": warehouse_id,
                     "location_id": location_id,
                     "status": SaleStatus.COMPLETED,
+                    "prices_include_tax": False,
                     "notes": f"perf-{i}",
                 }
                 for i in range(500)
