@@ -19,6 +19,7 @@ lookup, lock and increment into one statement Postgres itself serialises.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import delete, func, select
@@ -26,10 +27,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
+from app.catalog.models import Product
 from app.core.context import get_user_id
 from app.core.errors import NotFoundError, ValidationError
 from app.inventory.models import Location, StockBalance, StockMovement, Warehouse
 from app.inventory.schemas import AdjustmentCreate, TransferCreate
+from app.lots.models import Lot
 
 # --- warehouses / locations --------------------------------------------------
 
@@ -90,6 +93,73 @@ async def create_location(session: AsyncSession, warehouse_id: int, name: str) -
 # --- the ledger ----------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class InventoryContext:
+    """Rows that define one coherent inventory coordinate."""
+
+    product: Product
+    warehouse: Warehouse
+    location: Location
+    lot: Lot | None
+
+
+async def validate_stock_location(
+    session: AsyncSession, *, warehouse_id: int, location_id: int
+) -> tuple[Warehouse, Location]:
+    """Ensure a location belongs to the warehouse named by an operation."""
+    warehouse = await session.get(Warehouse, warehouse_id)
+    if warehouse is None:
+        raise ValidationError(f"Warehouse {warehouse_id} does not exist.")
+    location = await session.get(Location, location_id)
+    if location is None:
+        raise ValidationError(f"Location {location_id} does not exist.")
+    if location.warehouse_id != warehouse_id:
+        raise ValidationError(
+            f"Location {location_id} does not belong to warehouse {warehouse_id}."
+        )
+    return warehouse, location
+
+
+async def validate_inventory_context(
+    session: AsyncSession,
+    *,
+    product_id: int,
+    warehouse_id: int,
+    location_id: int,
+    lot_id: int | None,
+    enforce_lot_policy: bool = True,
+) -> InventoryContext:
+    """Validate the cross-row invariants of one stock coordinate.
+
+    ``enforce_lot_policy=False`` is only for operations such as a FEFO plan
+    that validate product/location before selecting the concrete lots. A
+    materialised movement always uses the default and therefore cannot skip
+    the product's current ``track_lots`` policy.
+    """
+    product = await session.get(Product, product_id)
+    if product is None:
+        raise ValidationError(f"Product {product_id} does not exist.")
+    warehouse, location = await validate_stock_location(
+        session, warehouse_id=warehouse_id, location_id=location_id
+    )
+
+    lot: Lot | None = None
+    if lot_id is not None:
+        lot = await session.get(Lot, lot_id)
+        if lot is None:
+            raise ValidationError(f"Lot {lot_id} does not exist.")
+        if lot.product_id != product_id:
+            raise ValidationError(f"Lot {lot_id} does not belong to product {product_id}.")
+
+    if enforce_lot_policy:
+        if product.track_lots and lot is None:
+            raise ValidationError(f"Product {product_id} tracks lots; lot_id is required.")
+        if not product.track_lots and lot is not None:
+            raise ValidationError(f"Product {product_id} does not track lots; lot_id is forbidden.")
+
+    return InventoryContext(product=product, warehouse=warehouse, location=location, lot=lot)
+
+
 async def _upsert_balance(
     session: AsyncSession,
     product_id: int,
@@ -139,6 +209,28 @@ async def _upsert_balance(
     await session.execute(stmt)
 
 
+async def _lock_exact_balance_quantity(
+    session: AsyncSession,
+    *,
+    product_id: int,
+    warehouse_id: int,
+    location_id: int,
+    lot_id: int | None,
+) -> Decimal:
+    """Lock and read the exact source coordinate a negative movement spends."""
+    stmt = select(StockBalance.quantity).where(
+        StockBalance.product_id == product_id,
+        StockBalance.warehouse_id == warehouse_id,
+        StockBalance.location_id == location_id,
+    )
+    if lot_id is None:
+        stmt = stmt.where(StockBalance.lot_id.is_(None))
+    else:
+        stmt = stmt.where(StockBalance.lot_id == lot_id)
+    quantity = (await session.execute(stmt.with_for_update())).scalar_one_or_none()
+    return quantity if quantity is not None else Decimal(0)
+
+
 async def record_movement(
     session: AsyncSession,
     *,
@@ -151,11 +243,35 @@ async def record_movement(
     lot_id: int | None = None,
     reference_type: str | None = None,
     reference_id: int | None = None,
+    allow_negative: bool = False,
 ) -> StockMovement:
     """Write one ledger entry and fold it into ``stock_balance``, atomically
     (rule 5). ``quantity`` is signed: positive increases stock, negative
     decreases it. ``lot_id`` (phase 8): omit for products that don't track
-    lots."""
+    lots. Negative balances are rejected unless the caller represents an
+    existing explicit exception (a signed manual adjustment or the shop's
+    ``sales.allow_negative_stock`` setting)."""
+    await validate_inventory_context(
+        session,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        lot_id=lot_id,
+    )
+    if quantity < 0 and not allow_negative:
+        available = await _lock_exact_balance_quantity(
+            session,
+            product_id=product_id,
+            warehouse_id=warehouse_id,
+            location_id=location_id,
+            lot_id=lot_id,
+        )
+        if available + quantity < 0:
+            raise ValidationError(
+                f"Insufficient stock for product {product_id}: needs {-quantity}, "
+                f"only {available} available at location {location_id}."
+            )
+
     movement = StockMovement(
         product_id=product_id,
         warehouse_id=warehouse_id,
@@ -223,6 +339,10 @@ async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) ->
         movement_type=payload.movement_type,
         unit_cost=payload.unit_cost,
         lot_id=payload.lot_id,
+        # Signed ADJUSTMENT is the explicit administrative correction
+        # mechanism and historically permits a negative resulting balance.
+        # WASTE is an ordinary consumption and must have stock to consume.
+        allow_negative=payload.movement_type == "ADJUSTMENT",
     )
     await audit.record(
         session,
@@ -248,6 +368,24 @@ async def record_transfer(
         payload.to_location_id,
     ):
         raise ValidationError("Source and destination location are the same.")
+
+    # Validate both halves before writing either. record_movement repeats the
+    # choke-point validation (served from this session's identity map), so a
+    # future direct caller cannot bypass it.
+    await validate_inventory_context(
+        session,
+        product_id=payload.product_id,
+        warehouse_id=payload.from_warehouse_id,
+        location_id=payload.from_location_id,
+        lot_id=payload.lot_id,
+    )
+    await validate_inventory_context(
+        session,
+        product_id=payload.product_id,
+        warehouse_id=payload.to_warehouse_id,
+        location_id=payload.to_location_id,
+        lot_id=payload.lot_id,
+    )
 
     out_movement = await record_movement(
         session,
