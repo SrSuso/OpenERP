@@ -405,6 +405,7 @@ async def test_admin_password_reset_revokes_the_targets_existing_sessions(
         )
     ).status_code == 200
     old_token = client.cookies.get("openerp_session")
+    assert old_token is not None
     await login(role_name="ADMIN")
 
     response = await client.post(
@@ -505,6 +506,7 @@ async def test_role_change_is_visible_to_an_existing_session_without_revocation(
 ) -> None:
     manager = await login(role_name="MANAGER")
     manager_token = client.cookies.get("openerp_session")
+    assert manager_token is not None
     await login(role_name="ADMIN")
     cashier_role = await _role(db_session, "CASHIER")
 
