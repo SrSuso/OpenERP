@@ -66,7 +66,9 @@ fixtures históricas. No debe repetirse en fases que no modifican migraciones.
 
 ```bash
 make test-frontend-fast TESTS="src/features/pos/Cart.test.tsx"
+make lint-frontend-fast FILES="src/features/pos/Cart.tsx src/features/pos/Cart.test.tsx"
 make test-frontend
+make lint-frontend
 
 make test-e2e-spec SPEC=tests/e2e/specs/pos.sale.spec.ts
 make test-e2e-flow FLOW="cash sale"
@@ -76,17 +78,27 @@ make test-e2e
 Playwright prueba flujos visibles, no sustituye las pruebas backend de stock,
 ventas, precios, concurrencia o permisos.
 
+`lint-frontend-fast` exige rutas explícitas relativas a `frontend/` y ejecuta
+ESLint y Prettier únicamente sobre ellas. Nunca usa todo el frontend como
+fallback. TypeScript conserva el proyecto completo porque comprobar un archivo
+aislado perdería contratos e imports cruzados; `tsc --build` ya reutiliza sus
+ficheros incrementales locales bajo `node_modules/.tmp`.
+
 ## Política para Codex y desarrollo local
 
 1. Durante una modificación: ejecutar únicamente el nodo exacto relacionado.
 2. Cuando esté verde: ejecutar el archivo o pequeño grupo del dominio.
-3. Al terminar un commit: dominio afectado más lint/typecheck del lenguaje
-   modificado.
-4. Al terminar una fase: una única ejecución amplia de los dominios afectados,
+3. Durante una modificación frontend: Vitest exacto y después
+   `lint-frontend-fast` con los archivos modificados.
+4. Al terminar un commit frontend: tests relacionados, lint rápido y TypeScript
+   completo si cambian contratos o tipos compartidos.
+5. Al terminar una fase frontend: una sola ejecución de `make lint-frontend`.
+6. Al terminar una fase: una única ejecución amplia de los dominios afectados,
    sin `-x`.
-5. Migraciones completas: solo si la fase modificó migraciones.
-6. E2E: solo si cambió un flujo visible que lo justifique.
-7. Suite completa: CI, final de un bloque importante y release.
+7. Migraciones completas: solo si la fase modificó migraciones.
+8. E2E: solo si cambió un flujo visible que lo justifique.
+9. Suite completa: CI, final de un bloque importante y release; CI/release
+   conservan la validación frontend completa.
 
 CI mantiene backend, frontend y E2E como jobs separados. La cobertura crítica
 de ventas, pagos, stock, inventario, permisos, concurrencia, histórico,

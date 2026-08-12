@@ -142,6 +142,14 @@ lint-backend:  ## Ruff + mypy
 lint-frontend:  ## ESLint + Prettier + tsc
 	cd $(FRONTEND) && npm run lint && npm run format:check && npm run typecheck
 
+.PHONY: lint-frontend-fast
+lint-frontend-fast:  ## ESLint + Prettier on explicit frontend paths: make lint-frontend-fast FILES="src/App.tsx"
+	@if [ -z "$(strip $(FILES))" ]; then \
+		echo 'ERROR: FILES is required; lint-frontend-fast never falls back to the full frontend.' >&2; \
+		exit 2; \
+	fi
+	cd $(FRONTEND) && npm run lint:files -- $(FILES) && npm run format:check:files -- $(FILES)
+
 .PHONY: format
 format:  ## Autoformat everything
 	cd $(BACKEND) && uv run ruff check --fix . && uv run ruff format .

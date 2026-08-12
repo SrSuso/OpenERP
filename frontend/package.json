@@ -11,8 +11,10 @@
     "build": "tsc --build --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "lint:files": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:check:files": "prettier --check",
     "typecheck": "tsc --build --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
