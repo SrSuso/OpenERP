@@ -130,13 +130,17 @@ function saleWithMilkLine(id: number): Sale {
  * on *how many times* a mutating endpoint was hit (e.g. "exactly one sale
  * was opened, not two") without hard-coding call order.
  */
-function stubBackend(options: { existingDraft?: Sale } = {}) {
+function stubBackend(
+  options: { existingDraft?: Sale; checkoutFailures?: number; holdCheckout?: boolean } = {},
+) {
   let sale: Sale | null = options.existingDraft ?? null;
   let nextSaleId = 5;
   const postSalesCalls = { count: 0 };
   const addLineCalls: Record<string, unknown>[] = [];
   const barcodeLineCalls: Record<string, unknown>[] = [];
   const barcodeCalls: string[] = [];
+  const checkoutKeys: string[] = [];
+  let remainingCheckoutFailures = options.checkoutFailures ?? 0;
 
   vi.stubGlobal(
     'fetch',
@@ -169,6 +173,14 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         return Promise.resolve(jsonResponse(sale ? [sale] : []));
       }
       if (method === 'POST' && /\/sales\/\d+\/checkout$/.test(url)) {
+        checkoutKeys.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
+        if (options.holdCheckout) {
+          return new Promise<Response>(() => undefined);
+        }
+        if (remainingCheckoutFailures > 0) {
+          remainingCheckoutFailures -= 1;
+          return Promise.reject(new TypeError('Network request failed'));
+        }
         const body = init?.body
           ? (JSON.parse(init.body as string) as { payments: Tender[] })
           : {
@@ -277,7 +289,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
     }),
   );
 
-  return { postSalesCalls, addLineCalls, barcodeLineCalls, barcodeCalls };
+  return { postSalesCalls, addLineCalls, barcodeLineCalls, barcodeCalls, checkoutKeys };
 }
 
 function renderPage() {
@@ -655,6 +667,53 @@ describe('PosHomePage', () => {
 
     await screen.findByText(/el carrito está vacío/i);
     expect(screen.queryByText(/venta cobrada/i)).not.toBeInTheDocument();
+  });
+
+  it('reuses the same idempotency key after an uncertain checkout error', async () => {
+    const backend = stubBackend({ existingDraft: saleWithMilkLine(42), checkoutFailures: 1 });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /confirmar cobro/i }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+
+    await screen.findByText(/venta cobrada/i);
+    expect(backend.checkoutKeys).toHaveLength(2);
+    expect(backend.checkoutKeys[0]).not.toBe('');
+    expect(backend.checkoutKeys[1]).toBe(backend.checkoutKeys[0]);
+  });
+
+  it('uses a new key after leaving checkout and starting a new intention', async () => {
+    const backend = stubBackend({ existingDraft: saleWithMilkLine(42), checkoutFailures: 2 });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /confirmar cobro/i }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: /volver/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /confirmar cobro/i }));
+    await screen.findByRole('alert');
+
+    expect(backend.checkoutKeys).toHaveLength(2);
+    expect(backend.checkoutKeys[1]).not.toBe(backend.checkoutKeys[0]);
+  });
+
+  it('turns a rapid double click into one checkout intention', async () => {
+    const backend = stubBackend({ existingDraft: saleWithMilkLine(42), holdCheckout: true });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    const confirm = await screen.findByRole('button', { name: /confirmar cobro/i });
+    await userEvent.dblClick(confirm);
+
+    await waitFor(() => expect(backend.checkoutKeys).toHaveLength(1));
+    expect(backend.checkoutKeys[0]).not.toBe('');
+    expect(screen.getByRole('button', { name: /cobrando/i })).toBeDisabled();
   });
 
   it('"Volver" from checkout returns to the cart without charging', async () => {

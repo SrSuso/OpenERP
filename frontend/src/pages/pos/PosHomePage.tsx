@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { Cart } from '@/features/pos/Cart';
 import { CategoryTabs } from '@/features/pos/CategoryTabs';
@@ -50,6 +50,9 @@ export function PosHomePage() {
   const [lineError, setLineError] = useState<string | null>(null);
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // One key per checkout intention. It survives a transport/timeout retry,
+  // and is discarded only after success, leaving checkout, or changing sale.
+  const checkoutAttemptRef = useRef<{ saleId: number; key: string } | null>(null);
   //: The sale just completed, kept only long enough to show its receipt —
   //: independent of `sale`, which by then has already gone back to `null`
   //: so the effect below can open the next one.
@@ -249,8 +252,10 @@ export function PosHomePage() {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: (payments: Tender[]) => checkout(sale!.id, payments),
+    mutationFn: ({ saleId, payments, key }: { saleId: number; payments: Tender[]; key: string }) =>
+      checkout(saleId, payments, key),
     onSuccess: (completed) => {
+      checkoutAttemptRef.current = null;
       setCheckoutError(null);
       setReceipt(completed);
       closeSale(completed.id);
@@ -258,6 +263,20 @@ export function PosHomePage() {
     },
     onError: (error) => setCheckoutError(describeError(error)),
   });
+
+  function confirmCheckout(payments: Tender[]) {
+    if (sale === null || checkoutMutation.isPending) return;
+    const existing = checkoutAttemptRef.current;
+    const attempt =
+      existing?.saleId === sale.id ? existing : { saleId: sale.id, key: crypto.randomUUID() };
+    checkoutAttemptRef.current = attempt;
+    checkoutMutation.mutate({ saleId: sale.id, payments, key: attempt.key });
+  }
+
+  function leaveCheckout() {
+    checkoutAttemptRef.current = null;
+    setView('cart');
+  }
 
   const busy =
     addLineMutation.isPending ||
@@ -341,8 +360,8 @@ export function PosHomePage() {
                   sale={sale}
                   isPending={checkoutMutation.isPending}
                   error={checkoutError}
-                  onConfirm={(payments) => checkoutMutation.mutate(payments)}
-                  onBack={() => setView('cart')}
+                  onConfirm={confirmCheckout}
+                  onBack={leaveCheckout}
                 />
               ) : (
                 (sale !== null || (!failedToOpenSale && isOpeningSale)) && (
@@ -351,6 +370,7 @@ export function PosHomePage() {
                       sales={draftSales.data ?? []}
                       activeId={sale?.id ?? null}
                       onSelect={(picked) => {
+                        checkoutAttemptRef.current = null;
                         setSale(picked);
                         setLineError(null);
                       }}
@@ -416,6 +436,7 @@ export function PosHomePage() {
                         onRemoveLine={(line) => removeLineMutation.mutate(line)}
                         onCancelSale={() => cancelMutation.mutate(sale!.id)}
                         onCheckout={() => {
+                          checkoutAttemptRef.current = null;
                           setCheckoutError(null);
                           setView('checkout');
                         }}

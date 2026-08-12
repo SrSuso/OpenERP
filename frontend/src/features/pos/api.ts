@@ -314,11 +314,16 @@ export interface Tender {
   amount: string;
 }
 
-export async function checkout(saleId: number, payments: Tender[]): Promise<Sale> {
+export async function checkout(
+  saleId: number,
+  payments: Tender[],
+  idempotencyKey: string,
+): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/checkout`, {
     method: 'POST',
     schema: saleSchema,
     body: { payments },
+    headers: { 'Idempotency-Key': idempotencyKey },
   });
 }
 
