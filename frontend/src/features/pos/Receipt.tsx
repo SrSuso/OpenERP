@@ -53,11 +53,22 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   // `.ticket-print-root` (src/index.css) hides the rest of the page for
   // `@media print` — this just has to trigger the browser's print dialog
   // once that text is actually on screen.
+  //
+  // Y con el ticket ya enviado, de vuelta a una venta nueva sin tocar
+  // nada: en una caja con cola detrás, un botón por cliente son cientos de
+  // pulsaciones al mes. No se pierde el cambio a devolver, que se ve en la
+  // pantalla de cobro mientras se teclea lo que entrega el cliente, y va
+  // impreso en el propio ticket.
+  //
+  // Sólo cuando el ticket ha salido solo: si se ha pedido a mano, es
+  // porque alguien quería mirarlo, y ahí manda el botón de cerrar.
   useEffect(() => {
-    if (ticketText !== null) {
-      window.print();
-    }
-  }, [ticketText]);
+    if (ticketText === null) return;
+    // `window.print()` no vuelve hasta que el trabajo está mandado, así que
+    // el texto sigue en pantalla mientras se imprime.
+    window.print();
+    if (printOnCheckout === true) onDismiss();
+  }, [ticketText, printOnCheckout, onDismiss]);
 
   if (ticketText !== null) {
     return (

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -148,6 +148,30 @@ describe('Receipt', () => {
     // Una sola vez: generar el ticket es idempotente, pero pedirlo dos
     // veces mandaría dos trabajos a la impresora.
     expect(backend.ticketCalls).toHaveLength(1);
+  });
+
+  it('goes back to a new sale on its own once the ticket is out', async () => {
+    // Sin darle a nada: en una caja con cola detrás, un botón por cliente
+    // son cientos de pulsaciones al mes.
+    stubBackend({});
+    const onDismiss = vi.fn();
+    renderReceipt({ onDismiss });
+
+    await waitFor(() => expect(printMock).toHaveBeenCalled());
+    expect(onDismiss).toHaveBeenCalled();
+  });
+
+  it('stays put when the ticket was asked for by hand', async () => {
+    // Si alguien lo ha pedido, es porque quería mirarlo.
+    stubBackend({ 'pos.print_ticket_on_checkout': 'false' });
+    const onDismiss = vi.fn();
+    renderReceipt({ onDismiss });
+    await screen.findByText('20,00 €');
+
+    await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
+
+    expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 
   it('waits for the button when the shop turned auto-printing off', async () => {
