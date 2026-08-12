@@ -8,13 +8,68 @@ database drift apart.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tests.conftest import run_alembic
 
 AlembicRunner = Callable[..., str]
+
+
+def _sync_engine(url: str):  # type: ignore[no-untyped-def]
+    """Use the project's psycopg 3 driver for direct migration fixtures."""
+    return create_engine(url.replace("postgresql://", "postgresql+psycopg://", 1))
+
+
+def _insert_sale_fixture(connection, *, status: str) -> tuple[int, int]:  # type: ignore[no-untyped-def]
+    product_id = connection.scalar(
+        text(
+            "INSERT INTO products (sku, name, description, base_unit_name, cost, list_price, "
+            "tax_rate, min_stock, track_lots, track_expiration, is_active, created_at, updated_at) "
+            "VALUES ('MIGRATION-SALE', 'Producto migración', '', 'UD', 2.5, 10, 21, 0, "
+            "false, false, true, now(), now()) RETURNING id"
+        )
+    )
+    package_id = connection.scalar(
+        text(
+            "INSERT INTO product_packages (product_id, name, factor, is_base, created_at, "
+            "updated_at) VALUES (:product_id, 'UD', 1, true, now(), now()) RETURNING id"
+        ),
+        {"product_id": product_id},
+    )
+    warehouse_id, location_id = connection.execute(
+        text(
+            "SELECT w.id, l.id FROM warehouses AS w "
+            "JOIN locations AS l ON l.warehouse_id = w.id ORDER BY w.id, l.id LIMIT 1"
+        )
+    ).one()
+    sale_id = connection.scalar(
+        text(
+            "INSERT INTO sales (warehouse_id, location_id, status, notes, completed_at, "
+            "created_at, updated_at) VALUES (:warehouse_id, :location_id, :status, '', "
+            ":completed_at, now(), now()) "
+            "RETURNING id"
+        ),
+        {
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "status": status,
+            "completed_at": datetime.now(UTC) if status == "COMPLETED" else None,
+        },
+    )
+    line_id = connection.scalar(
+        text(
+            "INSERT INTO sale_lines (sale_id, product_id, package_id, package_name, "
+            "package_factor, quantity_packages, quantity_base, unit_price, tax_rate, "
+            "discount_rate, created_at, updated_at) VALUES (:sale_id, :product_id, "
+            ":package_id, 'UD', 1, 1, 1, 10, 21, 0, now(), now()) RETURNING id"
+        ),
+        {"sale_id": sale_id, "product_id": product_id, "package_id": package_id},
+    )
+    return sale_id, line_id
 
 
 async def test_database_is_at_head(connection: AsyncConnection) -> None:
@@ -56,19 +111,14 @@ def test_downgrade_and_upgrade_round_trip(fresh_database: Callable[[], str]) -> 
     assert "(head)" in run_alembic(url, "current")
 
 
-def test_a_formula_naming_margin_amount_is_cleaned_up(fresh_database: Callable[[], str]) -> None:
-    """d1f83c60a97e. El margen en euros dejó de ser una variable de fórmula,
-    así que una fórmula que lo nombre ya no se puede evaluar: el producto se
-    queda sin poder recalcular su precio, con un 422 y sin explicación. Si
-    alguien alcanzó a escribirlo mientras la ayuda lo listaba, la migración
-    tiene que quitarlo.
-    """
+def test_a_formula_naming_margin_amount_blocks_without_data_loss(
+    fresh_database: Callable[[], str],
+) -> None:
+    """An ambiguous formula requires review instead of being erased."""
     url = fresh_database()
     run_alembic(url, "upgrade", "c9b41e7a02d5")
 
-    # El driver va explícito: sin él SQLAlchemy busca psycopg2, que aquí no
-    # está (el proyecto usa psycopg 3).
-    engine = create_engine(url.replace("postgresql://", "postgresql+psycopg://", 1))
+    engine = _sync_engine(url)
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -79,19 +129,142 @@ def test_a_formula_naming_margin_amount_is_cleaned_up(fresh_database: Callable[[
         )
         connection.execute(text("UPDATE pricing_settings SET formula = 'margin_amount + cost'"))
 
-    run_alembic(url, "upgrade", "head")
+    with pytest.raises(RuntimeError, match="explicit review"):
+        run_alembic(url, "upgrade", "head")
 
     with engine.begin() as connection:
         category_formula = connection.scalar(
             text("SELECT price_formula FROM product_categories WHERE name = 'Con fórmula'")
         )
         store_formula = connection.scalar(text("SELECT formula FROM pricing_settings"))
+        # Explicit reconciliation: these are business decisions, not guesses
+        # embedded in a migration.
+        connection.execute(
+            text(
+                "UPDATE product_categories SET price_formula = 'cost * 2' "
+                "WHERE name = 'Con fórmula'"
+            )
+        )
+        connection.execute(text("UPDATE pricing_settings SET formula = 'cost'"))
+
+    assert category_formula == "cost * 2 + margin_amount"
+    assert store_formula == "margin_amount + cost"
+    run_alembic(url, "upgrade", "head")
     engine.dispose()
 
-    # La categoría vuelve a heredar; el margen en euros se le sigue
-    # aplicando igual, porque ahora se suma fuera de la fórmula.
-    assert category_formula is None
-    # La de la tienda no puede quedar vacía: vuelve a la de fábrica, que sí
-    # se puede evaluar.
-    assert store_formula is not None
-    assert "margin_amount" not in store_formula
+
+@pytest.mark.parametrize("prices_include_tax", [False, True])
+def test_explicit_fiscal_mode_and_valid_formulas_survive_upgrade(
+    fresh_database: Callable[[], str], prices_include_tax: bool
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "547ee9f06037")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE pricing_settings SET formula = 'cost * 2', prices_include_tax = :mode"),
+            {"mode": prices_include_tax},
+        )
+
+    run_alembic(url, "upgrade", "c9b41e7a02d5")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO product_categories (name, is_active, price_formula, tracks_stock, "
+                "created_at, updated_at) "
+                "VALUES ('Fórmula válida', true, 'cost * 3', true, now(), now())"
+            )
+        )
+    run_alembic(url, "upgrade", "head")
+
+    with engine.begin() as connection:
+        saved_mode = connection.scalar(text("SELECT prices_include_tax FROM pricing_settings"))
+        store_formula = connection.scalar(text("SELECT formula FROM pricing_settings"))
+        category_formula = connection.scalar(
+            text("SELECT price_formula FROM product_categories WHERE name = 'Fórmula válida'")
+        )
+    engine.dispose()
+    assert saved_mode is prices_include_tax
+    assert store_formula == "cost * 2"
+    assert category_formula == "cost * 3"
+
+
+def test_custom_formula_requires_explicit_fiscal_mode(fresh_database: Callable[[], str]) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "547ee9f06037")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE pricing_settings SET formula = 'cost + tax_rate'"))
+
+    with pytest.raises(RuntimeError, match="Cannot infer prices_include_tax"):
+        run_alembic(url, "upgrade", "5b4760e2a878")
+    with engine.begin() as connection:
+        assert connection.scalar(text("SELECT formula FROM pricing_settings")) == "cost + tax_rate"
+        assert connection.scalar(text("SELECT prices_include_tax FROM pricing_settings")) is None
+        connection.execute(text("UPDATE pricing_settings SET prices_include_tax = false"))
+
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
+def test_cancelled_sales_and_lines_survive_upgrade(fresh_database: Callable[[], str]) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "e2b93a75c614")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        sale_id, line_id = _insert_sale_fixture(connection, status="CANCELLED")
+
+    run_alembic(url, "upgrade", "head")
+    with engine.begin() as connection:
+        sale = connection.execute(
+            text("SELECT status, number FROM sales WHERE id = :id"), {"id": sale_id}
+        ).one()
+        line = connection.execute(
+            text("SELECT product_sku, product_name, unit_cost FROM sale_lines WHERE id = :id"),
+            {"id": line_id},
+        ).one()
+    engine.dispose()
+    assert sale == ("CANCELLED", None)
+    assert line == ("MIGRATION-SALE", "Producto migración", 2.5)
+
+
+def test_completed_legacy_sale_requires_explicit_snapshot_reconciliation(
+    fresh_database: Callable[[], str],
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "d1f83c60a97e")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        sale_id, line_id = _insert_sale_fixture(connection, status="COMPLETED")
+
+    with pytest.raises(RuntimeError, match="explicit prices_include_tax snapshot"):
+        run_alembic(url, "upgrade", "head")
+
+    run_alembic(url, "upgrade", "7f2a6c9e4b10")
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE sales SET prices_include_tax = true WHERE id = :id"), {"id": sale_id}
+        )
+    run_alembic(url, "upgrade", "4c8d1e7a5b32")
+    run_alembic(url, "upgrade", "9a3e6b1c7d42")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE sale_lines SET product_sku = 'MIGRATION-SALE', "
+                "product_name = 'Producto migración', unit_cost = 2.5, "
+                "tracks_stock = true, track_lots = false WHERE id = :id"
+            ),
+            {"id": line_id},
+        )
+    run_alembic(url, "upgrade", "head")
+    with engine.begin() as connection:
+        saved = connection.execute(
+            text(
+                "SELECT s.prices_include_tax, sl.product_sku, sl.unit_cost "
+                "FROM sales AS s JOIN sale_lines AS sl ON sl.sale_id = s.id "
+                "WHERE s.id = :id"
+            ),
+            {"id": sale_id},
+        ).one()
+    engine.dispose()
+    assert saved == (True, "MIGRATION-SALE", 2.5)

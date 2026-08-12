@@ -1,12 +1,13 @@
-"""El número de venta que se imprime, y fuera las canceladas
+"""El número de venta que se imprime
 
 El `id` se reparte al abrir el carrito, así que cada carrito que no llega
 a cobrarse deja un hueco en la numeración del ticket. Se añade `number`,
 que se asigna al cobrar y va correlativo.
 
-Las ventas canceladas se borran: a partir de ahora cancelar borra el
-carrito (no ha tocado stock, ni cobro, ni ticket), y las que quedaran de
-antes se van por el mismo motivo — no tienen nada colgando.
+La aplicación actual borra un carrito cuando se cancela, pero esta migración
+no elimina ventas ``CANCELLED`` creadas por versiones anteriores: aunque no
+tengan cobro ni stock, siguen siendo datos históricos y no hay autorización
+para descartarlas durante un cambio de esquema.
 
 Revision ID: f4a1c7d29b83
 Revises: e2b93a75c614
@@ -28,15 +29,6 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     connection = op.get_bind()
-
-    # Primero las canceladas: así no se llevan un número al numerar.
-    connection.execute(
-        sa.text(
-            "DELETE FROM sale_lines WHERE sale_id IN "
-            "(SELECT id FROM sales WHERE status = 'CANCELLED')"
-        )
-    )
-    connection.execute(sa.text("DELETE FROM sales WHERE status = 'CANCELLED'"))
 
     op.add_column("sales", sa.Column("number", sa.Integer(), nullable=True))
     # Las que ya estaban cobradas se numeran por orden de cobro, que es el

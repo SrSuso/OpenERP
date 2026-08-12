@@ -1,25 +1,10 @@
-"""prices_include_tax deducido de la fórmula
+"""prices_include_tax explícito, salvo la fórmula sembrada conocida
 
-Arregla, sin intervención manual, una tienda cuyo PVP ya lleva el IVA.
-
-Si la fórmula del PVP usa `tax_rate`, el precio que sale de ella **ya
-contiene** el impuesto (`(cost + cost*tax_rate/100 + ...) * margen`, que
-es la fórmula de fábrica). En ese caso la caja no puede volver a sumarlo:
-un producto etiquetado a 15,14 € tiene que cobrarse a 15,14 €, no a
-18,32 €. Cobrar el impuesto dos veces no es correcto en ningún régimen,
-así que deducirlo de la fórmula es seguro y no hay ningún caso legítimo
-que esta migración estropee.
-
-Una tienda en régimen general —que deduce el IVA soportado y por tanto
-parte de un coste neto— tiene una fórmula sin `tax_rate` (`cost * (1 +
-margen/100)`), no entra aquí, y sigue sumando el IVA en caja como hasta
-ahora.
-
-Hacía falta porque la línea de venta pasó a guardar el tipo de IVA
-efectivo (necesario para poder desglosarlo en el ticket); antes valía 0
-por un descuido y el total salía bien de casualidad. Con el tipo ya
-correcto, este ajuste es lo único que separa cobrar bien de cobrar un
-21% de más.
+La fórmula exacta sembrada por 20412e4e301c sí tiene semántica conocida:
+incluye ``tax_rate``, por lo que se marca como precio con impuesto. Para
+cualquier fórmula personalizada, buscar el nombre de una variable no basta
+para conocer su semántica; la actualización se detiene y pide que el valor
+se establezca explícitamente en la revisión anterior.
 
 Revision ID: 5b4760e2a878
 Revises: 66b16b49cebd
@@ -30,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "5b4760e2a878"
@@ -37,15 +23,46 @@ down_revision: str | None = "66b16b49cebd"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+_SEEDED_FORMULA = (
+    "(cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)"
+)
+
 
 def upgrade() -> None:
-    op.execute(
-        "UPDATE pricing_settings SET prices_include_tax = true WHERE formula LIKE '%tax_rate%'"
+    connection = op.get_bind()
+    connection.execute(
+        sa.text(
+            "UPDATE pricing_settings SET prices_include_tax = true "
+            "WHERE prices_include_tax IS NULL AND formula = :seeded"
+        ).bindparams(seeded=_SEEDED_FORMULA)
+    )
+    unresolved = (
+        connection.execute(
+            sa.text("SELECT id FROM pricing_settings WHERE prices_include_tax IS NULL ORDER BY id")
+        )
+        .scalars()
+        .all()
+    )
+    if unresolved:
+        ids = ", ".join(str(item) for item in unresolved)
+        raise RuntimeError(
+            "Cannot infer prices_include_tax for customized pricing settings "
+            f"({ids}). Stay on revision 547ee9f06037, set the value explicitly, then retry."
+        )
+    op.alter_column(
+        "pricing_settings",
+        "prices_include_tax",
+        existing_type=sa.Boolean(),
+        nullable=False,
+        server_default=sa.text("false"),
     )
 
 
 def downgrade() -> None:
-    # Irreversible a propósito: no se puede distinguir a quién puso este
-    # ajuste esta migración de quien ya lo tenía activado a mano, y
-    # revertirlo volvería a cobrar el impuesto dos veces.
-    pass
+    op.alter_column(
+        "pricing_settings",
+        "prices_include_tax",
+        existing_type=sa.Boolean(),
+        nullable=True,
+        server_default=None,
+    )

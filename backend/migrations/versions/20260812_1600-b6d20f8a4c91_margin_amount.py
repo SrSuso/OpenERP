@@ -8,9 +8,9 @@ de precio más, con la misma herencia que el porcentaje: producto →
 categoría → nada. Y la fórmula pasa a poder ponerse también en la
 categoría, para no repetirla en cada producto de la misma familia.
 
-La fórmula por defecto de la tienda se amplía con `+ margin_amount`, pero
-sólo si sigue siendo la que se sembró: si el tendero ya la cambió, la suya
-manda y se queda tal cual.
+El margen fijo se guarda como dato propio. No se introduce en el texto de
+ninguna fórmula: el servicio de precios lo suma después de evaluarla, tanto
+para fórmulas sembradas como personalizadas.
 
 Revision ID: b6d20f8a4c91
 Revises: a8e5d0c31746
@@ -29,13 +29,6 @@ down_revision: str | None = "a8e5d0c31746"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-#: La que sembró 20412e4e301c. Se compara con ella para no pisar una
-#: fórmula que el tendero haya escrito él.
-_SEEDED_FORMULA = (
-    "(cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)"
-)
-_NEW_FORMULA = f"{_SEEDED_FORMULA} + margin_amount"
-
 
 def upgrade() -> None:
     # Nulo = «aquí no se dice nada» (no es lo mismo que 0 €), igual que
@@ -52,19 +45,8 @@ def upgrade() -> None:
         sa.Column("margin_amount", sa.Numeric(18, 6), nullable=False, server_default="0"),
     )
 
-    op.execute(
-        sa.text("UPDATE pricing_settings SET formula = :new WHERE formula = :old").bindparams(
-            new=_NEW_FORMULA, old=_SEEDED_FORMULA
-        )
-    )
-
 
 def downgrade() -> None:
-    op.execute(
-        sa.text("UPDATE pricing_settings SET formula = :old WHERE formula = :new").bindparams(
-            new=_NEW_FORMULA, old=_SEEDED_FORMULA
-        )
-    )
     op.drop_column("product_price_history", "margin_amount")
     op.drop_column("products", "margin_amount")
     op.drop_column("product_categories", "price_formula")
