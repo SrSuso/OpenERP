@@ -29,7 +29,6 @@ from app.audit import service as audit
 from app.core.context import get_user_id
 from app.core.errors import ConflictError
 from app.db.types import NUMERIC_EPSILON
-from app.pricing.models import PricingSettings
 from app.returns.models import Return, ReturnLine
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus, ZReport
 from app.sales.service import compute_line_totals, payable
@@ -78,9 +77,6 @@ async def preview(session: AsyncSession, warehouse_id: int) -> dict[str, object]
 async def _totals(
     session: AsyncSession, warehouse_id: int, *, since: datetime | None
 ) -> dict[str, object]:
-    settings = (await session.execute(select(PricingSettings).limit(1))).scalar_one_or_none()
-    prices_include_tax = settings.prices_include_tax if settings else False
-
     sales_stmt = select(Sale).where(
         Sale.warehouse_id == warehouse_id, Sale.status == SaleStatus.COMPLETED
     )
@@ -88,6 +84,7 @@ async def _totals(
         sales_stmt = sales_stmt.where(Sale.completed_at > since)
     sales = list((await session.execute(sales_stmt)).scalars())
     sale_ids = [sale.id for sale in sales]
+    fiscal_mode_by_sale = {sale.id: sale.prices_include_tax for sale in sales}
 
     gross = tax = discount = Decimal(0)
     by_method = {method: Decimal(0) for method in PaymentMethod}
@@ -98,6 +95,8 @@ async def _totals(
             await session.execute(select(SaleLine).where(SaleLine.sale_id.in_(sale_ids)))
         ).scalars()
         for line in lines:
+            prices_include_tax = fiscal_mode_by_sale[line.sale_id]
+            assert prices_include_tax is not None  # completed-sale DB invariant
             amounts = compute_line_totals(line, prices_include_tax=prices_include_tax)
             tax += amounts.tax_amount
             discount += amounts.discount_amount

@@ -40,7 +40,10 @@ def payment_to_read(payment: Payment) -> PaymentRead:
 
 
 def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
-    lines = [sale_line_to_read(line, prices_include_tax=prices_include_tax) for line in sale.lines]
+    fiscal_snapshot = (
+        sale.prices_include_tax if sale.prices_include_tax is not None else prices_include_tax
+    )
+    lines = [sale_line_to_read(line, prices_include_tax=fiscal_snapshot) for line in sale.lines]
     # A céntimos, que es lo que se cobra: el TPV enseña este total, el
     # cajero teclea eso mismo y el cobro lo compara contra lo mismo (ver
     # `app.sales.service.payable`).
@@ -54,6 +57,7 @@ def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
         status=sale.status,
         notes=sale.notes,
         cashier_user_id=sale.cashier_user_id,
+        prices_include_tax=sale.prices_include_tax,
         completed_at=sale.completed_at,
         created_at=sale.created_at,
         lines=lines,

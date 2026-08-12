@@ -18,7 +18,6 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.core.errors import NotFoundError, ValidationError
-from app.pricing import service as pricing_service
 from app.sales.models import Sale, SaleLine, SaleStatus
 from app.tickets.models import Ticket, TicketTemplate
 from app.tickets.render import render_ticket
@@ -195,7 +194,7 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
         )
 
     template = await get_active_template(session)
-    prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
+    assert sale.prices_include_tax is not None  # completed-sale DB invariant
     cashier_name: str | None = None
     if template.show_cashier and sale.cashier_user_id is not None:
         cashier = await session.get(User, sale.cashier_user_id)
@@ -203,7 +202,7 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
     rendered_text = render_ticket(
         sale,
         template,
-        prices_include_tax=prices_include_tax,
+        prices_include_tax=sale.prices_include_tax,
         cashier_name=cashier_name,
     )
 

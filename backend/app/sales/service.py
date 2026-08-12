@@ -559,6 +559,7 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
     before = _sale_snapshot(sale)
     sale.status = SaleStatus.COMPLETED
     sale.completed_at = datetime.now(UTC)
+    sale.prices_include_tax = prices_include_tax
     sale.number = await _next_sale_number(session)
     await session.flush()
     await audit.record(

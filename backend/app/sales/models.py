@@ -23,7 +23,16 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.catalog.models import Product, ProductPackage
@@ -46,6 +55,12 @@ class PaymentMethod(StrEnum):
 
 class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "sales"
+    __table_args__ = (
+        CheckConstraint(
+            "status <> 'COMPLETED' OR prices_include_tax IS NOT NULL",
+            name="completed_has_fiscal_snapshot",
+        ),
+    )
 
     #: El número que ve el cliente, el que va impreso en el ticket.
     #:
@@ -72,6 +87,10 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
     )
     #: Set exclusively by phase 13, once a payment completes the sale.
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Fiscal interpretation frozen at checkout.  Drafts deliberately keep
+    #: this null and are presented with the current shop setting; a completed
+    #: sale must never be reinterpreted after that setting changes.
+    prices_include_tax: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     warehouse: Mapped[Warehouse] = relationship()
     location: Mapped[Location] = relationship()

@@ -20,7 +20,6 @@ from app.inventory.models import MovementType
 from app.lots import service as lots_service
 from app.lots.models import Lot
 from app.lots.schemas import LotCreate
-from app.pricing import service as pricing_service
 from app.returns.models import Return, ReturnLine
 from app.returns.schemas import ReturnCreate, ReturnLineCreate
 from app.sales.models import Sale, SaleLine, SaleStatus
@@ -99,7 +98,7 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
         )
 
     lines_by_id = {line.id: line for line in sale.lines}
-    prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
+    assert sale.prices_include_tax is not None  # enforced for every completed sale by the DB
 
     ret = Return(sale_id=sale_id, notes=payload.notes, processed_by_user_id=get_user_id())
     session.add(ret)
@@ -107,7 +106,12 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
 
     for line_payload in payload.lines:
         await _apply_return_line(
-            session, ret, sale, lines_by_id, line_payload, prices_include_tax=prices_include_tax
+            session,
+            ret,
+            sale,
+            lines_by_id,
+            line_payload,
+            prices_include_tax=sale.prices_include_tax,
         )
 
     await session.flush()
