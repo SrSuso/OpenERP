@@ -323,6 +323,10 @@ async def lock_and_get_available_quantity(
             StockBalance.warehouse_id == warehouse_id,
             StockBalance.location_id == location_id,
         )
+        # A checkout may need several lot rows. Locking them by primary key
+        # gives every concurrent sale the same acquisition order regardless
+        # of its FEFO plan or the query planner's preferred scan.
+        .order_by(StockBalance.id)
         .with_for_update()
     )
     rows = (await session.execute(stmt)).scalars().all()

@@ -14,6 +14,8 @@ actually deducted from stock.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -30,6 +32,7 @@ from app.catalog.models import Product, ProductPackage
 from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
+from app.idempotency import service as idempotency_service
 from app.inventory import service as inventory_service
 from app.inventory.models import MovementType
 from app.lots import service as lots_service
@@ -48,6 +51,8 @@ _SALE_OPTIONS = (
     selectinload(Sale.lines),
     selectinload(Sale.payments),
 )
+
+_CHECKOUT_OPERATION = "sale.checkout"
 
 
 @dataclass(frozen=True)
@@ -167,6 +172,26 @@ async def get_sale(session: AsyncSession, sale_id: int) -> Sale:
         .execution_options(populate_existing=True)
     )
     sale = (await session.execute(stmt)).scalar_one_or_none()
+    if sale is None:
+        raise NotFoundError(f"Sale {sale_id} not found.")
+    return sale
+
+
+async def _get_sale_for_checkout(session: AsyncSession, sale_id: int) -> Sale:
+    """Load and lock the aggregate that owns the checkout state change.
+
+    Under PostgreSQL READ COMMITTED, a waiter sees the row version committed
+    by the previous owner of the lock. ``populate_existing`` also prevents a
+    stale identity-map instance from retaining its old ``DRAFT`` state.
+    """
+    statement = (
+        select(Sale)
+        .where(Sale.id == sale_id)
+        .options(*_SALE_OPTIONS)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    sale = (await session.execute(statement)).scalar_one_or_none()
     if sale is None:
         raise NotFoundError(f"Sale {sale_id} not found.")
     return sale
@@ -470,8 +495,58 @@ async def _next_sale_number(session: AsyncSession) -> int:
     return (highest or 0) + 1
 
 
-async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest) -> Sale:
-    sale = await get_sale(session, sale_id)
+def checkout_request_fingerprint(sale_id: int, payload: CheckoutRequest) -> str:
+    """SHA-256 of the checkout's canonical economic input.
+
+    Object-key and payment-list ordering are irrelevant. Decimal spellings
+    such as ``10``, ``10.0`` and ``10.000000`` describe the same tender and
+    therefore produce the same fingerprint; duplicate tenders remain
+    duplicate entries and are not merged.
+    """
+    payments = sorted(
+        (
+            {"method": payment.method, "amount": format(_q(payment.amount), "f")}
+            for payment in payload.payments
+        ),
+        key=lambda payment: (payment["method"], payment["amount"]),
+    )
+    canonical = json.dumps(
+        {"sale_id": sale_id, "payments": payments},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def checkout(
+    session: AsyncSession,
+    sale_id: int,
+    payload: CheckoutRequest,
+    *,
+    idempotency_key: str | None = None,
+    actor_user_id: int | None = None,
+) -> Sale:
+    claim = None
+    if idempotency_key is not None:
+        actor_id = actor_user_id if actor_user_id is not None else get_user_id()
+        if actor_id is None:
+            raise ValidationError("An authenticated user is required for an idempotent checkout.")
+        claim = await idempotency_service.claim(
+            session,
+            operation=_CHECKOUT_OPERATION,
+            idempotency_key=idempotency_key,
+            request_fingerprint=checkout_request_fingerprint(sale_id, payload),
+            resource_id=sale_id,
+            actor_user_id=actor_id,
+        )
+        if not claim.is_new:
+            completed = await get_sale(session, claim.record.resource_id)
+            if completed.status != SaleStatus.COMPLETED:
+                raise ConflictError("The idempotent checkout result is not available.")
+            return completed
+
+    sale = await _get_sale_for_checkout(session, sale_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError(f"Cannot check out a sale that is already {sale.status}.")
     if not sale.lines:
@@ -521,13 +596,20 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
     # request (nothing partially deducted), and nothing here has mutated
     # the sale itself yet, so a DRAFT sale that fails checkout is exactly
     # as it was, ready to retry (e.g. after a restock).
-    for line in sale.lines:
+    # Every checkout acquires resources in this order:
+    # idempotency key -> Sale -> stock groups by product id -> balance rows
+    # by id -> global sale-number advisory lock. Sorting here means two sales with
+    # the same products cannot deadlock merely because their lines were
+    # scanned in opposite orders.
+    stock_lines = sorted(
+        (line for line in sale.lines if line.tracks_stock),
+        key=lambda line: (line.product_id, line.id),
+    )
+    for line in stock_lines:
         # Lo que no lleva control de existencias no se agota ni mueve el
         # almacén: se vende y ya (ver `app.catalog.stock`). Se sigue
         # cobrando y saliendo en el ticket y en la Z, que es lo que importa
         # para el dinero.
-        if not line.tracks_stock:
-            continue
         available = await inventory_service.lock_and_get_available_quantity(
             session,
             product_id=line.product_id,
@@ -592,4 +674,6 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
             "change_due": str(change_due),
         },
     )
+    if claim is not None:
+        await idempotency_service.complete(session, claim.record)
     return await get_sale(session, sale_id)

@@ -9,9 +9,9 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import CurrentUser, SessionDep
 from app.pricing.dependencies import PricingSettingsDep
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import SALE_MANAGE, SALE_READ
@@ -125,9 +125,26 @@ async def cancel_sale(sale_id: int, session: SessionDep) -> None:
 
 @router.post("/sales/{sale_id}/checkout", response_model=SaleRead, dependencies=[_require_manage])
 async def checkout(
-    sale_id: int, payload: CheckoutRequest, session: SessionDep, pricing: PricingSettingsDep
+    sale_id: int,
+    payload: CheckoutRequest,
+    session: SessionDep,
+    pricing: PricingSettingsDep,
+    current_user: CurrentUser,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=1, max_length=200),
+    ] = None,
 ) -> SaleRead:
-    return _to_read(await service.checkout(session, sale_id, payload), pricing)
+    return _to_read(
+        await service.checkout(
+            session,
+            sale_id,
+            payload,
+            idempotency_key=idempotency_key,
+            actor_user_id=current_user.id,
+        ),
+        pricing,
+    )
 
 
 # --- cierre de caja (Z) ------------------------------------------------------

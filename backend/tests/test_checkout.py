@@ -10,14 +10,19 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.catalog import service as catalog_service
 from app.catalog.schemas import ProductCreate
 from app.core.errors import ConflictError
 from app.inventory import service as inventory_service
+from app.inventory.models import StockMovement
+from app.rbac.models import Role
 from app.sales import service as sales_service
+from app.sales.models import Payment, Sale
 from app.sales.schemas import CheckoutRequest, PaymentCreate, SaleCreate, SaleLineCreate
+from app.users.models import User
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
@@ -141,6 +146,104 @@ async def test_checkout_with_exact_cash_completes_the_sale_and_moves_stock(
     assert sale_movement["quantity"] == "-3.000000"
 
 
+async def test_sequential_retry_with_the_same_key_replays_without_duplicate_effects(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="CHECKOUT-IDEMPOTENT-RETRY", tax_rate="0")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="20",
+    )
+    sale = await _ready_sale(client, product=product, quantity="1")
+    payload = {"payments": [{"method": "CASH", "amount": sale["total"]}]}
+    headers = {"Idempotency-Key": "checkout-sequential-retry"}
+
+    first = await client.post(f"/api/v1/sales/{sale['id']}/checkout", json=payload, headers=headers)
+    retry = await client.post(f"/api/v1/sales/{sale['id']}/checkout", json=payload, headers=headers)
+
+    assert first.status_code == retry.status_code == 200
+    assert retry.json()["id"] == first.json()["id"]
+    assert retry.json()["number"] == first.json()["number"]
+    assert retry.json()["completed_at"] == first.json()["completed_at"]
+    assert retry.json()["payments"] == first.json()["payments"]
+    balances = (
+        await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
+    ).json()
+    movements = (
+        await client.get("/api/v1/stock-movements", params={"product_id": product["id"]})
+    ).json()
+    assert balances[0]["quantity"] == "19.000000"
+    assert len([item for item in movements if item["reference_type"] == "sale"]) == 1
+
+
+async def test_same_key_with_a_different_checkout_payload_is_a_conflict(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="CHECKOUT-IDEMPOTENT-MISMATCH", tax_rate="0")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="5",
+    )
+    sale = await _ready_sale(client, product=product)
+    headers = {"Idempotency-Key": "checkout-payload-mismatch"}
+    first = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": sale["total"]}]},
+        headers=headers,
+    )
+
+    mismatch = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": "100.00"}]},
+        headers=headers,
+    )
+
+    assert first.status_code == 200
+    assert mismatch.status_code == 409
+    assert mismatch.json()["error"]["code"] == "conflict"
+
+
+async def test_an_idempotency_key_cannot_replay_another_users_checkout(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="CHECKOUT-IDEMPOTENT-ACTOR", tax_rate="0")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="5",
+    )
+    await login(role_name="CASHIER", email="checkout-key-owner@example.com")
+    sale = await _ready_sale(client, product=product)
+    payload = {"payments": [{"method": "CASH", "amount": sale["total"]}]}
+    headers = {"Idempotency-Key": "checkout-user-scoped-key"}
+    first = await client.post(f"/api/v1/sales/{sale['id']}/checkout", json=payload, headers=headers)
+    await login(role_name="CASHIER", email="checkout-key-other@example.com")
+
+    replay = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout", json=payload, headers=headers
+    )
+
+    assert first.status_code == 200
+    assert replay.status_code == 409
+    assert replay.json()["error"]["message"] == (
+        "Idempotency key is already in use for another operation."
+    )
+
+
 @pytest.mark.parametrize(
     ("sku", "scanned_barcode", "package_factor", "expected_base_quantity"),
     [
@@ -203,9 +306,17 @@ async def test_checkout_moves_the_base_quantity_of_the_scanned_package(
     checked_out = await client.post(
         f"/api/v1/sales/{sale['id']}/checkout",
         json={"payments": [{"method": "CASH", "amount": added.json()["total"]}]},
+        headers={"Idempotency-Key": f"checkout-package-{sku.lower()}"},
+    )
+    retried = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": added.json()["total"]}]},
+        headers={"Idempotency-Key": f"checkout-package-{sku.lower()}"},
     )
 
     assert checked_out.status_code == 200
+    assert retried.status_code == 200
+    assert retried.json()["payments"] == checked_out.json()["payments"]
     balances = (
         await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
     ).json()
@@ -242,13 +353,26 @@ async def test_split_payment_across_cash_and_card(
                 {"method": "CASH", "amount": "8.00"},
             ]
         },
+        headers={"Idempotency-Key": "checkout-split-payment-order"},
+    )
+    retry = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={
+            "payments": [
+                {"method": "CASH", "amount": "8.000000"},
+                {"method": "CARD", "amount": "12"},
+            ]
+        },
+        headers={"Idempotency-Key": "checkout-split-payment-order"},
     )
 
     assert response.status_code == 200
+    assert retry.status_code == 200
     body = response.json()
     assert body["status"] == "COMPLETED"
     assert Decimal(body["change_due"]) == Decimal(0)
     assert {p["method"] for p in body["payments"]} == {"CARD", "CASH"}
+    assert retry.json()["payments"] == body["payments"]
 
 
 async def test_cash_overpayment_returns_change(
@@ -527,9 +651,17 @@ async def test_checkout_consumes_lots_fefo(
     response = await client.post(
         f"/api/v1/sales/{sale['id']}/checkout",
         json={"payments": [{"method": "CASH", "amount": "100.00"}]},
+        headers={"Idempotency-Key": "checkout-fefo-retry"},
+    )
+    retry = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": "100"}]},
+        headers={"Idempotency-Key": "checkout-fefo-retry"},
     )
 
     assert response.status_code == 200
+    assert retry.status_code == 200
+    assert retry.json()["payments"] == response.json()["payments"]
     balances = {
         b["lot_id"]: b["quantity"]
         for b in (
@@ -538,6 +670,10 @@ async def test_checkout_consumes_lots_fefo(
     }
     assert balances[lot_a] == "0.000000"
     assert balances[lot_b] == "7.000000"
+    movements = (
+        await client.get("/api/v1/stock-movements", params={"product_id": product["id"]})
+    ).json()
+    assert len([item for item in movements if item["reference_type"] == "sale"]) == 2
 
 
 async def test_prices_include_tax_extracts_instead_of_adding(
@@ -674,6 +810,106 @@ async def test_concurrent_checkouts_never_oversell(
             session, product_id=product_id, warehouse_id=warehouse_id
         )
     assert balances[0].quantity == Decimal(0)
+
+
+async def test_concurrent_checkouts_of_the_same_sale_apply_once(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    """Different intentions serialize on Sale and only one may complete."""
+    async with committing_sessionmaker() as setup_session:
+        cashier_role = (
+            await setup_session.execute(select(Role).where(Role.name == "CASHIER"))
+        ).scalar_one()
+        cashier = User(
+            email="checkout-same-sale-race-a2@example.com",
+            full_name="Same sale race cashier",
+            password_hash="unused",
+            role_id=cashier_role.id,
+        )
+        setup_session.add(cashier)
+        await setup_session.flush()
+        product = await catalog_service.create_product(
+            setup_session,
+            ProductCreate(
+                sku="CHECKOUT-SAME-SALE-RACE-A2",
+                name="Same sale race product",
+                base_unit_name="UNIDAD",
+                cost=Decimal("1"),
+                list_price=Decimal("1"),
+                tax_rate=Decimal("0"),
+            ),
+        )
+        warehouse = next(
+            item
+            for item in await inventory_service.list_warehouses(setup_session)
+            if item.name == "Tienda principal"
+        )
+        location = next(
+            item
+            for item in await inventory_service.list_locations(setup_session, warehouse.id)
+            if item.name == "Almacén"
+        )
+        await inventory_service.record_movement(
+            setup_session,
+            product_id=product.id,
+            warehouse_id=warehouse.id,
+            location_id=location.id,
+            quantity=Decimal("20"),
+            movement_type="ADJUSTMENT",
+            unit_cost=Decimal("1"),
+        )
+        sale = await sales_service.create_sale(
+            setup_session, SaleCreate(warehouse_id=warehouse.id, location_id=location.id)
+        )
+        await sales_service.add_line(
+            setup_session,
+            sale.id,
+            SaleLineCreate(
+                product_id=product.id,
+                package_id=product.packages[0].id,
+                quantity_packages=Decimal("1"),
+            ),
+        )
+        await setup_session.commit()
+        sale_id, product_id, cashier_id = sale.id, product.id, cashier.id
+
+    async def attempt(idempotency_key: str) -> str:
+        try:
+            async with committing_sessionmaker() as session:
+                await sales_service.checkout(
+                    session,
+                    sale_id,
+                    CheckoutRequest(payments=[PaymentCreate(method="CASH", amount=Decimal("1"))]),
+                    idempotency_key=idempotency_key,
+                    actor_user_id=cashier_id,
+                )
+                await session.commit()
+            return "ok"
+        except ConflictError:
+            return "conflict"
+
+    results = await asyncio.gather(attempt("different-key-a"), attempt("different-key-b"))
+
+    assert sorted(results) == ["conflict", "ok"]
+    async with committing_sessionmaker() as session:
+        saved_sale = await session.get(Sale, sale_id)
+        assert saved_sale is not None
+        payment_count = await session.scalar(
+            select(func.count()).select_from(Payment).where(Payment.sale_id == sale_id)
+        )
+        movement_count = await session.scalar(
+            select(func.count())
+            .select_from(StockMovement)
+            .where(
+                StockMovement.reference_type == "sale",
+                StockMovement.reference_id == sale_id,
+            )
+        )
+        balances = await inventory_service.list_balances(session, product_id=product_id)
+    assert saved_sale.status == "COMPLETED"
+    assert payment_count == 1
+    assert movement_count == 1
+    assert balances[0].quantity == Decimal("19")
 
 
 async def test_a_total_with_more_than_two_decimals_can_actually_be_charged(
