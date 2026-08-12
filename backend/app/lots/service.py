@@ -113,9 +113,22 @@ async def lot_balances(
 ) -> list[LotBalance]:
     """Positive-stock lots for this product at this location, FEFO order
     (earliest expiration first; undated lots last)."""
+    context = await inventory_service.validate_inventory_context(
+        session,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        lot_id=None,
+        enforce_lot_policy=False,
+    )
+    if not context.product.track_lots:
+        raise ValidationError(f"Product {product_id} does not track lots.")
     stmt = (
         select(StockBalance, Lot)
-        .join(Lot, Lot.id == StockBalance.lot_id)
+        .join(
+            Lot,
+            (Lot.id == StockBalance.lot_id) & (Lot.product_id == StockBalance.product_id),
+        )
         .where(
             StockBalance.product_id == product_id,
             StockBalance.warehouse_id == warehouse_id,

@@ -342,6 +342,68 @@ async def create_goods_receipt(
 
     lines_by_id = {line.id: line for line in order.lines}
 
+    # Validate the complete request before creating the receipt or any lot.
+    # A non-stock-controlled product has no movement, so it cannot rely on
+    # record_movement to catch an incoherent warehouse/location pair.
+    await inventory_service.validate_stock_location(
+        session, warehouse_id=payload.warehouse_id, location_id=payload.location_id
+    )
+    for line_payload in payload.lines:
+        po_line = lines_by_id.get(line_payload.purchase_order_line_id)
+        if po_line is None:
+            raise ValidationError(
+                f"Line {line_payload.purchase_order_line_id} does not belong "
+                f"to order {purchase_order_id}."
+            )
+
+        remaining_base = po_line.quantity_ordered - po_line.quantity_received
+        received_base = line_payload.quantity_packages * po_line.package_factor
+        if received_base > remaining_base:
+            remaining_packages = remaining_base / po_line.package_factor
+            raise ValidationError(
+                f"Line {po_line.id}: receiving {line_payload.quantity_packages} would exceed "
+                f"the {remaining_packages} still pending."
+            )
+
+        product = await session.get(Product, po_line.product_id)
+        assert product is not None  # foreign key invariant
+        if product.track_lots and not line_payload.lot_number:
+            raise ValidationError(
+                f"Line {po_line.id}: product {po_line.product_id} tracks lots; "
+                "lot_number is required."
+            )
+        if not product.track_lots and line_payload.lot_number:
+            raise ValidationError(
+                f"Line {po_line.id}: product {po_line.product_id} does not track lots; "
+                "lot_number is forbidden."
+            )
+
+    resolved_lot_ids: list[int | None] = []
+    for line_payload in payload.lines:
+        po_line = lines_by_id[line_payload.purchase_order_line_id]
+        lot_id = None
+        if line_payload.lot_number:
+            lot_id = await _get_or_create_lot(
+                session,
+                product_id=po_line.product_id,
+                lot_number=line_payload.lot_number,
+                manufacturing_date=line_payload.manufacturing_date,
+                expiration_date=line_payload.expiration_date,
+                supplier_id=order.supplier_id,
+                purchase_order_id=purchase_order_id,
+            )
+        # Validate the concrete lot returned by lookup/creation too. This
+        # protects the receipt if that helper or a future caller ever hands
+        # back a lot belonging to another product.
+        await inventory_service.validate_inventory_context(
+            session,
+            product_id=po_line.product_id,
+            warehouse_id=payload.warehouse_id,
+            location_id=payload.location_id,
+            lot_id=lot_id,
+        )
+        resolved_lot_ids.append(lot_id)
+
     receipt = GoodsReceipt(
         purchase_order_id=purchase_order_id,
         warehouse_id=payload.warehouse_id,
@@ -353,7 +415,7 @@ async def create_goods_receipt(
     session.add(receipt)
     await session.flush()
 
-    for line_payload in payload.lines:
+    for line_payload, lot_id in zip(payload.lines, resolved_lot_ids, strict=True):
         po_line = lines_by_id.get(line_payload.purchase_order_line_id)
         if po_line is None:
             raise ValidationError(
@@ -384,18 +446,6 @@ async def create_goods_receipt(
         # quedan registrados igual; lo único que no se apunta es el
         # movimiento de almacén.
         restocks = catalog_stock.tracks_stock(product)
-
-        lot_id = None
-        if line_payload.lot_number:
-            lot_id = await _get_or_create_lot(
-                session,
-                product_id=po_line.product_id,
-                lot_number=line_payload.lot_number,
-                manufacturing_date=line_payload.manufacturing_date,
-                expiration_date=line_payload.expiration_date,
-                supplier_id=order.supplier_id,
-                purchase_order_id=purchase_order_id,
-            )
 
         # Cost per base unit — po_line.unit_cost is per package (rule 6:
         # snapshotted at order time), never recomputed from current cost.

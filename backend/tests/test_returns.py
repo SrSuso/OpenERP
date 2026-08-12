@@ -396,6 +396,45 @@ async def test_lot_tracked_product_requires_a_lot_number_to_restock(
     assert response.status_code == 422
 
 
+async def test_untracked_product_rejects_a_lot_number_without_partial_return(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="RETURN-UNTRACKED-WITH-LOT")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="10",
+    )
+    sale = await _completed_sale(client, product=product, quantity="1")
+    sale_line_id = sale["lines"][0]["id"]
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/returns",
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_line_id,
+                    "quantity_packages": "1",
+                    "lot_number": "FORBIDDEN-LOT",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    assert (await client.get("/api/v1/returns", params={"sale_id": sale["id"]})).json() == []
+    refreshed_sale = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
+    assert refreshed_sale["lines"][0]["quantity_returned"] == "0.000000"
+    balances = (
+        await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
+    ).json()
+    assert balances[0]["quantity"] == "9.000000"
+
+
 async def test_lot_tracked_product_restocks_into_the_given_lot(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

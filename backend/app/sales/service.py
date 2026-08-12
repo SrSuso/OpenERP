@@ -31,7 +31,7 @@ from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.inventory import service as inventory_service
-from app.inventory.models import Location, MovementType, Warehouse
+from app.inventory.models import MovementType
 from app.lots import service as lots_service
 from app.pricing import service as pricing_service
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus
@@ -205,19 +205,10 @@ async def list_sales(
     return list((await session.execute(stmt)).scalars())
 
 
-async def _location_or_422(session: AsyncSession, warehouse_id: int, location_id: int) -> Location:
-    if await session.get(Warehouse, warehouse_id) is None:
-        raise ValidationError(f"Warehouse {warehouse_id} does not exist.")
-    location = await session.get(Location, location_id)
-    if location is None or location.warehouse_id != warehouse_id:
-        raise ValidationError(
-            f"Location {location_id} does not belong to warehouse {warehouse_id}."
-        )
-    return location
-
-
 async def create_sale(session: AsyncSession, payload: SaleCreate) -> Sale:
-    await _location_or_422(session, payload.warehouse_id, payload.location_id)
+    await inventory_service.validate_stock_location(
+        session, warehouse_id=payload.warehouse_id, location_id=payload.location_id
+    )
 
     sale = Sale(
         warehouse_id=payload.warehouse_id,
@@ -572,6 +563,7 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
                 unit_cost=line.unit_cost,
                 reference_type="sale",
                 reference_id=sale.id,
+                allow_negative=allow_negative_stock,
             )
 
     for tender in payload.payments:

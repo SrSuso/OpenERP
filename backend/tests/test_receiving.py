@@ -12,7 +12,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
+
+from app.purchasing import service as purchasing_service
 
 
 async def _create_product(
@@ -41,14 +44,18 @@ async def _default_location(client: AsyncClient) -> tuple[int, int]:
 
 
 async def _ordered_order(
-    client: AsyncClient, quantity: str = "100"
+    client: AsyncClient,
+    quantity: str = "100",
+    *,
+    sku: str = "RECV-TEST-1",
+    supplier_name: str = "Proveedor de recepción",
 ) -> tuple[int, int, dict[str, Any]]:
     """A supplier + product + placed (ORDERED) purchase order for
     ``quantity`` base units, plus its base-package id."""
-    supplier_id = (
-        await client.post("/api/v1/suppliers", json={"name": "Proveedor de recepción"})
-    ).json()["id"]
-    product = await _create_product(client)
+    supplier_id = (await client.post("/api/v1/suppliers", json={"name": supplier_name})).json()[
+        "id"
+    ]
+    product = await _create_product(client, sku=sku)
     base_id = next(p["id"] for p in product["packages"] if p["is_base"])
 
     order_id = (
@@ -280,6 +287,180 @@ async def test_receiving_a_lot_tracked_product_creates_the_lot(
         )
     ).json()
     assert lot_balances[0]["quantity"] == "20.000000"
+
+
+async def test_receipt_rejects_a_location_from_another_warehouse_completely(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    order_id, line_id, product = await _ordered_order(client, quantity="10")
+    warehouse_id, _location_id = await _default_location(client)
+    other_warehouse_id = (
+        await client.post("/api/v1/warehouses", json={"name": "Recepción ajena A7"})
+    ).json()["id"]
+    other_location_id = (
+        await client.post(
+            f"/api/v1/warehouses/{other_warehouse_id}/locations", json={"name": "Muelle ajeno"}
+        )
+    ).json()["id"]
+
+    response = await client.post(
+        f"/api/v1/purchase-orders/{order_id}/receipts",
+        json={
+            "warehouse_id": warehouse_id,
+            "location_id": other_location_id,
+            "lines": [{"purchase_order_line_id": line_id, "quantity_packages": "10"}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert (await client.get(f"/api/v1/purchase-orders/{order_id}/receipts")).json() == []
+    order = (await client.get(f"/api/v1/purchase-orders/{order_id}")).json()
+    assert order["status"] == "ORDERED"
+    assert order["lines"][0]["quantity_received"] == "0.000000"
+    assert (
+        await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
+    ).json() == []
+
+
+async def test_receipt_enforces_the_products_lot_policy_before_writing(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    tracked_order_id, tracked_line_id, tracked_product = await _ordered_order(client, quantity="10")
+    await client.patch(f"/api/v1/products/{tracked_product['id']}", json={"track_lots": True})
+    plain_order_id, plain_line_id, plain_product = await _ordered_order(
+        client,
+        quantity="10",
+        sku="RECV-LOT-FORBIDDEN",
+        supplier_name="Proveedor sin lotes A7",
+    )
+    warehouse_id, location_id = await _default_location(client)
+
+    missing = await client.post(
+        f"/api/v1/purchase-orders/{tracked_order_id}/receipts",
+        json={
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "lines": [{"purchase_order_line_id": tracked_line_id, "quantity_packages": "10"}],
+        },
+    )
+    forbidden = await client.post(
+        f"/api/v1/purchase-orders/{plain_order_id}/receipts",
+        json={
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "lines": [
+                {
+                    "purchase_order_line_id": plain_line_id,
+                    "quantity_packages": "10",
+                    "lot_number": "LOT-NOT-ALLOWED",
+                }
+            ],
+        },
+    )
+
+    assert missing.status_code == 422
+    assert forbidden.status_code == 422
+    assert (await client.get(f"/api/v1/purchase-orders/{tracked_order_id}/receipts")).json() == []
+    assert (await client.get(f"/api/v1/purchase-orders/{plain_order_id}/receipts")).json() == []
+    assert (
+        await client.get("/api/v1/stock-balance", params={"product_id": tracked_product["id"]})
+    ).json() == []
+    assert (
+        await client.get("/api/v1/stock-balance", params={"product_id": plain_product["id"]})
+    ).json() == []
+
+
+async def test_receipt_never_reuses_a_same_number_lot_from_another_product(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    order_id, line_id, product_a = await _ordered_order(client, quantity="4")
+    await client.patch(f"/api/v1/products/{product_a['id']}", json={"track_lots": True})
+    product_b = await _create_product(client, sku="RECV-FOREIGN-LOT", track_lots=True)
+    lot_b = (
+        await client.post(
+            "/api/v1/lots", json={"product_id": product_b["id"], "lot_number": "SAME-NUMBER"}
+        )
+    ).json()
+    warehouse_id, location_id = await _default_location(client)
+
+    response = await client.post(
+        f"/api/v1/purchase-orders/{order_id}/receipts",
+        json={
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "lines": [
+                {
+                    "purchase_order_line_id": line_id,
+                    "quantity_packages": "4",
+                    "lot_number": "SAME-NUMBER",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    receipt_line = response.json()["lines"][0]
+    assert receipt_line["lot_id"] != lot_b["id"]
+    lots_a = (await client.get("/api/v1/lots", params={"product_id": product_a["id"]})).json()
+    assert [(lot["id"], lot["lot_number"]) for lot in lots_a] == [
+        (receipt_line["lot_id"], "SAME-NUMBER")
+    ]
+
+
+async def test_receipt_rejects_a_foreign_lot_returned_by_its_resolver(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The HTTP schema accepts a lot number, not a manipulable lot id.
+
+    Simulate a future resolver regression returning another product's lot:
+    the central inventory validator must still reject it before the receipt
+    header, line, movement or balance is written.
+    """
+    await login(role_name="ADMIN")
+    order_id, line_id, product_a = await _ordered_order(client, quantity="3")
+    await client.patch(f"/api/v1/products/{product_a['id']}", json={"track_lots": True})
+    product_b = await _create_product(client, sku="RECV-FOREIGN-RESOLVER", track_lots=True)
+    lot_b = (
+        await client.post(
+            "/api/v1/lots", json={"product_id": product_b["id"], "lot_number": "FOREIGN"}
+        )
+    ).json()
+    foreign_lot_id = int(lot_b["id"])
+    warehouse_id, location_id = await _default_location(client)
+
+    async def wrong_lot(*_args: object, **_kwargs: object) -> int:
+        return foreign_lot_id
+
+    monkeypatch.setattr(purchasing_service, "_get_or_create_lot", wrong_lot)
+
+    response = await client.post(
+        f"/api/v1/purchase-orders/{order_id}/receipts",
+        json={
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "lines": [
+                {
+                    "purchase_order_line_id": line_id,
+                    "quantity_packages": "3",
+                    "lot_number": "EXPECTED-A",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert (await client.get(f"/api/v1/purchase-orders/{order_id}/receipts")).json() == []
+    assert (
+        await client.get("/api/v1/stock-movements", params={"product_id": product_a["id"]})
+    ).json() == []
+    assert (
+        await client.get("/api/v1/stock-balance", params={"product_id": product_a["id"]})
+    ).json() == []
 
 
 async def test_receipt_is_traceable_to_its_stock_movements(

@@ -98,6 +98,44 @@ async def create_return(session: AsyncSession, sale_id: int, payload: ReturnCrea
     lines_by_id = {line.id: line for line in sale.lines}
     assert sale.prices_include_tax is not None  # enforced for every completed sale by the DB
 
+    # Reject every inventory-context error before materialising the return
+    # header. The request transaction would roll back a later error too, but
+    # preflight keeps this multi-write service atomic even for direct callers
+    # and prevents a bad line after a good one from leaving pending ORM rows.
+    for line_payload in payload.lines:
+        sale_line = lines_by_id.get(line_payload.sale_line_id)
+        if sale_line is None:
+            raise ValidationError(
+                f"Line {line_payload.sale_line_id} does not belong to sale {sale.id}."
+            )
+        quantity_base = line_payload.quantity_packages * sale_line.package_factor
+        remaining = sale_line.quantity_base - sale_line.quantity_returned
+        if quantity_base > remaining:
+            remaining_packages = remaining / sale_line.package_factor
+            raise ValidationError(
+                f"Line {sale_line.id}: returning {line_payload.quantity_packages} would exceed "
+                f"the {remaining_packages} still returnable."
+            )
+        if line_payload.physical and sale_line.tracks_stock:
+            if sale_line.track_lots and not line_payload.lot_number:
+                raise ValidationError(
+                    f"Line {sale_line.id}: product {sale_line.product_sku} tracks lots — "
+                    "lot_number is required to restock it."
+                )
+            if not sale_line.track_lots and line_payload.lot_number:
+                raise ValidationError(
+                    f"Line {sale_line.id}: product {sale_line.product_sku} does not track lots — "
+                    "lot_number is forbidden."
+                )
+            await inventory_service.validate_inventory_context(
+                session,
+                product_id=sale_line.product_id,
+                warehouse_id=sale.warehouse_id,
+                location_id=sale.location_id,
+                lot_id=None,
+                enforce_lot_policy=False,
+            )
+
     ret = Return(sale_id=sale_id, notes=payload.notes, processed_by_user_id=get_user_id())
     session.add(ret)
     await session.flush()
@@ -185,6 +223,11 @@ async def _apply_return_line(
                 session,
                 product_id=sale_line.product_id,
                 lot_number=line_payload.lot_number,
+            )
+        if restocks and not sale_line.track_lots and line_payload.lot_number:
+            raise ValidationError(
+                f"Line {sale_line.id}: product {sale_line.product_sku} does not track lots — "
+                "lot_number is forbidden."
             )
         if restocks:
             movement = await inventory_service.record_movement(

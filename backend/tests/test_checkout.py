@@ -362,6 +362,31 @@ async def test_insufficient_stock_is_rejected_atomically(
     assert balances[0]["quantity"] == "2.000000"
 
 
+async def test_explicit_negative_stock_setting_still_allows_a_non_lot_sale(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """A7 must preserve the project's explicit negative-stock exception."""
+    await login(role_name="ADMIN")
+    setting = await client.put(
+        "/api/v1/settings/options", json={"values": {"sales.allow_negative_stock": "true"}}
+    )
+    assert setting.status_code == 200
+    product = await _create_product(client, sku="CHECKOUT-NEGATIVE-ALLOWED")
+    await login(role_name="CASHIER")
+    sale = await _ready_sale(client, product=product, quantity="2")
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": sale["total"]}]},
+    )
+
+    assert response.status_code == 200
+    balances = (
+        await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
+    ).json()
+    assert balances[0]["quantity"] == "-2.000000"
+
+
 async def test_cannot_check_out_a_sale_with_no_lines(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
