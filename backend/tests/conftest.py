@@ -31,11 +31,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import pytest_asyncio
+from argon2 import PasswordHasher
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.auth.security import hash_password
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine, get_session
 from app.main import create_app
@@ -45,6 +45,18 @@ from scripts.devdb import create_database, drop_database, wait_for_server
 
 #: The password every fixture-created user gets, unless told otherwise.
 DEFAULT_PASSWORD = "correct horse battery staple"
+
+# Business tests exercise the real login path, including Argon2id verification,
+# but do not need to pay production hashing costs every time they create a user.
+# Dedicated tests/test_auth_password.py still calls app.auth.security directly
+# and therefore continues to cover the production PasswordHasher parameters.
+_FIXTURE_PASSWORD_HASHER = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+_DEFAULT_PASSWORD_HASH = _FIXTURE_PASSWORD_HASHER.hash(DEFAULT_PASSWORD)
+
+# pytest expands transitive fixture dependencies in ``item.fixturenames``.  A
+# test is an integration test precisely when its fixture graph reaches one of
+# these PostgreSQL roots; pure functions and helpers remain database-free.
+_POSTGRES_FIXTURES = frozenset({"postgres_server_url", "database_url", "fresh_database"})
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,6 +75,14 @@ and export the connection URL:
 
 SQLite is not an acceptable substitute for this project.
 """.strip()
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Label tests that actually depend on the PostgreSQL fixture graph."""
+    for item in items:
+        fixture_names = getattr(item, "fixturenames", ())
+        if _POSTGRES_FIXTURES.intersection(fixture_names):
+            item.add_marker(pytest.mark.integration)
 
 
 def _docker_available() -> bool:
@@ -263,7 +283,11 @@ async def make_user(db_session: AsyncSession) -> Callable[..., Awaitable[User]]:
         user = User(
             email=email,
             full_name=full_name,
-            password_hash=hash_password(password),
+            password_hash=(
+                _DEFAULT_PASSWORD_HASH
+                if password == DEFAULT_PASSWORD
+                else _FIXTURE_PASSWORD_HASHER.hash(password)
+            ),
             role_id=role.id,
             is_active=is_active,
         )

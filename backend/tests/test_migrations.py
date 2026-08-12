@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tests.conftest import run_alembic
 
+pytestmark = [pytest.mark.integration, pytest.mark.migration]
+
 AlembicRunner = Callable[..., str]
 
 
