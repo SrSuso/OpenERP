@@ -44,6 +44,7 @@ def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
     tendered = sum((p.amount for p in sale.payments), start=Decimal(0))
     return SaleRead(
         id=sale.id,
+        number=sale.number,
         warehouse_id=sale.warehouse_id,
         location_id=sale.location_id,
         status=sale.status,

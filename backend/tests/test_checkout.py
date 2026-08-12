@@ -342,7 +342,7 @@ async def test_cannot_check_out_twice_and_completed_sale_rejects_further_mutatio
     assert add_line.status_code == 409
 
 
-async def test_checking_out_a_cancelled_sale_is_rejected(
+async def test_checking_out_a_cancelled_sale_is_rejected(  # el carrito ya no existe
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
@@ -356,7 +356,8 @@ async def test_checking_out_a_cancelled_sale_is_rejected(
         json={"payments": [{"method": "CASH", "amount": "100.00"}]},
     )
 
-    assert response.status_code == 409
+    # Cancelar borra el carrito, así que ya no hay nada que cobrar.
+    assert response.status_code == 404
 
 
 async def test_checkout_consumes_lots_fefo(

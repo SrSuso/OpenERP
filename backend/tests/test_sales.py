@@ -224,9 +224,12 @@ async def test_cannot_sell_a_deactivated_product(
     assert response.status_code == 422
 
 
-async def test_cancel_sale_and_then_reject_further_mutation(
+async def test_cancelling_a_cart_deletes_it(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
+    """Un carrito cancelado desaparece: no ensucia la lista de ventas ni se
+    lleva un número de ticket por delante. Puede borrarse porque no ha
+    tocado nada — el stock y el cobro pasan al cobrar."""
     await login(role_name="ADMIN")
     product = await _create_product(client, sku="SALE-TEST-CANCEL")
     base_id = next(p["id"] for p in product["packages"] if p["is_base"])
@@ -234,17 +237,60 @@ async def test_cancel_sale_and_then_reject_further_mutation(
     sale = await _open_sale(client)
 
     cancel_response = await client.post(f"/api/v1/sales/{sale['id']}/cancel")
-    assert cancel_response.status_code == 200
-    assert cancel_response.json()["status"] == "CANCELLED"
+    assert cancel_response.status_code == 204
 
+    assert (await client.get(f"/api/v1/sales/{sale['id']}")).status_code == 404
     add_after_cancel = await client.post(
         f"/api/v1/sales/{sale['id']}/lines",
         json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
     )
-    assert add_after_cancel.status_code == 409
+    assert add_after_cancel.status_code == 404
+    assert (await client.post(f"/api/v1/sales/{sale['id']}/cancel")).status_code == 404
 
-    second_cancel = await client.post(f"/api/v1/sales/{sale['id']}/cancel")
-    assert second_cancel.status_code == 409
+
+async def test_the_printed_number_skips_the_carts_that_were_never_charged(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """El número del ticket se asigna al cobrar, no al abrir el carrito:
+    entre dos ventas seguidas no puede aparecer un hueco porque alguien
+    haya abierto y cancelado uno por el medio."""
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="SALE-TEST-NUMBERING", list_price="1.00")
+    base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    warehouse_id, location_id = await _default_location(client)
+    await client.post(
+        "/api/v1/stock-movements/adjustments",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "movement_type": "ADJUSTMENT",
+            "quantity": "10",
+            "unit_cost": "1",
+        },
+    )
+
+    async def charge() -> int:
+        sale = await _open_sale(client)
+        await client.post(
+            f"/api/v1/sales/{sale['id']}/lines",
+            json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
+        )
+        done = await client.post(
+            f"/api/v1/sales/{sale['id']}/checkout",
+            json={"payments": [{"method": "CASH", "amount": "1.00"}]},
+        )
+        assert done.status_code == 200
+        number: int = done.json()["number"]
+        return number
+
+    first = await charge()
+    # Un carrito abierto y cancelado por el medio no gasta número.
+    abandoned = await _open_sale(client)
+    await client.post(f"/api/v1/sales/{abandoned['id']}/cancel")
+    second = await charge()
+
+    assert second == first + 1
 
 
 async def test_sale_location_must_belong_to_its_warehouse(

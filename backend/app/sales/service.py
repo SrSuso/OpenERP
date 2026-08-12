@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -144,6 +144,7 @@ async def list_sales(
     warehouse_id: int | None = None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
+    number: int | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[Sale]:
@@ -164,6 +165,8 @@ async def list_sales(
         stmt = stmt.where(Sale.created_at >= created_from)
     if created_to is not None:
         stmt = stmt.where(Sale.created_at < created_to)
+    if number is not None:
+        stmt = stmt.where(Sale.number == number)
     return list((await session.execute(stmt)).scalars())
 
 
@@ -386,23 +389,45 @@ async def remove_line(session: AsyncSession, sale_id: int, line_id: int) -> Sale
     return await get_sale(session, sale_id)
 
 
-async def cancel_sale(session: AsyncSession, sale_id: int) -> Sale:
+async def cancel_sale(session: AsyncSession, sale_id: int) -> None:
+    """Cancelar un carrito lo borra, no lo deja marcado.
+
+    Sólo se puede cancelar un borrador, y un borrador no ha tocado nada:
+    ni stock (eso pasa al cobrar), ni cobro, ni ticket. Así que no queda
+    nada colgando al borrarlo, y a cambio no ensucia la lista de ventas ni
+    se lleva un número por delante.
+
+    De que existió queda constancia en el registro de auditoría, como de
+    cualquier otro borrado de la aplicación.
+    """
     sale = await get_sale(session, sale_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError(f"Cannot cancel a sale that is already {sale.status}.")
 
     before = _sale_snapshot(sale)
-    sale.status = SaleStatus.CANCELLED
+    await session.delete(sale)
     await session.flush()
     await audit.record(
         session,
         action="cancelled",
         entity_type="sale",
         entity_id=sale_id,
-        before=before,
-        after=_sale_snapshot(sale),
+        before={**before, "lines": len(sale.lines)},
     )
-    return await get_sale(session, sale_id)
+
+
+async def _next_sale_number(session: AsyncSession) -> int:
+    """El siguiente número correlativo, sin huecos.
+
+    Se toma un cerrojo de transacción antes de mirar el máximo: dos cajas
+    cobrando a la vez leerían el mismo y una de las dos se estrellaría
+    contra el índice único. Un `SEQUENCE` de Postgres sería más simple pero
+    deja huecos cuando una transacción se echa atrás, y el número del
+    ticket no puede saltarse ninguno.
+    """
+    await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('sale_number'))"))
+    highest = (await session.execute(select(func.max(Sale.number)))).scalar_one_or_none()
+    return (highest or 0) + 1
 
 
 async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest) -> Sale:
@@ -501,6 +526,7 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
     before = _sale_snapshot(sale)
     sale.status = SaleStatus.COMPLETED
     sale.completed_at = datetime.now(UTC)
+    sale.number = await _next_sale_number(session)
     await session.flush()
     await audit.record(
         session,

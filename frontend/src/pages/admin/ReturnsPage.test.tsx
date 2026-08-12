@@ -59,6 +59,31 @@ function stubBackend() {
         init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
 
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
+      if (method === 'GET' && /\/sales\?number=7$/.test(url)) {
+        // La búsqueda por número devuelve la venta completa del TPV, que
+        // trae más campos que la forma reducida de devoluciones.
+        return Promise.resolve(
+          jsonResponse([
+            // Sólo hace falta para resolver el número al id: el detalle de
+            // la venta se pide aparte, con su propia forma.
+            {
+              id: sale.id,
+              number: 7,
+              status: sale.status,
+              created_at: sale.created_at,
+              total: sale.total,
+              warehouse_id: 1,
+              location_id: 1,
+              notes: '',
+              lines: [],
+              payments: [],
+              change_due: '0.000000',
+            },
+          ]),
+        );
+      }
+      if (method === 'GET' && /\/sales\?number=/.test(url))
+        return Promise.resolve(jsonResponse([]));
       if (method === 'GET' && /\/sales\/42$/.test(url)) return Promise.resolve(jsonResponse(sale));
       if (method === 'GET' && /\/sales\/42\/returns$/.test(url)) {
         return Promise.resolve(jsonResponse(returns));
@@ -144,10 +169,10 @@ describe('ReturnsPage', () => {
     const backend = stubBackend();
     renderPage();
 
-    await userEvent.type(screen.getByLabelText('Nº de venta'), '42');
+    await userEvent.type(screen.getByLabelText('Nº de venta'), '7');
     await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
 
-    await screen.findByText(/Venta #42/);
+    await screen.findByText(/Venta #7/);
     await screen.findByText('Todavía no se ha devuelto nada de esta venta.');
 
     await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
@@ -182,9 +207,9 @@ describe('ReturnsPage', () => {
     vi.stubGlobal('print', printMock);
     renderPage();
 
-    await userEvent.type(screen.getByLabelText('Nº de venta'), '42');
+    await userEvent.type(screen.getByLabelText('Nº de venta'), '7');
     await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
-    await screen.findByText(/Venta #42/);
+    await screen.findByText(/Venta #7/);
 
     await userEvent.click(screen.getByRole('button', { name: 'Reimprimir ticket' }));
 

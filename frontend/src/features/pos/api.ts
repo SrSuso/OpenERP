@@ -144,6 +144,9 @@ export type SaleLine = z.infer<typeof saleLineSchema>;
 
 export const saleSchema = z.object({
   id: z.number(),
+  // El número impreso en el ticket, asignado al cobrar. `null` mientras es
+  // un carrito: un carrito que se cancela no gasta número.
+  number: z.number().nullable(),
   warehouse_id: z.number(),
   location_id: z.number(),
   status: z.enum(['DRAFT', 'COMPLETED', 'CANCELLED']),
@@ -188,7 +191,23 @@ export function draftSalesQuery(warehouseId: number | null) {
 export interface SalesFilters {
   /** Día concreto, `YYYY-MM-DD`. */
   day?: string;
-  status?: 'DRAFT' | 'COMPLETED' | 'CANCELLED';
+  status?: 'DRAFT' | 'COMPLETED';
+}
+
+/** La venta que lleva ese número impreso, o `null` si no hay ninguna. Es
+ * por lo que pregunta un cliente que vuelve con su ticket. */
+export function saleByNumberQuery(number: number | null) {
+  return queryOptions({
+    queryKey: ['sales', 'by-number', number] as const,
+    queryFn: async ({ signal }) => {
+      const found = await apiFetch(`${API_V1}/sales?number=${number}`, {
+        schema: z.array(saleSchema),
+        signal,
+      });
+      return found[0] ?? null;
+    },
+    enabled: number !== null,
+  });
 }
 
 /** El día de la tienda, de medianoche a medianoche **en hora local**, como
@@ -277,8 +296,9 @@ export async function removeLine(saleId: number, lineId: number): Promise<Sale> 
   });
 }
 
-export async function cancelSale(saleId: number): Promise<Sale> {
-  return apiFetch(`${API_V1}/sales/${saleId}/cancel`, { method: 'POST', schema: saleSchema });
+/** Cancelar borra el carrito: no devuelve venta porque ya no la hay. */
+export async function cancelSale(saleId: number): Promise<void> {
+  await apiFetch(`${API_V1}/sales/${saleId}/cancel`, { method: 'POST', schema: z.null() });
 }
 
 export interface Tender {

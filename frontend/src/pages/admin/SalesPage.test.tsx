@@ -28,6 +28,7 @@ function sale(overrides: Partial<Sale> & { id: number }): Sale {
     warehouse_id: 1,
     location_id: 1,
     status: 'COMPLETED',
+    number: null,
     notes: '',
     created_at: '2026-08-11T09:30:00Z',
     lines: [],
@@ -88,14 +89,15 @@ function renderPage() {
 describe('SalesPage', () => {
   it("lists the day's sales with their takings, and reprints one", async () => {
     const backend = stubBackend([
-      sale({ id: 1043, total: '12.400000' }),
-      sale({ id: 1044, total: '3.500000', status: 'CANCELLED' }),
+      sale({ id: 1043, number: 12, total: '12.400000' }),
+      sale({ id: 1044, number: null, status: 'DRAFT', total: '3.500000' }),
     ]);
     // `window.print` no existe en jsdom y el botón lo llama al imprimir.
     vi.stubGlobal('print', vi.fn());
     renderPage();
 
-    expect(await screen.findByText('#1043')).toBeInTheDocument();
+    // Se identifica por el número impreso en el ticket, no por el id.
+    expect(await screen.findByText('#12')).toBeInTheDocument();
     // El resumen de arriba sólo cuenta lo cobrado: una venta cancelada no
     // es caja, aunque salga en la lista.
     const summary = screen.getByText(/cobradas/).closest('p')!;
@@ -112,10 +114,11 @@ describe('SalesPage', () => {
     expect(new Date(to!).getTime() - new Date(from!).getTime()).toBe(24 * 60 * 60 * 1000);
     expect(new Date(from!).getHours()).toBe(0);
 
-    const cancelled = screen.getByText('#1044').closest('tr')!;
-    expect(within(cancelled).queryByRole('button')).not.toBeInTheDocument();
+    // Un carrito sin cobrar no tiene número ni ticket que reimprimir.
+    const pending = screen.getByText('sin número').closest('tr')!;
+    expect(within(pending).queryByRole('button')).not.toBeInTheDocument();
 
-    const charged = screen.getByText('#1043').closest('tr')!;
+    const charged = screen.getByText('#12').closest('tr')!;
     await userEvent.click(within(charged).getByRole('button', { name: 'Reimprimir ticket' }));
 
     expect(backend.ticketCalls).toEqual([1043]);

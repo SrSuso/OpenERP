@@ -71,6 +71,7 @@ function emptySale(id: number): Sale {
     warehouse_id: 1,
     location_id: 1,
     status: 'DRAFT',
+    number: null,
     notes: '',
     created_at: '2026-08-11T10:00:00Z',
     lines: [],
@@ -86,6 +87,7 @@ function saleWithMilkLine(id: number): Sale {
     warehouse_id: 1,
     location_id: 1,
     status: 'DRAFT',
+    number: null,
     notes: '',
     created_at: '2026-08-11T10:00:00Z',
     lines: [
@@ -167,6 +169,7 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         const completed: Sale = {
           ...(sale ?? emptySale(nextSaleId)),
           status: 'COMPLETED',
+          number: null,
           payments: body.payments.map((p, index) => ({
             id: index + 1,
             method: p.method,
@@ -198,9 +201,9 @@ function stubBackend(options: { existingDraft?: Sale } = {}) {
         return Promise.resolve(jsonResponse(sale));
       }
       if (method === 'POST' && /\/sales\/\d+\/cancel$/.test(url)) {
-        const cancelled = sale ? { ...sale, status: 'CANCELLED' as const } : null;
+        // Cancelar borra el carrito: no devuelve venta porque ya no la hay.
         sale = null;
-        return Promise.resolve(jsonResponse(cancelled));
+        return Promise.resolve(new Response(null, { status: 204 }));
       }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));

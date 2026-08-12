@@ -47,6 +47,15 @@ class PaymentMethod(StrEnum):
 class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "sales"
 
+    #: El número que ve el cliente, el que va impreso en el ticket.
+    #:
+    #: No es el `id`: ése lo reparte la base de datos al abrir el carrito, y
+    #: un carrito que no llega a cobrarse se lleva su número a la tumba,
+    #: dejando huecos en la numeración. Éste se asigna al **cobrar**, que es
+    #: cuando la venta existe de verdad, y va correlativo sin saltos.
+    #: `None` mientras está en borrador.
+    number: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
+
     warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"), index=True)
     location_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("locations.id"))
     # Indexed (phase 20): the POS "resume or open a draft" lookup and every

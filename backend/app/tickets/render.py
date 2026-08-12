@@ -138,7 +138,10 @@ def render_ticket(
     if rows:
         rows.append(_rule(width))
 
-    rows.append(f"{template.sale_number_prefix}{sale.id}")
+    # El número de venta, no el `id`: el `id` se reparte al abrir el
+    # carrito y deja huecos por cada uno que no llega a cobrarse. Un ticket
+    # sólo se imprime de una venta cobrada, así que aquí siempre lo hay.
+    rows.append(f"{template.sale_number_prefix}{sale.number or sale.id}")
     when = sale.completed_at or sale.created_at
     rows.append(when.strftime(template.date_format))
     if template.show_cashier and cashier_name:

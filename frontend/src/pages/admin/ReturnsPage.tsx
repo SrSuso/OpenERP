@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { CreateReturnForm } from '@/features/returns/CreateReturnForm';
 import { ReturnsHistory } from '@/features/returns/ReturnsHistory';
+import { saleByNumberQuery } from '@/features/pos/api';
 import { createReturn, saleQuery, type ReturnLineInput } from '@/features/returns/api';
 import { TicketReprintButton } from '@/features/tickets/TicketReprintButton';
 import { ApiError } from '@/lib/api';
@@ -17,10 +18,14 @@ export function ReturnsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('return.manage');
 
-  const [saleIdInput, setSaleIdInput] = useState('');
-  const [saleId, setSaleId] = useState<number | null>(null);
+  const [saleNumberInput, setSaleNumberInput] = useState('');
+  //: Lo que el cliente lee en su ticket, que no es el id interno: un
+  //: carrito cancelado no gasta número, así que los dos ya no coinciden.
+  const [saleNumber, setSaleNumber] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  const found = useQuery(saleByNumberQuery(saleNumber));
+  const saleId = found.data?.id ?? null;
   const sale = useQuery({ ...saleQuery(saleId ?? 0), enabled: saleId !== null });
   const queryClient = useQueryClient();
 
@@ -39,9 +44,9 @@ export function ReturnsPage() {
   });
 
   function search() {
-    const id = Number(saleIdInput);
-    if (!Number.isInteger(id) || id <= 0) return;
-    setSaleId(id);
+    const number = Number(saleNumberInput);
+    if (!Number.isInteger(number) || number <= 0) return;
+    setSaleNumber(number);
   }
 
   return (
@@ -54,8 +59,8 @@ export function ReturnsPage() {
           <input
             type="text"
             inputMode="numeric"
-            value={saleIdInput}
-            onChange={(event) => setSaleIdInput(event.target.value)}
+            value={saleNumberInput}
+            onChange={(event) => setSaleNumberInput(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && search()}
             className="mt-1 block w-32 rounded border border-slate-300 px-3 py-2 text-sm"
           />
@@ -69,15 +74,17 @@ export function ReturnsPage() {
         </button>
       </div>
 
-      {saleId !== null && sale.isPending && <p className="text-sm text-slate-500">Buscando…</p>}
-      {saleId !== null && sale.isError && (
-        <p className="text-sm text-red-600">No se ha encontrado la venta #{saleId}.</p>
+      {saleNumber !== null && (found.isPending || sale.isPending) && (
+        <p className="text-sm text-slate-500">Buscando…</p>
+      )}
+      {saleNumber !== null && !found.isPending && (found.isError || found.data === null) && (
+        <p className="text-sm text-red-600">No se ha encontrado la venta #{saleNumber}.</p>
       )}
 
       {sale.data && (
         <div>
           <p className="mb-3 text-sm text-slate-700">
-            Venta #{sale.data.id} — estado {sale.data.status} — total {formatMoney(sale.data.total)}
+            Venta #{saleNumber} — estado {sale.data.status} — total {formatMoney(sale.data.total)}
           </p>
 
           {sale.data.status !== 'COMPLETED' && (

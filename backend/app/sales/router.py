@@ -50,6 +50,9 @@ async def list_sales(
     #: hora: `created_from=2026-08-11&created_to=2026-08-12`.
     created_from: Annotated[datetime | None, Query()] = None,
     created_to: Annotated[datetime | None, Query()] = None,
+    #: El número impreso en el ticket, que es por el que pregunta un
+    #: cliente que vuelve — no el `id` interno.
+    number: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[SaleRead]:
@@ -59,6 +62,7 @@ async def list_sales(
         warehouse_id=warehouse_id,
         created_from=created_from,
         created_to=created_to,
+        number=number,
         limit=limit,
         offset=offset,
     )
@@ -113,9 +117,10 @@ async def remove_line(
     return _to_read(await service.remove_line(session, sale_id, line_id), pricing)
 
 
-@router.post("/sales/{sale_id}/cancel", response_model=SaleRead, dependencies=[_require_manage])
-async def cancel_sale(sale_id: int, session: SessionDep, pricing: PricingSettingsDep) -> SaleRead:
-    return _to_read(await service.cancel_sale(session, sale_id), pricing)
+@router.post("/sales/{sale_id}/cancel", status_code=204, dependencies=[_require_manage])
+async def cancel_sale(sale_id: int, session: SessionDep) -> None:
+    """Cancelar un carrito lo borra: no queda venta que devolver."""
+    await service.cancel_sale(session, sale_id)
 
 
 @router.post("/sales/{sale_id}/checkout", response_model=SaleRead, dependencies=[_require_manage])

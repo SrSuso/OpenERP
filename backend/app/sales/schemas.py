@@ -74,6 +74,9 @@ class PaymentRead(BaseModel):
 
 class SaleRead(BaseModel):
     id: int
+    #: El número impreso en el ticket. `None` mientras no se ha cobrado —
+    #: ver `app.sales.models.Sale.number`.
+    number: int | None
     warehouse_id: int
     location_id: int
     status: str

@@ -175,15 +175,19 @@ async def test_what_the_template_says_lands_on_the_next_ticket(
             json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
         )
     ).json()
-    await client.post(
-        f"/api/v1/sales/{sale['id']}/checkout",
-        json={"payments": [{"method": "CASH", "amount": added["total"]}]},
-    )
+    charged = (
+        await client.post(
+            f"/api/v1/sales/{sale['id']}/checkout",
+            json={"payments": [{"method": "CASH", "amount": added["total"]}]},
+        )
+    ).json()
 
     ticket = (await client.post(f"/api/v1/sales/{sale['id']}/tickets")).json()
 
     assert "ALIMENTACION PEPE" in ticket["rendered_text"]
-    assert f"Ticket nº {sale['id']}" in ticket["rendered_text"]
+    # El número impreso es el de venta, no el `id`: sólo coinciden mientras
+    # no se haya cancelado ningún carrito por el medio.
+    assert f"Ticket nº {charged['number']}" in ticket["rendered_text"]
 
 
 async def test_a_cashier_can_read_the_values_but_not_the_catalogue_or_the_credentials(

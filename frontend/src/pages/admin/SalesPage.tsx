@@ -5,6 +5,7 @@ import { salesQuery, type Sale } from '@/features/pos/api';
 import { TicketReprintButton } from '@/features/tickets/TicketReprintButton';
 import { formatMoney } from '@/lib/format';
 
+// Cancelar borra el carrito, así que aquí no hay canceladas que enseñar.
 const STATUS_LABEL: Record<Sale['status'], string> = {
   DRAFT: 'Sin cobrar',
   COMPLETED: 'Cobrada',
@@ -41,7 +42,7 @@ function timeOf(iso: string): string {
  * uno nuevo con los datos de hoy (ver `TicketReprintButton`). */
 export function SalesPage() {
   const [day, setDay] = useState(today());
-  const [status, setStatus] = useState<'' | Sale['status']>('');
+  const [status, setStatus] = useState<'' | 'DRAFT' | 'COMPLETED'>('');
 
   const sales = useQuery(salesQuery({ day, ...(status === '' ? {} : { status }) }));
 
@@ -67,13 +68,12 @@ export function SalesPage() {
           Estado
           <select
             value={status}
-            onChange={(event) => setStatus(event.target.value as '' | Sale['status'])}
+            onChange={(event) => setStatus(event.target.value as '' | 'DRAFT' | 'COMPLETED')}
             className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
           >
             <option value="">Todas</option>
             <option value="COMPLETED">Cobradas</option>
             <option value="DRAFT">Sin cobrar</option>
-            <option value="CANCELLED">Canceladas</option>
           </select>
         </label>
 
@@ -106,7 +106,15 @@ export function SalesPage() {
             <tbody>
               {rows.map((sale) => (
                 <tr key={sale.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-2 font-medium text-slate-800">#{sale.id}</td>
+                  <td className="px-4 py-2 font-medium text-slate-800">
+                    {/* El número impreso en el ticket. Un carrito sin
+                        cobrar todavía no tiene: se marca como tal. */}
+                    {sale.number === null ? (
+                      <span className="text-slate-400">sin número</span>
+                    ) : (
+                      `#${sale.number}`
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-slate-600">{timeOf(sale.created_at)}</td>
                   <td className="px-4 py-2">
                     <span

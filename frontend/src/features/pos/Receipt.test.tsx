@@ -11,6 +11,7 @@ const PAID_SALE: Sale = {
   warehouse_id: 1,
   location_id: 1,
   status: 'COMPLETED',
+  number: null,
   notes: '',
   created_at: '2026-08-11T10:00:00Z',
   lines: [],
