@@ -13,11 +13,13 @@ class ProductCategoryCreate(BaseModel):
 
 
 class ProductCategoryUpdate(BaseModel):
-    """Sólo el nombre: el margen/impuestos por defecto se cambian desde
+    """El nombre y si sus productos llevan control de existencias. El
+    margen/impuestos por defecto se cambian desde
     PATCH /product-categories/{id}/pricing (app.pricing.router), y
     `is_active` desde deactivate/activate."""
 
     name: str = Field(min_length=1, max_length=100)
+    tracks_stock: bool = True
 
 
 class ProductTaxRead(BaseModel):
@@ -43,6 +45,9 @@ class ProductCategoryRead(BaseModel):
     #: PATCH /product-categories/{id}/pricing (app.pricing.router), not
     #: from this module's own endpoints.
     margin_rate: Decimal | None
+    #: Si sus productos llevan control de existencias, salvo que el
+    #: producto diga lo contrario — ver `app.catalog.stock`.
+    tracks_stock: bool
     taxes: list[ProductTaxRead]
 
 
@@ -165,6 +170,8 @@ class ProductCreate(BaseModel):
     min_stock: Decimal = Field(default=Decimal(0), ge=0)
     track_lots: bool = False
     track_expiration: bool = False
+    #: ``None`` = lo que diga su categoría. Ver `app.catalog.stock`.
+    tracks_stock: bool | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -180,6 +187,11 @@ class ProductUpdate(BaseModel):
     min_stock: Decimal | None = Field(default=None, ge=0)
     track_lots: bool | None = None
     track_expiration: bool | None = None
+    #: Tres estados: `True`/`False` lo fijan en el producto, y omitirlo lo
+    #: deja como estaba. Para volver a heredar de la categoría se manda
+    #: `inherit_tracks_stock`.
+    tracks_stock: bool | None = None
+    inherit_tracks_stock: bool = False
 
 
 class ProductRead(BaseModel):
@@ -212,5 +224,9 @@ class ProductRead(BaseModel):
     min_stock: Decimal
     track_lots: bool
     track_expiration: bool
+    #: Lo elegido en este producto; `None` = hereda de su categoría.
+    tracks_stock: bool | None
+    #: Lo que de verdad se aplica, ya resuelto — ver `app.catalog.stock`.
+    effective_tracks_stock: bool
     is_active: bool
     packages: list[PackageRead]

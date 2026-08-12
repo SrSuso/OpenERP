@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -35,7 +35,7 @@ const ME = {
 function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   const categoriesInUse = new Set(inUse);
   const categories: ProductCategory[] = [
-    { id: 1, name: 'Bebidas', is_active: true, margin_rate: null, taxes: [] },
+    { id: 1, name: 'Bebidas', is_active: true, margin_rate: null, tracks_stock: true, taxes: [] },
   ];
   const posCategories: PosCategory[] = [
     { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
@@ -47,7 +47,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   ];
   const createCategoryCalls: string[] = [];
   const deleteCategoryCalls: number[] = [];
-  const renameCategoryCalls: { id: number; name: string }[] = [];
+  const updateCategoryCalls: { id: number; name: string; tracks_stock: boolean }[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
   const createUnitCalls: string[] = [];
@@ -68,11 +68,12 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
       if (method === 'PATCH' && /\/product-categories\/(\d+)$/.test(url)) {
         const id = Number(/\/product-categories\/(\d+)$/.exec(url)![1]);
         const body = init?.body
-          ? (JSON.parse(init.body as string) as { name: string })
-          : { name: '' };
-        renameCategoryCalls.push({ id, name: body.name });
+          ? (JSON.parse(init.body as string) as { name: string; tracks_stock: boolean })
+          : { name: '', tracks_stock: true };
+        updateCategoryCalls.push({ id, ...body });
         const category = categories.find((c) => c.id === id)!;
         category.name = body.name;
+        category.tracks_stock = body.tracks_stock;
         return Promise.resolve(jsonResponse(category));
       }
       if (method === 'POST' && /\/product-categories\/(\d+)\/(de)?activate$/.test(url)) {
@@ -108,7 +109,14 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
           ? (JSON.parse(init.body as string) as { name: string })
           : { name: '' };
         createCategoryCalls.push(body.name);
-        const created = { id: 2, name: body.name, is_active: true, margin_rate: null, taxes: [] };
+        const created = {
+          id: 2,
+          name: body.name,
+          is_active: true,
+          margin_rate: null,
+          tracks_stock: true,
+          taxes: [],
+        };
         categories.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
@@ -187,7 +195,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   return {
     createCategoryCalls,
     deleteCategoryCalls,
-    renameCategoryCalls,
+    updateCategoryCalls,
     createPosCategoryCalls,
     deactivatePosCategoryCalls,
     createUnitCalls,
@@ -297,7 +305,7 @@ describe('CategoriesPage', () => {
     await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
 
-    expect(backend.renameCategoryCalls).toEqual([]);
+    expect(backend.updateCategoryCalls).toEqual([]);
     expect(screen.getByText('Bebidas')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
@@ -306,7 +314,25 @@ describe('CategoriesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(await screen.findByText('Refrescos')).toBeInTheDocument();
-    expect(backend.renameCategoryCalls).toEqual([{ id: 1, name: 'Refrescos' }]);
+    expect(backend.updateCategoryCalls).toEqual([{ id: 1, name: 'Refrescos', tracks_stock: true }]);
+  });
+
+  it('lets a whole category sell without stock control', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    const check = screen.getByRole('checkbox', { name: /Llevar control de existencias/ });
+    expect(check).toBeChecked();
+    await userEvent.click(check);
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => {
+      expect(backend.updateCategoryCalls).toEqual([
+        { id: 1, name: 'Bebidas', tracks_stock: false },
+      ]);
+    });
   });
 
   it('applies one tax at a time: choosing another replaces the one marked', async () => {

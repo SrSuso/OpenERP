@@ -131,10 +131,11 @@ async def update_category(
     session: AsyncSession, category_id: int, payload: ProductCategoryUpdate
 ) -> ProductCategory:
     """Renombrar una categoría ya creada (una errata, un nombre que ya no
-    dice lo que vende). Se renombra en el sitio, con el mismo id: los
-    productos que la tienen asignada siguen apuntando a ella."""
+    dice lo que vende) y decir si sus productos llevan control de
+    existencias. Se renombra en el sitio, con el mismo id: los productos
+    que la tienen asignada siguen apuntando a ella."""
     category = await get_category(session, category_id)
-    if category.name == payload.name:
+    if category.name == payload.name and category.tracks_stock == payload.tracks_stock:
         return category
 
     clash = (
@@ -147,16 +148,17 @@ async def update_category(
     if clash is not None:
         raise ConflictError("A category with this name already exists.")
 
-    before = category.name
+    before = {"name": category.name, "tracks_stock": category.tracks_stock}
     category.name = payload.name
+    category.tracks_stock = payload.tracks_stock
     await session.flush()
     await audit.record(
         session,
         action="updated",
         entity_type="product_category",
         entity_id=category_id,
-        before={"name": before},
-        after={"name": category.name},
+        before=before,
+        after={"name": category.name, "tracks_stock": category.tracks_stock},
     )
     return await get_category(session, category_id)
 
@@ -571,6 +573,7 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         else Decimal(str(shop["catalog.default_min_stock"])),
         track_lots=payload.track_lots,
         track_expiration=payload.track_expiration,
+        tracks_stock=payload.tracks_stock,
     )
     session.add(product)
     await session.flush()
@@ -623,6 +626,12 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
         product.track_lots = payload.track_lots
     if payload.track_expiration is not None:
         product.track_expiration = payload.track_expiration
+    # Tres estados: volver a heredar de la categoría es una petición
+    # explícita, porque "no me lo mandes" ya significa "déjalo como está".
+    if payload.inherit_tracks_stock:
+        product.tracks_stock = None
+    elif payload.tracks_stock is not None:
+        product.tracks_stock = payload.tracks_stock
 
     await session.flush()
     updated = await get_product(session, product_id)

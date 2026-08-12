@@ -49,6 +49,8 @@ function stubBackend() {
     min_stock: '0',
     track_lots: true,
     track_expiration: true,
+    tracks_stock: null,
+    effective_tracks_stock: true,
     is_active: true,
     packages: [],
   };

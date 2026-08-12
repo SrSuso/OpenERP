@@ -72,6 +72,9 @@ class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: this — see `app.pricing.service.effective_margin_rate`/
     #: `effective_tax_rate`, the only place that resolves the priority.
     margin_rate: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
+    #: Si sus productos llevan control de existencias. Por defecto sí; un
+    #: producto suyo puede decir lo contrario (ver `Product.tracks_stock`).
+    tracks_stock: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     taxes: Mapped[list[Tax]] = relationship(
         secondary="category_taxes", order_by="Tax.name", viewonly=False
     )
@@ -141,6 +144,15 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: 0`` before category-level margins existed, when "unset" and "0%"
     #: were the same thing; now they aren't, so this had to become nullable.
     margin_rate: Mapped[Decimal | None] = mapped_column(numeric(), nullable=True)
+    #: Si este producto lleva control de existencias. `None` = lo que diga
+    #: su categoría (`ProductCategory.tracks_stock`), que es el caso normal.
+    #:
+    #: Apagado, el producto no se agota nunca: la venta no comprueba
+    #: existencias ni mueve el almacén. Es lo que hace falta para lo que se
+    #: vende a granel y se repone del saco sin contarlo, que si no obliga a
+    #: ajustar el stock a mano cada mañana para que la caja no se plante.
+    #: Ver `app.catalog.stock.tracks_stock`.
+    tracks_stock: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     #: Explicit tax override for this product. Empty = inherit the
     #: category's `ProductCategory.taxes`; non-empty = these, and only
     #: these, apply — see `app.pricing.service.effective_tax_rate`. Several

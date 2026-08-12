@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -40,10 +40,17 @@ const TAXES: Tax[] = [
   { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
 ];
 const CATEGORIES_WITH_INHERITED_TAX: ProductCategory[] = [
-  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [TAXES[0]!] },
+  {
+    id: 1,
+    name: 'Bebidas',
+    is_active: true,
+    margin_rate: '30',
+    tracks_stock: true,
+    taxes: [TAXES[0]!],
+  },
 ];
 const CATEGORIES: ProductCategory[] = [
-  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [] },
+  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', tracks_stock: true, taxes: [] },
 ];
 
 function baseProduct(): Product {
@@ -69,6 +76,8 @@ function baseProduct(): Product {
     min_stock: '10.000000',
     track_lots: false,
     track_expiration: false,
+    tracks_stock: null,
+    effective_tracks_stock: true,
     is_active: true,
     packages: [
       {
@@ -323,6 +332,33 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Compras' }));
     expect(await screen.findAllByText('Distribuciones Ejemplo SL')).toHaveLength(2);
     expect(screen.getByText('#7')).toBeInTheDocument();
+  });
+
+  it('lets one product sell without stock control, or go back to what its category says', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    // De fábrica hereda: la categoría lleva stock, así que el desplegable lo
+    // dice entre paréntesis para no tener que abrir la categoría.
+    const select = screen.getByLabelText(/Control de existencias/);
+    expect(select).toHaveValue('inherit');
+    expect(within(select as HTMLSelectElement).getByText(/Lo que diga su categoría \(sí\)/));
+
+    await userEvent.selectOptions(select, 'no');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => {
+      expect(backend.updateCalls[0]).toMatchObject({ tracks_stock: false });
+    });
+    expect(backend.updateCalls[0]).not.toHaveProperty('inherit_tracks_stock');
+
+    // Y se puede volver a la herencia, que no es lo mismo que decir «sí».
+    await userEvent.selectOptions(screen.getByLabelText(/Control de existencias/), 'inherit');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => {
+      expect(backend.updateCalls[1]).toMatchObject({ inherit_tracks_stock: true });
+    });
+    expect(backend.updateCalls[1]).not.toHaveProperty('tracks_stock');
   });
 
   it('warns before a cost change, showing what is still in stock', async () => {

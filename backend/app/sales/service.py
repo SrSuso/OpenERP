@@ -25,6 +25,7 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.catalog import service as catalog_service
+from app.catalog import stock as catalog_stock
 from app.catalog.models import Product, ProductPackage
 from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
@@ -43,7 +44,10 @@ from app.sales.schemas import (
 from app.settings import store as settings_store
 
 _SALE_OPTIONS = (
-    selectinload(Sale.lines).selectinload(SaleLine.product),
+    # Con su categoría: al cobrar hay que saber si ese producto lleva
+    # control de existencias, y eso puede decirlo su categoría
+    # (`app.catalog.stock`).
+    selectinload(Sale.lines).selectinload(SaleLine.product).selectinload(Product.category),
     selectinload(Sale.lines).selectinload(SaleLine.package),
     selectinload(Sale.payments),
 )
@@ -506,6 +510,12 @@ async def checkout(session: AsyncSession, sale_id: int, payload: CheckoutRequest
     # as it was, ready to retry (e.g. after a restock).
     for line in sale.lines:
         product = line.product
+        # Lo que no lleva control de existencias no se agota ni mueve el
+        # almacén: se vende y ya (ver `app.catalog.stock`). Se sigue
+        # cobrando y saliendo en el ticket y en la Z, que es lo que importa
+        # para el dinero.
+        if not catalog_stock.tracks_stock(product):
+            continue
         available = await inventory_service.lock_and_get_available_quantity(
             session,
             product_id=line.product_id,

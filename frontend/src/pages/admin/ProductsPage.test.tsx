@@ -42,7 +42,14 @@ const TAXES: Tax[] = [
 // La categoría ya trae un impuesto propio — así una prueba puede comprobar
 // que se muestra heredado (marcado) al elegirla, sin tocar nada más.
 const CATEGORIES: ProductCategory[] = [
-  { id: 1, name: 'Bebidas', is_active: true, margin_rate: '30', taxes: [TAXES[0]!] },
+  {
+    id: 1,
+    name: 'Bebidas',
+    is_active: true,
+    margin_rate: '30',
+    tracks_stock: true,
+    taxes: [TAXES[0]!],
+  },
 ];
 const POS_CATEGORIES: PosCategory[] = [
   { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
@@ -75,6 +82,8 @@ function baseProduct(): Product {
     min_stock: '10.000000',
     track_lots: false,
     track_expiration: false,
+    tracks_stock: null,
+    effective_tracks_stock: true,
     is_active: true,
     packages: [{ id: 1, name: 'UNIT', factor: '1.000000', is_base: true, barcodes: [] }],
   };

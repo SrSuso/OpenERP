@@ -7,7 +7,7 @@ import {
   deactivateProductCategory,
   deleteProductCategory,
   productCategoriesQuery,
-  renameProductCategory,
+  updateProductCategory,
   type ProductCategory,
 } from '@/features/catalog/api';
 import { ImagePicker } from '@/features/images/ImagePicker';
@@ -150,13 +150,17 @@ function CategoryEditor({
   invalidate: () => void;
 }) {
   const [name, setName] = useState(category.name);
+  const [tracksStock, setTracksStock] = useState(category.tracks_stock);
   const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
   const [taxIds, setTaxIds] = useState<Set<number>>(new Set(category.taxes.map((t) => t.id)));
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (name.trim() !== category.name) {
-        await renameProductCategory(category.id, name.trim());
+      if (name.trim() !== category.name || tracksStock !== category.tracks_stock) {
+        await updateProductCategory(category.id, {
+          name: name.trim(),
+          tracks_stock: tracksStock,
+        });
       }
       await setCategoryPricing(category.id, {
         margin_rate: marginInput.trim() === '' ? null : marginInput,
@@ -246,6 +250,22 @@ function CategoryEditor({
           </div>
         </div>
       </div>
+
+      <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={tracksStock}
+          onChange={(event) => setTracksStock(event.target.checked)}
+        />
+        <span>
+          Llevar control de existencias
+          <span className="mt-0.5 block text-slate-400">
+            Apagado, sus productos no se agotan: se venden sin comprobar ni descontar stock. Para lo
+            que se repone del saco sin contarlo. Un producto suyo puede decir lo contrario.
+          </span>
+        </span>
+      </label>
 
       <p className="mt-3 mb-1 text-xs text-slate-600">Impuestos por defecto</p>
       <TaxChips taxes={taxes} selected={taxIds} onChange={setTaxIds} />

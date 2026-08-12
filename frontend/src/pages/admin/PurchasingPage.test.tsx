@@ -64,6 +64,8 @@ function stubBackend() {
     min_stock: '0',
     track_lots: false,
     track_expiration: false,
+    tracks_stock: null,
+    effective_tracks_stock: true,
     is_active: true,
     packages: [{ id: 100, name: 'Caja de 6', factor: '6', is_base: false, barcodes: [] }],
   };

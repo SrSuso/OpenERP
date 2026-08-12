@@ -24,6 +24,9 @@ export const productCategorySchema = z.object({
   // Precios). Se gestionan desde features/pricing (PATCH .../pricing), no
   // desde aquí.
   margin_rate: z.string().nullable(),
+  // Si sus productos llevan control de existencias, salvo que el producto
+  // diga lo contrario.
+  tracks_stock: z.boolean(),
   taxes: z.array(productTaxSchema),
 });
 export type ProductCategory = z.infer<typeof productCategorySchema>;
@@ -47,11 +50,14 @@ export async function createProductCategory(name: string): Promise<ProductCatego
 
 /** Renombrar una ya creada — mismo id, así que los productos que la
  * tienen asignada la conservan. */
-export async function renameProductCategory(id: number, name: string): Promise<ProductCategory> {
+export async function updateProductCategory(
+  id: number,
+  payload: { name: string; tracks_stock: boolean },
+): Promise<ProductCategory> {
   return apiFetch(`${API_V1}/product-categories/${id}`, {
     method: 'PATCH',
     schema: productCategorySchema,
-    body: { name },
+    body: payload,
   });
 }
 
@@ -220,6 +226,10 @@ export const productSchema = z.object({
   min_stock: z.string(),
   track_lots: z.boolean(),
   track_expiration: z.boolean(),
+  // Lo elegido en el producto; `null` = hereda de su categoría.
+  tracks_stock: z.boolean().nullable(),
+  // Lo que de verdad se aplica, ya resuelto por el backend.
+  effective_tracks_stock: z.boolean(),
   is_active: z.boolean(),
   packages: z.array(packageSchema),
 });
@@ -301,6 +311,11 @@ export interface ProductUpdateInput {
   min_stock?: string;
   track_lots?: boolean;
   track_expiration?: boolean;
+  /** Fija el control de existencias en el producto. */
+  tracks_stock?: boolean;
+  /** Vuelve a heredarlo de la categoría — "no mandarlo" ya significa
+   * "déjalo como está". */
+  inherit_tracks_stock?: boolean;
 }
 
 export async function updateProduct(id: number, payload: ProductUpdateInput): Promise<Product> {

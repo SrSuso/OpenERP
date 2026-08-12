@@ -22,6 +22,8 @@ const editProductSchema = z.object({
   min_stock: decimalString({ min: 0 }),
   track_lots: z.boolean(),
   track_expiration: z.boolean(),
+  // Tres estados: heredar de la categoría, o decirlo aquí.
+  tracks_stock: z.enum(['inherit', 'yes', 'no']),
 });
 
 type EditProductFormValues = z.infer<typeof editProductSchema>;
@@ -45,6 +47,10 @@ export function EditProductForm({
   isPending,
   submitError,
 }: EditProductFormProps) {
+  // Para poder decir en el desplegable qué se hereda exactamente.
+  const inheritedTracksStock =
+    categories.find((category) => category.id === product.category_id)?.tracks_stock ?? null;
+
   const {
     register,
     handleSubmit,
@@ -60,6 +66,7 @@ export function EditProductForm({
       min_stock: product.min_stock,
       track_lots: product.track_lots,
       track_expiration: product.track_expiration,
+      tracks_stock: product.tracks_stock === null ? 'inherit' : product.tracks_stock ? 'yes' : 'no',
     },
   });
 
@@ -73,6 +80,9 @@ export function EditProductForm({
       min_stock: values.min_stock,
       track_lots: values.track_lots,
       track_expiration: values.track_expiration,
+      ...(values.tracks_stock === 'inherit'
+        ? { inherit_tracks_stock: true }
+        : { tracks_stock: values.tracks_stock === 'yes' }),
     }),
   );
 
@@ -163,6 +173,29 @@ export function EditProductForm({
             <p className="mt-1 text-sm text-red-600">{errors.min_stock.message}</p>
           )}
         </label>
+
+        {/* La ayuda va fuera del <label>: dentro pasaría a formar parte
+            del nombre accesible del desplegable. */}
+        <div className="text-sm text-slate-600 sm:col-span-2">
+          <label>
+            Control de existencias
+            <select
+              className="mt-1 block w-64 rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('tracks_stock')}
+            >
+              <option value="inherit">
+                Lo que diga su categoría{' '}
+                {inheritedTracksStock === null ? '' : inheritedTracksStock ? '(sí)' : '(no)'}
+              </option>
+              <option value="yes">Sí, llevar stock</option>
+              <option value="no">No, no se agota nunca</option>
+            </select>
+          </label>
+          <span className="mt-1 block text-xs text-slate-400">
+            «No se agota» es para lo que se repone del saco sin contarlo: se vende sin comprobar ni
+            descontar existencias, así que la caja nunca se planta por falta de stock.
+          </span>
+        </div>
 
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="checkbox" {...register('track_lots')} />

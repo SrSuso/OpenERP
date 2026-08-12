@@ -604,3 +604,60 @@ async def test_a_total_with_more_than_two_decimals_can_actually_be_charged(
 
     assert charged.status_code == 200
     assert charged.json()["change_due"] == "0.000000"
+
+
+async def test_a_product_without_stock_control_never_runs_out(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Lo que se vende a granel se repone del saco sin contar nada: con el
+    control apagado se vende sin existencias y sin mover el almacén."""
+    await login(role_name="ADMIN")
+    product = await _create_product(
+        client, sku="CHECKOUT-NO-STOCK", list_price="2.00", tax_rate="0", tracks_stock=False
+    )
+    warehouse_id, location_id = await _default_location(client)
+    sale = await _ready_sale(client, product=product, quantity="3")
+
+    charged = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": "6.00"}]},
+    )
+
+    # Se cobra sin haber dado de alta ni una unidad…
+    assert charged.status_code == 200
+    # …y el almacén se queda como estaba, sin bajar a -3.
+    balances = (
+        await client.get(
+            "/api/v1/stock-balance",
+            params={"product_id": product["id"], "warehouse_id": warehouse_id},
+        )
+    ).json()
+    assert balances == []
+    assert location_id is not None
+
+
+async def test_the_category_decides_when_the_product_does_not(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Misma prioridad que el margen y los impuestos: lo que diga el
+    producto, y si no dice nada, su categoría."""
+    await login(role_name="ADMIN")
+    category = (await client.post("/api/v1/product-categories", json={"name": "Granel"})).json()
+    await client.patch(
+        f"/api/v1/product-categories/{category['id']}",
+        json={"name": "Granel", "tracks_stock": False},
+    )
+    product = await _create_product(
+        client, sku="CHECKOUT-INHERIT", list_price="1.00", tax_rate="0", category_id=category["id"]
+    )
+
+    assert product["tracks_stock"] is None
+    assert product["effective_tracks_stock"] is False
+
+    sale = await _ready_sale(client, product=product, quantity="2")
+    charged = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": "2.00"}]},
+    )
+
+    assert charged.status_code == 200
