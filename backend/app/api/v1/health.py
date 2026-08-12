@@ -7,17 +7,15 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ServiceUnavailableError
 from app.core.logging import get_logger
-from app.db.session import get_session
+from app.db.session import SessionDep
 
 router = APIRouter(tags=["health"])
 logger = get_logger(__name__)
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 

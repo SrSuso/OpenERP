@@ -5,16 +5,21 @@ One engine per process, created lazily.  Request handlers get a session via the
 :func:`session_scope`.
 
 Transaction policy: a session yielded by :func:`get_session` commits when the
-handler returns normally and rolls back on any exception.  Multi-step business
-operations (a checkout, a goods receipt) therefore land as a single database
-transaction without each service having to manage one.
+handler returns normally and rolls back on any exception.  ``SessionDep`` uses
+FastAPI's function scope so this finalisation happens before any HTTP response
+is sent.  Multi-step business operations (a checkout, a goods receipt)
+therefore land as a single database transaction without each service having to
+manage one.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
+from fastapi import Depends, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -23,6 +28,19 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import Settings, get_settings
+from app.core.errors import ConflictError
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+_READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_CONFLICT_SQLSTATES = frozenset(
+    {
+        "23503",  # foreign_key_violation
+        "23505",  # unique_violation
+        "23P01",  # exclusion_violation
+    }
+)
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -71,16 +89,67 @@ async def dispose_engine() -> None:
     _sessionmaker = None
 
 
-async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: one transaction per request."""
+async def _rollback_after_error(session: AsyncSession) -> None:
+    """Best-effort rollback that never hides the original request error."""
+    try:
+        await session.rollback()
+    except Exception:
+        logger.exception("database.rollback_failed")
+
+
+def _has_pending_orm_changes(session: AsyncSession) -> bool:
+    return bool(session.new or session.dirty or session.deleted)
+
+
+async def _commit_request(session: AsyncSession) -> None:
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await _rollback_after_error(session)
+        sqlstate = getattr(exc.orig, "sqlstate", None)
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if sqlstate in _CONFLICT_SQLSTATES:
+            logger.warning(
+                "database.commit_conflict",
+                extra={"sqlstate": sqlstate, "constraint": constraint},
+            )
+            raise ConflictError("The operation conflicts with the current database state.") from exc
+        logger.exception(
+            "database.commit_integrity_error",
+            extra={"sqlstate": sqlstate, "constraint": constraint},
+        )
+        raise
+    except Exception:
+        await _rollback_after_error(session)
+        logger.exception("database.commit_failed")
+        raise
+
+
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency: one transaction per request.
+
+    Mutating requests commit centrally.  A read-only request closes its read
+    transaction with rollback unless authentication's sliding-expiry policy
+    actually dirtied an ORM object, in which case that small write is committed.
+    """
     async with get_sessionmaker()() as session:
         try:
             yield session
         except Exception:
-            await session.rollback()
+            await _rollback_after_error(session)
             raise
         else:
-            await session.commit()
+            if request.method in _READ_ONLY_METHODS and not _has_pending_orm_changes(session):
+                await session.rollback()
+            else:
+                await _commit_request(session)
+
+
+# The function-scoped dependency finalises (commit/rollback and session close)
+# after the endpoint has produced a response object, but before ASGI sends the
+# HTTP response to the client.  Keep this alias central: every request router
+# imports it, so future endpoints inherit the same transaction boundary.
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 
 
 @asynccontextmanager
@@ -89,8 +158,7 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
     async with get_sessionmaker()() as session:
         try:
             yield session
-        except Exception:
-            await session.rollback()
-            raise
-        else:
             await session.commit()
+        except Exception:
+            await _rollback_after_error(session)
+            raise

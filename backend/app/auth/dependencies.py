@@ -21,11 +21,10 @@ from app.auth.service import set_session_cookie
 from app.core.config import Settings, get_settings
 from app.core.context import set_user_id
 from app.core.errors import AuthenticationError
-from app.db.session import get_session
+from app.db.session import SessionDep as SessionDep
 from app.rbac.models import Role
 from app.users.models import User
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
