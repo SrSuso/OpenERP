@@ -20,7 +20,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.10-alpine3.24
         env:
           POSTGRES_USER: openerp
           POSTGRES_PASSWORD: openerp
@@ -151,7 +151,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.10-alpine3.24
         env:
           POSTGRES_USER: openerp
           POSTGRES_PASSWORD: openerp

@@ -4,7 +4,7 @@ name: openerp
 # the host so reloads are instant; only stateful services live here.
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17.10-alpine3.24
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-openerp}

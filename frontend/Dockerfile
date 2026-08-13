@@ -4,7 +4,7 @@
 # on purpose — the SPA calls `/api/...` on its own origin in production,
 # exactly like the Vite dev proxy does locally (see vite.config.ts).
 
-FROM node:22-slim AS build
+FROM node:22.22.0-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -12,7 +12,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.27.5-alpine AS runtime
 
 COPY --from=build /app/dist /usr/share/nginx/html
 # nginx.conf is NOT baked in: docker/compose.prod.yml bind-mounts

@@ -270,8 +270,12 @@ prod-cert:  ## Generate the internal TLS cert: make prod-cert host=openerp.miemp
 	./scripts/gen-internal-cert.sh $(host)
 
 .PHONY: prod-build
-prod-build:  ## Build the production images (backend + frontend)
-	$(PROD_COMPOSE) build
+prod-build:  ## Build production images, refreshing their pinned base tags
+	$(PROD_COMPOSE) build --pull
+
+.PHONY: prod-build-clean
+prod-build-clean:  ## Diagnostic/release build without cached layers
+	$(PROD_COMPOSE) build --pull --no-cache
 
 .PHONY: prod-preserve-current-images
 prod-preserve-current-images:  ## Retag running images with the previous immutable version
@@ -294,12 +298,16 @@ prod-preflight:  ## Validate production config/tools and free space without touc
 	@test -r .env.production || (echo 'ERROR: .env.production is missing' >&2; exit 2)
 	@test -r deploy/certs/fullchain.pem -a -r deploy/certs/privkey.pem || (echo 'ERROR: production TLS certificates are missing' >&2; exit 2)
 	@$(PROD_COMPOSE) config --quiet
-	@available_kb="$$(df -Pk . | awk 'NR == 2 {print $$4}')"; minimum_kb="$${OPENERP_DEPLOY_MIN_FREE_KB:-1048576}"; \
-	  test "$$available_kb" -ge "$$minimum_kb" || { echo "ERROR: insufficient free disk space ($$available_kb KiB)" >&2; exit 2; }
+	@minimum_kb="$${OPENERP_DEPLOY_MIN_FREE_KB:-1048576}"; docker_root="$$(docker info --format '{{.DockerRootDir}}')"; \
+	  for target in . backups "$$docker_root"; do \
+	    test -n "$$target" -a -e "$$target" || continue; \
+	    available_kb="$$(df -Pk "$$target" | awk 'NR == 2 {print $$4}')"; \
+	    test "$$available_kb" -ge "$$minimum_kb" || { echo "ERROR: insufficient free disk space at $$target ($$available_kb KiB)" >&2; exit 2; }; \
+	  done
 
 .PHONY: prod-up
 prod-up: prod-writers-stopped  ## Initial/start-from-offline stack startup; not an update path
-	$(PROD_COMPOSE) up -d --wait
+	$(PROD_COMPOSE) up -d --wait --remove-orphans
 
 .PHONY: prod-down
 prod-down:  ## Stop the production stack (keeps the database volume)
@@ -307,7 +315,7 @@ prod-down:  ## Stop the production stack (keeps the database volume)
 
 .PHONY: prod-restart
 prod-restart:  ## Restart just the API and worker (e.g. after editing .env.production)
-	$(PROD_COMPOSE) up -d --force-recreate api worker
+	$(PROD_COMPOSE) up -d --force-recreate --remove-orphans api worker
 
 .PHONY: prod-logs
 prod-logs:  ## Follow logs of every production service
@@ -332,7 +340,7 @@ prod-stop-writers:  ## Stop API and outbox worker while leaving PostgreSQL/web a
 
 .PHONY: prod-start-maintenance-web
 prod-start-maintenance-web:  ## Recreate nginx with the host maintenance flag already enabled
-	$(PROD_COMPOSE) up -d --no-deps --wait web
+	$(PROD_COMPOSE) up -d --no-deps --wait --remove-orphans web
 
 .PHONY: prod-writers-stopped
 prod-writers-stopped:  ## Assert no production API/worker container remains running
@@ -345,11 +353,11 @@ prod-writers-stopped:  ## Assert no production API/worker container remains runn
 
 .PHONY: prod-start-api-web
 prod-start-api-web:  ## Recreate target API/web while public maintenance remains enabled
-	$(PROD_COMPOSE) up -d --no-deps api web
+	$(PROD_COMPOSE) up -d --no-deps --remove-orphans api web
 
 .PHONY: prod-wait-api
 prod-wait-api:  ## Wait for target API and web healthchecks
-	$(PROD_COMPOSE) up -d --no-deps --wait api web
+	$(PROD_COMPOSE) up -d --no-deps --wait --remove-orphans api web
 
 .PHONY: prod-smoke
 prod-smoke:  ## Non-mutating API/database/web smoke checks
@@ -357,7 +365,7 @@ prod-smoke:  ## Non-mutating API/database/web smoke checks
 
 .PHONY: prod-start-worker
 prod-start-worker:  ## Start worker only after migration and API smoke checks
-	$(PROD_COMPOSE) up -d --no-deps worker
+	$(PROD_COMPOSE) up -d --no-deps --remove-orphans worker
 
 .PHONY: prod-worker-check
 prod-worker-check:  ## Confirm the worker remains running after startup

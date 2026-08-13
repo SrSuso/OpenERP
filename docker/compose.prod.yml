@@ -1,5 +1,14 @@
 name: openerp-prod
 
+# Docker keeps at most five 10 MiB json-file logs per service. This bounds
+# container stdout/stderr to roughly 250 MiB across this stack; PostgreSQL
+# data and WAL remain governed by their volume, not this rotation policy.
+x-json-file-logging: &json-file-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 # Production stack for a single internal server. Contrast with
 # docker/compose.yml, which only runs the *dev* infrastructure
 # (PostgreSQL + Mailpit) while the API/worker/frontend run on the host;
@@ -12,8 +21,11 @@ name: openerp-prod
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Keep PostgreSQL on the tested 17.x family. A major upgrade has its own
+    # migration procedure, not an incidental image refresh.
+    image: postgres:17.10-alpine3.24
     restart: unless-stopped
+    logging: *json-file-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -35,6 +47,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    # PostgreSQL is intentionally not capped here: safe memory/CPU limits
+    # depend on database size, reporting load and host capacity. Reserve that
+    # capacity operationally instead of risking an arbitrary OOM limit.
 
   # `migrate`, `api` and `worker` intentionally share the same env_file and
   # therefore the same database/runtime source. `prod-bootstrap-admin` runs
@@ -53,6 +68,9 @@ services:
       postgres:
         condition: service_healthy
     restart: 'no'
+    logging: *json-file-logging
+    mem_limit: 512m
+    cpus: "1.00"
 
   api:
     build:
@@ -81,6 +99,9 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    logging: *json-file-logging
+    mem_limit: 512m
+    cpus: "1.00"
 
   worker:
     build:
@@ -94,6 +115,9 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    logging: *json-file-logging
+    mem_limit: 256m
+    cpus: "0.50"
     healthcheck:
       # backend/Dockerfile's HEALTHCHECK hits :8000/api/v1/health/live —
       # correct for `api`, meaningless here: the worker is a polling loop
@@ -125,6 +149,9 @@ services:
         # Uvicorn trusts forwarded headers from this address only.
         ipv4_address: ${OPENERP_TRUSTED_PROXY_IP:-172.30.0.10}
     restart: unless-stopped
+    logging: *json-file-logging
+    mem_limit: 128m
+    cpus: "0.50"
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:8080/healthz']
       interval: 10s

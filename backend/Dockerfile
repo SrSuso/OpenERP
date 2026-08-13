@@ -7,7 +7,7 @@
 # the application code, so the runtime image never carries uv's own
 # download cache or the wheel build backends.
 
-FROM python:3.13-slim AS builder
+FROM python:3.13.15-slim AS builder
 
 # Pinned uv binary, not `pip install uv` — keeps the resolver itself
 # reproducible across builds.
@@ -24,7 +24,7 @@ COPY migrations ./migrations
 COPY alembic.ini ./alembic.ini
 RUN uv sync --frozen --no-dev
 
-FROM python:3.13-slim AS runtime
+FROM python:3.13.15-slim AS runtime
 
 RUN groupadd --system openerp && useradd --system --gid openerp --create-home openerp
 

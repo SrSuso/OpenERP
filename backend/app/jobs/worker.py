@@ -19,6 +19,7 @@ from contextlib import AbstractAsyncContextManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.logging import configure_logging
 from app.db.session import session_scope
 from app.jobs import service
 
@@ -76,7 +77,8 @@ async def run_forever(
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    settings = get_settings()
+    configure_logging(level=settings.log_level, fmt=settings.log_format)
     logger.info("outbox worker starting (poll every %ss)", DEFAULT_POLL_INTERVAL_SECONDS)
     asyncio.run(run_forever())
 
