@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { closeZReport, zReportPreviewQuery, type ZReport } from '@/features/pos/api';
 import { ApiError } from '@/lib/api';
@@ -38,10 +38,12 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   const preview = useQuery(zReportPreviewQuery(warehouseId));
   const [closed, setClosed] = useState<ZReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const closeAttemptRef = useRef<string | null>(null);
 
   const closeMutation = useMutation({
-    mutationFn: () => closeZReport(warehouseId as number),
+    mutationFn: (key: string) => closeZReport(warehouseId as number, key),
     onSuccess: (report) => {
+      closeAttemptRef.current = null;
       setClosed(report);
       setError(null);
     },
@@ -141,14 +143,21 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
               <button
                 type="button"
                 disabled={closeMutation.isPending || preview.isPending || openSales.length > 0}
-                onClick={() => closeMutation.mutate()}
+                onClick={() => {
+                  const key = closeAttemptRef.current ?? crypto.randomUUID();
+                  closeAttemptRef.current = key;
+                  closeMutation.mutate(key);
+                }}
                 className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white disabled:opacity-40"
               >
                 {closeMutation.isPending ? 'Cerrando…' : 'Cerrar caja e imprimir Z'}
               </button>
               <button
                 type="button"
-                onClick={onCancel}
+                onClick={() => {
+                  closeAttemptRef.current = null;
+                  onCancel();
+                }}
                 className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
               >
                 Seguir vendiendo

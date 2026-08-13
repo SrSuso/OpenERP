@@ -394,9 +394,10 @@ export function zReportPreviewQuery(warehouseId: number | null) {
 }
 
 /** Cierra el turno y congela sus totales. */
-export async function closeZReport(warehouseId: number): Promise<ZReport> {
+export async function closeZReport(warehouseId: number, idempotencyKey: string): Promise<ZReport> {
   return apiFetch(`${API_V1}/z-reports?warehouse_id=${warehouseId}`, {
     method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
     schema: zReportSchema,
   });
 }

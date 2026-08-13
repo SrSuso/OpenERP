@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -38,9 +38,13 @@ const PREVIEW = {
 };
 
 function stubBackend(
-  options: { openSales?: { id: number; lines_count: number; total: string }[] } = {},
+  options: {
+    openSales?: { id: number; lines_count: number; total: string }[];
+    failFirstClose?: boolean;
+  } = {},
 ) {
   const closeCalls: string[] = [];
+  const closeKeys: string[] = [];
   const logoutCalls: string[] = [];
 
   vi.stubGlobal(
@@ -72,6 +76,10 @@ function stubBackend(
       }
       if (method === 'POST' && url.includes('/z-reports')) {
         closeCalls.push(url);
+        closeKeys.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
+        if (options.failFirstClose && closeCalls.length === 1) {
+          return Promise.reject(new TypeError('Connection lost after sending request'));
+        }
         return Promise.resolve(
           jsonResponse(
             {
@@ -90,7 +98,7 @@ function stubBackend(
     }),
   );
 
-  return { closeCalls, logoutCalls };
+  return { closeCalls, closeKeys, logoutCalls };
 }
 
 function renderLayout() {
@@ -156,5 +164,23 @@ describe('PosLayout', () => {
     expect(screen.getByText(/Venta #12 — 3 líneas · 8,40 €/)).toBeInTheDocument();
     expect(screen.getByText(/Venta #15 — 1 línea · 1,20 €/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cerrar caja e imprimir Z' })).toBeDisabled();
+  });
+
+  it('reuses the Z idempotency key after an uncertain transport error', async () => {
+    const backend = stubBackend({ failFirstClose: true });
+    vi.stubGlobal('print', vi.fn());
+    renderLayout();
+    await screen.findByText('Ana');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    const closeButton = await screen.findByRole('button', { name: 'Cerrar caja e imprimir Z' });
+    await userEvent.click(closeButton);
+    await screen.findByText('No se ha podido cerrar la caja.');
+    await userEvent.click(closeButton);
+
+    await screen.findByText('Cierre Z nº 7');
+    await waitFor(() => expect(backend.closeKeys).toHaveLength(2));
+    expect(backend.closeKeys[0]).not.toBe('');
+    expect(backend.closeKeys[1]).toBe(backend.closeKeys[0]);
   });
 });
