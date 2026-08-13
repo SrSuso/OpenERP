@@ -12,9 +12,13 @@ function jsonResponse(body: unknown): Response {
 function renderForm(overrides: Partial<Parameters<typeof AddWidgetForm>[0]> = {}) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(() =>
-      Promise.resolve(jsonResponse([{ id: 1, name: 'Tienda principal', is_active: true }])),
-    ),
+    vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/settings/values')) {
+        return Promise.resolve(jsonResponse({ 'business.timezone': 'Europe/Madrid' }));
+      }
+      return Promise.resolve(jsonResponse([{ id: 1, name: 'Tienda principal', is_active: true }]));
+    }),
   );
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -30,6 +34,19 @@ describe('AddWidgetForm', () => {
 
     expect(screen.getByLabelText(/desde/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/hasta/i)).toBeInTheDocument();
+  });
+
+  it('uses today in the business timezone rather than the browser date', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-12T22:30:00Z'));
+    try {
+      renderForm();
+
+      const dateTo = screen.getByLabelText(/hasta/i);
+      expect(dateTo).toHaveValue('2026-08-13');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows order/limit fields only for "Productos más vendidos"', async () => {

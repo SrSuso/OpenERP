@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { useAuth } from '@/features/auth/useAuth';
 import { AddWidgetForm } from '@/features/dashboards/AddWidgetForm';
 import {
   addWidget,
   createDashboard,
   dashboardsQuery,
   removeWidget,
+  type Dashboard,
   type WidgetCreate,
 } from '@/features/dashboards/api';
 import { Widget } from '@/features/dashboards/Widget';
@@ -21,34 +23,55 @@ import { pageTitleRow, primaryAction } from './pageActions';
  * cached data quietly going stale.
  */
 export function AdminHomePage() {
+  const { user } = useAuth();
   const health = useQuery(healthQuery);
-  const dashboards = useQuery(dashboardsQuery);
+  const dashboardQuery = dashboardsQuery(user?.id ?? 0);
+  const dashboards = useQuery({ ...dashboardQuery, enabled: user != null });
   const queryClient = useQueryClient();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [activeDashboardId, setActiveDashboardId] = useState<number | null>(null);
+
+  const cacheDashboard = (updated: Dashboard) => {
+    queryClient.setQueryData<Dashboard[]>(dashboardQuery.queryKey, (current = []) => {
+      const exists = current.some((dashboard) => dashboard.id === updated.id);
+      return exists
+        ? current.map((dashboard) => (dashboard.id === updated.id ? updated : dashboard))
+        : [...current, updated];
+    });
+  };
 
   const createDashboardMutation = useMutation({
     mutationFn: () => createDashboard('Mi panel'),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: dashboardsQuery.queryKey }),
+    onSuccess: cacheDashboard,
   });
 
-  const dashboard = dashboards.data?.[0];
+  useEffect(() => {
+    const available = dashboards.data ?? [];
+    setActiveDashboardId((current) =>
+      current !== null && available.some((dashboard) => dashboard.id === current)
+        ? current
+        : (available[0]?.id ?? null),
+    );
+  }, [dashboards.data, user?.id]);
+
+  const dashboard = dashboards.data?.find((item) => item.id === activeDashboardId);
   const dashboardReady = dashboards.isSuccess;
 
-  if (dashboardReady && dashboard === undefined && createDashboardMutation.isIdle) {
+  if (dashboardReady && dashboards.data.length === 0 && createDashboardMutation.isIdle) {
     createDashboardMutation.mutate();
   }
 
   const addWidgetMutation = useMutation({
     mutationFn: (widget: WidgetCreate) => addWidget(dashboard!.id, widget),
     onSuccess: (updated) => {
-      queryClient.setQueryData(dashboardsQuery.queryKey, [updated]);
+      cacheDashboard(updated);
       setShowAddForm(false);
     },
   });
 
   const removeWidgetMutation = useMutation({
     mutationFn: (widgetId: number) => removeWidget(dashboard!.id, widgetId),
-    onSuccess: (updated) => queryClient.setQueryData(dashboardsQuery.queryKey, [updated]),
+    onSuccess: cacheDashboard,
   });
 
   return (
@@ -66,13 +89,34 @@ export function AdminHomePage() {
 
       <div className="mt-8">
         <div className={pageTitleRow}>
-          <h2 className="text-lg font-semibold text-slate-800">Mi panel</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{dashboard?.name ?? 'Mi panel'}</h2>
           {dashboard && !showAddForm && (
             <button type="button" onClick={() => setShowAddForm(true)} className={primaryAction}>
               Añadir widget
             </button>
           )}
         </div>
+
+        {dashboards.data && dashboards.data.length > 1 && (
+          <label className="mb-4 block max-w-xs text-sm text-slate-600">
+            Dashboard activo
+            <select
+              aria-label="Dashboard activo"
+              value={activeDashboardId ?? ''}
+              onChange={(event) => {
+                setActiveDashboardId(Number(event.target.value));
+                setShowAddForm(false);
+              }}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+              {dashboards.data.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {!dashboard && <p className="text-sm text-slate-500">Preparando el panel…</p>}
 

@@ -7,6 +7,8 @@ import {
   type MetricKey,
   type WidgetCreate,
 } from '@/features/dashboards/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { businessDateAt } from '@/lib/businessTime';
 
 const METRIC_LABELS: Record<MetricKey, string> = {
   sales_over_time: 'Ventas por día',
@@ -35,23 +37,26 @@ interface AddWidgetFormProps {
   isPending: boolean;
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysAgoIso(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
+function shiftIsoDate(value: string, days: number): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day! + days));
   return date.toISOString().slice(0, 10);
 }
 
 export function AddWidgetForm({ onSubmit, onCancel, isPending }: AddWidgetFormProps) {
   const warehouses = useQuery(warehousesQuery);
+  const businessTimezone = useBusinessTimezone();
+  const businessToday = businessDateAt(businessTimezone);
 
   const [metric, setMetric] = useState<MetricKey>('sales_over_time');
   const [title, setTitle] = useState(METRIC_LABELS.sales_over_time);
-  const [dateFrom, setDateFrom] = useState(() => daysAgoIso(30));
-  const [dateTo, setDateTo] = useState(() => todayIso());
+  // Null means "still use the live business-calendar default".  This lets
+  // the configured timezone arrive after the form mounts without overwriting
+  // a date the user has already edited.
+  const [dateFromOverride, setDateFromOverride] = useState<string | null>(null);
+  const [dateToOverride, setDateToOverride] = useState<string | null>(null);
+  const dateFrom = dateFromOverride ?? shiftIsoDate(businessToday, -30);
+  const dateTo = dateToOverride ?? businessToday;
   const [warehouseId, setWarehouseId] = useState('');
   const [orderBy, setOrderBy] = useState<'revenue' | 'quantity'>('revenue');
   const [limit, setLimit] = useState('10');
@@ -119,7 +124,7 @@ export function AddWidgetForm({ onSubmit, onCancel, isPending }: AddWidgetFormPr
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(event) => setDateFrom(event.target.value)}
+                onChange={(event) => setDateFromOverride(event.target.value)}
                 required
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
               />
@@ -129,7 +134,7 @@ export function AddWidgetForm({ onSubmit, onCancel, isPending }: AddWidgetFormPr
               <input
                 type="date"
                 value={dateTo}
-                onChange={(event) => setDateTo(event.target.value)}
+                onChange={(event) => setDateToOverride(event.target.value)}
                 required
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
               />

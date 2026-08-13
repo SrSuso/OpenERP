@@ -67,11 +67,16 @@ export const dashboardSchema = z.object({
 });
 export type Dashboard = z.infer<typeof dashboardSchema>;
 
-export const dashboardsQuery = queryOptions({
-  queryKey: ['dashboards'] as const,
-  queryFn: ({ signal }) =>
-    apiFetch(`${API_V1}/dashboards`, { schema: z.array(dashboardSchema), signal }),
-});
+/** The backend derives ownership from the authenticated session.  The user id
+ * is part of the client key only: it prevents an A -> B auth transition from
+ * rendering A's cached collection while B's request is in flight. */
+export function dashboardsQuery(ownerUserId: number) {
+  return queryOptions({
+    queryKey: ['dashboards', 'owner', ownerUserId] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/dashboards`, { schema: z.array(dashboardSchema), signal }),
+  });
+}
 
 export async function createDashboard(name: string): Promise<Dashboard> {
   return apiFetch(`${API_V1}/dashboards`, {
