@@ -2,7 +2,10 @@
 
 Only one template is active store-wide at a time — the till prints one
 receipt layout — but a shop can keep as many as it likes and switch
-between them with ``activate_template``.
+between them with ``activate_template``. PostgreSQL serializes every active
+template transition through one transaction advisory lock. New ticket
+generation takes the shared form of that same lock, so many independent sales
+can render concurrently while a template switch has a clear before/after cut.
 
 ``revise_template`` is the only way to change what a *new* ticket looks
 like; it never mutates a past version (see ``app.tickets.models`` for
@@ -12,12 +15,13 @@ alternative can be corrected without changing what the till prints.
 
 from __future__ import annotations
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.sales.models import Sale, SaleStatus
 from app.settings.business_time import get_business_timezone
 from app.tickets.models import Ticket, TicketTemplate
@@ -28,6 +32,27 @@ _SALE_OPTIONS = (
     selectinload(Sale.lines),
     selectinload(Sale.payments),
 )
+
+# ASCII "TICK", inside PostgreSQL's signed int32 range. The second key is the
+# sole store-wide template scope. It is unrelated to the warehouse accounting,
+# sale-number and security lock namespaces elsewhere in the application.
+_TEMPLATE_LOCK_NAMESPACE = 0x5449434B
+_GLOBAL_TEMPLATE_SCOPE = 1
+_LOCK_TEMPLATE_SCOPE = text("SELECT pg_advisory_xact_lock(:namespace, :scope)")
+_LOCK_TEMPLATE_SCOPE_SHARED = text("SELECT pg_advisory_xact_lock_shared(:namespace, :scope)")
+
+
+async def _lock_template_scope(session: AsyncSession, *, shared: bool = False) -> None:
+    """Lock the store-wide active-template scope until transaction end.
+
+    Exclusive locks protect create/revise/activate. Ticket generation uses a
+    shared lock after locking its completed Sale, allowing unrelated tickets
+    to render together but never across the middle of an activation.
+    """
+    await session.execute(
+        _LOCK_TEMPLATE_SCOPE_SHARED if shared else _LOCK_TEMPLATE_SCOPE,
+        {"namespace": _TEMPLATE_LOCK_NAMESPACE, "scope": _GLOBAL_TEMPLATE_SCOPE},
+    )
 
 
 async def list_templates(session: AsyncSession) -> list[TicketTemplate]:
@@ -49,7 +74,27 @@ async def _deactivate_all(session: AsyncSession) -> None:
     await session.execute(update(TicketTemplate).values(is_active=False))
 
 
+async def _ensure_template_version_is_new(
+    session: AsyncSession, *, name: str, version: int
+) -> None:
+    existing_id = await session.scalar(
+        select(TicketTemplate.id).where(
+            TicketTemplate.name == name,
+            TicketTemplate.version == version,
+        )
+    )
+    if existing_id is not None:
+        raise ConflictError(
+            f"Ticket template {name!r} version {version} already exists; "
+            "reload the template history before retrying."
+        )
+
+
 async def create_template(session: AsyncSession, payload: TicketTemplateCreate) -> TicketTemplate:
+    await _lock_template_scope(session)
+    # The scope lock turns a concurrent duplicate name/version into a stable
+    # semantic conflict instead of letting the subsequent flush escape as 500.
+    await _ensure_template_version_is_new(session, name=payload.name, version=1)
     await _deactivate_all(session)
     template = TicketTemplate(
         name=payload.name,
@@ -98,7 +143,13 @@ async def get_template(session: AsyncSession, template_id: int) -> TicketTemplat
 async def revise_template(
     session: AsyncSession, template_id: int, payload: TicketTemplateRevise
 ) -> TicketTemplate:
+    await _lock_template_scope(session)
     current = await get_template(session, template_id)
+    await _ensure_template_version_is_new(
+        session,
+        name=current.name,
+        version=current.version + 1,
+    )
     was_active = current.is_active
     current.is_active = False
     await session.flush()
@@ -148,6 +199,9 @@ async def activate_template(session: AsyncSession, template_id: int) -> TicketTe
     """Pone en uso una plantilla concreta. Sigue habiendo exactamente una
     activa (ver el docstring del módulo): activar una retira la anterior,
     que se queda guardada para poder volver a ella."""
+    await _lock_template_scope(session)
+    # Re-read only after taking the scope lock: an activation that waited must
+    # make its decision from the state committed by the transition before it.
     template = await get_template(session, template_id)
     if template.is_active:
         return template
@@ -173,6 +227,28 @@ async def get_ticket(session: AsyncSession, sale_id: int) -> Ticket:
     return ticket
 
 
+async def _insert_ticket(
+    session: AsyncSession,
+    *,
+    sale_id: int,
+    template_id: int,
+    width_mm: int,
+    rendered_text: str,
+) -> int | None:
+    """Insert against the natural identity without masking other failures."""
+    return await session.scalar(
+        insert(Ticket)
+        .values(
+            sale_id=sale_id,
+            template_id=template_id,
+            width_mm=width_mm,
+            rendered_text=rendered_text,
+        )
+        .on_conflict_do_nothing(constraint="uq_tickets_sale_id")
+        .returning(Ticket.id)
+    )
+
+
 async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
     """Idempotent: a sale gets exactly one ticket, ever. A second call
     returns the same row untouched — including its already-frozen
@@ -184,7 +260,10 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
     if existing is not None:
         return existing
 
-    sale_stmt = select(Sale).where(Sale.id == sale_id).options(*_SALE_OPTIONS)
+    # The Sale is the natural serialization row for its one Ticket. Once this
+    # lock is acquired, re-check because another request may have created the
+    # ticket while this one waited. This is what keeps rendering single-shot.
+    sale_stmt = select(Sale).where(Sale.id == sale_id).options(*_SALE_OPTIONS).with_for_update()
     sale = (await session.execute(sale_stmt)).scalar_one_or_none()
     if sale is None:
         raise ValidationError(f"Sale {sale_id} does not exist.")
@@ -193,6 +272,16 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
             f"Only a completed sale has a ticket to print (this one is {sale.status})."
         )
 
+    existing = (
+        await session.execute(select(Ticket).where(Ticket.sale_id == sale_id))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    # Lock order for this module is Sale row -> shared global template scope.
+    # Template mutations acquire only the latter, so they cannot form a cycle
+    # with checkout's accounting/Sale/inventory order.
+    await _lock_template_scope(session, shared=True)
     template = await get_active_template(session)
     assert sale.prices_include_tax is not None  # completed-sale DB invariant
     rendered_text = render_ticket(
@@ -203,14 +292,22 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
         cashier_name=sale.cashier_name,
     )
 
-    ticket = Ticket(
+    # PostgreSQL remains the final arbiter. Target only the natural ticket
+    # identity constraint: unrelated FK/CHECK/unique failures still raise.
+    inserted_id = await _insert_ticket(
+        session,
         sale_id=sale_id,
         template_id=template.id,
         width_mm=template.width_mm,
         rendered_text=rendered_text,
     )
-    session.add(ticket)
-    await session.flush()
+    if inserted_id is None:
+        # Defensive fallback for a caller that did not follow the Sale lock.
+        # The winning persisted render is authoritative and is never replaced.
+        return (await session.execute(select(Ticket).where(Ticket.sale_id == sale_id))).scalar_one()
+
+    ticket = await session.get(Ticket, inserted_id)
+    assert ticket is not None
     await audit.record(
         session,
         action="generated",

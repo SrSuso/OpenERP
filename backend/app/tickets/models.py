@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
@@ -45,7 +45,18 @@ class TicketTaxDisplay(StrEnum):
 
 class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "ticket_templates"
-    __table_args__ = (UniqueConstraint("name", "version", name="uq_ticket_templates_name_version"),)
+    __table_args__ = (
+        UniqueConstraint("name", "version", name="uq_ticket_templates_name_version"),
+        # There is one receipt layout for the whole store, not one per name,
+        # warehouse or document type. PostgreSQL protects that global scope
+        # even if a caller bypasses the service-level transition lock.
+        Index(
+            "uq_ticket_templates_single_active",
+            "is_active",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+    )
 
     name: Mapped[str] = mapped_column(String(100), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
@@ -102,9 +113,9 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
         String(200), default="IVA incluido", server_default="IVA incluido"
     )
 
-    #: Only one version per ``name`` is active at a time — the one new
-    #: tickets render with. Retired versions stay forever, still readable
-    #: through whichever ``Ticket`` rows already reference them.
+    #: At most one template is active store-wide — the one new tickets render
+    #: with. A store may have none before initial setup. Retired versions stay
+    #: forever, still readable through whichever ``Ticket`` rows reference them.
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
 
