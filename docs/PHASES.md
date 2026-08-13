@@ -1,9 +1,20 @@
-# Plan de fases
+# HISTORICAL DEVELOPMENT RECORD — NOT OPERATIONAL DOCUMENTATION
 
-Orden estricto. Una fase no empieza si la anterior está rota. Al cerrar cada
-fase se entrega: qué se implementó, archivos tocados, migraciones, endpoints,
-tests añadidos, comandos ejecutados, resultado real de los tests, deuda técnica
-y commit.
+> Este fichero conserva el registro cronológico de cómo se construyó el
+> proyecto original. Sus afirmaciones «todavía no existe», rutas, patrones
+> transaccionales y procedimientos reflejan el momento de cada fase y pueden
+> ser deliberadamente falsos para el producto actual. **No lo uses para operar,
+> administrar ni desarrollar la versión vigente.**
+>
+> Referencias actuales: [`USER_GUIDE.md`](USER_GUIDE.md) para uso funcional,
+> [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md) para producción y recuperación,
+> [`ARCHITECTURE.md`](ARCHITECTURE.md) para diseño técnico y
+> [`TESTING.md`](TESTING.md) para pruebas.
+
+# Plan histórico de fases
+
+El proceso original imponía un orden estricto. Al cerrar cada fase se registró
+qué se implementó, archivos, migraciones, endpoints, tests, deuda y commit.
 
 | # | Fase | Estado |
 | --- | --- | --- |

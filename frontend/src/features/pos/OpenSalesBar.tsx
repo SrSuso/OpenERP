@@ -14,7 +14,8 @@ interface OpenSalesBarProps {
  * Pasa a diario: alguien se deja el pan, se va a por él y detrás hay tres
  * personas esperando. Cada una es una venta de verdad en el servidor (en
  * borrador), no algo guardado en esta pantalla, así que sobreviven a un
- * cierre del navegador y se pueden retomar desde otra caja.
+ * cierre del navegador y se pueden retomar desde cualquier navegador que
+ * seleccione explícitamente el mismo terminal. Otro terminal no puede verlas.
  *
  * Con una sola abierta la barra no se enseña: no hay nada entre lo que
  * elegir y sólo quitaría sitio. */

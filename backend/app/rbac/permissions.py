@@ -317,14 +317,13 @@ SETTINGS_READ = "settings.read"
 SETTINGS_MANAGE = "settings.manage"
 
 PHASE_21_PERMISSIONS: tuple[PermissionDef, ...] = (
-    PermissionDef(SETTINGS_READ, "View the system settings (e.g. SMTP configuration)."),
-    PermissionDef(SETTINGS_MANAGE, "Change system settings (e.g. SMTP configuration)."),
+    PermissionDef(SETTINGS_READ, "View functional store settings."),
+    PermissionDef(SETTINGS_MANAGE, "Change functional store settings."),
 )
 
-#: Frozen grants for the phase 21 migration only. Unlike most other
-#: `.manage` permissions, MANAGER does not get this by default — SMTP
-#: credentials are an infrastructure secret, closer to `audit.read`
-#: (ADMIN-only since phase 2) than to a store-management concern.
+#: Frozen grants for its original migration only. Infrastructure settings and
+#: secrets never use these permissions: they are environment-only. The default
+#: grant remains ADMIN-only for compatibility; custom roles can receive it.
 PHASE_21_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "ADMIN": (SETTINGS_READ, SETTINGS_MANAGE),
 }
