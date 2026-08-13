@@ -32,6 +32,8 @@ test-results/
 # Never commit private keys. scripts/gen-internal-cert.sh writes here.
 /deploy/certs/*
 !/deploy/certs/.gitkeep
+/deploy/maintenance/enabled
+/deploy/state/
 
 # --- database backups (phase 21) ---
 /backups/

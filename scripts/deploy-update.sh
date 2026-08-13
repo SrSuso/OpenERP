@@ -1,24 +1,12 @@
 #!/usr/bin/env bash
+# Safely update the single-host production deployment.
 #
-# Pull the latest code and redeploy the production Docker Compose stack —
-# automates docs/ADMIN_GUIDE.md's section 3.1, in the same order: pull,
-# rebuild images, migrate, then recreate containers. Migrations run and
-# must succeed before api/worker start (docker compose's own
-# `service_completed_successfully` condition on the `migrate` service) —
-# this script never leaves the app running against a half-migrated schema,
-# it just fails loudly instead (set -e).
+# Preparation/build happens online. Once maintenance is enabled, every database
+# writer is stopped before the mandatory backup and migration. Any failure from
+# that point leaves maintenance enabled and stops API/worker again.
 #
-# Run this from a checkout that tracks the branch you want deployed —
-# typically a separate clone from your dev one (e.g. ~/OpenERP-test), never
-# your own working copy of unreleased changes. It refuses to run if that
-# checkout has local modifications, so it never silently discards work.
-#
-#   scripts/deploy-update.sh [--force] [--backup]
-#
-# --force   redeploy even if `git pull` brought no new commits (useful
-#           after editing .env.production or deploy/certs/ by hand).
-# --backup  run `make prod-backup` before doing anything else.
-set -euo pipefail
+# Usage: scripts/deploy-update.sh [--force]
+set -Eeuo pipefail
 
 log() { printf '\033[36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -27,54 +15,125 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
 FORCE=0
-BACKUP=0
 for arg in "$@"; do
   case "${arg}" in
     --force) FORCE=1 ;;
-    --backup) BACKUP=1 ;;
-    *) die "usage: $0 [--force] [--backup]" ;;
+    *) die "usage: $0 [--force]" ;;
   esac
 done
 
-command -v git >/dev/null || die "git not found on PATH"
-command -v make >/dev/null || die "make not found on PATH"
+for tool in git make flock; do
+  command -v "${tool}" >/dev/null || die "${tool} not found on PATH"
+done
 [[ -d .git ]] || die "not a git checkout: ${ROOT_DIR}"
+[[ -r .env.production ]] || die ".env.production is missing or unreadable"
+
+LOCK_FILE="${OPENERP_DEPLOY_LOCK_FILE:-/tmp/openerp-production-operation.lock}"
+exec 9>"${LOCK_FILE}"
+flock -n 9 || die "another production deploy is already running on this host"
 
 if [[ -n "$(git status --porcelain)" ]]; then
-  die "working tree has local changes — this script is meant for a clean deployment checkout, not a dev copy. Commit, stash or discard them first (git status)."
+  die "working tree has local changes — commit, stash or discard them before deployment"
 fi
+
+STATE_DIR="${OPENERP_DEPLOY_STATE_DIR:-${ROOT_DIR}/deploy/state}"
+MAINTENANCE_DIR="${OPENERP_MAINTENANCE_DIR:-${ROOT_DIR}/deploy/maintenance}"
+MAINTENANCE_FLAG="${MAINTENANCE_DIR}/enabled"
+mkdir -p -- "${STATE_DIR}" "${MAINTENANCE_DIR}"
+chmod 700 -- "${STATE_DIR}"
+
+MAINTENANCE_ACTIVE=0
+DEPLOY_SUCCEEDED=0
+on_exit() {
+  status=$?
+  if [[ "${status}" -ne 0 && "${MAINTENANCE_ACTIVE}" -eq 1 ]]; then
+    touch -- "${MAINTENANCE_FLAG}"
+    make prod-stop-writers >/dev/null 2>&1 || true
+    printf '\nDEPLOYMENT FAILED: maintenance remains ON and API/worker are OFF.\n' >&2
+    if [[ -s "${STATE_DIR}/last-backup" ]]; then
+      printf 'Verified pre-upgrade backup: %s\n' "$(<"${STATE_DIR}/last-backup")" >&2
+    fi
+    printf 'Inspect the failure; either correct this release or follow the documented isolated-database rollback.\n' >&2
+  fi
+  if [[ "${DEPLOY_SUCCEEDED}" -eq 1 ]]; then
+    log "deployment completed successfully"
+  fi
+}
+trap on_exit EXIT
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-log "checkout: ${ROOT_DIR} (branch ${BRANCH})"
-
-if [[ "${BACKUP}" -eq 1 ]]; then
-  log "backing up the database first (make prod-backup)"
-  make prod-backup
+CHECKOUT_BEFORE="$(git rev-parse HEAD)"
+if [[ -s "${STATE_DIR}/current-version" ]]; then
+  DEPLOYED_BEFORE="$(<"${STATE_DIR}/current-version")"
+else
+  DEPLOYED_BEFORE="${CHECKOUT_BEFORE}"
 fi
+log "preparing checkout ${ROOT_DIR} (branch ${BRANCH}, deployed ${DEPLOYED_BEFORE:0:12})"
 
-BEFORE="$(git rev-parse HEAD)"
 log "git pull --ff-only"
 git pull --ff-only
-AFTER="$(git rev-parse HEAD)"
+TARGET_VERSION="$(git rev-parse HEAD)"
 
-if [[ "${BEFORE}" == "${AFTER}" && "${FORCE}" -eq 0 ]]; then
-  log "already up to date (${AFTER:0:12}) — nothing to redeploy. Pass --force to redeploy anyway."
+if [[ "${DEPLOYED_BEFORE}" == "${TARGET_VERSION}" && "${FORCE}" -eq 0 ]]; then
+  log "already deployed at ${TARGET_VERSION:0:12}; pass --force to rebuild it"
+  DEPLOY_SUCCEEDED=1
   exit 0
 fi
 
-if [[ "${BEFORE}" != "${AFTER}" ]]; then
-  log "updated ${BEFORE:0:12} -> ${AFTER:0:12}:"
-  git --no-pager log --oneline "${BEFORE}..${AFTER}"
-fi
+export OPENERP_VERSION="${TARGET_VERSION}"
+export OPENERP_PREVIOUS_VERSION="${DEPLOYED_BEFORE}"
+export OPENERP_BACKUP_RELEASE="${DEPLOYED_BEFORE}"
+export OPENERP_BACKUP_RESULT_FILE="${STATE_DIR}/last-backup"
 
-log "make prod-build"
+log "preflight for target ${TARGET_VERSION:0:12}"
+make prod-preflight
+log "preserving the currently running images as ${DEPLOYED_BEFORE:0:12}"
+make prod-preserve-current-images
+log "building immutable images for ${TARGET_VERSION:0:12} while the old version remains online"
 make prod-build
+make prod-validate-web-config
 
-log "make prod-migrate"
+printf 'previous=%s\ntarget=%s\nstarted_at_utc=%s\n' \
+  "${DEPLOYED_BEFORE}" "${TARGET_VERSION}" "$(date -u +%Y%m%dT%H%M%SZ)" \
+  > "${STATE_DIR}/deployment-attempt"
+chmod 600 -- "${STATE_DIR}/deployment-attempt"
+printf '%s\n' "${DEPLOYED_BEFORE}" > "${STATE_DIR}/previous-version"
+chmod 600 -- "${STATE_DIR}/previous-version"
+
+log "maintenance ON"
+touch -- "${MAINTENANCE_FLAG}"
+MAINTENANCE_ACTIVE=1
+make prod-start-maintenance-web
+
+log "stopping every application writer (API and worker)"
+make prod-stop-writers
+make prod-writers-stopped
+
+rm -f -- "${STATE_DIR}/last-backup"
+log "creating and verifying mandatory pre-upgrade backup"
+make prod-backup
+
+log "migrating with target image ${TARGET_VERSION:0:12}"
 make prod-migrate
+make prod-migration-check
 
-log "make prod-up"
-make prod-up
+log "starting target API and web"
+make prod-start-api-web
+make prod-wait-api
 
-log "done — current status:"
+log "running non-mutating production smoke checks"
+make prod-smoke
+
+log "starting worker only after schema/API validation"
+make prod-start-worker
+make prod-worker-check
+
+printf '%s\n' "${TARGET_VERSION}" > "${STATE_DIR}/current-version"
+chmod 600 -- "${STATE_DIR}/current-version"
+
+log "maintenance OFF"
+rm -f -- "${MAINTENANCE_FLAG}"
+MAINTENANCE_ACTIVE=0
+DEPLOY_SUCCEEDED=1
+
 make prod-ps

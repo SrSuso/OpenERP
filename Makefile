@@ -100,8 +100,9 @@ db-backup:  ## Back up the database to backups/ (needs pg_dump on PATH)
 	./scripts/backup-postgres.sh
 
 .PHONY: db-restore
-db-restore:  ## Restore a backup:  make db-restore f=backups/openerp_....dump
-	./scripts/restore-postgres.sh "$(f)"
+db-restore:  ## Restore into a new DB: make db-restore f=backups/... target=openerp_restore_...
+	@test -n "$(f)" -a -n "$(target)" || (echo 'ERROR: f and target are required' >&2; exit 2)
+	./scripts/restore-postgres.sh "$(f)" --target-database "$(target)"
 
 # --- auth --------------------------------------------------------------
 
@@ -261,8 +262,27 @@ prod-cert:  ## Generate the internal TLS cert: make prod-cert host=openerp.miemp
 prod-build:  ## Build the production images (backend + frontend)
 	$(PROD_COMPOSE) build
 
+.PHONY: prod-preserve-current-images
+prod-preserve-current-images:  ## Retag running images with the previous immutable version
+	./scripts/preserve-production-images.sh "$(OPENERP_PREVIOUS_VERSION)"
+
+.PHONY: prod-validate-web-config
+prod-validate-web-config:  ## Validate target nginx config before maintenance downtime
+	$(PROD_COMPOSE) run --rm --no-deps web nginx -t
+
+.PHONY: prod-preflight
+prod-preflight:  ## Validate production config/tools and free space without touching PostgreSQL
+	@command -v docker >/dev/null || (echo 'ERROR: docker not found' >&2; exit 2)
+	@docker compose version >/dev/null || (echo 'ERROR: Docker Compose plugin unavailable' >&2; exit 2)
+	@for tool in pg_dump pg_restore psql sha256sum; do command -v $$tool >/dev/null || { echo "ERROR: $$tool not found" >&2; exit 2; }; done
+	@test -r .env.production || (echo 'ERROR: .env.production is missing' >&2; exit 2)
+	@test -r deploy/certs/fullchain.pem -a -r deploy/certs/privkey.pem || (echo 'ERROR: production TLS certificates are missing' >&2; exit 2)
+	@$(PROD_COMPOSE) config --quiet
+	@available_kb="$$(df -Pk . | awk 'NR == 2 {print $$4}')"; minimum_kb="$${OPENERP_DEPLOY_MIN_FREE_KB:-1048576}"; \
+	  test "$$available_kb" -ge "$$minimum_kb" || { echo "ERROR: insufficient free disk space ($$available_kb KiB)" >&2; exit 2; }
+
 .PHONY: prod-up
-prod-up:  ## Start (or update) the production stack
+prod-up: prod-writers-stopped  ## Initial/start-from-offline stack startup; not an update path
 	$(PROD_COMPOSE) up -d --wait
 
 .PHONY: prod-down
@@ -282,8 +302,56 @@ prod-ps:  ## Show the status of every production service
 	$(PROD_COMPOSE) ps
 
 .PHONY: prod-migrate
-prod-migrate:  ## Apply pending migrations against the production database
+prod-migrate: prod-writers-stopped  ## Apply migrations only while API/worker are verified stopped
 	$(PROD_COMPOSE) run --rm migrate
+
+.PHONY: prod-migration-check
+prod-migration-check:  ## Assert the production DB revision equals the target image head
+	@$(PROD_COMPOSE) run --rm --no-deps migrate uv run alembic current | grep -q '(head)' \
+	  || (echo 'ERROR: production database is not at Alembic head' >&2; exit 2)
+
+.PHONY: prod-stop-writers
+prod-stop-writers:  ## Stop API and outbox worker while leaving PostgreSQL/web available
+	$(PROD_COMPOSE) stop api worker
+
+.PHONY: prod-start-maintenance-web
+prod-start-maintenance-web:  ## Recreate nginx with the host maintenance flag already enabled
+	$(PROD_COMPOSE) up -d --no-deps --wait web
+
+.PHONY: prod-writers-stopped
+prod-writers-stopped:  ## Assert no production API/worker container remains running
+	@for service in api worker; do \
+	  container="$$( $(PROD_COMPOSE) ps -aq $$service )"; \
+	  test -z "$$container" && continue; \
+	  state="$$(docker inspect --format '{{.State.Running}} {{.State.Restarting}}' $$container)"; \
+	  test "$$state" = 'false false' || { echo "ERROR: database writer $$service is still active ($$state)" >&2; exit 2; }; \
+	done
+
+.PHONY: prod-start-api-web
+prod-start-api-web:  ## Recreate target API/web while public maintenance remains enabled
+	$(PROD_COMPOSE) up -d --no-deps api web
+
+.PHONY: prod-wait-api
+prod-wait-api:  ## Wait for target API and web healthchecks
+	$(PROD_COMPOSE) up -d --no-deps --wait api web
+
+.PHONY: prod-smoke
+prod-smoke:  ## Non-mutating API/database/web smoke checks
+	./scripts/smoke-production.sh
+
+.PHONY: prod-start-worker
+prod-start-worker:  ## Start worker only after migration and API smoke checks
+	$(PROD_COMPOSE) up -d --no-deps worker
+
+.PHONY: prod-worker-check
+prod-worker-check:  ## Confirm the worker remains running after startup
+	@for attempt in $$(seq 1 15); do \
+	  if $(PROD_COMPOSE) ps --status running --services worker | grep -qx worker; then \
+	    sleep 3; \
+	    $(PROD_COMPOSE) ps --status running --services worker | grep -qx worker && exit 0; \
+	  fi; \
+	  sleep 2; \
+	done; echo 'ERROR: worker did not remain running' >&2; $(PROD_COMPOSE) logs --tail=50 worker >&2; exit 2
 
 .PHONY: prod-bootstrap-admin
 prod-bootstrap-admin:  ## Create the first admin user in production (interactive)
@@ -291,9 +359,13 @@ prod-bootstrap-admin:  ## Create the first admin user in production (interactive
 
 .PHONY: prod-backup
 prod-backup:  ## Back up the production database (needs pg_dump on the host PATH)
-	OPENERP_DATABASE_URL="$$(grep -m1 '^OPENERP_DATABASE_URL=' .env.production | cut -d= -f2- | sed 's/@postgres:/@127.0.0.1:/')" \
-	  ./scripts/backup-postgres.sh
+	./scripts/production-database.sh backup
+
+.PHONY: prod-restore
+prod-restore: prod-writers-stopped  ## Restore into a new DB only: make prod-restore f=... target=...
+	@test -n "$(f)" -a -n "$(target)" || (echo 'ERROR: f and target are required' >&2; exit 2)
+	./scripts/production-database.sh restore "$(f)" --target-database "$(target)"
 
 .PHONY: prod-deploy
-prod-deploy:  ## Pull the latest code and redeploy: make prod-deploy [force=1] [backup=1]
-	./scripts/deploy-update.sh $(if $(force),--force) $(if $(backup),--backup)
+prod-deploy:  ## Safe pull/build/mandatory-backup/migrate deploy: make prod-deploy [force=1]
+	./scripts/deploy-update.sh $(if $(force),--force)
