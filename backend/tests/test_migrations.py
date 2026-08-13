@@ -315,6 +315,74 @@ def test_infrastructure_settings_migration_purges_only_infrastructure(
     engine.dispose()
 
 
+def test_single_active_ticket_template_migration_requires_explicit_reconciliation(
+    fresh_database: Callable[[], str],
+) -> None:
+    """Ambiguous active layouts are never resolved by arbitrary id order."""
+    url = fresh_database()
+    run_alembic(url, "upgrade", "e4a7c2d91b65")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        ids = list(
+            connection.scalars(
+                text(
+                    "INSERT INTO ticket_templates "
+                    "(name, width_mm, header_text, footer_text, is_active) VALUES "
+                    "('Migration active A', 58, 'A', '', true), "
+                    "('Migration active B', 58, 'B', '', true) RETURNING id"
+                )
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="found 2 active templates"):
+        run_alembic(url, "upgrade", "f5c8a1d42e76")
+    with engine.begin() as connection:
+        active_ids = list(
+            connection.scalars(text("SELECT id FROM ticket_templates WHERE is_active ORDER BY id"))
+        )
+        # An operator deliberately selects B; the migration did not choose it.
+        connection.execute(
+            text("UPDATE ticket_templates SET is_active = false WHERE id = :id"),
+            {"id": ids[0]},
+        )
+    assert active_ids == ids
+
+    run_alembic(url, "upgrade", "f5c8a1d42e76")
+    with engine.begin() as connection:
+        index = connection.execute(
+            text(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' "
+                "AND indexname = 'uq_ticket_templates_single_active'"
+            )
+        ).scalar_one()
+    assert "UNIQUE INDEX" in index
+    assert "WHERE is_active" in index
+
+    run_alembic(url, "downgrade", "e4a7c2d91b65")
+    with engine.begin() as connection:
+        assert (
+            connection.scalar(
+                text(
+                    "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' "
+                    "AND indexname = 'uq_ticket_templates_single_active'"
+                )
+            )
+            == 0
+        )
+        connection.execute(
+            text("UPDATE ticket_templates SET is_active = true WHERE id = :id"),
+            {"id": ids[0]},
+        )
+        # Leave a valid state before re-applying the migration.
+        connection.execute(
+            text("UPDATE ticket_templates SET is_active = false WHERE id = :id"),
+            {"id": ids[1]},
+        )
+
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
 def test_return_quantity_migration_backfills_every_legacy_effect(
     fresh_database: Callable[[], str],
 ) -> None:
