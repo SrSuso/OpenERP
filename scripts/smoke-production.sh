@@ -15,5 +15,5 @@ CURRENT="$("${COMPOSE[@]}" run --rm --no-deps migrate uv run alembic current)"
   exit 1
 }
 
-"${COMPOSE[@]}" exec -T web wget --spider -q http://127.0.0.1/healthz
+"${COMPOSE[@]}" exec -T web wget --spider -q http://127.0.0.1:8080/healthz
 printf 'production smoke checks passed (API ready, database at head, web healthy)\n'

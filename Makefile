@@ -270,6 +270,11 @@ prod-preserve-current-images:  ## Retag running images with the previous immutab
 prod-validate-web-config:  ## Validate target nginx config before maintenance downtime
 	$(PROD_COMPOSE) run --rm --no-deps web nginx -t
 
+.PHONY: prod-validate-api-config
+prod-validate-api-config:  ## Validate target production settings before maintenance downtime
+	$(PROD_COMPOSE) run --rm --no-deps api uv run python -c \
+	  'from app.core.config import get_settings; get_settings().validate_runtime()'
+
 .PHONY: prod-preflight
 prod-preflight:  ## Validate production config/tools and free space without touching PostgreSQL
 	@command -v docker >/dev/null || (echo 'ERROR: docker not found' >&2; exit 2)

@@ -92,6 +92,7 @@ make prod-preserve-current-images
 log "building immutable images for ${TARGET_VERSION:0:12} while the old version remains online"
 make prod-build
 make prod-validate-web-config
+make prod-validate-api-config
 
 printf 'previous=%s\ntarget=%s\nstarted_at_utc=%s\n' \
   "${DEPLOYED_BEFORE}" "${TARGET_VERSION}" "$(date -u +%Y%m%dT%H%M%SZ)" \

@@ -47,4 +47,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
 # Overridden per service in docker/compose.prod.yml: the API runs uvicorn,
 # the worker runs `python -m app.jobs.worker`, `migrate` runs `alembic
 # upgrade head`. This default is just "run the API" for `docker run`.
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-proxy-headers"]
