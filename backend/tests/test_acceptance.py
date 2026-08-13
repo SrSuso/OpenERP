@@ -152,11 +152,11 @@ async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: Lo
             "lines": [
                 {
                     "sale_line_id": sale_line_id,
-                    "quantity_packages": "1",
-                    "economic": True,
-                    "physical": False,
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "0",
                 }
-            ]
+            ],
+            "refund_method": "CASH",
         },
     )
     assert economic_only.status_code == 201
@@ -172,9 +172,8 @@ async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: Lo
             "lines": [
                 {
                     "sale_line_id": sale_line_id,
-                    "quantity_packages": "1",
-                    "economic": False,
-                    "physical": True,
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "1",
                 }
             ]
         },

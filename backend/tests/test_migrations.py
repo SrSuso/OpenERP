@@ -257,6 +257,171 @@ def test_pos_terminal_migration_preserves_existing_sales_and_is_reversible(
     engine.dispose()
 
 
+def test_return_quantity_migration_backfills_every_legacy_effect(
+    fresh_database: Callable[[], str],
+) -> None:
+    """Economic-only, physical-only and combined history are unambiguous."""
+    url = fresh_database()
+    run_alembic(url, "upgrade", "3e7b1c9d5a42")
+    engine = _sync_engine(url)
+
+    with engine.begin() as connection:
+        warehouse_id, location_id = connection.execute(
+            text(
+                "SELECT w.id, l.id FROM warehouses AS w "
+                "JOIN locations AS l ON l.warehouse_id = w.id ORDER BY w.id, l.id LIMIT 1"
+            )
+        ).one()
+        product_id = connection.scalar(
+            text(
+                "INSERT INTO products "
+                "(sku, name, description, base_unit_name, cost, list_price, tax_rate, min_stock, "
+                "track_lots, track_expiration, is_active, created_at, updated_at) "
+                "VALUES ('RETURN-BACKFILL', 'Return backfill', '', 'UD', 1, 10, 0, 0, false, "
+                "false, true, now(), now()) RETURNING id"
+            )
+        )
+        package_id = connection.scalar(
+            text(
+                "INSERT INTO product_packages "
+                "(product_id, name, factor, is_base, created_at, updated_at) "
+                "VALUES (:product_id, 'UD', 1, true, now(), now()) RETURNING id"
+            ),
+            {"product_id": product_id},
+        )
+        sale_id = connection.scalar(
+            text(
+                "INSERT INTO sales "
+                "(warehouse_id, location_id, status, notes, completed_at, prices_include_tax, "
+                "created_at, updated_at) VALUES "
+                "(:warehouse_id, :location_id, 'COMPLETED', '', now(), true, now(), now()) "
+                "RETURNING id"
+            ),
+            {"warehouse_id": warehouse_id, "location_id": location_id},
+        )
+        line_ids: list[int] = []
+        for returned in (2, 3, 4, 1):
+            line_ids.append(
+                connection.scalar(
+                    text(
+                        "INSERT INTO sale_lines "
+                        "(sale_id, product_id, product_sku, product_name, package_id, "
+                        "package_name, "
+                        "package_factor, quantity_packages, quantity_base, quantity_returned, "
+                        "unit_price, unit_cost, tracks_stock, track_lots, tax_rate, discount_rate, "
+                        "created_at, updated_at) VALUES "
+                        "(:sale_id, :product_id, 'RETURN-BACKFILL', 'Return backfill', "
+                        ":package_id, 'UD', 1, 10, 10, :returned, 10, 1, true, false, 0, 0, "
+                        "now(), now()) RETURNING id"
+                    ),
+                    {
+                        "sale_id": sale_id,
+                        "product_id": product_id,
+                        "package_id": package_id,
+                        "returned": returned,
+                    },
+                )
+            )
+
+        for line_id, quantity, economic, physical in (
+            (line_ids[0], 2, True, False),
+            (line_ids[1], 3, False, True),
+            (line_ids[2], 4, True, True),
+            (line_ids[3], 1, False, False),
+        ):
+            return_id = connection.scalar(
+                text(
+                    "INSERT INTO returns "
+                    "(sale_id, notes, created_at, updated_at) "
+                    "VALUES (:sale_id, '', now(), now()) RETURNING id"
+                ),
+                {"sale_id": sale_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO return_lines "
+                    "(return_id, sale_line_id, product_id, package_id, package_name, "
+                    "package_factor, quantity_packages, quantity_base, is_economic, is_physical, "
+                    "refund_amount, created_at, updated_at) VALUES "
+                    "(:return_id, :line_id, :product_id, :package_id, 'UD', 1, :quantity, "
+                    ":quantity, :economic, :physical, :amount, now(), now())"
+                ),
+                {
+                    "return_id": return_id,
+                    "line_id": line_id,
+                    "product_id": product_id,
+                    "package_id": package_id,
+                    "quantity": quantity,
+                    "economic": economic,
+                    "physical": physical,
+                    "amount": quantity * 10 if economic else 0,
+                },
+            )
+
+    # The fourth boolean combination never represented a valid return. The
+    # migration must stop for explicit reconciliation instead of inventing
+    # whether the old quantity meant money or merchandise.
+    with pytest.raises(RuntimeError, match="neither an economic nor physical effect"):
+        run_alembic(url, "upgrade", "6a4d2f8c1b73")
+    with engine.begin() as connection:
+        untouched = connection.execute(
+            text(
+                "SELECT quantity_base, is_economic, is_physical FROM return_lines "
+                "WHERE sale_line_id = :line_id"
+            ),
+            {"line_id": line_ids[3]},
+        ).one()
+        assert untouched == (1, False, False)
+        # This is the explicit business reconciliation an operator would make.
+        connection.execute(
+            text(
+                "UPDATE return_lines SET is_economic = true, refund_amount = 10 "
+                "WHERE sale_line_id = :line_id"
+            ),
+            {"line_id": line_ids[3]},
+        )
+
+    run_alembic(url, "upgrade", "6a4d2f8c1b73")
+    with engine.begin() as connection:
+        counters = connection.execute(
+            text(
+                "SELECT quantity_refunded, quantity_physically_returned FROM sale_lines "
+                "WHERE id = ANY(:ids) ORDER BY id"
+            ),
+            {"ids": line_ids},
+        ).all()
+        quantities = connection.execute(
+            text(
+                "SELECT refund_quantity_base, stock_return_quantity_base FROM return_lines "
+                "ORDER BY id"
+            )
+        ).all()
+        refunds = connection.execute(
+            text("SELECT amount, method, status FROM refunds ORDER BY return_id")
+        ).all()
+    assert counters == [(2, 0), (0, 3), (4, 4), (1, 0)]
+    assert quantities == [(2, 0), (0, 3), (4, 4), (1, 0)]
+    assert refunds == [
+        (20, None, "COMPLETED"),
+        (40, None, "COMPLETED"),
+        (10, None, "COMPLETED"),
+    ]
+
+    run_alembic(url, "downgrade", "3e7b1c9d5a42")
+    with engine.begin() as connection:
+        restored = connection.execute(
+            text("SELECT quantity_base, is_economic, is_physical FROM return_lines ORDER BY id")
+        ).all()
+    assert restored == [
+        (2, True, False),
+        (3, False, True),
+        (4, True, True),
+        (1, True, False),
+    ]
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
 def test_a_formula_naming_margin_amount_blocks_without_data_loss(
     fresh_database: Callable[[], str],
 ) -> None:

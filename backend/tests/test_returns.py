@@ -116,19 +116,19 @@ async def test_economic_only_return_refunds_without_touching_stock(
             "lines": [
                 {
                     "sale_line_id": sale_line_id,
-                    "quantity_packages": "1",
-                    "economic": True,
-                    "physical": False,
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "0",
                 }
-            ]
+            ],
+            "refund_method": "CASH",
         },
     )
 
     assert response.status_code == 201
     body = response.json()
     line = body["lines"][0]
-    assert line["is_economic"] is True
-    assert line["is_physical"] is False
+    assert line["refund_quantity_packages"] == "1.000000"
+    assert line["stock_return_quantity_packages"] == "0.000000"
     # Se devuelve exactamente lo que se cobró: el PVP ya lleva el IVA, así
     # que 1 * 10.00 = 10, no 10 + 21%.
     assert line["refund_amount"] == "10.000000"
@@ -141,7 +141,8 @@ async def test_economic_only_return_refunds_without_touching_stock(
     assert balance_after == balance_before
 
     refreshed_sale = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
-    assert refreshed_sale["lines"][0]["quantity_returned"] == "1.000000"
+    assert refreshed_sale["lines"][0]["quantity_refunded"] == "1.000000"
+    assert refreshed_sale["lines"][0]["quantity_physically_returned"] == "0.000000"
 
 
 async def test_physical_only_return_restocks_without_refunding(
@@ -166,9 +167,8 @@ async def test_physical_only_return_restocks_without_refunding(
             "lines": [
                 {
                     "sale_line_id": sale_line_id,
-                    "quantity_packages": "2",
-                    "economic": False,
-                    "physical": True,
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "2",
                 }
             ]
         },
@@ -178,6 +178,7 @@ async def test_physical_only_return_restocks_without_refunding(
     line = response.json()["lines"][0]
     assert line["refund_amount"] == "0.000000"
     assert line["stock_movement_id"] is not None
+    assert response.json()["refund"] is None
 
     balances = (
         await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
@@ -204,13 +205,22 @@ async def test_full_return_refunds_and_restocks(
 
     response = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
-        json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "2"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_line_id,
+                    "refund_quantity_packages": "2",
+                    "stock_return_quantity_packages": "2",
+                }
+            ],
+            "refund_method": "CASH",
+        },
     )
 
     assert response.status_code == 201
     line = response.json()["lines"][0]
-    assert line["is_economic"] is True
-    assert line["is_physical"] is True
+    assert line["refund_quantity_packages"] == "2.000000"
+    assert line["stock_return_quantity_packages"] == "2.000000"
     assert line["refund_amount"] == "10.000000"
 
     balances = (
@@ -237,7 +247,16 @@ async def test_returning_more_than_sold_is_rejected(
 
     response = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
-        json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "3"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_line_id,
+                    "refund_quantity_packages": "3",
+                    "stock_return_quantity_packages": "3",
+                }
+            ],
+            "refund_method": "CASH",
+        },
     )
 
     assert response.status_code == 422
@@ -260,13 +279,31 @@ async def test_returning_cumulatively_over_the_limit_is_rejected(
     sale_line_id = sale["lines"][0]["id"]
     first = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
-        json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "2"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_line_id,
+                    "refund_quantity_packages": "2",
+                    "stock_return_quantity_packages": "2",
+                }
+            ],
+            "refund_method": "CASH",
+        },
     )
     assert first.status_code == 201
 
     second = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
-        json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "2"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_line_id,
+                    "refund_quantity_packages": "2",
+                    "stock_return_quantity_packages": "2",
+                }
+            ],
+            "refund_method": "CASH",
+        },
     )
 
     # The payload was valid against the sold quantity, but now collides
@@ -275,7 +312,7 @@ async def test_returning_cumulatively_over_the_limit_is_rejected(
     assert second.status_code == 409
 
 
-async def test_return_line_must_be_economic_physical_or_both(
+async def test_return_line_needs_an_economic_or_physical_quantity(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
@@ -297,9 +334,8 @@ async def test_return_line_must_be_economic_physical_or_both(
             "lines": [
                 {
                     "sale_line_id": sale_line_id,
-                    "quantity_packages": "1",
-                    "economic": False,
-                    "physical": False,
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "0",
                 }
             ]
         },
@@ -321,7 +357,15 @@ async def test_cannot_return_against_a_draft_sale(
 
     response = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
-        json={"lines": [{"sale_line_id": 1, "quantity_packages": "1"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": 1,
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "1",
+                }
+            ]
+        },
     )
 
     assert response.status_code == 422
@@ -346,7 +390,15 @@ async def test_return_line_must_belong_to_the_sale(
 
     response = await client.post(
         f"/api/v1/sales/{sale_a['id']}/returns",
-        json={"lines": [{"sale_line_id": sale_b_line_id, "quantity_packages": "1"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_b_line_id,
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "1",
+                }
+            ]
+        },
     )
 
     assert response.status_code == 422
@@ -393,7 +445,15 @@ async def test_lot_tracked_product_requires_a_lot_number_to_restock(
 
     response = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
-        json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "1"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_line_id,
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "1",
+                }
+            ]
+        },
     )
 
     assert response.status_code == 422
@@ -421,7 +481,8 @@ async def test_untracked_product_rejects_a_lot_number_without_partial_return(
             "lines": [
                 {
                     "sale_line_id": sale_line_id,
-                    "quantity_packages": "1",
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "1",
                     "lot_number": "FORBIDDEN-LOT",
                 }
             ]
@@ -431,7 +492,8 @@ async def test_untracked_product_rejects_a_lot_number_without_partial_return(
     assert response.status_code == 422
     assert (await client.get("/api/v1/returns", params={"sale_id": sale["id"]})).json() == []
     refreshed_sale = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
-    assert refreshed_sale["lines"][0]["quantity_returned"] == "0.000000"
+    assert refreshed_sale["lines"][0]["quantity_refunded"] == "0.000000"
+    assert refreshed_sale["lines"][0]["quantity_physically_returned"] == "0.000000"
     balances = (
         await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
     ).json()
@@ -483,10 +545,12 @@ async def test_lot_tracked_product_restocks_into_the_given_lot(
             "lines": [
                 {
                     "sale_line_id": sale_line_id,
-                    "quantity_packages": "1",
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "1",
                     "lot_number": "LOTE-DEVUELTO",
                 }
-            ]
+            ],
+            "refund_method": "CASH",
         },
     )
 
@@ -513,7 +577,15 @@ async def test_cashier_cannot_process_or_read_returns(
     assert (
         await client.post(
             "/api/v1/sales/1/returns",
-            json={"lines": [{"sale_line_id": 1, "quantity_packages": "1"}]},
+            json={
+                "lines": [
+                    {
+                        "sale_line_id": 1,
+                        "refund_quantity_packages": "0",
+                        "stock_return_quantity_packages": "1",
+                    }
+                ]
+            },
         )
     ).status_code == 403
 
@@ -537,7 +609,16 @@ async def test_admin_and_manager_can_process_returns(
     await login(role_name="MANAGER")
     response = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
-        json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "1"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": sale_line_id,
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "1",
+                }
+            ],
+            "refund_method": "CASH",
+        },
     )
 
     assert response.status_code == 201
@@ -561,7 +642,16 @@ async def test_list_and_get_return(
     created = (
         await client.post(
             f"/api/v1/sales/{sale['id']}/returns",
-            json={"lines": [{"sale_line_id": sale_line_id, "quantity_packages": "1"}]},
+            json={
+                "lines": [
+                    {
+                        "sale_line_id": sale_line_id,
+                        "refund_quantity_packages": "1",
+                        "stock_return_quantity_packages": "1",
+                    }
+                ],
+                "refund_method": "CASH",
+            },
         )
     ).json()
 
@@ -614,11 +704,11 @@ async def test_refund_with_prices_include_tax_matches_what_was_actually_charged(
                 "lines": [
                     {
                         "sale_line_id": sale_line_id,
-                        "quantity_packages": "1",
-                        "economic": True,
-                        "physical": False,
+                        "refund_quantity_packages": "1",
+                        "stock_return_quantity_packages": "0",
                     }
-                ]
+                ],
+                "refund_method": "CASH",
             },
         )
 
@@ -665,11 +755,11 @@ async def test_returning_a_product_without_stock_control_creates_no_stock(
             "lines": [
                 {
                     "sale_line_id": sale["lines"][0]["id"],
-                    "quantity_packages": "1",
-                    "economic": True,
-                    "physical": True,
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "1",
                 }
-            ]
+            ],
+            "refund_method": "CASH",
         },
     )
 
@@ -677,6 +767,6 @@ async def test_returning_a_product_without_stock_control_creates_no_stock(
     line = response.json()["lines"][0]
     # La devolución se registra como física —la mercancía vuelve al
     # montón— pero sin movimiento de almacén detrás.
-    assert line["is_physical"] is True
+    assert line["stock_return_quantity_packages"] == "1.000000"
     assert line["stock_movement_id"] is None
     assert (await client.get(f"/api/v1/stock-balance?product_id={product['id']}")).json() == []

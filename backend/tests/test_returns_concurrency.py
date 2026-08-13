@@ -17,10 +17,10 @@ from app.inventory import service as inventory_service
 from app.inventory.models import StockMovement
 from app.rbac.models import Role
 from app.returns import service as returns_service
-from app.returns.models import Return, ReturnLine
+from app.returns.models import Refund, Return, ReturnLine
 from app.returns.schemas import ReturnCreate, ReturnLineCreate
 from app.sales import service as sales_service
-from app.sales.models import SaleLine
+from app.sales.models import PaymentMethod, SaleLine
 from app.sales.schemas import CheckoutRequest, PaymentCreate, SaleCreate, SaleLineCreate
 from app.users.models import User
 
@@ -116,20 +116,21 @@ async def _ready_return(
 
 def _return_payload(
     ready: ReadyReturn,
-    quantity: str,
+    refund_quantity: str,
     *,
-    economic: bool = True,
-    physical: bool = True,
+    stock_quantity: str | None = None,
 ) -> ReturnCreate:
+    refund = Decimal(refund_quantity)
+    stock = refund if stock_quantity is None else Decimal(stock_quantity)
     return ReturnCreate(
         lines=[
             ReturnLineCreate(
                 sale_line_id=ready.sale_line_id,
-                quantity_packages=Decimal(quantity),
-                economic=economic,
-                physical=physical,
+                refund_quantity_packages=refund,
+                stock_return_quantity_packages=stock,
             )
-        ]
+        ],
+        refund_method=PaymentMethod.CASH if refund > 0 else None,
     )
 
 
@@ -139,35 +140,33 @@ def test_return_fingerprint_normalizes_decimal_and_line_order() -> None:
         lines=[
             ReturnLineCreate(
                 sale_line_id=20,
-                quantity_packages=Decimal("2.0"),
-                economic=True,
-                physical=False,
+                refund_quantity_packages=Decimal("2.0"),
+                stock_return_quantity_packages=Decimal(0),
                 lot_number="IGNORED-FOR-ECONOMIC-ONLY",
             ),
             ReturnLineCreate(
                 sale_line_id=10,
-                quantity_packages=Decimal("1"),
-                economic=False,
-                physical=True,
+                refund_quantity_packages=Decimal(0),
+                stock_return_quantity_packages=Decimal("1"),
             ),
         ],
+        refund_method=PaymentMethod.CASH,
     )
     right = ReturnCreate(
         notes="same",
         lines=[
             ReturnLineCreate(
                 sale_line_id=10,
-                quantity_packages=Decimal("1.000000"),
-                economic=False,
-                physical=True,
+                refund_quantity_packages=Decimal(0),
+                stock_return_quantity_packages=Decimal("1.000000"),
             ),
             ReturnLineCreate(
                 sale_line_id=20,
-                quantity_packages=Decimal("2"),
-                economic=True,
-                physical=False,
+                refund_quantity_packages=Decimal("2"),
+                stock_return_quantity_packages=Decimal(0),
             ),
         ],
+        refund_method=PaymentMethod.CASH,
     )
 
     assert returns_service.return_request_fingerprint(
@@ -175,10 +174,18 @@ def test_return_fingerprint_normalizes_decimal_and_line_order() -> None:
     ) == returns_service.return_request_fingerprint(7, right)
 
 
-async def test_concurrent_returns_cannot_exceed_the_sold_quantity(
+@pytest.mark.parametrize(
+    ("refund_quantity", "stock_quantity"),
+    [("4", "0"), ("0", "4")],
+    ids=["economic-capacity", "physical-capacity"],
+)
+async def test_concurrent_returns_cannot_exceed_each_independent_capacity(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
+    refund_quantity: str,
+    stock_quantity: str,
 ) -> None:
-    ready = await _ready_return(committing_sessionmaker, tag="D1")
+    dimension = "ECONOMIC" if Decimal(refund_quantity) > 0 else "PHYSICAL"
+    ready = await _ready_return(committing_sessionmaker, tag=f"D1-{dimension}")
 
     async def attempt(key: str) -> str:
         async with committing_sessionmaker() as session:
@@ -186,7 +193,11 @@ async def test_concurrent_returns_cannot_exceed_the_sold_quantity(
                 await returns_service.create_return(
                     session,
                     ready.sale_id,
-                    _return_payload(ready, "4"),
+                    _return_payload(
+                        ready,
+                        refund_quantity,
+                        stock_quantity=stock_quantity,
+                    ),
                     idempotency_key=key,
                     actor_user_id=ready.actor_user_id,
                 )
@@ -203,7 +214,9 @@ async def test_concurrent_returns_cannot_exceed_the_sold_quantity(
         return_count = await session.scalar(
             select(func.count()).select_from(Return).where(Return.sale_id == ready.sale_id)
         )
-    assert sale_line is not None and sale_line.quantity_returned == Decimal("4")
+    assert sale_line is not None
+    assert sale_line.quantity_refunded == Decimal(refund_quantity)
+    assert sale_line.quantity_physically_returned == Decimal(stock_quantity)
     assert return_count == 1
 
 
@@ -233,6 +246,53 @@ async def test_return_same_key_replays_sequentially(
         )
         await session.commit()
     assert replay.id == first_id
+
+
+async def test_physical_only_return_retry_restocks_once_without_a_refund(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    ready = await _ready_return(committing_sessionmaker, tag="D2-PHYSICAL")
+    payload = _return_payload(ready, "0", stock_quantity="2")
+    key = "return-d2-physical-replay"
+    async with committing_sessionmaker() as session:
+        first = await returns_service.create_return(
+            session,
+            ready.sale_id,
+            payload,
+            idempotency_key=key,
+            actor_user_id=ready.actor_user_id,
+        )
+        await session.commit()
+        first_id = first.id
+    async with committing_sessionmaker() as session:
+        replay = await returns_service.create_return(
+            session,
+            ready.sale_id,
+            payload,
+            idempotency_key=key,
+            actor_user_id=ready.actor_user_id,
+        )
+        await session.commit()
+
+    assert replay.id == first_id
+    async with committing_sessionmaker() as session:
+        refund_count = await session.scalar(
+            select(func.count()).select_from(Refund).where(Refund.return_id == first_id)
+        )
+        movement_count = await session.scalar(
+            select(func.count())
+            .select_from(StockMovement)
+            .where(
+                StockMovement.reference_type == "return",
+                StockMovement.reference_id == first_id,
+            )
+        )
+        line = await session.get(SaleLine, ready.sale_line_id)
+    assert refund_count == 0
+    assert movement_count == 1
+    assert line is not None
+    assert line.quantity_refunded == 0
+    assert line.quantity_physically_returned == Decimal("2")
 
 
 async def test_return_same_key_serializes_concurrent_requests(
@@ -338,4 +398,45 @@ async def test_physical_and_economic_return_retry_applies_each_effect_once(
     assert lines[0].refund_amount == Decimal("4")
     assert movement_count == 1
     assert balances[0].quantity == Decimal("7")  # 10 - 5 sold + 2 returned once
-    assert sale_line is not None and sale_line.quantity_returned == Decimal("2")
+    assert sale_line is not None
+    assert sale_line.quantity_refunded == Decimal("2")
+    assert sale_line.quantity_physically_returned == Decimal("2")
+
+
+async def test_full_economic_and_full_physical_returns_can_both_succeed_concurrently(
+    committing_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    """Independent capacities: each transaction may consume all of its leg."""
+    ready = await _ready_return(committing_sessionmaker, tag="D7-INDEPENDENT")
+
+    async def attempt(payload: ReturnCreate, key: str) -> int:
+        async with committing_sessionmaker() as session:
+            ret = await returns_service.create_return(
+                session,
+                ready.sale_id,
+                payload,
+                idempotency_key=key,
+                actor_user_id=ready.actor_user_id,
+            )
+            await session.commit()
+            return ret.id
+
+    ids = await asyncio.gather(
+        attempt(_return_payload(ready, "5", stock_quantity="0"), "return-d7-economic"),
+        attempt(_return_payload(ready, "0", stock_quantity="5"), "return-d7-physical"),
+    )
+    assert ids[0] != ids[1]
+
+    async with committing_sessionmaker() as session:
+        sale_line = await session.get(SaleLine, ready.sale_line_id)
+        refund_count = await session.scalar(
+            select(func.count()).select_from(Refund).where(Refund.return_id.in_(ids))
+        )
+        return_count = await session.scalar(
+            select(func.count()).select_from(Return).where(Return.sale_id == ready.sale_id)
+        )
+    assert sale_line is not None
+    assert sale_line.quantity_refunded == Decimal("5")
+    assert sale_line.quantity_physically_returned == Decimal("5")
+    assert refund_count == 1
+    assert return_count == 2

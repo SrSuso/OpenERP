@@ -18,6 +18,7 @@ SALES_TESTS := \
 	tests/test_checkout.py \
 	tests/test_checkout_cashier_attribution.py \
 	tests/test_returns.py \
+	tests/test_return_quantities_refunds.py \
 	tests/test_tickets.py \
 	tests/test_sale_history.py
 PRICING_TESTS := \

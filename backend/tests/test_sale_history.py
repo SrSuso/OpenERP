@@ -162,11 +162,11 @@ async def test_completed_sale_keeps_its_fiscal_interpretation_after_settings_cha
             "lines": [
                 {
                     "sale_line_id": sale["lines"][0]["id"],
-                    "quantity_packages": "1",
-                    "economic": True,
-                    "physical": False,
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "0",
                 }
-            ]
+            ],
+            "refund_method": "CASH",
         },
     )
     assert returned.status_code == 201
@@ -296,11 +296,11 @@ async def test_completed_sale_keeps_product_category_cost_and_cashier_snapshots(
             "lines": [
                 {
                     "sale_line_id": completed["lines"][0]["id"],
-                    "quantity_packages": "1",
-                    "economic": True,
-                    "physical": True,
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "1",
                 }
-            ]
+            ],
+            "refund_method": "CASH",
         },
     )
     assert returned.status_code == 201

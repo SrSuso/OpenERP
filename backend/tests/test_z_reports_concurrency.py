@@ -22,7 +22,7 @@ from app.returns.models import Return
 from app.returns.schemas import ReturnCreate, ReturnLineCreate
 from app.sales import accounting, z_reports
 from app.sales import service as sales_service
-from app.sales.models import Payment, Sale, ZReport
+from app.sales.models import Payment, PaymentMethod, Sale, ZReport
 from app.sales.schemas import CheckoutRequest, PaymentCreate, SaleCreate, SaleLineCreate
 from app.users.models import User
 
@@ -114,11 +114,11 @@ def _return_payload(ready: ReadyZ, quantity: str = "1") -> ReturnCreate:
         lines=[
             ReturnLineCreate(
                 sale_line_id=ready.sale_line_id,
-                quantity_packages=Decimal(quantity),
-                economic=True,
-                physical=False,
+                refund_quantity_packages=Decimal(quantity),
+                stock_return_quantity_packages=Decimal(0),
             )
-        ]
+        ],
+        refund_method=PaymentMethod.CASH,
     )
 
 
@@ -245,7 +245,8 @@ async def test_return_wins_and_is_included_in_the_current_z(
         await return_session.commit()
 
     report = await asyncio.wait_for(close_task, timeout=10)
-    assert returned.created_at <= report.closed_at
+    assert returned.refund is not None
+    assert returned.refund.completed_at <= report.closed_at
     assert report.returns_count == 1
     assert report.returns_total == Decimal("5")
 
@@ -287,7 +288,8 @@ async def test_z_wins_and_waiting_return_uses_the_next_period_timestamp(
     returned = await asyncio.wait_for(return_task, timeout=10)
     following = await _close(committing_sessionmaker, ready, "z-after-waiting-return")
     assert current.returns_count == 0
-    assert returned.created_at > current.closed_at
+    assert returned.refund is not None
+    assert returned.refund.completed_at > current.closed_at
     assert following.returns_count == 1
     assert following.returns_total == Decimal("5")
 

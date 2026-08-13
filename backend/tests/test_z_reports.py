@@ -151,11 +151,42 @@ async def test_a_frozen_close_does_not_change_afterwards(
     line = sale["lines"][0]
     await client.post(
         f"/api/v1/sales/{sale_id}/returns",
-        json={"lines": [{"sale_line_id": line["id"], "quantity_packages": "1"}]},
+        json={
+            "lines": [
+                {
+                    "sale_line_id": line["id"],
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "0",
+                }
+            ],
+            "refund_method": "CASH",
+        },
     )
 
     listed = (await client.get("/api/v1/z-reports")).json()
     assert next(z for z in listed if z["id"] == closed["id"]) == closed
+
+    physical_only = await client.post(
+        f"/api/v1/sales/{sale_id}/returns",
+        json={
+            "lines": [
+                {
+                    "sale_line_id": line["id"],
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "1",
+                }
+            ]
+        },
+    )
+    assert physical_only.status_code == 201
+    assert physical_only.json()["refund"] is None
+
+    next_close = (
+        await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+    ).json()
+    assert next_close["covers_from"] == closed["closed_at"]
+    assert next_close["returns_count"] == 1
+    assert next_close["returns_total"] == "10.000000"
 
 
 async def test_the_till_cannot_be_closed_with_a_sale_in_progress(
