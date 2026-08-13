@@ -1,23 +1,17 @@
-"""Refunds and physical restocking against a completed sale.
+"""Independent economic refunds and physical restocking.
 
-Rule 9: a return line can refund money without putting stock back (a
-damaged unit written off), put stock back without refunding (a goodwill
-exchange), or both — ``is_economic``/``is_physical`` are independent flags,
-never coupled to each other.
-
-Only against a ``COMPLETED`` sale — nothing was ever fulfilled on a
-``DRAFT``/``CANCELLED`` one, so there is nothing to return. A return line
-reuses its original ``SaleLine``'s already-snapshotted
-``unit_price``/``tax_rate``/``discount_rate`` (rule 6/7) to compute the
-refund rather than re-reading the product, and increments that line's own
-``quantity_returned`` running total — same pattern as
-``PurchaseOrderLine.quantity_received`` from phases 6/9 — so a line can
-never be returned more than it sold.
+A return line records two quantities because money and merchandise need not
+move together.  Both are bounded independently by the original sale line.
+``Refund`` is optional: a goodwill exchange can put goods back without any
+economic effect and must not grow a fictitious zero-value refund row.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from datetime import datetime
+from enum import StrEnum
+
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.catalog.models import Product, ProductPackage
@@ -41,10 +35,36 @@ class Return(IntPrimaryKeyMixin, TimestampMixin, Base):
     lines: Mapped[list[ReturnLine]] = relationship(
         back_populates="return_", cascade="all, delete-orphan", order_by="ReturnLine.id"
     )
+    refund: Mapped[Refund | None] = relationship(
+        back_populates="return_", cascade="all, delete-orphan", uselist=False
+    )
 
 
 class ReturnLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "return_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "refund_quantity_packages >= 0",
+            name="refund_quantity_packages_non_negative",
+        ),
+        CheckConstraint(
+            "refund_quantity_base >= 0",
+            name="refund_quantity_base_non_negative",
+        ),
+        CheckConstraint(
+            "stock_return_quantity_packages >= 0",
+            name="stock_return_quantity_packages_non_negative",
+        ),
+        CheckConstraint(
+            "stock_return_quantity_base >= 0",
+            name="stock_return_quantity_base_non_negative",
+        ),
+        CheckConstraint(
+            "refund_quantity_base > 0 OR stock_return_quantity_base > 0",
+            name="has_economic_or_physical_quantity",
+        ),
+        CheckConstraint("refund_amount >= 0", name="refund_amount_non_negative"),
+    )
 
     return_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("returns.id"), index=True)
     sale_line_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sale_lines.id"), index=True)
@@ -55,20 +75,23 @@ class ReturnLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     package_name: Mapped[str] = mapped_column(String(50))
     package_factor: Mapped[Quantity]
 
-    quantity_packages: Mapped[Quantity]
-    quantity_base: Mapped[Quantity]
+    #: Quantity for which the customer receives the economic reversal.
+    refund_quantity_packages: Mapped[Quantity]
+    refund_quantity_base: Mapped[Quantity]
+    #: Quantity of merchandise that physically re-enters this sale's stock
+    #: location. Independent from the economic quantity above.
+    stock_return_quantity_packages: Mapped[Quantity]
+    stock_return_quantity_base: Mapped[Quantity]
 
-    #: Independent per rule 9 — see the module docstring.
-    is_economic: Mapped[bool] = mapped_column(default=True, server_default="true")
-    is_physical: Mapped[bool] = mapped_column(default=True, server_default="true")
-    #: 0 when ``is_economic`` is ``False``.
+    #: Economic value of this line, calculated from the original snapshots;
+    #: zero for a physical-only return.
     refund_amount: Mapped[Money]
-    #: Set only when ``is_physical`` and the product tracks lots — which
+    #: Set only when physical quantity is positive and the product tracks lots — which
     #: lot the unit went back into (created if new, same as a goods
     #: receipt, phase 9).
     lot_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("lots.id"), nullable=True)
-    #: Set only when ``is_physical`` — the ledger entry that put the unit
-    #: back into ``stock_balance``.
+    #: Set only when physical quantity is positive for a stock-controlled
+    #: product — the ledger entry that put the merchandise back.
     stock_movement_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("stock_movements.id"), nullable=True
     )
@@ -78,3 +101,43 @@ class ReturnLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     product: Mapped[Product] = relationship()
     package: Mapped[ProductPackage] = relationship()
     lot: Mapped[Lot | None] = relationship()
+
+
+class RefundStatus(StrEnum):
+    #: Creating a return means the operator confirms that cash was handed
+    #: back or the external card terminal operation was already performed.
+    COMPLETED = "COMPLETED"
+
+
+class Refund(IntPrimaryKeyMixin, TimestampMixin, Base):
+    """The realised economic effect of one return, absent for physical-only."""
+
+    __tablename__ = "refunds"
+    __table_args__ = (
+        UniqueConstraint("return_id", name="uq_refunds_return_id"),
+        CheckConstraint("amount >= 0", name="amount_non_negative"),
+        CheckConstraint(
+            "method IS NULL OR method IN ('CASH', 'CARD', 'OTHER')",
+            name="supported_method",
+        ),
+        CheckConstraint("status = 'COMPLETED'", name="supported_status"),
+        CheckConstraint(
+            "status <> 'COMPLETED' OR completed_at IS NOT NULL",
+            name="completed_has_timestamp",
+        ),
+    )
+
+    return_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("returns.id"))
+    amount: Mapped[Money]
+    #: Nullable only for migrated history: the old model never recorded how
+    #: the money was returned, and inventing a value would corrupt history.
+    method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default=RefundStatus.COMPLETED, server_default=RefundStatus.COMPLETED
+    )
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    processed_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=True
+    )
+
+    return_: Mapped[Return] = relationship(back_populates="refund")

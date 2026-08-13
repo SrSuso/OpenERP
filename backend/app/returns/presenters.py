@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.returns.models import Return, ReturnLine
-from app.returns.schemas import ReturnLineRead, ReturnRead
+from app.returns.models import Refund, Return, ReturnLine
+from app.returns.schemas import RefundRead, ReturnLineRead, ReturnRead
 
 
 def return_line_to_read(line: ReturnLine) -> ReturnLineRead:
@@ -17,10 +17,10 @@ def return_line_to_read(line: ReturnLine) -> ReturnLineRead:
         product_name=line.sale_line.product_name,
         package_id=line.package_id,
         package_name=line.package_name,
-        quantity_packages=line.quantity_packages,
-        quantity_base=line.quantity_base,
-        is_economic=line.is_economic,
-        is_physical=line.is_physical,
+        refund_quantity_packages=line.refund_quantity_packages,
+        refund_quantity_base=line.refund_quantity_base,
+        stock_return_quantity_packages=line.stock_return_quantity_packages,
+        stock_return_quantity_base=line.stock_return_quantity_base,
         refund_amount=line.refund_amount,
         lot_id=line.lot_id,
         lot_number=line.lot.lot_number if line.lot else None,
@@ -28,8 +28,22 @@ def return_line_to_read(line: ReturnLine) -> ReturnLineRead:
     )
 
 
+def refund_to_read(refund: Refund) -> RefundRead:
+    return RefundRead(
+        id=refund.id,
+        return_id=refund.return_id,
+        amount=refund.amount,
+        method=refund.method,
+        status=refund.status,
+        processed_by_user_id=refund.processed_by_user_id,
+        created_at=refund.created_at,
+        completed_at=refund.completed_at,
+    )
+
+
 def return_to_read(ret: Return) -> ReturnRead:
     lines = [return_line_to_read(line) for line in ret.lines]
+    refund = refund_to_read(ret.refund) if ret.refund is not None else None
     return ReturnRead(
         id=ret.id,
         sale_id=ret.sale_id,
@@ -37,5 +51,6 @@ def return_to_read(ret: Return) -> ReturnRead:
         processed_by_user_id=ret.processed_by_user_id,
         created_at=ret.created_at,
         lines=lines,
-        total_refund=sum((line.refund_amount for line in lines), start=Decimal(0)),
+        refund=refund,
+        total_refund=refund.amount if refund is not None else Decimal(0),
     )

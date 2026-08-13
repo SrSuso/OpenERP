@@ -32,7 +32,7 @@ from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.idempotency import service as idempotency_service
-from app.returns.models import Return, ReturnLine
+from app.returns.models import Refund, RefundStatus, Return
 from app.sales import accounting
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus, ZReport
 from app.sales.service import compute_line_totals, payable
@@ -141,29 +141,23 @@ async def _totals(
             for method, amount in tendered.items():
                 by_method[method] += amount - change if method is PaymentMethod.CASH else amount
 
-    # Las devoluciones del turno se cuentan por cuándo se hicieron, no por
-    # cuándo se vendió lo devuelto: el dinero sale del cajón hoy aunque la
-    # compra fuera de la semana pasada. Y sólo las de esta caja: con dos
-    # almacenes, sin filtrar, las dos Z se restarían las mismas.
-    returns_stmt = (
-        select(Return)
+    # Only completed economic effects belong in the Z. A physical-only
+    # goodwill exchange has no Refund row and cannot reduce the till.
+    refunds_stmt = (
+        select(Refund)
+        .join(Return, Return.id == Refund.return_id)
         .join(Sale, Sale.id == Return.sale_id)
-        .where(Sale.warehouse_id == warehouse_id)
+        .where(
+            Sale.warehouse_id == warehouse_id,
+            Refund.status == RefundStatus.COMPLETED,
+        )
     )
     if since is not None:
-        returns_stmt = returns_stmt.where(Return.created_at > since)
+        refunds_stmt = refunds_stmt.where(Refund.completed_at > since)
     if until is not None:
-        returns_stmt = returns_stmt.where(Return.created_at <= until)
-    returns = list((await session.execute(returns_stmt)).scalars())
-    returns_total = Decimal(0)
-    if returns:
-        refund_lines = (
-            await session.execute(
-                select(ReturnLine).where(ReturnLine.return_id.in_([r.id for r in returns]))
-            )
-        ).scalars()
-        for refund in refund_lines:
-            returns_total += refund.refund_amount
+        refunds_stmt = refunds_stmt.where(Refund.completed_at <= until)
+    refunds = list((await session.execute(refunds_stmt)).scalars())
+    returns_total = sum((refund.amount for refund in refunds), Decimal(0))
 
     return {
         "covers_from": since,
@@ -174,7 +168,7 @@ async def _totals(
         "cash_total": _q(by_method[PaymentMethod.CASH]),
         "card_total": _q(by_method[PaymentMethod.CARD]),
         "other_total": _q(by_method[PaymentMethod.OTHER]),
-        "returns_count": len(returns),
+        "returns_count": len(refunds),
         "returns_total": _q(returns_total),
     }
 

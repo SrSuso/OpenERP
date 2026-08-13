@@ -123,6 +123,20 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
 
 class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "sale_lines"
+    __table_args__ = (
+        CheckConstraint("quantity_refunded >= 0", name="quantity_refunded_non_negative"),
+        CheckConstraint(
+            "quantity_refunded <= quantity_base", name="quantity_refunded_not_above_sold"
+        ),
+        CheckConstraint(
+            "quantity_physically_returned >= 0",
+            name="quantity_physically_returned_non_negative",
+        ),
+        CheckConstraint(
+            "quantity_physically_returned <= quantity_base",
+            name="quantity_physically_returned_not_above_sold",
+        ),
+    )
 
     sale_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sales.id"), index=True)
     product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id"), index=True)
@@ -145,11 +159,13 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: above (rule 3) — what phase 13's checkout actually moves out of the
     #: ledger.
     quantity_base: Mapped[Quantity]
-    #: Running total already given back through ``app.returns`` (phase 14)
-    #: — same pattern as ``PurchaseOrderLine.quantity_received`` (phases
-    #: 6/9). Never exceeds ``quantity_base``; a line can't be returned twice
-    #: over.
-    quantity_returned: Mapped[Quantity] = mapped_column(default=Decimal(0), server_default="0")
+    #: Independent running totals maintained under ``Sale FOR UPDATE`` by
+    #: ``app.returns``. A goodwill exchange may increase only the physical
+    #: counter; a damaged/not-returned item may increase only the economic one.
+    quantity_refunded: Mapped[Quantity] = mapped_column(default=Decimal(0), server_default="0")
+    quantity_physically_returned: Mapped[Quantity] = mapped_column(
+        default=Decimal(0), server_default="0"
+    )
 
     #: Price snapshot, per base unit — copied from ``Product.list_price`` at
     #: the moment the line was added, never recomputed from it afterwards

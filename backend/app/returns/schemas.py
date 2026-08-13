@@ -5,32 +5,47 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.returns.models import RefundStatus
+from app.sales.models import PaymentMethod
 
 
 class ReturnLineCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     sale_line_id: int
-    #: In the same package the line was originally sold in — a return
-    #: never re-picks a different presentation.
-    quantity_packages: Decimal = Field(gt=0)
-    #: Independent per rule 9 — at least one must be true.
-    economic: bool = True
-    physical: bool = True
-    #: Required only when ``physical`` and the product tracks lots. Reuses
+    #: Independent quantities, both in the presentation originally sold.
+    refund_quantity_packages: Decimal = Field(default=Decimal(0), ge=0)
+    stock_return_quantity_packages: Decimal = Field(default=Decimal(0), ge=0)
+    #: Required only when physical quantity is positive and the product tracks lots. Reuses
     #: an existing lot with this number for the product if one exists,
     #: otherwise creates it (same convenience as a goods receipt, phase 9).
     lot_number: str | None = Field(default=None, min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def _at_least_one_effect(self) -> ReturnLineCreate:
-        if not self.economic and not self.physical:
-            raise ValueError("A return line must be economic, physical, or both.")
+        if self.refund_quantity_packages == 0 and self.stock_return_quantity_packages == 0:
+            raise ValueError("A return line needs an economic or physical quantity.")
         return self
 
 
 class ReturnCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     notes: str = Field(default="", max_length=2000)
     lines: list[ReturnLineCreate] = Field(min_length=1)
+    #: Required exactly when at least one line has an economic quantity.
+    refund_method: PaymentMethod | None = None
+
+    @model_validator(mode="after")
+    def _refund_method_matches_effect(self) -> ReturnCreate:
+        has_economic_effect = any(line.refund_quantity_packages > 0 for line in self.lines)
+        if has_economic_effect and self.refund_method is None:
+            raise ValueError("refund_method is required for an economic return.")
+        if not has_economic_effect and self.refund_method is not None:
+            raise ValueError("refund_method is forbidden when no money is being refunded.")
+        return self
 
 
 class ReturnLineRead(BaseModel):
@@ -41,14 +56,25 @@ class ReturnLineRead(BaseModel):
     product_name: str
     package_id: int
     package_name: str
-    quantity_packages: Decimal
-    quantity_base: Decimal
-    is_economic: bool
-    is_physical: bool
+    refund_quantity_packages: Decimal
+    refund_quantity_base: Decimal
+    stock_return_quantity_packages: Decimal
+    stock_return_quantity_base: Decimal
     refund_amount: Decimal
     lot_id: int | None
     lot_number: str | None
     stock_movement_id: int | None
+
+
+class RefundRead(BaseModel):
+    id: int
+    return_id: int
+    amount: Decimal
+    method: PaymentMethod | None
+    status: RefundStatus
+    processed_by_user_id: int | None
+    created_at: datetime
+    completed_at: datetime
 
 
 class ReturnRead(BaseModel):
@@ -58,5 +84,7 @@ class ReturnRead(BaseModel):
     processed_by_user_id: int | None
     created_at: datetime
     lines: list[ReturnLineRead]
-    #: Computed, not stored — the sum of each line's own snapshot.
+    refund: RefundRead | None
+    #: Compatibility/convenience projection of ``refund.amount``; zero when
+    #: this is a physical-only return and no Refund exists.
     total_refund: Decimal

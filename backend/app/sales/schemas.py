@@ -44,8 +44,11 @@ class SaleLineRead(BaseModel):
     package_factor: Decimal
     quantity_packages: Decimal
     quantity_base: Decimal
-    #: Already given back through a return (phase 14) — 0 until one exists.
-    quantity_returned: Decimal
+    #: Economic and physical return capacity are consumed independently.
+    quantity_refunded: Decimal
+    quantity_physically_returned: Decimal
+    tracks_stock: bool
+    track_lots: bool
     #: Price of one selected package, computed from the line snapshots. The
     #: current catalogue prices base units; packages have no price override.
     package_price: Decimal
