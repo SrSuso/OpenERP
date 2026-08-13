@@ -23,10 +23,12 @@ class Dashboard(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "dashboards"
 
     name: Mapped[str] = mapped_column(String(100))
-    #: Nullable: the creator may since be deactivated (rule 14) without
-    #: invalidating a dashboard others still use.
+    #: Legacy rows may be NULL, but they are private-orphaned rather than
+    #: implicitly shared.  Deactivating a user does not delete it (rule 14),
+    #: so owned dashboards keep a valid FK and can never change hands by
+    #: accident.
     owner_user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("users.id"), nullable=True
+        BigInteger, ForeignKey("users.id"), nullable=True, index=True
     )
 
     widgets: Mapped[list[DashboardWidget]] = relationship(

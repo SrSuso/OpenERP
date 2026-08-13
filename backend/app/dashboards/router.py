@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import CurrentUser, SessionDep
 from app.dashboards import service
 from app.dashboards.metrics import PARAMS_BY_METRIC
 from app.dashboards.presenters import dashboard_to_read as _to_read
@@ -39,22 +39,26 @@ async def list_metrics() -> list[MetricDescriptorRead]:
 
 
 @router.get("/dashboards", response_model=list[DashboardRead], dependencies=[_require_read])
-async def list_dashboards(session: SessionDep) -> list[DashboardRead]:
-    return [_to_read(d) for d in await service.list_dashboards(session)]
+async def list_dashboards(session: SessionDep, current_user: CurrentUser) -> list[DashboardRead]:
+    return [_to_read(d) for d in await service.list_dashboards(session, current_user.id)]
 
 
 @router.post(
     "/dashboards", response_model=DashboardRead, status_code=201, dependencies=[_require_manage]
 )
-async def create_dashboard(payload: DashboardCreate, session: SessionDep) -> DashboardRead:
-    return _to_read(await service.create_dashboard(session, payload))
+async def create_dashboard(
+    payload: DashboardCreate, session: SessionDep, current_user: CurrentUser
+) -> DashboardRead:
+    return _to_read(await service.create_dashboard(session, payload, current_user.id))
 
 
 @router.get(
     "/dashboards/{dashboard_id}", response_model=DashboardRead, dependencies=[_require_read]
 )
-async def get_dashboard(dashboard_id: int, session: SessionDep) -> DashboardRead:
-    return _to_read(await service.get_dashboard(session, dashboard_id))
+async def get_dashboard(
+    dashboard_id: int, session: SessionDep, current_user: CurrentUser
+) -> DashboardRead:
+    return _to_read(await service.get_dashboard(session, dashboard_id, current_user.id))
 
 
 @router.post(
@@ -64,9 +68,12 @@ async def get_dashboard(dashboard_id: int, session: SessionDep) -> DashboardRead
     dependencies=[_require_manage],
 )
 async def add_widget(
-    dashboard_id: int, payload: DashboardWidgetCreate, session: SessionDep
+    dashboard_id: int,
+    payload: DashboardWidgetCreate,
+    session: SessionDep,
+    current_user: CurrentUser,
 ) -> DashboardRead:
-    return _to_read(await service.add_widget(session, dashboard_id, payload))
+    return _to_read(await service.add_widget(session, dashboard_id, payload, current_user.id))
 
 
 @router.delete(
@@ -74,8 +81,10 @@ async def add_widget(
     response_model=DashboardRead,
     dependencies=[_require_manage],
 )
-async def remove_widget(dashboard_id: int, widget_id: int, session: SessionDep) -> DashboardRead:
-    return _to_read(await service.remove_widget(session, dashboard_id, widget_id))
+async def remove_widget(
+    dashboard_id: int, widget_id: int, session: SessionDep, current_user: CurrentUser
+) -> DashboardRead:
+    return _to_read(await service.remove_widget(session, dashboard_id, widget_id, current_user.id))
 
 
 @router.get(
@@ -83,5 +92,9 @@ async def remove_widget(dashboard_id: int, widget_id: int, session: SessionDep) 
     response_model=WidgetDataRead,
     dependencies=[_require_read],
 )
-async def get_widget_data(dashboard_id: int, widget_id: int, session: SessionDep) -> WidgetDataRead:
-    return WidgetDataRead(data=await service.get_widget_data(session, dashboard_id, widget_id))
+async def get_widget_data(
+    dashboard_id: int, widget_id: int, session: SessionDep, current_user: CurrentUser
+) -> WidgetDataRead:
+    return WidgetDataRead(
+        data=await service.get_widget_data(session, dashboard_id, widget_id, current_user.id)
+    )
