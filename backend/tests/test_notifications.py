@@ -8,7 +8,10 @@ from datetime import date, timedelta
 from typing import Any
 
 import httpx
+import pytest
 from httpx import AsyncClient
+
+from app.core.config import Settings
 
 MAILPIT_API = "http://127.0.0.1:8025/api/v1"
 
@@ -375,17 +378,18 @@ async def test_unauthenticated_is_401(client: AsyncClient) -> None:
 async def test_a_brand_new_incident_queues_and_delivers_an_email(
     client: AsyncClient,
     login: Callable[..., Awaitable[dict[str, Any]]],
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
 ) -> None:
     """The phase 18 wiring: evaluate_rules queues one email per brand-new
-    incident to `notification_recipient_email`, if configured (phase 21:
-    through `app.settings.service.get_effective_settings`, an admin-set
-    override on top of the environment's own value) — verified end to end,
-    through a real send via Mailpit, not just "a row exists"."""
+    incident to the process environment's `notification_recipient_email`, if
+    configured — verified end to end through a real send via Mailpit, not just
+    "a row exists"."""
     to_email = "notify-test@example.invalid"
+    monkeypatch.setattr(settings, "notification_recipient_email", to_email)
     async with httpx.AsyncClient() as http:
         await http.delete(f"{MAILPIT_API}/messages")
     await login(role_name="ADMIN")
-    await client.put("/api/v1/settings/smtp", json={"notification_recipient_email": to_email})
     product = await _create_product(client, sku="NOTIF-EMAIL", min_stock="10")
     warehouse_id, location_id = await _default_location(client)
     await _stock(
@@ -398,8 +402,11 @@ async def test_a_brand_new_incident_queues_and_delivers_an_email(
     await _create_rule(client, name="Stock bajo", rule_type="LOW_STOCK")
 
     await _evaluate(client)
+    pending = (await client.get("/api/v1/outbox", params={"status": "PENDING"})).json()
+    assert any(message["to_email"] == to_email for message in pending)
     run_response = await client.post("/api/v1/outbox/run")
     assert run_response.status_code == 200
+    assert run_response.json()["processed"] >= 1
 
     async with httpx.AsyncClient() as http:
         search = await http.get(f"{MAILPIT_API}/search", params={"query": f"to:{to_email}"})

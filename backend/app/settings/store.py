@@ -1,10 +1,4 @@
-"""Reading and writing the registry-backed settings.
-
-Separate module from `app.settings.service` (which owns the SMTP
-singleton) so the two don't get tangled: that one merges into
-`app.core.config.Settings` because the mailer needs a `Settings` object;
-this one is a plain dict of business options nothing else knows about.
-"""
+"""Reading and writing the registry-backed business settings."""
 
 from __future__ import annotations
 

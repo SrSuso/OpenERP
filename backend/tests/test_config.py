@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from app.core.config import Settings
+from app.main import create_app
 
 
 def _settings(**overrides: object) -> Settings:
@@ -75,3 +78,57 @@ def test_settings_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert settings.database_url == "postgresql://x:y@db:5432/erp"
     assert settings.log_format == "console"
+
+
+def test_file_value_precedes_direct_environment_value(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    secret_file = tmp_path / "database-url"
+    secret_file.write_text("postgresql://file:user@db-file:5432/erp\n", encoding="utf-8")
+    monkeypatch.setenv("OPENERP_DATABASE_URL", "postgresql://direct:user@db-env:5432/erp")
+    monkeypatch.setenv("OPENERP_DATABASE_URL_FILE", str(secret_file))
+
+    settings = Settings()
+
+    assert settings.database_url == "postgresql://file:user@db-file:5432/erp"
+
+
+def test_valid_production_infrastructure_passes_startup_validation() -> None:
+    settings = _settings(environment="production")
+
+    assert create_app(settings).state.settings is settings
+
+
+def test_production_without_explicit_database_fails_before_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENERP_DATABASE_URL", raising=False)
+    settings = Settings(environment="production", _env_file=None)
+
+    with pytest.raises(ValueError, match="OPENERP_DATABASE_URL must be configured"):
+        create_app(settings)
+
+
+def test_malformed_database_url_fails_without_echoing_credentials() -> None:
+    invalid = "mysql://sensitive-user:sensitive-password@db/application"
+    settings = Settings(database_url=invalid)
+
+    with pytest.raises(ValueError) as caught:
+        create_app(settings)
+
+    message = str(caught.value)
+    assert "expected postgresql" in message
+    assert "sensitive-user" not in message
+    assert "sensitive-password" not in message
+
+
+def test_secret_infrastructure_values_are_excluded_from_repr() -> None:
+    secrets = {
+        "database_url": "postgresql://fake-db-user:fake-db-password@db/application",
+        "bootstrap_admin_password": "fake-bootstrap-password",
+        "smtp_password": "fake-smtp-password",
+    }
+
+    rendered = repr(Settings(**secrets))  # type: ignore[arg-type]
+
+    assert all(secret not in rendered for secret in secrets.values())

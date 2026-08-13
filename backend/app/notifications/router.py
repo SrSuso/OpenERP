@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import SessionDep, SettingsDep
 from app.notifications import service
 from app.notifications.presenters import incident_to_read as _incident_to_read
 from app.notifications.presenters import rule_to_read as _rule_to_read
@@ -73,10 +73,10 @@ async def update_rule(
     response_model=list[IncidentRead],
     dependencies=[_require_manage],
 )
-async def evaluate(session: SessionDep) -> list[IncidentRead]:
+async def evaluate(session: SessionDep, settings: SettingsDep) -> list[IncidentRead]:
     """Runs every active rule now. Manually triggered until phase 18 wires
     this up to a scheduled worker — see the module docstring."""
-    return [_incident_to_read(i) for i in await service.evaluate_rules(session)]
+    return [_incident_to_read(i) for i in await service.evaluate_rules(session, settings)]
 
 
 @router.get("/incidents", response_model=list[IncidentRead], dependencies=[_require_read])

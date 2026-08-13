@@ -33,8 +33,8 @@ _require_manage = Depends(require_permission(SETTINGS_MANAGE))
 
 
 def _definition_to_read(definition: SettingDef, value: Any) -> SettingDefinitionRead:
-    # Un SECRET (una contraseña, una cadena de conexión) se puede escribir
-    # desde el panel pero no sale nunca al leer: sólo si hay algo guardado.
+    # Future functional secrets can use this presentation rule. Infrastructure
+    # credentials cannot be registered here in the first place.
     is_secret = definition.type is SettingType.SECRET
     return SettingDefinitionRead(
         key=definition.key,
@@ -72,12 +72,9 @@ async def list_values(session: SessionDep, user: CurrentUser) -> dict[str, str]:
     does not (and should not) hold `settings.read`, which is what gates the
     editable catalogue above.
 
-    Los `SECRET` (contraseñas, la cadena de conexión) se quedan fuera: son
-    lo único del registro que no puede ver cualquiera que esté dentro. El
-    resto son etiquetas, formatos e interruptores, y la mayoría van
-    impresos en el ticket del cliente. Las credenciales de correo siguen
-    donde estaban, en los endpoints SMTP de `app.settings.router`, que sólo
-    ve un administrador.
+    Cualquier futura opción `SECRET` queda fuera por construcción. La
+    infraestructura y las credenciales SMTP no forman parte de este registro:
+    proceden exclusivamente del entorno del proceso.
     """
     values = await store.get_values(session)
     return {d.key: d.serialise(values[d.key]) for d in SETTINGS if d.type is not SettingType.SECRET}

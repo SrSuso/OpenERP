@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.db.session import session_scope
 from app.jobs import service
-from app.settings.service import get_effective_settings
 
 logger = logging.getLogger("app.jobs.worker")
 
@@ -43,8 +42,7 @@ async def run_once(
     real-concurrency tests in this suite."""
     scope: SessionFactory = session_factory or session_scope
     async with scope() as session:
-        effective = await get_effective_settings(session, settings)
-        processed = await service.process_batch(session, effective, limit=limit)
+        processed = await service.process_batch(session, settings, limit=limit)
         # Explicit, rather than relying on the context manager's own exit
         # behaviour: `session_scope` (production) already commits on a
         # clean exit, but a plain sessionmaker session (as tests pass via

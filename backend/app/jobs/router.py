@@ -9,13 +9,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import SessionDep, SettingsDep
 from app.jobs import service
 from app.jobs.presenters import message_to_read as _to_read
 from app.jobs.schemas import OutboxMessageRead, ProcessOutboxResult
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import JOB_MANAGE, JOB_READ
-from app.settings.service import get_effective_settings
 
 router = APIRouter(tags=["jobs"])
 
@@ -35,9 +34,9 @@ async def list_outbox(
 
 
 @router.post("/outbox/run", response_model=ProcessOutboxResult, dependencies=[_require_manage])
-async def run_outbox(session: SessionDep) -> ProcessOutboxResult:
+async def run_outbox(session: SessionDep, settings: SettingsDep) -> ProcessOutboxResult:
     """Processes one batch now, synchronously — a debug/ops action, not
     something any sale/checkout flow ever calls. The real cadence is
     ``app.jobs.worker`` running as its own process."""
-    processed = await service.process_batch(session, await get_effective_settings(session))
+    processed = await service.process_batch(session, settings)
     return ProcessOutboxResult(processed=processed)

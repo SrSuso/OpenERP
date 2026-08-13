@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.core.business_time import business_today
+from app.core.config import Settings
 from app.core.errors import NotFoundError
 from app.jobs import service as outbox
 from app.notifications import rules as rule_engine
@@ -18,7 +19,6 @@ from app.notifications.models import Incident, NotificationRule
 from app.notifications.schemas import NotificationRuleCreate, NotificationRuleUpdate
 from app.settings import store as settings_store
 from app.settings.business_time import get_business_timezone
-from app.settings.service import get_effective_settings
 
 # --- rules ---------------------------------------------------------------------
 
@@ -152,7 +152,7 @@ async def resolve_incident(session: AsyncSession, incident_id: int) -> Incident:
 # --- evaluation --------------------------------------------------------------------
 
 
-async def evaluate_rules(session: AsyncSession) -> list[Incident]:
+async def evaluate_rules(session: AsyncSession, settings: Settings) -> list[Incident]:
     """Run every active rule's detector, open/refresh an incident per
     subject it still finds, and auto-resolve any open incident whose
     subject no longer matches. Idempotent to call repeatedly (this is
@@ -166,7 +166,7 @@ async def evaluate_rules(session: AsyncSession) -> list[Incident]:
     now = datetime.now(UTC)
     touched: list[Incident] = []
     new_incidents: list[Incident] = []
-    recipient = (await get_effective_settings(session)).notification_recipient_email
+    recipient = settings.notification_recipient_email
     # `notifications.email_subject_prefix` (app.settings.registry) — la
     # etiqueta con la que llegan los avisos al correo del dueño.
     subject_prefix = str(

@@ -1,110 +1,100 @@
-"""Los ajustes del `.env`, ahora también en el panel.
-
-Lo que importa: que un valor guardado mande sobre el fichero de arranque,
-que uno malo no impida arrancar, y que lo que es secreto no salga al
-leerlo.
-"""
+"""A12: infrastructure settings come only from the process environment."""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings
-from app.settings import server
-from app.settings.registry import SETTINGS_BY_KEY, SettingType
-
-
-def _settings() -> Settings:
-    return Settings(database_url="postgresql://openerp:openerp@127.0.0.1:5432/openerp")
-
-
-def test_a_stored_value_wins_over_the_env_file() -> None:
-    applied = server.apply(_settings(), {"server.session_ttl_days": "7"})
-
-    assert applied.settings.session_ttl_days == 7
-    assert applied.keys == ("server.session_ttl_days",)
+from app.auth import bootstrap
+from app.core import config
+from app.jobs import worker
+from app.main import create_app
+from app.settings.models import Setting
 
 
-def test_a_bad_value_is_dropped_without_taking_the_good_ones_with_it() -> None:
-    """Un cero mal puesto en el tamaño del pool no puede dejar la tienda sin
-    caja: se ignora ése y se aplican los demás."""
-    applied = server.apply(
-        _settings(),
-        {"server.db_pool_size": "no soy un número", "server.log_level": "WARNING"},
+async def test_legacy_database_setting_cannot_change_any_component(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+) -> None:
+    """Environment A wins even while PostgreSQL still contains legacy B."""
+    database_a = "postgresql://environment:password@db-a:5432/application"
+    database_b = "postgresql://legacy:password@db-b:5432/legacy"
+    db_session.add(Setting(key="server.database_url", value=database_b))
+    await db_session.flush()
+    monkeypatch.setenv("OPENERP_DATABASE_URL", database_a)
+    config.get_settings.cache_clear()
+    try:
+        environment = config.get_settings()
+
+        assert create_app().state.settings.database_url == database_a  # API
+        # Both components import the same central resolver; calling their
+        # bound symbol proves neither has a separate parser/DB fallback.
+        assert worker.get_settings().database_url == database_a  # type: ignore[attr-defined]
+        assert bootstrap.get_settings().database_url == database_a  # type: ignore[attr-defined]
+        assert config.get_async_database_url() == environment.async_database_url  # Alembic
+    finally:
+        config.get_settings.cache_clear()
+
+
+async def test_server_keys_are_unknown_and_never_exposed(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    """Legacy secrets in the table are neither readable nor writable by API."""
+    db_session.add_all(
+        [
+            Setting(key="server.database_url", value="postgresql://fake:secret@legacy/db"),
+            Setting(key="server.bootstrap_admin_password", value="obviously-fake-password"),
+        ]
+    )
+    await db_session.flush()
+    await login(role_name="ADMIN")
+
+    options = await client.get("/api/v1/settings/options")
+    values = await client.get("/api/v1/settings/values")
+    rejected = await client.put(
+        "/api/v1/settings/options",
+        json={"values": {"server.database_url": "postgresql://another/db"}},
     )
 
-    assert applied.settings.db_pool_size == 5  # el del .env
-    assert applied.settings.log_level == "WARNING"
-    assert applied.keys == ("server.log_level",)
+    assert options.status_code == 200
+    assert all(not item["key"].startswith("server.") for item in options.json()["settings"])
+    assert all(not key.startswith("server.") for key in values.json())
+    assert rejected.status_code == 422
+    assert rejected.json()["error"]["code"] == "validation_error"
 
 
-def test_an_empty_value_leaves_the_env_file_alone() -> None:
-    """Vacío es "no lo toco" — así se puede dejar en blanco el recuadro de
-    una contraseña sin borrar la que hay."""
-    applied = server.apply(_settings(), {"server.session_cookie_name": ""})
+async def test_smtp_runtime_endpoints_no_longer_exist(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
 
-    assert applied.settings.session_cookie_name == "openerp_session"
-    assert applied.keys == ()
-
-
-def test_the_cors_list_is_split_on_commas() -> None:
-    applied = server.apply(
-        _settings(), {"server.cors_origins": "https://tienda.example, https://caja.example"}
-    )
-
-    assert applied.settings.cors_origins == ["https://tienda.example", "https://caja.example"]
-
-
-def test_every_server_setting_maps_to_a_real_field() -> None:
-    """Un ajuste que apunte a un campo que no existe saldría en el panel y
-    no haría nada."""
-    fields = Settings.model_fields
-    for key, field in server.SERVER_SETTING_FIELDS.items():
-        assert key in SETTINGS_BY_KEY, f"{key} no está en el registro"
-        assert field in fields, f"{key} apunta a {field}, que no existe en Settings"
+    assert (await client.get("/api/v1/settings/smtp")).status_code == 404
+    assert (
+        await client.put("/api/v1/settings/smtp", json={"smtp_password": "fake-password"})
+    ).status_code == 404
+    assert (
+        await client.post(
+            "/api/v1/settings/smtp/test", json={"to_email": "operator@example.invalid"}
+        )
+    ).status_code == 404
 
 
-async def test_secrets_can_be_written_but_never_read_back(
+async def test_business_timezone_remains_persisted_and_editable(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
 
     saved = await client.put(
         "/api/v1/settings/options",
-        json={"values": {"server.bootstrap_admin_password": "una-contraseña-larga"}},
+        json={"values": {"business.timezone": "Europe/Lisbon"}},
     )
+
     assert saved.status_code == 200
-
-    option = next(
-        s
-        for s in (await client.get("/api/v1/settings/options")).json()["settings"]
-        if s["key"] == "server.bootstrap_admin_password"
-    )
-    assert option["type"] == SettingType.SECRET
-    assert option["value"] == ""
-    # Pero se sabe que hay algo guardado, para poder decirlo en pantalla.
-    assert option["is_set"] is True
-
-
-async def test_secrets_stay_out_of_the_staff_wide_values(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """`/settings/values` lo lee cualquiera que haya entrado, cajeros
-    incluidos: ahí no puede viajar una contraseña."""
-    await login(role_name="ADMIN")
-    await client.put(
-        "/api/v1/settings/options",
-        json={"values": {"server.bootstrap_admin_password": "una-contraseña-larga"}},
-    )
-
-    await login(role_name="CASHIER")
-    values = (await client.get("/api/v1/settings/values")).json()
-
-    assert "server.bootstrap_admin_password" not in values
-    assert "server.database_url" not in values
-    # Lo que no es secreto sí sigue estando.
-    assert "app.display_name" in values
-    assert "server.log_level" in values
+    timezone = next(item for item in saved.json()["settings"] if item["key"] == "business.timezone")
+    assert timezone["value"] == "Europe/Lisbon"

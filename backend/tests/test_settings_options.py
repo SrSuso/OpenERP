@@ -212,8 +212,8 @@ async def test_a_cashier_can_read_the_values_but_not_the_catalogue_or_the_creden
 ) -> None:
     """El TPV necesita el nombre de la tienda y qué forma de pago sale
     marcada, y quien lo usa no tiene `settings.read`. Lo que no puede ver
-    por esa puerta es nada sensible: las credenciales de correo siguen
-    siendo sólo de ADMIN."""
+    por esa puerta es nada sensible: las credenciales de infraestructura no
+    existen en la API para ningún rol."""
     await login(role_name="ADMIN")
     await client.put(
         "/api/v1/settings/options", json={"values": {"app.display_name": "ALIMENTACION PEPE"}}
@@ -226,9 +226,9 @@ async def test_a_cashier_can_read_the_values_but_not_the_catalogue_or_the_creden
     values = response.json()
     assert values["app.display_name"] == "ALIMENTACION PEPE"
     assert values["pos.default_payment_method"] == "CASH"
-    # Ni una clave de correo asoma por aquí, y las suyas siguen cerradas.
+    # Ni una clave de correo asoma por aquí, y el antiguo endpoint ya no existe.
     assert not [key for key in values if key.startswith("smtp")]
-    assert (await client.get("/api/v1/settings/smtp")).status_code == 403
+    assert (await client.get("/api/v1/settings/smtp")).status_code == 404
 
 
 async def test_the_values_endpoint_still_needs_a_session(client: AsyncClient) -> None:

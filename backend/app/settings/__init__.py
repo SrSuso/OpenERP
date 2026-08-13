@@ -1,8 +1,8 @@
-"""Phase 21: admin-editable overrides on top of `app.core.config.Settings`.
+"""Admin-editable, PostgreSQL-backed business settings.
 
-Everything here is optional and additive to the environment/`.env`
-configuration — a fresh deployment with no `system_settings` row behaves
-exactly as it always did. See `app.settings.models` for why.
+Process infrastructure and credentials deliberately do not belong to this
+package.  API, worker, Alembic and operational scripts all obtain those from
+``app.core.config.Settings`` instead.
 """
 
 from __future__ import annotations

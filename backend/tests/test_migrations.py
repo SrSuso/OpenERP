@@ -257,6 +257,64 @@ def test_pos_terminal_migration_preserves_existing_sales_and_is_reversible(
     engine.dispose()
 
 
+def test_infrastructure_settings_migration_purges_only_infrastructure(
+    fresh_database: Callable[[], str],
+) -> None:
+    """Legacy process settings and SMTP secrets disappear permanently.
+
+    A downgrade restores only the old table shape.  It must neither invent
+    secrets nor remove the functional settings that remain owned by the shop.
+    """
+    url = fresh_database()
+    run_alembic(url, "upgrade", "b7e2c4a91d63")
+    engine = _sync_engine(url)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO settings (key, value, created_at, updated_at) VALUES "
+                "('server.database_url', 'postgresql://fake:secret@legacy/db', now(), now()), "
+                "('server.bootstrap_admin_password', 'obviously-fake-password', now(), now()), "
+                "('business.timezone', 'Europe/Lisbon', now(), now())"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO system_settings "
+                "(smtp_host, smtp_password, notification_recipient_email) VALUES "
+                "('smtp.example.invalid', 'obviously-fake-smtp-secret', "
+                "'operator@example.invalid')"
+            )
+        )
+
+    run_alembic(url, "upgrade", "e4a7c2d91b65")
+    with engine.begin() as connection:
+        server_keys = connection.scalars(
+            text("SELECT key FROM settings WHERE key LIKE 'server.%'")
+        ).all()
+        timezone = connection.scalar(
+            text("SELECT value FROM settings WHERE key = 'business.timezone'")
+        )
+        system_settings = connection.scalar(text("SELECT to_regclass('public.system_settings')"))
+    assert server_keys == []
+    assert timezone == "Europe/Lisbon"
+    assert system_settings is None
+
+    run_alembic(url, "downgrade", "b7e2c4a91d63")
+    with engine.begin() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM system_settings")) == 0
+        assert (
+            connection.scalar(text("SELECT count(*) FROM settings WHERE key LIKE 'server.%'")) == 0
+        )
+        assert (
+            connection.scalar(text("SELECT value FROM settings WHERE key = 'business.timezone'"))
+            == "Europe/Lisbon"
+        )
+
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
 def test_return_quantity_migration_backfills_every_legacy_effect(
     fresh_database: Callable[[], str],
 ) -> None:
