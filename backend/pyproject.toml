@@ -58,6 +58,7 @@ filterwarnings = ["error::DeprecationWarning:app.*"]
 markers = [
     "integration: tests that require a real PostgreSQL database",
     "migration: migration-chain and historical-fixture tests",
+    "real_commit: tests isolated in a private database because they need independent commits",
 ]
 
 [tool.mypy]

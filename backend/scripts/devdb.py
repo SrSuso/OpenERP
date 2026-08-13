@@ -58,24 +58,38 @@ def wait_for_server(url: str, *, timeout: float = 30.0) -> None:
     ) from None
 
 
-def create_database(url: str, database: str) -> bool:
-    """Create ``database`` if missing.  Returns True when it was created."""
+def create_database(url: str, database: str, *, template: str | None = None) -> bool:
+    """Create ``database`` if missing.  Returns True when it was created.
+
+    ``template`` is used by the test harness to clone its already-migrated,
+    never-connected baseline.  Normal development and CI callers keep the
+    regular PostgreSQL template by leaving it unset.
+    """
     with psycopg.connect(_libpq_url(url, "postgres"), autocommit=True) as conn:
         exists = conn.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", (database,)
         ).fetchone()
         if exists:
             return False
-        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
+        statement = sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database))
+        if template is not None:
+            statement += sql.SQL(" WITH TEMPLATE {}").format(sql.Identifier(template))
+        conn.execute(statement)
         return True
 
 
 def drop_database(url: str, database: str) -> bool:
-    """Drop ``database`` if present, terminating other backends first."""
+    """Drop ``database`` if present, terminating our client backends first.
+
+    A CREATEDB test role may terminate its own sessions, but not PostgreSQL
+    internal workers or sessions owned by a superuser.  Those are not ours to
+    kill and internal workers do not need manual cleanup before ``DROP``.
+    """
     with psycopg.connect(_libpq_url(url, "postgres"), autocommit=True) as conn:
         conn.execute(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = %s AND pid <> pg_backend_pid()",
+            "WHERE datname = %s AND pid <> pg_backend_pid() "
+            "AND usename = current_user AND backend_type = 'client backend'",
             (database,),
         )
         conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(database)))

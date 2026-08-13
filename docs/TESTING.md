@@ -28,6 +28,12 @@ ejecuta solamente pruebas que no necesitan PostgreSQL. Una sesión de
 integración crea una base desechable, aplica `alembic upgrade head` una sola vez
 y aísla normalmente cada caso mediante transacción y rollback.
 
+Los casos que declaran `committing_sessionmaker` necesitan conexiones y commits
+PostgreSQL reales para comprobar locks y concurrencia. El harness los marca
+como `real_commit` y los agrupa en un clon privado de una plantilla ya migrada
+por módulo de tests; así conservan la semántica real sin contaminar la base
+compartida ni repetir toda la cadena Alembic por caso.
+
 ## Backend por dominio
 
 ```bash

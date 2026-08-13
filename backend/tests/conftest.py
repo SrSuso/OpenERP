@@ -83,6 +83,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         fixture_names = getattr(item, "fixturenames", ())
         if _POSTGRES_FIXTURES.intersection(fixture_names):
             item.add_marker(pytest.mark.integration)
+        if "committing_sessionmaker" in fixture_names:
+            item.add_marker(pytest.mark.real_commit)
 
 
 def _docker_available() -> bool:
@@ -136,6 +138,43 @@ def database_url(postgres_server_url: str) -> Iterator[str]:
         drop_database(postgres_server_url, name)
 
 
+@pytest.fixture(scope="session")
+def committing_database_template(postgres_server_url: str) -> Iterator[str]:
+    """A migrated, never-connected template for real-commit tests.
+
+    PostgreSQL can clone this database cheaply.  Keeping it separate from the
+    normal session database matters because the latter has pooled connections,
+    which PostgreSQL correctly refuses to clone while they are attached.
+    """
+    name = f"openerp_template_{uuid.uuid4().hex[:12]}"
+    create_database(postgres_server_url, name)
+    url = _with_database(postgres_server_url, name)
+    try:
+        run_alembic(url, "upgrade", "head")
+        yield name
+    finally:
+        drop_database(postgres_server_url, name)
+
+
+@pytest.fixture(scope="module")
+def committing_database_url(
+    postgres_server_url: str,
+    committing_database_template: str,
+) -> Iterator[str]:
+    """An isolated clone for one module that intentionally performs commits.
+
+    Normal rollback-based tests in the same file still use ``database_url``.
+    Only the explicitly real-commit cases share this module clone, and their
+    unique fixtures let them coexist until the whole database is discarded.
+    """
+    name = f"openerp_commit_{uuid.uuid4().hex[:12]}"
+    create_database(postgres_server_url, name, template=committing_database_template)
+    try:
+        yield _with_database(postgres_server_url, name)
+    finally:
+        drop_database(postgres_server_url, name)
+
+
 def run_alembic(url: str, *args: str) -> str:
     """Invoke the real Alembic CLI against ``url`` and return its stdout."""
     env = {**os.environ, "OPENERP_DATABASE_URL": url}
@@ -184,8 +223,7 @@ def fresh_database(postgres_server_url: str) -> Iterator[Callable[..., str]]:
             drop_database(postgres_server_url, name)
 
 
-@pytest.fixture(scope="session")
-def settings(database_url: str) -> Settings:
+def _test_settings(database_url: str) -> Settings:
     return Settings(
         database_url=database_url,
         environment="test",
@@ -197,12 +235,42 @@ def settings(database_url: str) -> Settings:
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def engine(settings: Settings) -> AsyncIterator[AsyncEngine]:
-    eng = create_engine(settings)
+async def shared_engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+    eng = create_engine(_test_settings(database_url))
     try:
         yield eng
     finally:
         await eng.dispose()
+
+
+def _needs_real_commit_isolation(request: pytest.FixtureRequest) -> bool:
+    return "committing_sessionmaker" in request.fixturenames
+
+
+@pytest.fixture
+def settings(request: pytest.FixtureRequest, database_url: str) -> Settings:
+    """Use a private database only for tests that request real commits."""
+    if _needs_real_commit_isolation(request):
+        isolated_url = request.getfixturevalue("committing_database_url")
+        return _test_settings(isolated_url)
+    return _test_settings(database_url)
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def engine(
+    request: pytest.FixtureRequest,
+    settings: Settings,
+    shared_engine: AsyncEngine,
+) -> AsyncIterator[AsyncEngine]:
+    if not _needs_real_commit_isolation(request):
+        yield shared_engine
+        return
+
+    isolated_engine = create_engine(settings)
+    try:
+        yield isolated_engine
+    finally:
+        await isolated_engine.dispose()
 
 
 @pytest_asyncio.fixture(loop_scope="session")
@@ -240,7 +308,9 @@ async def committing_sessionmaker(
 
     Required by concurrency tests (two cashiers racing for the last unit),
     which need separate connections observing each other's committed work.
-    Such tests are responsible for their own cleanup.
+    The fixture graph gives each such test an isolated clone of a migrated
+    template database, so cleanup does not depend on every test remembering
+    every FK-related row it committed.
     """
     yield async_sessionmaker(bind=engine, expire_on_commit=False)
 
