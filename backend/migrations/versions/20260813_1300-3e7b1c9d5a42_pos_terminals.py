@@ -44,9 +44,7 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_pos_terminals")),
-        sa.UniqueConstraint(
-            "warehouse_id", "name", name="uq_pos_terminals_warehouse_id_name"
-        ),
+        sa.UniqueConstraint("warehouse_id", "name", name="uq_pos_terminals_warehouse_id_name"),
     )
     op.create_index(
         op.f("ix_pos_terminals_warehouse_id"),
@@ -63,16 +61,12 @@ def upgrade() -> None:
         ["id"],
         ondelete="RESTRICT",
     )
-    op.create_index(
-        "ix_sales_terminal_id_status", "sales", ["terminal_id", "status"], unique=False
-    )
+    op.create_index("ix_sales_terminal_id_status", "sales", ["terminal_id", "status"], unique=False)
 
 
 def downgrade() -> None:
     op.drop_index("ix_sales_terminal_id_status", table_name="sales")
-    op.drop_constraint(
-        op.f("fk_sales_terminal_id_pos_terminals"), "sales", type_="foreignkey"
-    )
+    op.drop_constraint(op.f("fk_sales_terminal_id_pos_terminals"), "sales", type_="foreignkey")
     op.drop_column("sales", "terminal_id")
     op.drop_index(op.f("ix_pos_terminals_warehouse_id"), table_name="pos_terminals")
     op.drop_table("pos_terminals")
