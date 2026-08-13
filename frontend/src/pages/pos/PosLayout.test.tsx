@@ -52,6 +52,7 @@ function stubBackend(
   options: {
     openSales?: { id: number; lines_count: number; total: string }[];
     failFirstClose?: boolean;
+    failTerminals?: boolean;
     terminals?: (typeof TERMINAL)[];
   } = {},
 ) {
@@ -76,6 +77,9 @@ function stubBackend(
       }
       if (url.includes('/settings/values')) return Promise.resolve(jsonResponse({}));
       if (url.includes('/pos-terminals')) {
+        if (options.failTerminals) {
+          return Promise.reject(new TypeError('Terminal registry unavailable'));
+        }
         return Promise.resolve(jsonResponse(options.terminals ?? [TERMINAL]));
       }
       // La caja pregunta por esta huella cada pocos segundos para saber si
@@ -145,6 +149,15 @@ describe('PosLayout', () => {
 
     expect(await screen.findByRole('button', { name: 'Caja 1' })).toBeInTheDocument();
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
+  });
+
+  it('shows an explicit error when the terminal registry cannot be loaded', async () => {
+    stubBackend({ failTerminals: true });
+    renderLayout({ configured: false });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /no se han podido cargar los terminales/i,
+    );
   });
 
   it('blocks an inactive stored terminal without discarding its identity', async () => {

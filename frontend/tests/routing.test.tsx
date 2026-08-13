@@ -13,9 +13,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
+import { POS_TERMINAL_STORAGE_KEY } from '@/features/pos/PosTerminalProvider';
 import { routes } from '@/routes';
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
@@ -35,6 +36,15 @@ const HEALTH_DOWN_ENVELOPE = {
 const UNAUTHENTICATED_ENVELOPE = {
   error: { code: 'unauthenticated', message: 'Not authenticated.' },
   request_id: 'req-me',
+};
+
+const POS_TERMINAL = {
+  id: 7,
+  name: 'Caja de routing',
+  warehouse_id: 1,
+  warehouse_name: 'Tienda',
+  is_active: true,
+  created_at: '2026-08-13T09:00:00Z',
 };
 
 function meBody(role: 'ADMIN' | 'CASHIER', permissions?: string[]): unknown {
@@ -58,6 +68,9 @@ function stubFetch(options: {
   health?: 'ok' | 'down';
   permissions?: string[];
 }) {
+  if (options.me === 'cashier') {
+    window.localStorage.setItem(POS_TERMINAL_STORAGE_KEY, String(POS_TERMINAL.id));
+  }
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL) => {
@@ -78,6 +91,10 @@ function stubFetch(options: {
             ? jsonResponse(HEALTH_DOWN_ENVELOPE, { status: 503 })
             : jsonResponse(HEALTH_OK),
         );
+      }
+
+      if (url.includes('/pos-terminals')) {
+        return Promise.resolve(jsonResponse([POS_TERMINAL]));
       }
 
       // /admin/access, /admin/inventory and /admin/pricing's tabs (only
@@ -121,6 +138,8 @@ function renderAt(path: string) {
 }
 
 describe('routing', () => {
+  beforeEach(() => window.localStorage.clear());
+
   it('renders the admin panel at /admin for a signed-in admin', async () => {
     stubFetch({ me: 'admin', health: 'ok' });
 
