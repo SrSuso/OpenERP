@@ -11,6 +11,7 @@ failures generically::
 
 from __future__ import annotations
 
+import traceback
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -136,7 +137,22 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
-        logger.exception("request.unhandled_error", extra={"error_type": type(exc).__name__})
+        frames = traceback.extract_tb(exc.__traceback__)
+        location = None
+        if frames:
+            frame = frames[-1]
+            location = {
+                "file": frame.filename.rsplit("/", 1)[-1],
+                "line": frame.lineno,
+                "function": frame.name,
+            }
+        # Do not format the exception itself: database/HTTP client exceptions
+        # can embed statement parameters, URLs or credentials in their text.
+        # Request context + type + source location remain useful to operators.
+        logger.error(
+            "request.unhandled_error",
+            extra={"error_type": type(exc).__name__, "error_location": location},
+        )
         return error_response(
             code="internal_error",
             message="An unexpected error occurred.",

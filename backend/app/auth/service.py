@@ -52,9 +52,10 @@ def check_login_rate_limit(settings: Settings, *, ip: str | None, email: str) ->
         raise RateLimitedError("Too many login attempts. Try again later.")
 
 
-def record_login_failure(*, ip: str | None, email: str) -> None:
-    for key in _rate_limit_keys(ip=ip, email=email):
-        _login_rate_limiter.record(key)
+def record_login_failure(settings: Settings, *, ip: str | None, email: str) -> None:
+    ip_key, email_key = _rate_limit_keys(ip=ip, email=email)
+    _login_rate_limiter.record(ip_key, window_seconds=settings.login_rate_limit_ip_window_seconds)
+    _login_rate_limiter.record(email_key, window_seconds=settings.login_rate_limit_window_seconds)
 
 
 def reset_login_rate_limit(*, ip: str | None, email: str) -> None:

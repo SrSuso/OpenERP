@@ -25,7 +25,6 @@ from app.db import registry as _model_registry  # noqa: F401
 from app.api.middleware import (
     REQUEST_ID_HEADER,
     RequestContextMiddleware,
-    SecurityHeadersMiddleware,
 )
 from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
@@ -53,27 +52,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings.validate_runtime()
     configure_logging(level=settings.log_level, fmt=settings.log_format)
 
+    publish_docs = settings.environment != "production"
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
         description="Modular monolith ERP for retail: administration panel and POS.",
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if publish_docs else None,
+        redoc_url="/api/redoc" if publish_docs else None,
+        openapi_url="/api/openapi.json" if publish_docs else None,
         lifespan=lifespan,
     )
     app.state.settings = settings
 
     app.add_middleware(RequestContextMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware, settings=settings)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=[REQUEST_ID_HEADER],
-    )
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=[REQUEST_ID_HEADER],
+        )
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)

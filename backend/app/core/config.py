@@ -207,6 +207,10 @@ class Settings(BaseSettings):
         _with_driver(self.database_url, _ASYNC_DRIVER)
         if self.environment == "production" and self.database_url == _DEFAULT_DATABASE_URL:
             raise ValueError("OPENERP_DATABASE_URL must be configured explicitly in production.")
+        if self.environment == "production" and self.cors_origins:
+            raise ValueError(
+                "OPENERP_CORS_ORIGINS must be empty in production; SPA and API are same-origin."
+            )
 
 
 @lru_cache(maxsize=1)

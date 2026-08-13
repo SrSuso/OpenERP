@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
 
+from app.api.client import client_ip
 from app.auth import service
 from app.auth.dependencies import AuthSessionDep, CurrentUser, SessionDep, SettingsDep
 from app.auth.models import AuthSession
@@ -35,14 +36,14 @@ async def login(
     session: SessionDep,
     settings: SettingsDep,
 ) -> MeResponse:
-    ip = request.client.host if request.client else None
+    ip = client_ip(request)
     # Phase 19: checked before the password is even hashed, so a locked-out
     # caller never gets to spend that CPU either.
     service.check_login_rate_limit(settings, ip=ip, email=payload.email)
     try:
         user = await service.authenticate(session, email=payload.email, password=payload.password)
     except AuthenticationError:
-        service.record_login_failure(ip=ip, email=payload.email)
+        service.record_login_failure(settings, ip=ip, email=payload.email)
         raise
     service.reset_login_rate_limit(ip=ip, email=payload.email)
 
