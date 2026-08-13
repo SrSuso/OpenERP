@@ -19,17 +19,21 @@ export function ReturnsHistory({ saleId }: { saleId: number }) {
       {returns.data.map((ret) => (
         <li key={ret.id} className="rounded border border-slate-200 bg-white p-2">
           <p className="text-xs text-slate-500">
-            {new Date(ret.created_at).toLocaleString('es-ES')} · reembolso{' '}
-            {formatMoney(ret.total_refund)}
+            {new Date(ret.created_at).toLocaleString('es-ES')}
+            {ret.refund
+              ? ` · reembolso ${formatMoney(ret.refund.amount)} · ${ret.refund.method ?? 'medio histórico no disponible'} · completado`
+              : ' · sin reembolso económico'}
             {ret.notes && ` · ${ret.notes}`}
           </p>
           <ul className="mt-1 space-y-0.5">
             {ret.lines.map((line) => (
               <li key={line.id}>
                 <span className="font-mono text-xs text-slate-500">{line.product_sku}</span>{' '}
-                {formatQuantity(line.quantity_packages)} {line.package_name}
-                {line.is_economic && ` · reembolso ${formatMoney(line.refund_amount)}`}
-                {line.is_physical && ' · repuesto'}
+                devuelto {formatQuantity(line.refund_quantity_packages)} {line.package_name}
+                {' · '}repuesto {formatQuantity(line.stock_return_quantity_packages)}{' '}
+                {line.package_name}
+                {Number(line.refund_quantity_packages) > 0 &&
+                  ` · importe ${formatMoney(line.refund_amount)}`}
                 {line.lot_number && ` · lote ${line.lot_number}`}
               </li>
             ))}

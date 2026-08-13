@@ -271,7 +271,31 @@ pedido de compra, pídeselo a la persona que administra el sistema.
 
 ---
 
-## 4. Cambiar tu contraseña
+## 4. Registrar una devolución
+
+En **Devoluciones**, busca la venta por el número impreso en el ticket. Para
+cada línea indica por separado:
+
+- **Cantidad a reembolsar**: unidades cuyo importe se devuelve al cliente.
+- **Cantidad que vuelve a stock**: unidades que regresan físicamente al
+  almacén. Puede ser menor, mayor o cero; es independiente de la anterior.
+- **Lote**: sólo aparece y es obligatorio cuando vuelve cantidad física de un
+  producto trazado por lotes.
+
+Una devolución normal empieza con ambas cantidades iguales. Redúcelas cuando,
+por ejemplo, parte del producto está roto/no vuelve, o cuando es un cambio de
+artículo sin reembolso. Si hay efecto económico, elige cómo se realizó:
+efectivo, tarjeta confirmada en el datáfono externo u otro medio ya realizado.
+El importe lo calcula el servidor desde la venta original; no depende del
+precio actual del producto.
+
+La pantalla muestra después las dos cantidades, el importe, el medio y el
+estado histórico. Una operación exclusivamente física no crea ni muestra un
+reembolso económico.
+
+---
+
+## 5. Cambiar tu contraseña
 
 Enlace **Mi cuenta** en el menú lateral de `/admin` (visible para
 cualquiera con acceso al panel): pide tu contraseña actual y la nueva dos
@@ -281,7 +305,7 @@ recomendado tras tu primer inicio de sesión.
 
 ---
 
-## 5. Preguntas frecuentes
+## 6. Preguntas frecuentes
 
 **¿Por qué no puedo entrar en `/admin` si mi cuenta es de cajero?**
 Tu cuenta sólo tiene permiso para el TPV. Si necesitas acceso al panel,

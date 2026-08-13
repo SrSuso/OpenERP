@@ -1231,6 +1231,17 @@ Deuda técnica conocida:
   suficiente para el caso de uso real (el cliente no suele saber de qué
   lote salió su unidad), ampliable sin romper el modelo si hiciera falta.
 
+**Actualización A8/A15 (agosto de 2026):** el contrato original anterior se
+conserva aquí como historial de la fase, pero fue sustituido por cantidades
+explícitas. `ReturnLine.refund_quantity_*` y
+`stock_return_quantity_*` reemplazan la cantidad/booleanos ambiguos;
+`SaleLine.quantity_refunded` y `quantity_physically_returned` limitan ambas
+capacidades independientemente. Existe un `Refund` 1:1 únicamente si hubo
+efecto económico, con importe histórico, método existente y estado
+`COMPLETED`. La pantalla `/admin/returns` ya permite introducir y consultar
+estas magnitudes. La migración `6a4d2f8c1b73` deriva el histórico de los
+booleanos originales sin inventar métodos para refunds antiguos.
+
 ## Fase 16 — Dashboards
 
 **Objetivo:** paneles configurables de verdad — widgets que un administrador

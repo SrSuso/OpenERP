@@ -15,7 +15,10 @@ export const saleLineSchema = z.object({
   package_factor: z.string(),
   quantity_packages: z.string(),
   quantity_base: z.string(),
-  quantity_returned: z.string(),
+  quantity_refunded: z.string(),
+  quantity_physically_returned: z.string(),
+  tracks_stock: z.boolean(),
+  track_lots: z.boolean(),
   unit_price: z.string(),
   total: z.string(),
 });
@@ -48,16 +51,27 @@ export const returnLineSchema = z.object({
   product_name: z.string(),
   package_id: z.number(),
   package_name: z.string(),
-  quantity_packages: z.string(),
-  quantity_base: z.string(),
-  is_economic: z.boolean(),
-  is_physical: z.boolean(),
+  refund_quantity_packages: z.string(),
+  refund_quantity_base: z.string(),
+  stock_return_quantity_packages: z.string(),
+  stock_return_quantity_base: z.string(),
   refund_amount: z.string(),
   lot_id: z.number().nullable(),
   lot_number: z.string().nullable(),
   stock_movement_id: z.number().nullable(),
 });
 export type ReturnLine = z.infer<typeof returnLineSchema>;
+
+export const refundSchema = z.object({
+  id: z.number(),
+  return_id: z.number(),
+  amount: z.string(),
+  method: z.enum(['CASH', 'CARD', 'OTHER']).nullable(),
+  status: z.literal('COMPLETED'),
+  processed_by_user_id: z.number().nullable(),
+  created_at: z.string(),
+  completed_at: z.string(),
+});
 
 export const returnSchema = z.object({
   id: z.number(),
@@ -66,6 +80,7 @@ export const returnSchema = z.object({
   processed_by_user_id: z.number().nullable(),
   created_at: z.string(),
   lines: z.array(returnLineSchema),
+  refund: refundSchema.nullable(),
   total_refund: z.string(),
 });
 export type Return = z.infer<typeof returnSchema>;
@@ -80,15 +95,22 @@ export function saleReturnsQuery(saleId: number) {
 
 export interface ReturnLineInput {
   sale_line_id: number;
-  quantity_packages: string;
-  economic: boolean;
-  physical: boolean;
+  refund_quantity_packages: string;
+  stock_return_quantity_packages: string;
   lot_number: string | null;
+}
+
+export type RefundMethod = 'CASH' | 'CARD' | 'OTHER';
+
+export interface ReturnInput {
+  notes: string;
+  lines: ReturnLineInput[];
+  refund_method?: RefundMethod;
 }
 
 export async function createReturn(
   saleId: number,
-  payload: { notes: string; lines: ReturnLineInput[] },
+  payload: ReturnInput,
   idempotencyKey: string,
 ): Promise<Return> {
   return apiFetch(`${API_V1}/sales/${saleId}/returns`, {

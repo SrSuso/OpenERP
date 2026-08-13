@@ -5,7 +5,7 @@ import { useAuth } from '@/features/auth/useAuth';
 import { CreateReturnForm } from '@/features/returns/CreateReturnForm';
 import { ReturnsHistory } from '@/features/returns/ReturnsHistory';
 import { saleByNumberQuery } from '@/features/pos/api';
-import { createReturn, saleQuery, type ReturnLineInput } from '@/features/returns/api';
+import { createReturn, saleQuery, type ReturnInput } from '@/features/returns/api';
 import { TicketReprintButton } from '@/features/tickets/TicketReprintButton';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
@@ -31,13 +31,8 @@ export function ReturnsPage() {
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
-    mutationFn: ({
-      payload,
-      key,
-    }: {
-      payload: { notes: string; lines: ReturnLineInput[] };
-      key: string;
-    }) => createReturn(saleId!, payload, key),
+    mutationFn: ({ payload, key }: { payload: ReturnInput; key: string }) =>
+      createReturn(saleId!, payload, key),
     onSuccess: () => {
       returnAttemptRef.current = null;
       void queryClient.invalidateQueries({ queryKey: ['returns', 'sale', saleId] });

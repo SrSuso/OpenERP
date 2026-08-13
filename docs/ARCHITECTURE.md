@@ -135,6 +135,15 @@ Estas son las 15 reglas de arquitectura del proyecto (repetidas en el
 14. Productos, proveedores y usuarios con histórico se desactivan, no se borran.
 15. Cada fase queda funcionando y probada antes de continuar (regla de proceso, no de datos).
 
+En devoluciones, “independientes” significa dos capacidades acumuladas por
+`SaleLine`: `quantity_refunded` y `quantity_physically_returned`, cada una con
+tope propio en la cantidad vendida. `ReturnLine` conserva ambas cantidades y
+solo la física genera inventario/lote. Una devolución con cantidad económica
+crea exactamente un `Refund` `COMPLETED` con importe recalculado desde los
+snapshots de venta y método `CASH`/`CARD`/`OTHER`; una physical-only no crea
+un refund ficticio. El Z cuenta `Refund.completed_at`, nunca la cantidad
+física ni el mero `Return.created_at`.
+
 ### 2.5. El *outbox* transaccional (`app/jobs/`)
 
 Regla 10 en la práctica: nada en el camino de una petición HTTP abre una

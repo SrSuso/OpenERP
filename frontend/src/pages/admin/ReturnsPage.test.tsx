@@ -41,7 +41,10 @@ function stubBackend(options: { failReturnOnce?: boolean } = {}) {
         package_factor: '1',
         quantity_packages: '5',
         quantity_base: '5',
-        quantity_returned: '0',
+        quantity_refunded: '0',
+        quantity_physically_returned: '0',
+        tracks_stock: true,
+        track_lots: false,
         unit_price: '2',
         total: '10',
       },
@@ -117,18 +120,34 @@ function stubBackend(options: { failReturnOnce?: boolean } = {}) {
         createCalls.push(b);
         const lines = b['lines'] as {
           sale_line_id: number;
-          quantity_packages: string;
-          economic: boolean;
-          physical: boolean;
+          refund_quantity_packages: string;
+          stock_return_quantity_packages: string;
           lot_number: string | null;
         }[];
+        const refunded = lines.reduce(
+          (sum, line) => sum + Number(line.refund_quantity_packages),
+          0,
+        );
         const ret: Return = {
           id: 1,
           sale_id: 42,
           notes: (b['notes'] as string) ?? '',
           processed_by_user_id: 1,
           created_at: new Date().toISOString(),
-          total_refund: '4.000000',
+          total_refund: String(refunded * 2),
+          refund:
+            refunded > 0
+              ? {
+                  id: 1,
+                  return_id: 1,
+                  amount: String(refunded * 2),
+                  method: b['refund_method'] as 'CASH' | 'CARD' | 'OTHER',
+                  status: 'COMPLETED',
+                  processed_by_user_id: 1,
+                  created_at: new Date().toISOString(),
+                  completed_at: new Date().toISOString(),
+                }
+              : null,
           lines: lines.map((l, i) => ({
             id: i + 1,
             sale_line_id: l.sale_line_id,
@@ -137,20 +156,23 @@ function stubBackend(options: { failReturnOnce?: boolean } = {}) {
             product_name: 'Agua 1.5L',
             package_id: 100,
             package_name: 'Unidad',
-            quantity_packages: l.quantity_packages,
-            quantity_base: l.quantity_packages,
-            is_economic: l.economic,
-            is_physical: l.physical,
-            refund_amount: l.economic ? '4.000000' : '0',
+            refund_quantity_packages: l.refund_quantity_packages,
+            refund_quantity_base: l.refund_quantity_packages,
+            stock_return_quantity_packages: l.stock_return_quantity_packages,
+            stock_return_quantity_base: l.stock_return_quantity_packages,
+            refund_amount: String(Number(l.refund_quantity_packages) * 2),
             lot_id: null,
             lot_number: l.lot_number,
-            stock_movement_id: l.physical ? 1 : null,
+            stock_movement_id: Number(l.stock_return_quantity_packages) > 0 ? 1 : null,
           })),
         };
         returns = [ret];
-        sale.lines[0]!.quantity_returned = String(
-          Number(sale.lines[0]!.quantity_returned) +
-            lines.reduce((sum, l) => sum + Number(l.quantity_packages), 0),
+        sale.lines[0]!.quantity_refunded = String(
+          Number(sale.lines[0]!.quantity_refunded) + refunded,
+        );
+        sale.lines[0]!.quantity_physically_returned = String(
+          Number(sale.lines[0]!.quantity_physically_returned) +
+            lines.reduce((sum, l) => sum + Number(l.stock_return_quantity_packages), 0),
         );
         return Promise.resolve(jsonResponse(ret, { status: 201 }));
       }
@@ -185,12 +207,12 @@ describe('ReturnsPage', () => {
     await screen.findByText('Todavía no se ha devuelto nada de esta venta.');
 
     await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
-    const qtyInput = screen.getByLabelText('Cantidad');
+    const qtyInput = screen.getByLabelText('Cantidad a reembolsar');
     await userEvent.clear(qtyInput);
     await userEvent.type(qtyInput, '2');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir a la devolución' }));
 
-    await screen.findByText(/reembolso.*repone stock/);
+    await screen.findByText(/devuelve 2.*repone 2/);
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
     await screen.findByText('No se ha podido registrar la devolución.');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
@@ -204,14 +226,72 @@ describe('ReturnsPage', () => {
         lines: [
           {
             sale_line_id: 1,
-            quantity_packages: '2',
-            economic: true,
-            physical: true,
+            refund_quantity_packages: '2',
+            stock_return_quantity_packages: '2',
             lot_number: null,
           },
         ],
+        refund_method: 'CASH',
       },
     ]);
+  });
+
+  it('submits independent economic and stock quantities with the confirmed method', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await userEvent.type(screen.getByLabelText('Nº de venta'), '7');
+    await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+    await screen.findByText(/Venta #7/);
+
+    await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
+    const refund = screen.getByLabelText('Cantidad a reembolsar');
+    const stock = screen.getByLabelText('Cantidad que vuelve a stock');
+    await userEvent.clear(refund);
+    await userEvent.type(refund, '3');
+    expect(stock).toHaveValue('3');
+    await userEvent.clear(stock);
+    await userEvent.type(stock, '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir a la devolución' }));
+    await userEvent.selectOptions(screen.getByLabelText('Medio del reembolso'), 'CARD');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+
+    expect(await screen.findByText(/devuelto 3.*repuesto 1/)).toBeInTheDocument();
+    expect(backend.createCalls).toEqual([
+      {
+        notes: '',
+        lines: [
+          {
+            sale_line_id: 1,
+            refund_quantity_packages: '3',
+            stock_return_quantity_packages: '1',
+            lot_number: null,
+          },
+        ],
+        refund_method: 'CARD',
+      },
+    ]);
+  });
+
+  it('keeps a physical-only goodwill return free of refund method and entity', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await userEvent.type(screen.getByLabelText('Nº de venta'), '7');
+    await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+    await screen.findByText(/Venta #7/);
+
+    await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
+    const refund = screen.getByLabelText('Cantidad a reembolsar');
+    const stock = screen.getByLabelText('Cantidad que vuelve a stock');
+    await userEvent.clear(refund);
+    await userEvent.type(refund, '0');
+    await userEvent.clear(stock);
+    await userEvent.type(stock, '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir a la devolución' }));
+
+    expect(screen.queryByLabelText('Medio del reembolso')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+    expect(await screen.findByText(/sin reembolso económico/)).toBeInTheDocument();
+    expect(backend.createCalls[0]).not.toHaveProperty('refund_method');
   });
 
   it('reprints the frozen ticket of a completed sale and triggers window.print()', async () => {
