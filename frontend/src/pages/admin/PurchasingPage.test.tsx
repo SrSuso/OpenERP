@@ -23,14 +23,22 @@ const ME = {
   email: 'admin@example.com',
   full_name: 'Admin Uno',
   role: 'ADMIN',
-  permissions: ['admin.access', 'purchase.read', 'purchase.manage', 'receiving.manage'],
+  permissions: [
+    'admin.access',
+    'purchase.read',
+    'purchase.manage',
+    'receiving.manage',
+    'pricing.manage',
+  ],
 };
 
 function orderTotal(order: PurchaseOrder): string {
   return order.lines.reduce((sum, line) => sum + Number(line.total), 0).toFixed(6);
 }
 
-function stubBackend(options: { failPlaceOnce?: boolean; failReceiptOnce?: boolean } = {}) {
+function stubBackend(
+  options: { failPlaceOnce?: boolean; failReceiptOnce?: boolean; costProposal?: boolean } = {},
+) {
   const supplier: Supplier = {
     id: 1,
     name: 'Distribuciones Ejemplo SL',
@@ -79,6 +87,7 @@ function stubBackend(options: { failPlaceOnce?: boolean; failReceiptOnce?: boole
   const receipts: Record<number, unknown[]> = {};
   const placeKeys: string[] = [];
   const receiptKeys: string[] = [];
+  const appliedCosts: unknown[] = [];
   let placeFailures = options.failPlaceOnce ? 1 : 0;
   let receiptFailures = options.failReceiptOnce ? 1 : 0;
 
@@ -195,6 +204,19 @@ function stubBackend(options: { failPlaceOnce?: boolean; failReceiptOnce?: boole
             lot_number: l.lot_number,
             stock_movement_id: 1,
           })),
+          cost_proposals: options.costProposal
+            ? [
+                {
+                  receipt_line_id: 1,
+                  product_id: product.id,
+                  product_sku: product.sku,
+                  product_name: product.name,
+                  current_catalog_cost: '0.500000',
+                  received_unit_cost: '0.600000',
+                  difference: '0.100000',
+                },
+              ]
+            : [],
         };
         for (const l of lines) {
           const poLine = order.lines.find((pl) => pl.id === l.purchase_order_line_id)!;
@@ -211,12 +233,21 @@ function stubBackend(options: { failPlaceOnce?: boolean; failReceiptOnce?: boole
         receipts[order.id] = [receipt];
         return Promise.resolve(jsonResponse(receipt, { status: 201 }));
       }
+      const applyCostsMatch = /\/goods-receipts\/(\d+)\/apply-costs$/.exec(url);
+      if (method === 'POST' && applyCostsMatch) {
+        appliedCosts.push(body());
+        const receipt = (receipts[Number(applyCostsMatch[1])] ?? [])[0] as Record<string, unknown>;
+        receipt['cost_proposals'] = [];
+        product.cost = '0.600000';
+        product.list_price = '1.200000';
+        return Promise.resolve(jsonResponse(receipt));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { orders, placeKeys, receiptKeys };
+  return { orders, placeKeys, receiptKeys, appliedCosts };
 }
 
 function renderPage() {
@@ -296,5 +327,44 @@ describe('PurchasingPage', () => {
     // Aparece dos veces: una en la tabla de líneas del pedido, otra en la
     // recepción recién registrada.
     expect(screen.getAllByText('P000010')).toHaveLength(2);
+    expect(screen.queryByText('Costes de compra diferentes')).not.toBeInTheDocument();
+  });
+
+  it('shows a received-cost proposal and confirms only selected receipt lines', async () => {
+    const backend = stubBackend({ costProposal: true });
+    renderPage();
+
+    await screen.findByText('No hay pedidos de compra todavía.');
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo pedido' }));
+    await userEvent.selectOptions(screen.getByLabelText('Proveedor'), '1');
+    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    await userEvent.selectOptions(screen.getByLabelText('Formato'), '100');
+    await userEvent.clear(screen.getByLabelText('Cantidad'));
+    await userEvent.type(screen.getByLabelText('Cantidad'), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Crear pedido' }));
+    await screen.findByText('Distribuciones Ejemplo SL');
+    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Realizar pedido' }));
+    await screen.findByText('Estado: Realizado');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
+    await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
+    await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
+    await userEvent.selectOptions(screen.getByLabelText('Línea pendiente'), '1');
+    await userEvent.type(screen.getByLabelText('Cantidad'), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir a la recepción' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
+
+    expect(await screen.findByText('Costes de compra diferentes')).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Actualizar coste de Agua 1.5L'));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Actualizar coste y recalcular PVP' }),
+    );
+    await waitFor(() =>
+      expect(backend.appliedCosts).toEqual([
+        { lines: [{ receipt_line_id: 1, expected_current_cost: '0.500000' }] },
+      ]),
+    );
   });
 });

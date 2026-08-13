@@ -251,6 +251,13 @@ recibidas. Para productos trazados se introduce lote, fabricación y caducidad.
 La recepción aumenta inventario y actualiza el estado del pedido; admite
 recepciones parciales.
 
+Si el coste recibido por unidad base difiere del coste actual del catálogo, la
+recepción se guarda igualmente y muestra **Costes de compra diferentes**. Con
+`pricing.manage` se pueden seleccionar las líneas y pulsar **Actualizar coste
+y recalcular PVP**. La acción toma el coste histórico de la recepción, nunca
+un importe escrito en la pantalla, y puede recalcular el PVP cuando el producto
+tenga fórmula. No confirmarla no bloquea la mercancía ni cambia el catálogo.
+
 ---
 
 ## 7. Precios e impuestos

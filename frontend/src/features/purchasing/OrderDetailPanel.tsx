@@ -31,6 +31,7 @@ interface OrderDetailPanelProps {
   products: Product[];
   canManagePurchase: boolean;
   canManageReceiving: boolean;
+  canManagePricing: boolean;
 }
 
 export function OrderDetailPanel({
@@ -38,6 +39,7 @@ export function OrderDetailPanel({
   products,
   canManagePurchase,
   canManageReceiving,
+  canManagePricing,
 }: OrderDetailPanelProps) {
   const [showReceiptForm, setShowReceiptForm] = useState(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
@@ -154,7 +156,7 @@ export function OrderDetailPanel({
       )}
 
       <h5 className="mt-4 mb-1 text-xs font-semibold uppercase text-slate-500">Recepciones</h5>
-      <ReceiptsList orderId={order.id} />
+      <ReceiptsList orderId={order.id} canManagePricing={canManagePricing} />
       {canReceive && !showReceiptForm && (
         <button
           type="button"

@@ -151,6 +151,17 @@ export const goodsReceiptLineSchema = z.object({
 });
 export type GoodsReceiptLine = z.infer<typeof goodsReceiptLineSchema>;
 
+export const receivedCostProposalSchema = z.object({
+  receipt_line_id: z.number(),
+  product_id: z.number(),
+  product_sku: z.string(),
+  product_name: z.string(),
+  current_catalog_cost: z.string(),
+  received_unit_cost: z.string(),
+  difference: z.string(),
+});
+export type ReceivedCostProposal = z.infer<typeof receivedCostProposalSchema>;
+
 export const goodsReceiptSchema = z.object({
   id: z.number(),
   purchase_order_id: z.number(),
@@ -159,6 +170,7 @@ export const goodsReceiptSchema = z.object({
   notes: z.string(),
   received_at: z.string(),
   lines: z.array(goodsReceiptLineSchema),
+  cost_proposals: z.array(receivedCostProposalSchema),
 });
 export type GoodsReceipt = z.infer<typeof goodsReceiptSchema>;
 
@@ -196,5 +208,17 @@ export async function createGoodsReceipt(
     schema: goodsReceiptSchema,
     body: payload,
     headers: { 'Idempotency-Key': idempotencyKey },
+  });
+}
+
+/** The backend derives the new cost from persisted receipt lines. */
+export async function applyReceivedCosts(
+  receiptId: number,
+  lines: { receipt_line_id: number; expected_current_cost: string }[],
+): Promise<GoodsReceipt> {
+  return apiFetch(`${API_V1}/goods-receipts/${receiptId}/apply-costs`, {
+    method: 'POST',
+    schema: goodsReceiptSchema,
+    body: { lines },
   });
 }

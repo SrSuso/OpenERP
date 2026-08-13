@@ -28,6 +28,7 @@ interface OrdersTableProps {
   onToggleExpand: (id: number) => void;
   canManagePurchase: boolean;
   canManageReceiving: boolean;
+  canManagePricing: boolean;
 }
 
 export function OrdersTable({
@@ -37,6 +38,7 @@ export function OrdersTable({
   onToggleExpand,
   canManagePurchase,
   canManageReceiving,
+  canManagePricing,
 }: OrdersTableProps) {
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -82,6 +84,7 @@ export function OrdersTable({
                       products={products}
                       canManagePurchase={canManagePurchase}
                       canManageReceiving={canManageReceiving}
+                      canManagePricing={canManagePricing}
                     />
                   </td>
                 </tr>

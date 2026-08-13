@@ -32,6 +32,7 @@ export function PurchasingPage() {
   const { hasPermission } = useAuth();
   const canManagePurchase = hasPermission('purchase.manage');
   const canManageReceiving = hasPermission('receiving.manage');
+  const canManagePricing = hasPermission('pricing.manage');
 
   const [status, setStatus] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -126,6 +127,7 @@ export function PurchasingPage() {
           onToggleExpand={(id) => setExpandedId((current) => (current === id ? null : id))}
           canManagePurchase={canManagePurchase}
           canManageReceiving={canManageReceiving}
+          canManagePricing={canManagePricing}
         />
       )}
     </section>
