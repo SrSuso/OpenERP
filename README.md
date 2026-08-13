@@ -206,7 +206,7 @@ frontend/
 tests/e2e/          # Playwright: config + specs (proyecto npm de la raíz)
 docker/
   compose.yml       # infraestructura de desarrollo: PostgreSQL + Mailpit
-  compose.prod.yml  # stack de producción: postgres, mailpit, migrate, api, worker, web
+  compose.prod.yml  # stack de producción: postgres, migrate, api, worker, web
   nginx/nginx.conf  # reverse proxy + TLS + estáticos del `web` de producción
 deploy/certs/       # certificado TLS interno (generado, no versionado)
 scripts/            # alternativas rootless a Docker, backup/restore, gen-internal-cert.sh

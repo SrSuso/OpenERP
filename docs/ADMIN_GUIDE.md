@@ -23,7 +23,7 @@ Para cómo usan la aplicación cajeros y encargados, ver
 
 ### 1.2. Qué se despliega
 
-Seis piezas, cada una su propio contenedor, definidas en
+Cinco piezas, cada una su propio contenedor, definidas en
 [`docker/compose.prod.yml`](../docker/compose.prod.yml):
 
 | Servicio | Qué es | Accesible desde la LAN |
@@ -33,8 +33,6 @@ Seis piezas, cada una su propio contenedor, definidas en
 | `worker` | Envía los correos encolados (incidencias, etc.) | No — no expone ningún puerto |
 | `migrate` | Aplica las migraciones y termina; no es un servicio permanente | No |
 | `postgres` | La base de datos | No — sólo `127.0.0.1` del propio servidor (backups) |
-| `mailpit` | Bandeja de correo interna para pruebas, sustituible por un SMTP real (§6) | No — sólo `127.0.0.1` del propio servidor |
-
 Esto es un stack **independiente** del `docker/compose.yml` de desarrollo
 (ese sólo levanta PostgreSQL y Mailpit para trabajar en el código a mano).
 
@@ -104,7 +102,11 @@ Edita `.env.production` (nunca se commitea — está en `.gitignore`):
 - `POSTGRES_PASSWORD` y la contraseña dentro de `OPENERP_DATABASE_URL`
   (deben coincidir) — pon una contraseña larga y aleatoria, no la de
   ejemplo.
-- `OPENERP_CORS_ORIGINS` — el `https://` + hostname/IP que elegiste en 2.2.
+- Deja `OPENERP_CORS_ORIGINS` vacío: SPA y API comparten origen en producción.
+- Mantén `OPENERP_TRUSTED_PROXY_IP` dentro de `OPENERP_BACKEND_SUBNET`. Sólo
+  hace falta cambiar ambos si `172.30.0.0/24` colisiona con una red del host.
+- Configura `OPENERP_SMTP_*` con el relay corporativo si vas a enviar avisos;
+  Mailpit queda exclusivamente en desarrollo (§6).
 - Para no poner un secreto directamente en el entorno, monta un fichero y usa
   `OPENERP_DATABASE_URL_FILE`, `OPENERP_SMTP_PASSWORD_FILE`, etc. Cualquier
   campo admite la forma genérica `OPENERP_<CAMPO>_FILE`, que tiene precedencia
@@ -165,7 +167,9 @@ Desde un equipo de la red interna, con el certificado ya importado (§2.2):
 
 - Panel: `https://<host>/admin`
 - TPV: `https://<host>/pos`
-- Estado de la API: `https://<host>/api/v1/health/ready` → `{"status":"ok","database":"ok"}`
+
+Las sondas de API no son públicas. Desde el servidor, `make prod-smoke`
+comprueba readiness, revisión Alembic y Nginx sin realizar escrituras.
 
 ---
 
@@ -223,7 +227,60 @@ No hace downgrade ni restore automático. Lee el error y aplica §4.3.
 
 ---
 
-## 3.2. Registrar los terminales POS
+## 3.2. Perímetro HTTP y confianza en el proxy
+
+La única entrada desde la LAN es Nginx. El firewall debe permitir 80/443 y
+SSH sólo desde redes administrativas; no abras 8000 ni 5432. PostgreSQL
+publica 5432 únicamente en `127.0.0.1` para backup/restore y FastAPI sólo
+declara `expose: 8000` en la red Docker `openerp-prod-backend`.
+
+```text
+cliente → Nginx :443
+          ├─ /                 → SPA
+          ├─ /api/v1/...       → FastAPI
+          └─ /api/* restante   → 404 (nunca index.html)
+```
+
+`/api/docs`, `/api/redoc`, `/api/openapi.json` y sus variantes sin `/api`
+responden 404. Las sondas `/api/v1/health/live` y `ready` también se bloquean
+en el perímetro; Docker y `prod-smoke` las consultan directamente dentro del
+contenedor. En desarrollo directo, Swagger/ReDoc/OpenAPI siguen disponibles.
+
+Nginx sobrescribe —no concatena— `X-Forwarded-For` con la IP del socket del
+cliente. Uvicorn usa un solo proceso y sólo acepta forwarding desde la IP fija
+de Nginx (`OPENERP_TRUSTED_PROXY_IP`). Una cabecera enviada directamente a
+FastAPI o por un peer distinto no cambia la IP de sesión, auditoría o
+rate-limit. Si se coloca otro proxy delante, todos los clientes se verán como
+ese proxy hasta configurar explícitamente `set_real_ip_from` para sus IP/CIDR;
+no uses confianza global ni `--forwarded-allow-ips=*`.
+
+Nginx emite estos headers en SPA, assets, API, errores y mantenimiento:
+
+| Header | Valor |
+| --- | --- |
+| `Content-Security-Policy` | `default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'` |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), geolocation=(), microphone=(), payment=(), usb=()` |
+| `Strict-Transport-Security` | `max-age=31536000` |
+
+La CSP no permite scripts inline ni `unsafe-eval`. `style-src 'unsafe-inline'`
+es la única excepción: React usa estilos calculados para colores/alturas y
+ECharts CanvasRenderer posiciona su canvas mediante atributos `style`. Scripts,
+API, imágenes y fuentes permanecen same-origin; `data:` sólo se abre para
+imágenes. HSTS se emite únicamente en el servidor HTTPS, sin `includeSubDomains`
+ni `preload`. El despliegue soportado termina TLS en este Nginx. Si TLS termina
+en otro proxy, configura explícitamente esa topología antes de exponerla; no
+confíes en un `X-Forwarded-Proto` enviado por el cliente.
+
+Producción exige la lista CORS vacía y falla antes del downtime si una
+configuración antigua todavía contiene orígenes. Desarrollo conserva el origen
+explícito `http://localhost:5173`. La sesión mantiene cookie
+`Secure`, `HttpOnly`, `SameSite=Lax`; el POST cross-site normal no recibe esa
+cookie y no se añadió una capa CSRF innecesaria para esta topología same-origin.
+
+## 3.3. Registrar los terminales POS
 
 Antes de abrir el TPV por primera vez, entra en **Inventario → Terminales
 POS** y crea cada puesto físico (Caja 1, Caja 2…) asignándolo a su almacén.
@@ -240,7 +297,7 @@ y localiza la venta «Sin cobrar» en **Ventas**: allí permanece visible con el
 terminal que la originó. A9 no transfiere borradores entre cajas; cualquier
 recuperación/transferencia supervisada pertenece a una fase posterior.
 
-## 3.3. La caja: imprimir el ticket sin cuadro de impresión
+## 3.4. La caja: imprimir el ticket sin cuadro de impresión
 
 Una página web no puede saltarse el cuadro de impresión del navegador.
 `window.print()` lo abre siempre, y es una restricción de seguridad
@@ -466,13 +523,11 @@ curl -b cookies.txt -X DELETE https://<host>/api/v1/auth/sessions/<id>
 
 ---
 
-## 6. Correo: pasar de Mailpit a un SMTP real
+## 6. Correo de producción
 
-Por defecto el despliegue usa Mailpit (bandeja de pruebas interna, UI en
-`ssh -L 8025:127.0.0.1:8025 <servidor>` → `http://127.0.0.1:8025` en tu
-propio equipo) — suficiente para verificar que las notificaciones se
-generan sin depender del servidor de correo de la empresa desde el primer
-día. Cuando quieras enviar correo de verdad:
+Mailpit sólo forma parte de `docker/compose.yml` de desarrollo y nunca publica
+una interfaz en el stack de producción. Si producción debe enviar avisos,
+configura un relay corporativo antes de activar destinatarios.
 
 SMTP es infraestructura y sus credenciales no se almacenan ni se editan en
 PostgreSQL. El panel **Configuración** contiene sólo opciones funcionales de
@@ -490,8 +545,6 @@ la tienda. Para cambiar el relay:
    También puedes usar `OPENERP_SMTP_PASSWORD_FILE=/run/secrets/...`.
 2. `make prod-restart` para que API y, especialmente, el worker lean la
    configuración nueva.
-3. Opcional: quita el servicio `mailpit` de `docker/compose.prod.yml` y su
-   entrada en `.env.production` si ya no lo vas a usar ni para pruebas.
 
 Regla 10 del proyecto sigue aplicando: si el SMTP corporativo está caído,
 las ventas y el resto de la aplicación no se ven afectadas — los mensajes
@@ -505,11 +558,11 @@ sólo se acumulan `PENDING` en la cola hasta que el worker pueda entregarlos.
 | --- | --- | --- |
 | El login redirige a `/login` en bucle | `make prod-logs` (servicio `web`) | Se accede por `http://` en vez de `https://`, o el certificado no coincide con el hostname usado — la cookie `Secure` no se envía. |
 | El navegador dice que el certificado no es válido | — | Certificado autofirmado sin importar en ese equipo (§2.2) — no es un fallo del servidor. |
-| `503` en `/api/v1/health/ready` | `make prod-logs` (servicio `api`) | PostgreSQL no arrancó o `OPENERP_DATABASE_URL` no coincide con `POSTGRES_*`. |
-| Un correo de incidencia no llega | UI de Mailpit (§6) o logs del servicio `worker` | El worker no está corriendo, o el SMTP configurado rechaza la conexión — la venta/incidencia en sí no se ve afectada (regla 10). |
+| `make prod-smoke` falla en readiness | `make prod-logs` (servicio `api`) | PostgreSQL no arrancó o `OPENERP_DATABASE_URL` no coincide con `POSTGRES_*`. |
+| Un correo de incidencia no llega | Logs del servicio `worker` | El worker no está corriendo, o el SMTP configurado rechaza la conexión — la venta/incidencia en sí no se ve afectada (regla 10). |
 | Tras un `git pull` la app sigue con el código viejo | — | Falta `make prod-build` (reconstruir imágenes) antes de `make prod-up`. |
 
-`make prod-logs` sigue los logs de los seis servicios a la vez; para uno
+`make prod-logs` sigue los logs de los servicios a la vez; para uno
 solo: `docker compose -f docker/compose.prod.yml --env-file .env.production
 logs -f <servicio>`.
 
@@ -519,6 +572,8 @@ logs -f <servicio>`.
 
 - `.env.production` con contraseñas propias, no las de `.env.production.example`.
 - HTTPS con un certificado importado en los equipos que van a usarlo (§2.2).
+- Firewall/LAN: sólo Nginx 80/443; API sin puerto host y PostgreSQL sólo en
+  `127.0.0.1` (§3.2).
 - El primer administrador (§2.5) con una contraseña que no sea la de
   ejemplo de esta guía.
 - `OPENERP_LOGIN_RATE_LIMIT_*` (valores por defecto ya razonables: 5

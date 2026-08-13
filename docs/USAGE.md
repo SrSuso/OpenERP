@@ -130,10 +130,9 @@ curl -b cookies.txt -X DELETE http://127.0.0.1:8000/api/v1/auth/sessions/<id>
 
 ## 3. Gestionar usuarios y roles
 
-No hay todavía pantallas para esto en `/admin` (se añaden en una fase
-posterior); mientras tanto se gestiona por API — con `curl`, o mejor, desde
+También puede gestionarse por API con `curl` o, en desarrollo, desde
 `/api/docs` (Swagger UI, autenticado con la sesión del navegador si abres esa
-URL ya logueado en `/admin`).
+URL ya logueado en `/admin`). Producción no publica Swagger/ReDoc/OpenAPI.
 
 Todo lo que sigue requiere `users.manage` (`ADMIN` o `MANAGER`) o, para
 roles, `roles.manage` (sólo `ADMIN`).

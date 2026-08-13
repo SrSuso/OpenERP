@@ -104,7 +104,8 @@ rate limit. Puntos a tener en cuenta al desplegar (detalle operativo en
   contrario el navegador nunca la reenvía y el login parece "no funcionar".
 - `cors_origins` acepta una lista separada por comas (no JSON) gracias a un
   validador propio, porque así es como la pasa cualquier plataforma de
-  despliegue típica.
+  despliegue típica. Vacío no instala middleware CORS, que es la política de
+  producción porque SPA y API comparten origen.
 - `async_database_url`/`sync_database_url` normalizan cualquier URL
   `postgres://`/`postgresql://` al driver `psycopg` (v3); no hace falta
   escribir el driver a mano en `OPENERP_DATABASE_URL`.
@@ -174,14 +175,18 @@ en `PENDING` hasta que alguno lo levante.
 
 - `RequestContextMiddleware` genera/propaga un `X-Request-ID` por petición
   y lo mete en el contexto de logging — todo log de esa petición lo lleva.
-- `SecurityHeadersMiddleware` añade cabeceras de higiene básica siempre
-  (`X-Content-Type-Options`, `X-Frame-Options`, etc.) y `Strict-Transport-
-  Security` sólo cuando `environment == "production"` — mismo criterio que
-  la cookie `Secure` de §2.2.
+- `app/api/client.py` es la fuente única de IP para login, sesión, auditoría y
+  logs. Uvicorn normaliza forwarding sólo desde la IP fija de Nginx; la
+  aplicación no interpreta `X-Forwarded-For` por su cuenta.
+- Las cabeceras del perímetro (CSP, HSTS, framing, MIME, referrer y permisos)
+  pertenecen a Nginx para cubrir también SPA, assets y errores. FastAPI no las
+  duplica con valores potencialmente contradictorios.
 - `log_format`: `console` (legible) en desarrollo, `json` (para
   centralizar logs) en producción.
 - `register_exception_handlers` traduce las excepciones de dominio a
   respuestas HTTP consistentes; nunca se filtra un *stack trace* al cliente.
+  Un fallo inesperado registra request ID, tipo y ubicación, pero no el texto
+  crudo de la excepción porque podría incluir parámetros SQL o credenciales.
 
 ### 2.7. Migraciones (`backend/migrations/`, Alembic)
 
@@ -215,7 +220,7 @@ Puntos de diseño a tener en cuenta:
 
 - **Mismo origen que la API en producción**: el build no lleva ninguna URL
   de API embebida (`VITE_API_BASE_URL` vacío) — las peticiones van a
-  `/api/...` relativo, igual que en desarrollo el proxy de Vite reenvía
+  `/api/v1/...` relativo, igual que en desarrollo el proxy de Vite reenvía
   `/api` a `http://127.0.0.1:8000` (`vite.config.ts`). En producción, quien
   hace ese mismo papel es nginx (`docker/nginx/nginx.conf`) — ver
   `ADMIN_GUIDE.md`.
@@ -229,7 +234,7 @@ Puntos de diseño a tener en cuenta:
   y unidades) y **precios** (`/admin/pricing` — impuestos y la fórmula del
   PVP; todo añadido tras el cierre de las 22 fases). Compras/inventario/
   lotes/devoluciones/tickets/notificaciones siguen sin pantalla propia —
-  se opera contra la API (Swagger UI en `/api/docs`), documentado en
+  se opera contra la API (Swagger UI en `/api/docs` sólo en desarrollo), documentado en
   `USAGE.md` §3. Añadir esas pantallas es trabajo de frontend puro sobre
   una API que ya existe por completo, mismo patrón que `features/users`/
   `features/roles`/`features/catalog`/`features/pricing`.
@@ -378,9 +383,9 @@ existentes:
    catálogo (igual que hizo la fase 1), documentarlas en `ADMIN_GUIDE.md`.
 
 Referencia viva de la API completa (todos los endpoints, esquemas de
-entrada/salida): `/api/docs` (Swagger UI) o `/api/redoc` sobre cualquier
-instancia en marcha — no se duplica aquí porque quedaría desactualizada al
-primer cambio.
+entrada/salida): `/api/docs` (Swagger UI) o `/api/redoc` en desarrollo. En
+producción esas rutas y `/api/openapi.json` no se registran; el esquema sigue
+disponible internamente mediante `app.openapi()` para tooling/tests.
 
 ---
 
