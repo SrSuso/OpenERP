@@ -10,23 +10,25 @@ a request body can grow on its own.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Date, case, cast, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog import stock as catalog_stock
 from app.catalog.models import Product
+from app.core.business_time import business_date_expression, business_day_utc_range
 from app.core.errors import ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.inventory.models import StockBalance
 from app.pricing.models import PricingSettings
 from app.reports.rules import ReportFilters, ReportSubject, run_report
 from app.sales.models import Sale, SaleLine, SaleStatus
+from app.settings.business_time import get_business_timezone
 
 
 def _q(value: Decimal) -> Decimal:
@@ -121,6 +123,21 @@ def _line_total_expr() -> Any:
     )
 
 
+async def _business_date_window(
+    session: AsyncSession, date_from: date, date_to: date
+) -> tuple[Any, datetime, datetime]:
+    """One business-calendar bucket and one index-friendly UTC range.
+
+    The expression is explicit about the shop timezone, so grouping does not
+    inherit PostgreSQL's ``SET TIME ZONE``.  The half-open bounds preserve
+    23/25-hour DST days and avoid casting the timestamp in the WHERE clause.
+    """
+    timezone = await get_business_timezone(session)
+    start, _ = business_day_utc_range(date_from, timezone)
+    _, end = business_day_utc_range(date_to, timezone)
+    return business_date_expression(Sale.completed_at, timezone), start, end
+
+
 # --- metrics -------------------------------------------------------------------
 
 
@@ -130,7 +147,7 @@ async def sales_over_time(
     if params.date_from > params.date_to:
         raise ValidationError("date_from must not be after date_to.")
 
-    day = cast(Sale.completed_at, Date)
+    day, start, end = await _business_date_window(session, params.date_from, params.date_to)
     stmt = (
         select(
             day.label("date"),
@@ -140,8 +157,8 @@ async def sales_over_time(
         .join(SaleLine, SaleLine.sale_id == Sale.id)
         .where(
             Sale.status == SaleStatus.COMPLETED,
-            day >= params.date_from,
-            day <= params.date_to,
+            Sale.completed_at >= start,
+            Sale.completed_at < end,
         )
         .group_by(day)
         .order_by(day)
@@ -164,7 +181,7 @@ async def top_products(session: AsyncSession, params: TopProductsParams) -> list
     if params.date_from > params.date_to:
         raise ValidationError("date_from must not be after date_to.")
 
-    day = cast(Sale.completed_at, Date)
+    _, start, end = await _business_date_window(session, params.date_from, params.date_to)
     revenue = func.coalesce(func.sum(_line_total_expr()), 0)
     quantity = func.coalesce(func.sum(SaleLine.quantity_base), 0)
     order_column = revenue if params.order_by == "revenue" else quantity
@@ -182,8 +199,8 @@ async def top_products(session: AsyncSession, params: TopProductsParams) -> list
         .join(Product, Product.id == SaleLine.product_id)
         .where(
             Sale.status == SaleStatus.COMPLETED,
-            day >= params.date_from,
-            day <= params.date_to,
+            Sale.completed_at >= start,
+            Sale.completed_at < end,
         )
         .group_by(Product.id, Product.sku, Product.name)
         .order_by(order_column.desc())

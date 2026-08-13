@@ -9,6 +9,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy import text, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.sales.models import Sale
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
@@ -589,3 +593,103 @@ async def test_a_report_widget_with_an_invented_dimension_is_rejected(
         assert data.status_code == 422
     else:
         assert response.status_code == 422
+
+
+async def test_daily_metric_uses_business_timezone_not_postgresql_timezone(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    """D12/D13: 22:30Z is already the next Madrid business day."""
+    await login(role_name="ADMIN")
+    assert (
+        await client.put(
+            "/api/v1/settings/options",
+            json={"values": {"business.timezone": "Europe/Madrid"}},
+        )
+    ).status_code == 200
+    warehouse_id, location_id = await _new_warehouse(client)
+    product = await _create_product(client, sku="DASH-MADRID-DAY")
+    sale = await _completed_sale(client, product=product, location=(warehouse_id, location_id))
+    await db_session.execute(
+        update(Sale)
+        .where(Sale.id == sale["id"])
+        .values(completed_at=datetime(2026, 8, 12, 22, 30, tzinfo=UTC))
+    )
+    await db_session.execute(text("SET LOCAL TIME ZONE 'Pacific/Honolulu'"))
+    dashboard = await _create_dashboard(client)
+    widget = (
+        await client.post(
+            f"/api/v1/dashboards/{dashboard['id']}/widgets",
+            json={
+                "metric": "sales_over_time",
+                "title": "Día comercial",
+                "params": {
+                    "date_from": "2026-08-13",
+                    "date_to": "2026-08-13",
+                    "warehouse_id": warehouse_id,
+                },
+                "chart_type": "line",
+            },
+        )
+    ).json()["widgets"][0]
+
+    response = await client.get(f"/api/v1/dashboards/{dashboard['id']}/widgets/{widget['id']}/data")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == [
+        {"date": "2026-08-13", "sales_count": 1, "total": "10.000000"}
+    ]
+
+
+async def test_daily_metric_uses_half_open_dst_business_day(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    """D14: Madrid's 2026 spring day spans 23 hours, not a fixed UTC day."""
+    await login(role_name="ADMIN")
+    assert (
+        await client.put(
+            "/api/v1/settings/options",
+            json={"values": {"business.timezone": "Europe/Madrid"}},
+        )
+    ).status_code == 200
+    warehouse_id, location_id = await _new_warehouse(client)
+    product = await _create_product(client, sku="DASH-DST")
+    sales = [
+        await _completed_sale(client, product=product, location=(warehouse_id, location_id))
+        for _ in range(3)
+    ]
+    instants = (
+        datetime(2026, 3, 28, 23, 0, tzinfo=UTC),
+        datetime(2026, 3, 29, 21, 59, 59, tzinfo=UTC),
+        datetime(2026, 3, 29, 22, 0, tzinfo=UTC),
+    )
+    for sale, completed_at in zip(sales, instants, strict=True):
+        await db_session.execute(
+            update(Sale).where(Sale.id == sale["id"]).values(completed_at=completed_at)
+        )
+    dashboard = await _create_dashboard(client)
+    widget = (
+        await client.post(
+            f"/api/v1/dashboards/{dashboard['id']}/widgets",
+            json={
+                "metric": "sales_over_time",
+                "title": "DST",
+                "params": {
+                    "date_from": "2026-03-29",
+                    "date_to": "2026-03-29",
+                    "warehouse_id": warehouse_id,
+                },
+                "chart_type": "line",
+            },
+        )
+    ).json()["widgets"][0]
+
+    response = await client.get(f"/api/v1/dashboards/{dashboard['id']}/widgets/{widget['id']}/data")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == [
+        {"date": "2026-03-29", "sales_count": 2, "total": "20.000000"}
+    ]
