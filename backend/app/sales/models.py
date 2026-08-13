@@ -29,6 +29,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -39,6 +40,7 @@ from app.catalog.models import Product, ProductPackage
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
 from app.db.types import Money, Quantity, numeric
 from app.inventory.models import Location, Warehouse
+from app.pos.models import PosTerminal
 
 
 class SaleStatus(StrEnum):
@@ -64,6 +66,7 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
             "status <> 'COMPLETED' OR cashier_user_id IS NULL OR cashier_name IS NOT NULL",
             name="completed_has_cashier_snapshot",
         ),
+        Index("ix_sales_terminal_id_status", "terminal_id", "status"),
     )
 
     #: El número que ve el cliente, el que va impreso en el ticket.
@@ -77,6 +80,12 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"), index=True)
     location_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("locations.id"))
+    #: Nullable for pre-A9 history and legitimate non-POS sales. Every new
+    #: browser POS cart supplies one and the domain validates that it belongs
+    #: to the same warehouse. The FK is retained after checkout as history.
+    terminal_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("pos_terminals.id", ondelete="RESTRICT"), nullable=True
+    )
     # Indexed (phase 20): the POS "resume or open a draft" lookup and every
     # dashboard/report metric filter on this column, on a table that only
     # ever grows.
@@ -102,6 +111,7 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     warehouse: Mapped[Warehouse] = relationship()
     location: Mapped[Location] = relationship()
+    terminal: Mapped[PosTerminal | None] = relationship()
     lines: Mapped[list[SaleLine]] = relationship(
         back_populates="sale", cascade="all, delete-orphan", order_by="SaleLine.id"
     )

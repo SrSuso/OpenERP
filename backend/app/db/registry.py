@@ -23,6 +23,7 @@ from app.inventory import models as inventory_models
 from app.jobs import models as job_models
 from app.lots import models as lot_models
 from app.notifications import models as notification_models
+from app.pos import models as pos_models
 from app.pricing import models as pricing_models
 from app.purchasing import models as purchasing_models
 from app.rbac import models as rbac_models
@@ -47,6 +48,7 @@ __all__ = [
     "job_models",
     "lot_models",
     "notification_models",
+    "pos_models",
     "pricing_models",
     "purchasing_models",
     "rbac_models",

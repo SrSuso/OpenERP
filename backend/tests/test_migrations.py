@@ -191,6 +191,69 @@ def test_idempotency_result_resource_migration_is_reversible(
     engine.dispose()
 
 
+def test_pos_terminal_migration_preserves_existing_sales_and_is_reversible(
+    fresh_database: Callable[[], str],
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "8c4e2a7f1b93")
+    engine = _sync_engine(url)
+
+    with engine.begin() as connection:
+        warehouse_id, location_id = connection.execute(
+            text(
+                "SELECT w.id, l.id FROM warehouses AS w "
+                "JOIN locations AS l ON l.warehouse_id = w.id ORDER BY w.id, l.id LIMIT 1"
+            )
+        ).one()
+        historical_sale_id = connection.scalar(
+            text(
+                "INSERT INTO sales (warehouse_id, location_id, status, notes, created_at, "
+                "updated_at) VALUES (:warehouse_id, :location_id, 'DRAFT', '', now(), now()) "
+                "RETURNING id"
+            ),
+            {"warehouse_id": warehouse_id, "location_id": location_id},
+        )
+
+    run_alembic(url, "upgrade", "3e7b1c9d5a42")
+    with engine.begin() as connection:
+        assert connection.scalar(
+            text("SELECT terminal_id FROM sales WHERE id = :id"), {"id": historical_sale_id}
+        ) is None
+        columns = set(
+            connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'pos_terminals'"
+                )
+            ).scalars()
+        )
+        indexes = set(
+            connection.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' "
+                    "AND tablename = 'sales'"
+                )
+            ).scalars()
+        )
+    assert {"id", "name", "warehouse_id", "is_active", "created_at", "updated_at"} == columns
+    assert "ix_sales_terminal_id_status" in indexes
+
+    run_alembic(url, "downgrade", "8c4e2a7f1b93")
+    with engine.begin() as connection:
+        assert connection.scalar(text("SELECT to_regclass('public.pos_terminals')")) is None
+        sale_columns = set(
+            connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'sales'"
+                )
+            ).scalars()
+        )
+    assert "terminal_id" not in sale_columns
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
 def test_a_formula_naming_margin_amount_blocks_without_data_loss(
     fresh_database: Callable[[], str],
 ) -> None:
