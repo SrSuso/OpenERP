@@ -206,9 +206,9 @@ export const saleSchema = z.object({
   notes: z.string(),
   prices_include_tax: z.boolean().nullable().optional(),
   cashier_name: z.string().nullable().optional(),
-  // Cuándo se abrió: es por lo que se listan y se filtran en la pantalla
-  // de Ventas, y lo único que tienen también las que se quedaron sin
-  // cobrar.
+  completed_at: z.string().nullable().optional(),
+  // Instante de apertura; los borradores usan éste como día comercial y
+  // las ventas cobradas usan completed_at.
   created_at: z.string(),
   lines: z.array(saleLineSchema),
   total: z.string(),
@@ -270,34 +270,11 @@ export function saleByNumberQuery(number: number | null) {
   });
 }
 
-/** El día de la tienda, de medianoche a medianoche **en hora local**, como
- * dos instantes exactos.
- *
- * Mandar la fecha a secas ("2026-08-11") tenía dos fallos. Uno, el
- * servidor la entendía como medianoche UTC, así que en España las ventas
- * de después de medianoche caían en el día anterior. Y dos, convertir el
- * día siguiente con `toISOString()` lo devolvía al huso de Madrid: el
- * "hasta" salía el mismo día que el "desde" y el rango quedaba vacío — la
- * pantalla no enseñaba ni una venta. */
-function localDayBounds(day: string): { from: string; to: string } {
-  const [year, month, dayOfMonth] = day.split('-').map(Number) as [number, number, number];
-  return {
-    from: new Date(year, month - 1, dayOfMonth).toISOString(),
-    to: new Date(year, month - 1, dayOfMonth + 1).toISOString(),
-  };
-}
-
-/** Las ventas de un día, para la pantalla de Ventas del panel. El rango va
- * de ese día al siguiente porque el servidor lo trata cerrado por abajo y
- * abierto por arriba: así entra el día entero sin pelearse con la última
- * hora. */
+/** Las ventas de un día comercial. YYYY-MM-DD llega intacto al backend,
+ * que conoce la timezone de la tienda y construye allí [start_utc, end_utc). */
 export function salesQuery(filters: SalesFilters) {
   const params = new URLSearchParams({ limit: '500' });
-  if (filters.day) {
-    const { from, to } = localDayBounds(filters.day);
-    params.set('created_from', from);
-    params.set('created_to', to);
-  }
+  if (filters.day) params.set('business_date', filters.day);
   if (filters.status) params.set('status', filters.status);
 
   return queryOptions({

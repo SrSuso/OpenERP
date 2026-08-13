@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { goodsReceiptsQuery } from '@/features/purchasing/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 import { formatQuantity } from '@/lib/format';
 
 interface ReceiptsListProps {
@@ -8,6 +10,7 @@ interface ReceiptsListProps {
 }
 
 export function ReceiptsList({ orderId }: ReceiptsListProps) {
+  const businessTimezone = useBusinessTimezone();
   const receipts = useQuery(goodsReceiptsQuery(orderId));
 
   if (receipts.isPending) return <p className="text-sm text-slate-500">Cargando…</p>;
@@ -23,7 +26,7 @@ export function ReceiptsList({ orderId }: ReceiptsListProps) {
       {receipts.data.map((receipt) => (
         <li key={receipt.id} className="rounded border border-slate-200 bg-white p-2">
           <p className="text-xs text-slate-500">
-            {new Date(receipt.received_at).toLocaleString('es-ES')}
+            {formatBusinessDateTime(receipt.received_at, businessTimezone)}
             {receipt.notes && ` · ${receipt.notes}`}
           </p>
           <ul className="mt-1 space-y-0.5">

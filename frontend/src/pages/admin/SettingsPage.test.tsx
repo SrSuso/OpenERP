@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { type SystemSettings } from '@/features/settings/api';
-import { type SettingsOptions } from '@/features/settings/optionsApi';
+import { settingsValuesQuery, type SettingsOptions } from '@/features/settings/optionsApi';
 
 import { SettingsPage } from './SettingsPage';
 
@@ -64,6 +64,20 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       value: 'Calle Mayor 1',
       is_set: false,
       default: '',
+      choices: [],
+      minimum: null,
+      maximum: null,
+      caution: null,
+    },
+    {
+      key: 'business.timezone',
+      group: 'Datos de la tienda',
+      label: 'Zona horaria comercial',
+      help: 'Calendario y hora de la tienda para mostrar y filtrar operaciones.',
+      type: 'TIMEZONE',
+      value: 'Europe/Madrid',
+      is_set: false,
+      default: 'Europe/Madrid',
       choices: [],
       minimum: null,
       maximum: null,
@@ -259,13 +273,14 @@ function stubBackend(options?: { optionsError?: string }): BackendStub {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <SettingsPage />
       </AuthProvider>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 describe('SettingsPage — SMTP', () => {
@@ -380,6 +395,24 @@ describe('SettingsPage — opciones del registro', () => {
     // El cambio de la otra tarjeta sigue pendiente, no se ha perdido.
     const ticketCard = screen.getByRole('heading', { name: 'Ticket' }).parentElement!;
     expect(within(ticketCard).getByText('Sin guardar')).toBeInTheDocument();
+  });
+
+  it('refreshes the read-only values cache when the business timezone changes', async () => {
+    const backend = stubBackend();
+    const queryClient = renderPage();
+    const timezone = await screen.findByLabelText('Zona horaria comercial');
+    await userEvent.clear(timezone);
+    await userEvent.type(timezone, 'Europe/Lisbon');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Guardar cambios de Datos de la tienda' }),
+    );
+    await screen.findByText('Guardado. Ya está aplicado en la tienda.');
+
+    expect(backend.optionsPutCalls).toEqual([{ 'business.timezone': 'Europe/Lisbon' }]);
+    expect(queryClient.getQueryData(settingsValuesQuery.queryKey)).toMatchObject({
+      'business.timezone': 'Europe/Lisbon',
+    });
   });
 
   it('restores a field to its default value, and only offers it when it differs', async () => {

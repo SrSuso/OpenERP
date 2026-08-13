@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { salesQuery, type Sale } from '@/features/pos/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
 import { TicketReprintButton } from '@/features/tickets/TicketReprintButton';
+import { businessDateAt, formatBusinessTime } from '@/lib/businessTime';
 import { formatMoney } from '@/lib/format';
 
 // Cancelar borra el carrito, así que aquí no hay canceladas que enseñar.
@@ -18,18 +20,6 @@ const STATUS_STYLE: Record<Sale['status'], string> = {
   CANCELLED: 'bg-slate-100 text-slate-500',
 };
 
-function today(): string {
-  // En hora local, no UTC: "hoy" es el día de la tienda, y a partir de las
-  // dos de la mañana en España no son el mismo.
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-}
-
-function timeOf(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-}
-
 /** Las ventas del día, con su ticket a mano.
  *
  * El motivo de que exista: al cerrar el ticket en la caja desaparece el
@@ -41,7 +31,9 @@ function timeOf(iso: string): string {
  * Reimprimir devuelve siempre el texto congelado del ticket original, no
  * uno nuevo con los datos de hoy (ver `TicketReprintButton`). */
 export function SalesPage() {
-  const [day, setDay] = useState(today());
+  const businessTimezone = useBusinessTimezone();
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const day = selectedDay ?? businessDateAt(businessTimezone);
   const [status, setStatus] = useState<'' | 'DRAFT' | 'COMPLETED'>('');
 
   const sales = useQuery(salesQuery({ day, ...(status === '' ? {} : { status }) }));
@@ -60,7 +52,7 @@ export function SalesPage() {
           <input
             type="date"
             value={day}
-            onChange={(event) => setDay(event.target.value)}
+            onChange={(event) => setSelectedDay(event.target.value)}
             className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
           />
         </label>
@@ -116,7 +108,9 @@ export function SalesPage() {
                       `#${sale.number}`
                     )}
                   </td>
-                  <td className="px-4 py-2 text-slate-600">{timeOf(sale.created_at)}</td>
+                  <td className="px-4 py-2 text-slate-600">
+                    {formatBusinessTime(sale.completed_at ?? sale.created_at, businessTimezone)}
+                  </td>
                   <td className="px-4 py-2">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[sale.status]}`}

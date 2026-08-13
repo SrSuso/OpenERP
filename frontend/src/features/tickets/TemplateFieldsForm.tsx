@@ -9,6 +9,7 @@ import {
   type TemplateFields,
   type TicketTaxDisplay,
 } from '@/features/tickets/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
 import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 
 const fieldsSchema = z.object({
@@ -64,6 +65,7 @@ export function TemplateFieldsForm({
   submitError,
   pricesIncludeTax,
 }: TemplateFieldsFormProps) {
+  const businessTimezone = useBusinessTimezone();
   const {
     register,
     handleSubmit,
@@ -114,6 +116,7 @@ export function TemplateFieldsForm({
     label_change: watch('label_change') ?? '',
     label_discount: watch('label_discount') ?? '',
     tax_note: watch('tax_note') ?? '',
+    business_timezone: businessTimezone,
   });
 
   const submit = handleSubmit((values) => {

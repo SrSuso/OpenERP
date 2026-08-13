@@ -6,6 +6,7 @@
  * exigiría construir una `Sale` de mentira sólo para previsualizar. */
 
 import { type TicketTaxDisplay } from '@/features/tickets/api';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 
 const CHARS_PER_WIDTH: Record<58 | 80, number> = { 58: 32, 80: 48 };
 
@@ -67,6 +68,9 @@ export interface TicketPreviewFields {
   label_change: string;
   label_discount: string;
   tax_note: string;
+  business_timezone: string;
+  /** Controlled by tests; real previews use the current absolute instant. */
+  now?: Date;
 }
 
 export function renderTicketPreview(fields: TicketPreviewFields): string {
@@ -87,7 +91,7 @@ export function renderTicketPreview(fields: TicketPreviewFields): string {
   if (headerLines.length > 0) rows.push(rule(width));
 
   rows.push(`${fields.sale_number_prefix}0001`);
-  rows.push(new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }));
+  rows.push(formatBusinessDateTime(fields.now ?? new Date(), fields.business_timezone));
   rows.push(rule(width));
 
   let subtotal = 0;

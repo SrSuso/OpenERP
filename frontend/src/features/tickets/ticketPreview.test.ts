@@ -24,6 +24,8 @@ const BASE_FIELDS = {
   label_other: 'Otros',
   label_discount: 'Dto.',
   tax_note: 'IVA incluido',
+  business_timezone: 'Europe/Madrid',
+  now: new Date('2026-08-12T22:30:00Z'),
 };
 
 describe('renderTicketPreview', () => {
@@ -39,6 +41,14 @@ describe('renderTicketPreview', () => {
   it('omits the header rule entirely when there is no header text', () => {
     const preview = renderTicketPreview(BASE_FIELDS);
     expect(preview.startsWith('Venta #0001')).toBe(true);
+  });
+
+  it('shows the preview clock in the configured business timezone', () => {
+    const madrid = renderTicketPreview(BASE_FIELDS);
+    const utc = renderTicketPreview({ ...BASE_FIELDS, business_timezone: 'UTC' });
+
+    expect(madrid).toContain('13/08/2026, 00:30');
+    expect(utc).toContain('12/08/2026, 22:30');
   });
 
   it('widens to 48 characters for an 80mm template', () => {

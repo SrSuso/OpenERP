@@ -1,4 +1,6 @@
 import { SEVERITY_LABELS, SEVERITY_STYLES, type Incident } from '@/features/notifications/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 
 interface IncidentsTableProps {
   incidents: Incident[];
@@ -13,6 +15,7 @@ export function IncidentsTable({
   onResolve,
   isResolving,
 }: IncidentsTableProps) {
+  const businessTimezone = useBusinessTimezone();
   if (incidents.length === 0) {
     return <p className="text-sm text-slate-500">No hay incidencias con estos filtros.</p>;
   }
@@ -51,10 +54,10 @@ export function IncidentsTable({
               <td className="px-4 py-2 font-medium text-slate-800">{incident.rule_name}</td>
               <td className="px-4 py-2">{incident.message}</td>
               <td className="px-4 py-2 text-xs text-slate-500">
-                {new Date(incident.first_detected_at).toLocaleString('es-ES')}
+                {formatBusinessDateTime(incident.first_detected_at, businessTimezone)}
               </td>
               <td className="px-4 py-2 text-xs text-slate-500">
-                {new Date(incident.last_seen_at).toLocaleString('es-ES')}
+                {formatBusinessDateTime(incident.last_seen_at, businessTimezone)}
               </td>
               <td className="px-4 py-2">
                 {incident.status === 'OPEN' ? (

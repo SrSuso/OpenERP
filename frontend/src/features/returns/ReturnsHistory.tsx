@@ -1,9 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { saleReturnsQuery } from '@/features/returns/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 import { formatMoney, formatQuantity } from '@/lib/format';
 
 export function ReturnsHistory({ saleId }: { saleId: number }) {
+  const businessTimezone = useBusinessTimezone();
   const returns = useQuery(saleReturnsQuery(saleId));
 
   if (returns.isPending) return <p className="text-sm text-slate-500">Cargando…</p>;
@@ -19,7 +22,7 @@ export function ReturnsHistory({ saleId }: { saleId: number }) {
       {returns.data.map((ret) => (
         <li key={ret.id} className="rounded border border-slate-200 bg-white p-2">
           <p className="text-xs text-slate-500">
-            {new Date(ret.created_at).toLocaleString('es-ES')}
+            {formatBusinessDateTime(ret.created_at, businessTimezone)}
             {ret.refund
               ? ` · reembolso ${formatMoney(ret.refund.amount)} · ${ret.refund.method ?? 'medio histórico no disponible'} · completado`
               : ' · sin reembolso económico'}

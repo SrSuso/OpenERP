@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { settingsValuesQuery } from '@/features/settings/optionsApi';
+import { DEFAULT_BUSINESS_TIMEZONE } from '@/lib/businessTime';
 
 /** Los ajustes de tienda para las pantallas que sólo necesitan leerlos
  * (menú, TPV), no editarlos. Devuelve el valor por defecto mientras carga,
@@ -17,6 +18,10 @@ export function useShopSetting(key: string, fallback: string): string {
 export function useShopFlag(key: string, fallback: boolean): boolean {
   const value = useShopSetting(key, fallback ? 'true' : 'false');
   return value === 'true';
+}
+
+export function useBusinessTimezone(): string {
+  return useShopSetting('business.timezone', DEFAULT_BUSINESS_TIMEZONE);
 }
 
 /** Como `useShopFlag`, pero distinguiendo "todavía no se sabe"

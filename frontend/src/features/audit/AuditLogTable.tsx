@@ -1,6 +1,8 @@
 import { Fragment, useState } from 'react';
 
 import { type AuditLogEntry } from '@/features/audit/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 
 /** Nombre a mostrar para el autor de una entrada — `null` es una acción del
  * sistema (el worker de outbox, un job en segundo plano), no un usuario. */
@@ -16,6 +18,7 @@ export function AuditLogTable({
   entries: AuditLogEntry[];
   userNames: Record<number, string>;
 }) {
+  const businessTimezone = useBusinessTimezone();
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   if (entries.length === 0) {
@@ -40,7 +43,7 @@ export function AuditLogTable({
             <Fragment key={entry.id}>
               <tr className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-2 text-xs text-slate-500">
-                  {new Date(entry.created_at).toLocaleString('es-ES')}
+                  {formatBusinessDateTime(entry.created_at, businessTimezone)}
                 </td>
                 <td className="px-4 py-2">{userLabel(entry.user_id, userNames)}</td>
                 <td className="px-4 py-2 font-mono text-xs">{entry.action}</td>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { SettingField } from '@/features/settings/SettingField';
 import {
   settingsOptionsQuery,
+  settingsValuesQuery,
   updateSettingsOptions,
   type SettingDefinition,
 } from '@/features/settings/optionsApi';
@@ -165,6 +166,14 @@ function SettingsGroupCard({
       // El PUT ya devuelve el estado completo y actualizado, así que la
       // caché se refresca sin un GET de vuelta.
       queryClient.setQueryData(settingsOptionsQuery.queryKey, data);
+      queryClient.setQueryData(
+        settingsValuesQuery.queryKey,
+        Object.fromEntries(
+          data.settings
+            .filter((definition) => definition.type !== 'SECRET')
+            .map((definition) => [definition.key, definition.value]),
+        ),
+      );
       onSaved(changed.map((definition) => definition.key));
       setError(null);
       setSaved(true);

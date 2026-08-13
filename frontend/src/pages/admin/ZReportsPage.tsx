@@ -3,7 +3,9 @@ import { queryOptions } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { zReportSchema, type ZReport } from '@/features/pos/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
 import { API_V1, apiFetch } from '@/lib/api';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 import { formatMoney } from '@/lib/format';
 
 const zReportsQuery = queryOptions({
@@ -12,22 +14,13 @@ const zReportsQuery = queryOptions({
     apiFetch(`${API_V1}/z-reports`, { schema: z.array(zReportSchema), signal }),
 });
 
-function when(iso: string): string {
-  return new Date(iso).toLocaleString('es-ES', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 /** Los cierres de caja guardados.
  *
  * Cada uno con los totales tal y como se congelaron esa noche: es el papel
  * con el que se cuadró el cajón, y no cambia aunque después se devuelva
  * media compra (ver `app.sales.z_reports`). */
 export function ZReportsPage() {
+  const businessTimezone = useBusinessTimezone();
   const reports = useQuery(zReportsQuery);
   const rows: ZReport[] = reports.data ?? [];
 
@@ -69,12 +62,14 @@ export function ZReportsPage() {
                 <tr key={report.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-2 font-medium text-slate-800">{report.number}</td>
                   <td className="px-4 py-2 whitespace-nowrap text-slate-600">
-                    {when(report.closed_at)}
+                    {formatBusinessDateTime(report.closed_at, businessTimezone)}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-slate-500">
                     {/* La primera Z de una caja no tiene corte anterior:
                         entró todo lo que hubiera hasta entonces. */}
-                    {report.covers_from === null ? 'el principio' : when(report.covers_from)}
+                    {report.covers_from === null
+                      ? 'el principio'
+                      : formatBusinessDateTime(report.covers_from, businessTimezone)}
                   </td>
                   <td className="px-4 py-2 text-slate-600">{report.sales_count}</td>
                   <td className="px-4 py-2">{formatMoney(report.cash_total)}</td>

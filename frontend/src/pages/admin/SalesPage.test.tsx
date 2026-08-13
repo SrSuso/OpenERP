@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -52,6 +52,9 @@ function stubBackend(sales: Sale[]) {
       const method = init?.method ?? 'GET';
 
       if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
+      if (method === 'GET' && url.includes('/settings/values')) {
+        return Promise.resolve(jsonResponse({ 'business.timezone': 'Europe/Madrid' }));
+      }
       const ticket = /\/sales\/(\d+)\/tickets$/.exec(url);
       if (method === 'POST' && ticket) {
         ticketCalls.push(Number(ticket[1]));
@@ -91,7 +94,12 @@ function renderPage() {
 describe('SalesPage', () => {
   it("lists the day's sales with their takings, and reprints one", async () => {
     const backend = stubBackend([
-      sale({ id: 1043, number: 12, total: '12.400000' }),
+      sale({
+        id: 1043,
+        number: 12,
+        total: '12.400000',
+        completed_at: '2026-08-12T22:30:00Z',
+      }),
       sale({ id: 1044, number: null, status: 'DRAFT', total: '3.500000' }),
     ]);
     // `window.print` no existe en jsdom y el botón lo llama al imprimir.
@@ -105,16 +113,15 @@ describe('SalesPage', () => {
     const summary = screen.getByText(/cobradas/).closest('p')!;
     expect(summary).toHaveTextContent('1 cobradas · 12,40 €');
 
-    // El día sale ya puesto y se pide como dos instantes exactos, de
-    // medianoche a medianoche en hora local. Mandando la fecha a secas, el
-    // "hasta" acababa siendo el mismo día que el "desde" —el rango quedaba
-    // vacío— y la pantalla no enseñaba ni una venta.
-    const [from, to] = ['created_from', 'created_to'].map((param) =>
-      new URL(backend.listUrls[0]!, 'http://x').searchParams.get(param),
-    );
-    expect(from).not.toBeNull();
-    expect(new Date(to!).getTime() - new Date(from!).getTime()).toBe(24 * 60 * 60 * 1000);
-    expect(new Date(from!).getHours()).toBe(0);
+    // El navegador no fabrica instantes: envía la fecha lógica y el
+    // backend construye sus límites con la timezone de la tienda.
+    const params = new URL(backend.listUrls[0]!, 'http://x').searchParams;
+    expect(params.get('business_date')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(params.has('created_from')).toBe(false);
+    expect(params.has('created_to')).toBe(false);
+    // Aunque el entorno de test/navegador esté en otra zona, 22:30Z es
+    // medianoche y media del día siguiente en Madrid.
+    expect(screen.getByText('00:30')).toBeInTheDocument();
 
     // Un carrito sin cobrar no tiene número ni ticket que reimprimir.
     const pending = screen.getByText('sin número').closest('tr')!;
@@ -135,5 +142,8 @@ describe('SalesPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Estado'), 'DRAFT');
 
     expect(backend.listUrls.at(-1)).toContain('status=DRAFT');
+
+    fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-08-13' } });
+    await waitFor(() => expect(backend.listUrls.at(-1)).toContain('business_date=2026-08-13'));
   });
 });

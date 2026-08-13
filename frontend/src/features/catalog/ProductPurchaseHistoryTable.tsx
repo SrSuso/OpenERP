@@ -1,4 +1,6 @@
 import { type ProductPurchaseHistoryEntry } from '@/features/purchasing/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDate } from '@/lib/businessTime';
 import { formatMoney, formatQuantity } from '@/lib/format';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -17,6 +19,7 @@ export function ProductPurchaseHistoryTable({
 }: {
   entries: ProductPurchaseHistoryEntry[];
 }) {
+  const businessTimezone = useBusinessTimezone();
   if (entries.length === 0) {
     return <p className="text-sm text-slate-500">Este producto no se ha comprado todavía.</p>;
   }
@@ -38,7 +41,7 @@ export function ProductPurchaseHistoryTable({
         {entries.map((entry, index) => (
           <tr key={`${entry.purchase_order_id}-${index}`} className="border-t border-slate-200">
             <td className="py-1 pr-3 text-xs text-slate-500">
-              {new Date(entry.date).toLocaleDateString('es-ES')}
+              {formatBusinessDate(entry.date, businessTimezone)}
             </td>
             <td className="py-1 pr-3">#{entry.purchase_order_id}</td>
             <td className="py-1 pr-3">{entry.supplier_name}</td>

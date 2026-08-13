@@ -1,4 +1,6 @@
 import { type PriceHistoryEntry } from '@/features/pricing/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 import { formatMoney, formatRate } from '@/lib/format';
 
 /** Histórico de cambios de precio de un producto — una fila por cada vez
@@ -6,6 +8,7 @@ import { formatMoney, formatRate } from '@/lib/format';
  * con fórmula activa recalculó `list_price` (backend/app/pricing/service.py's
  * `_record_history`, nunca se edita ni se borra). */
 export function ProductPriceHistoryTable({ entries }: { entries: PriceHistoryEntry[] }) {
+  const businessTimezone = useBusinessTimezone();
   if (entries.length === 0) {
     return <p className="text-sm text-slate-500">Este producto no tiene cambios de precio.</p>;
   }
@@ -28,7 +31,7 @@ export function ProductPriceHistoryTable({ entries }: { entries: PriceHistoryEnt
         {entries.map((entry) => (
           <tr key={entry.id} className="border-t border-slate-200">
             <td className="py-1 pr-3 text-xs text-slate-500">
-              {new Date(entry.created_at).toLocaleString('es-ES')}
+              {formatBusinessDateTime(entry.created_at, businessTimezone)}
             </td>
             <td className="py-1 pr-3">{formatMoney(entry.cost)}</td>
             <td className="py-1 pr-3">{formatRate(entry.tax_rate)}%</td>

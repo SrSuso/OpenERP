@@ -1,4 +1,6 @@
 import { type ProductPurchaseHistoryEntry } from '@/features/purchasing/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDate } from '@/lib/businessTime';
 import { formatMoney } from '@/lib/format';
 
 interface SupplierSummaryRow {
@@ -40,6 +42,7 @@ function summarize(entries: ProductPurchaseHistoryEntry[]): SupplierSummaryRow[]
  * coste medio, el más barato primero), en vez de vincular manualmente un
  * proveedor "preferido" sin relación con lo que de verdad se ha pagado. */
 export function SupplierPurchaseSummary({ entries }: { entries: ProductPurchaseHistoryEntry[] }) {
+  const businessTimezone = useBusinessTimezone();
   const rows = summarize(entries);
   if (rows.length === 0) return null;
 
@@ -60,7 +63,7 @@ export function SupplierPurchaseSummary({ entries }: { entries: ProductPurchaseH
             <td className="py-1 pr-3 font-medium text-slate-800">{row.supplierName}</td>
             <td className="py-1 pr-3">{row.purchases}</td>
             <td className="py-1 pr-3 text-xs text-slate-500">
-              {new Date(row.lastDate).toLocaleDateString('es-ES')}
+              {formatBusinessDate(row.lastDate, businessTimezone)}
             </td>
             <td className="py-1 pr-3">{formatMoney(row.lastUnitCost)}</td>
             <td className="py-1 pr-3">{formatMoney(row.avgUnitCost)}</td>

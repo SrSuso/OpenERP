@@ -1,4 +1,6 @@
 import { type StockMovement } from '@/features/inventory/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 import { formatMoney, formatQuantity } from '@/lib/format';
 
 const MOVEMENT_LABELS: Record<string, string> = {
@@ -12,6 +14,7 @@ const MOVEMENT_LABELS: Record<string, string> = {
 };
 
 export function StockMovementsTable({ movements }: { movements: StockMovement[] }) {
+  const businessTimezone = useBusinessTimezone();
   if (movements.length === 0) {
     return <p className="text-sm text-slate-500">No hay movimientos con estos filtros.</p>;
   }
@@ -33,7 +36,7 @@ export function StockMovementsTable({ movements }: { movements: StockMovement[] 
           {movements.map((movement) => (
             <tr key={movement.id} className="border-b border-slate-100 last:border-0">
               <td className="px-4 py-2 text-xs text-slate-500">
-                {new Date(movement.created_at).toLocaleString('es-ES')}
+                {formatBusinessDateTime(movement.created_at, businessTimezone)}
               </td>
               <td className="px-4 py-2 font-mono text-xs text-slate-500">{movement.product_sku}</td>
               <td className="px-4 py-2">
