@@ -18,6 +18,7 @@ import { InventoryBalancesPage } from '@/pages/admin/InventoryBalancesPage';
 import { InventoryIndexRedirect, InventoryPage } from '@/pages/admin/InventoryPage';
 import { InventoryMovementsPage } from '@/pages/admin/InventoryMovementsPage';
 import { InventoryWarehousesPage } from '@/pages/admin/InventoryWarehousesPage';
+import { PosTerminalsPage } from '@/pages/admin/PosTerminalsPage';
 import { LotsPage } from '@/pages/admin/LotsPage';
 import { NotificationsPage } from '@/pages/admin/NotificationsPage';
 import { OutboxPage } from '@/pages/admin/OutboxPage';
@@ -131,6 +132,10 @@ export const routes: RouteObject[] = [
                           { path: 'movements', element: <InventoryMovementsPage /> },
                           { path: 'warehouses', element: <InventoryWarehousesPage /> },
                         ],
+                      },
+                      {
+                        element: <RequirePermission permission="inventory.manage" />,
+                        children: [{ path: 'terminals', element: <PosTerminalsPage /> }],
                       },
                     ],
                   },

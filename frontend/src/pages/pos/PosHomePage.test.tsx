@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type Sale, type Tender } from '@/features/pos/api';
+import { POS_TERMINAL_STORAGE_KEY, PosTerminalProvider } from '@/features/pos/PosTerminalProvider';
 
 import { PosHomePage } from './PosHomePage';
 
@@ -16,6 +17,14 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
 
 const WAREHOUSE = { id: 1, name: 'Tienda principal', is_active: true };
 const LOCATION = { id: 1, warehouse_id: 1, name: 'Almacén', is_active: true };
+const TERMINAL = {
+  id: 7,
+  name: 'Caja 1',
+  warehouse_id: 1,
+  warehouse_name: 'Tienda principal',
+  is_active: true,
+  created_at: '2026-08-11T09:00:00Z',
+};
 const POS_CATEGORY = {
   id: 1,
   name: 'Bebidas',
@@ -77,6 +86,8 @@ function emptySale(id: number): Sale {
     id,
     warehouse_id: 1,
     location_id: 1,
+    terminal_id: TERMINAL.id,
+    terminal_name: TERMINAL.name,
     status: 'DRAFT',
     number: null,
     notes: '',
@@ -93,6 +104,8 @@ function saleWithMilkLine(id: number): Sale {
     id,
     warehouse_id: 1,
     location_id: 1,
+    terminal_id: TERMINAL.id,
+    terminal_name: TERMINAL.name,
     status: 'DRAFT',
     number: null,
     notes: '',
@@ -131,16 +144,24 @@ function saleWithMilkLine(id: number): Sale {
  * was opened, not two") without hard-coding call order.
  */
 function stubBackend(
-  options: { existingDraft?: Sale; checkoutFailures?: number; holdCheckout?: boolean } = {},
+  options: {
+    existingDraft?: Sale;
+    checkoutFailures?: number;
+    holdCheckout?: boolean;
+    rejectLineOnce?: boolean;
+  } = {},
 ) {
   let sale: Sale | null = options.existingDraft ?? null;
   let nextSaleId = 5;
   const postSalesCalls = { count: 0 };
+  const postSalesBodies: Record<string, unknown>[] = [];
   const addLineCalls: Record<string, unknown>[] = [];
   const barcodeLineCalls: Record<string, unknown>[] = [];
   const barcodeCalls: string[] = [];
   const checkoutKeys: string[] = [];
   let remainingCheckoutFailures = options.checkoutFailures ?? 0;
+  let remainingLineFailures = options.rejectLineOnce ? 1 : 0;
+  const mutationTerminalHeaders: string[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -148,6 +169,13 @@ function stubBackend(
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
 
+      if (method !== 'GET' && /\/sales\/\d+/.test(url)) {
+        mutationTerminalHeaders.push(new Headers(init?.headers).get('X-POS-Terminal-ID') ?? '');
+      }
+
+      if (url.includes('/pos-terminals')) {
+        return Promise.resolve(jsonResponse([TERMINAL]));
+      }
       if (url.includes('/warehouses/1/locations')) {
         return Promise.resolve(jsonResponse([LOCATION]));
       }
@@ -205,6 +233,9 @@ function stubBackend(
       }
       if (method === 'POST' && /\/sales$/.test(url)) {
         postSalesCalls.count += 1;
+        postSalesBodies.push(
+          init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
+        );
         sale = emptySale(nextSaleId++);
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
@@ -266,6 +297,21 @@ function stubBackend(
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
       if (method === 'POST' && /\/sales\/\d+\/lines$/.test(url)) {
+        if (remainingLineFailures > 0) {
+          remainingLineFailures -= 1;
+          return Promise.resolve(
+            jsonResponse(
+              {
+                error: {
+                  code: 'conflict',
+                  message: 'La venta pertenece a otro terminal POS.',
+                  details: {},
+                },
+              },
+              { status: 409 },
+            ),
+          );
+        }
         addLineCalls.push(
           init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
         );
@@ -289,14 +335,25 @@ function stubBackend(
     }),
   );
 
-  return { postSalesCalls, addLineCalls, barcodeLineCalls, barcodeCalls, checkoutKeys };
+  return {
+    postSalesCalls,
+    postSalesBodies,
+    addLineCalls,
+    barcodeLineCalls,
+    barcodeCalls,
+    checkoutKeys,
+    mutationTerminalHeaders,
+  };
 }
 
 function renderPage() {
+  window.localStorage.setItem(POS_TERMINAL_STORAGE_KEY, String(TERMINAL.id));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <PosHomePage />
+      <PosTerminalProvider>
+        <PosHomePage />
+      </PosTerminalProvider>
     </QueryClientProvider>,
   );
 }
@@ -348,6 +405,7 @@ describe('PosHomePage', () => {
 
     const productButton = await screen.findByRole('button', { name: /leche entera 1l/i });
     expect(backend.postSalesCalls.count).toBe(1);
+    expect(backend.postSalesBodies[0]).toMatchObject({ terminal_id: TERMINAL.id });
     expect(screen.getByText(/el carrito está vacío/i)).toBeInTheDocument();
 
     await userEvent.click(productButton);
@@ -389,6 +447,20 @@ describe('PosHomePage', () => {
       { product_id: 1, package_id: 10, quantity_packages: '1' },
     ]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(backend.mutationTerminalHeaders).toContain(String(TERMINAL.id));
+  });
+
+  it('shows a semantic backend rejection instead of applying a foreign-terminal mutation', async () => {
+    const backend = stubBackend({ existingDraft: emptySale(42), rejectLineOnce: true });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: /leche entera 1l/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'La venta pertenece a otro terminal POS.',
+    );
+    expect(backend.addLineCalls).toEqual([]);
+    expect(backend.mutationTerminalHeaders).toEqual([String(TERMINAL.id)]);
   });
 
   it('sells several units at once with the keypad', async () => {

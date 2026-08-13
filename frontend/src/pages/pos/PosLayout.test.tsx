@@ -2,9 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
+import { POS_TERMINAL_STORAGE_KEY } from '@/features/pos/PosTerminalProvider';
 
 import { PosLayout } from './PosLayout';
 
@@ -22,6 +23,16 @@ const ME = {
   role: 'CASHIER',
   permissions: ['pos.access', 'sale.read', 'sale.manage'],
 };
+
+const TERMINAL = {
+  id: 7,
+  name: 'Caja 1',
+  warehouse_id: 1,
+  warehouse_name: 'Tienda',
+  is_active: true,
+  created_at: '2026-08-11T09:00:00Z',
+};
+const TERMINAL_2 = { ...TERMINAL, id: 8, name: 'Caja 2' };
 
 const PREVIEW = {
   covers_from: null,
@@ -41,6 +52,7 @@ function stubBackend(
   options: {
     openSales?: { id: number; lines_count: number; total: string }[];
     failFirstClose?: boolean;
+    terminals?: (typeof TERMINAL)[];
   } = {},
 ) {
   const closeCalls: string[] = [];
@@ -63,6 +75,9 @@ function stubBackend(
         return Promise.resolve(new Response(null, { status: 204 }));
       }
       if (url.includes('/settings/values')) return Promise.resolve(jsonResponse({}));
+      if (url.includes('/pos-terminals')) {
+        return Promise.resolve(jsonResponse(options.terminals ?? [TERMINAL]));
+      }
       // La caja pregunta por esta huella cada pocos segundos para saber si
       // el panel ha cambiado algo (ver `useLiveCatalog`).
       if (url.includes('/catalog-version')) {
@@ -101,7 +116,8 @@ function stubBackend(
   return { closeCalls, closeKeys, logoutCalls };
 }
 
-function renderLayout() {
+function renderLayout({ configured = true }: { configured?: boolean } = {}) {
+  if (configured) window.localStorage.setItem(POS_TERMINAL_STORAGE_KEY, String(TERMINAL.id));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -115,6 +131,44 @@ function renderLayout() {
 }
 
 describe('PosLayout', () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it('requires an explicit terminal selection and persists it for later logins', async () => {
+    stubBackend();
+    renderLayout({ configured: false });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Seleccionar terminal' }),
+    ).toBeInTheDocument();
+    expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: /Caja 1/ }));
+
+    expect(await screen.findByRole('button', { name: 'Caja 1' })).toBeInTheDocument();
+    expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
+  });
+
+  it('blocks an inactive stored terminal without discarding its identity', async () => {
+    stubBackend({ terminals: [] });
+    renderLayout();
+
+    expect(await screen.findByText(/terminal configurado ya no está activo/i)).toBeInTheDocument();
+    expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
+  });
+
+  it('changes terminal only after an explicit choice', async () => {
+    stubBackend({ terminals: [TERMINAL, TERMINAL_2] });
+    renderLayout();
+    const current = await screen.findByRole('button', { name: 'Caja 1' });
+
+    await userEvent.click(current);
+    expect(screen.getByRole('heading', { name: 'Seleccionar terminal' })).toBeInTheDocument();
+    expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
+    await userEvent.click(screen.getByRole('button', { name: /Caja 2/ }));
+
+    expect(await screen.findByRole('button', { name: 'Caja 2' })).toBeInTheDocument();
+    expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('8');
+  });
+
   it('will not sign out until the till has been closed with a Z', async () => {
     const backend = stubBackend();
     vi.stubGlobal('print', vi.fn());
@@ -144,6 +198,8 @@ describe('PosLayout', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Salir' }));
     expect(backend.logoutCalls).toHaveLength(1);
+    // The register is a browser identity, not a cashier-session identity.
+    expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
   });
 
   it('says which sales are in the way, not just how many', async () => {

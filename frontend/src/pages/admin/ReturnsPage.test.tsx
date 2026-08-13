@@ -76,6 +76,8 @@ function stubBackend(options: { failReturnOnce?: boolean } = {}) {
               total: sale.total,
               warehouse_id: 1,
               location_id: 1,
+              terminal_id: 7,
+              terminal_name: 'Caja 1',
               notes: '',
               lines: [],
               payments: [],

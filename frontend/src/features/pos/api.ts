@@ -3,6 +3,52 @@ import { z } from 'zod';
 
 import { API_V1, apiFetch } from '@/lib/api';
 
+// --- physical/logical terminal identity (A9) -------------------------------
+
+export const posTerminalSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  warehouse_id: z.number(),
+  warehouse_name: z.string(),
+  is_active: z.boolean(),
+  created_at: z.string(),
+});
+export type PosTerminal = z.infer<typeof posTerminalSchema>;
+
+export function posTerminalsQuery(activeOnly: boolean) {
+  return queryOptions({
+    queryKey: ['pos', 'terminals', activeOnly] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/pos-terminals?active_only=${activeOnly}`, {
+        schema: z.array(posTerminalSchema),
+        signal,
+      }),
+  });
+}
+
+export async function createPosTerminal(name: string, warehouseId: number): Promise<PosTerminal> {
+  return apiFetch(`${API_V1}/pos-terminals`, {
+    method: 'POST',
+    schema: posTerminalSchema,
+    body: { name, warehouse_id: warehouseId },
+  });
+}
+
+export async function updatePosTerminal(
+  terminalId: number,
+  changes: { name?: string; is_active?: boolean },
+): Promise<PosTerminal> {
+  return apiFetch(`${API_V1}/pos-terminals/${terminalId}`, {
+    method: 'PATCH',
+    schema: posTerminalSchema,
+    body: changes,
+  });
+}
+
+function terminalHeaders(terminalId: number): Record<string, string> {
+  return { 'X-POS-Terminal-ID': String(terminalId) };
+}
+
 // --- warehouses / locations (phase 7) — the till needs to know where it sells from ---
 
 export const warehouseSchema = z.object({
@@ -151,6 +197,8 @@ export const saleSchema = z.object({
   number: z.number().nullable(),
   warehouse_id: z.number(),
   location_id: z.number(),
+  terminal_id: z.number().nullable(),
+  terminal_name: z.string().nullable(),
   status: z.enum(['DRAFT', 'COMPLETED', 'CANCELLED']),
   notes: z.string(),
   prices_include_tax: z.boolean().nullable().optional(),
@@ -177,18 +225,23 @@ export function saleQuery(saleId: number | null) {
 /**
  * The till's own open cart, if the cashier already had one going (a page
  * reload must not orphan an in-progress sale and silently start a new one).
- * `GET /sales` orders by `created_at desc`, so the first `DRAFT` result for
- * this warehouse is the one to resume.
+ * `GET /sales` orders newest-first. The POS resumes that most recently
+ * opened cart and keeps every other cart from the same terminal visible in
+ * OpenSalesBar; drafts from another terminal never enter this query.
  */
-export function draftSalesQuery(warehouseId: number | null) {
+export function draftSalesQuery(terminalId: number | null, warehouseId: number | null) {
   return queryOptions({
-    queryKey: ['pos', 'sales', 'draft', warehouseId] as const,
+    queryKey: ['pos', 'sales', 'draft', terminalId] as const,
     queryFn: ({ signal }) =>
-      apiFetch(`${API_V1}/sales?status=DRAFT&warehouse_id=${warehouseId}`, {
-        schema: z.array(saleSchema),
-        signal,
-      }),
-    enabled: warehouseId !== null,
+      apiFetch(
+        `${API_V1}/sales?status=DRAFT&warehouse_id=${warehouseId}&terminal_id=${terminalId}`,
+        {
+          schema: z.array(saleSchema),
+          signal,
+          headers: terminalHeaders(terminalId as number),
+        },
+      ),
+    enabled: warehouseId !== null && terminalId !== null,
   });
 }
 
@@ -266,46 +319,63 @@ export async function findProductByBarcode(barcode: string): Promise<Product> {
   });
 }
 
-export async function createSale(warehouseId: number, locationId: number): Promise<Sale> {
+export async function createSale(
+  terminalId: number,
+  warehouseId: number,
+  locationId: number,
+): Promise<Sale> {
   return apiFetch(`${API_V1}/sales`, {
     method: 'POST',
     schema: saleSchema,
-    body: { warehouse_id: warehouseId, location_id: locationId },
+    body: { warehouse_id: warehouseId, location_id: locationId, terminal_id: terminalId },
   });
 }
 
 export async function addLine(
   saleId: number,
+  terminalId: number,
   line: { product_id: number; package_id: number; quantity_packages: string },
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines`, {
     method: 'POST',
     schema: saleSchema,
     body: line,
+    headers: terminalHeaders(terminalId),
   });
 }
 
 export async function addLineByBarcode(
   saleId: number,
+  terminalId: number,
   line: { barcode: string; quantity_packages: string },
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines/by-barcode`, {
     method: 'POST',
     schema: saleSchema,
     body: line,
+    headers: terminalHeaders(terminalId),
   });
 }
 
-export async function removeLine(saleId: number, lineId: number): Promise<Sale> {
+export async function removeLine(
+  saleId: number,
+  lineId: number,
+  terminalId: number,
+): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines/${lineId}`, {
     method: 'DELETE',
     schema: saleSchema,
+    headers: terminalHeaders(terminalId),
   });
 }
 
 /** Cancelar borra el carrito: no devuelve venta porque ya no la hay. */
-export async function cancelSale(saleId: number): Promise<void> {
-  await apiFetch(`${API_V1}/sales/${saleId}/cancel`, { method: 'POST', schema: z.null() });
+export async function cancelSale(saleId: number, terminalId: number): Promise<void> {
+  await apiFetch(`${API_V1}/sales/${saleId}/cancel`, {
+    method: 'POST',
+    schema: z.null(),
+    headers: terminalHeaders(terminalId),
+  });
 }
 
 export interface Tender {
@@ -318,12 +388,13 @@ export async function checkout(
   saleId: number,
   payments: Tender[],
   idempotencyKey: string,
+  terminalId: number,
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/checkout`, {
     method: 'POST',
     schema: saleSchema,
     body: { payments },
-    headers: { 'Idempotency-Key': idempotencyKey },
+    headers: { ...terminalHeaders(terminalId), 'Idempotency-Key': idempotencyKey },
   });
 }
 

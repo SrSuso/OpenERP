@@ -10,6 +10,8 @@ const SALE: Sale = {
   id: 1,
   warehouse_id: 1,
   location_id: 1,
+  terminal_id: 7,
+  terminal_name: 'Caja 1',
   status: 'DRAFT',
   number: null,
   notes: '',

@@ -23,12 +23,12 @@ import {
   posCategoriesQuery,
   productsQuery,
   removeLine,
-  warehousesQuery,
   type Product,
   type Sale,
   type SaleLine,
   type Tender,
 } from '@/features/pos/api';
+import { usePosTerminal } from '@/features/pos/usePosTerminal';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
 
@@ -44,6 +44,8 @@ function describeError(error: unknown): string {
  * of the very same `DRAFT` sale this screen builds.
  */
 export function PosHomePage() {
+  const { selectedTerminal } = usePosTerminal();
+  const terminalId = selectedTerminal?.id ?? null;
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [barcode, setBarcode] = useState('');
   const [sale, setSale] = useState<Sale | null>(null);
@@ -58,17 +60,16 @@ export function PosHomePage() {
   //: so the effect below can open the next one.
   const [receipt, setReceipt] = useState<Sale | null>(null);
 
-  const warehouses = useQuery(warehousesQuery);
-  const warehouseId = warehouses.data?.[0]?.id ?? null;
+  const warehouseId = selectedTerminal?.warehouse_id ?? null;
 
   const locations = useQuery(locationsQuery(warehouseId ?? Number.NaN));
   const locationId = locations.data?.[0]?.id ?? null;
 
-  const draftSales = useQuery(draftSalesQuery(warehouseId));
+  const draftSales = useQuery(draftSalesQuery(terminalId, warehouseId));
   const queryClient = useQueryClient();
 
   const openSaleMutation = useMutation({
-    mutationFn: () => createSale(warehouseId as number, locationId as number),
+    mutationFn: () => createSale(terminalId as number, warehouseId as number, locationId as number),
     onSuccess: (created) => {
       // Se añade a las que ya hay, no se sustituyen: puede haber varias
       // abiertas a la vez (un cliente que se va a buscar algo y mientras
@@ -76,7 +77,7 @@ export function PosHomePage() {
       // así que una entrada obsoleta aquí resucitaría una venta que ya no
       // existe.
       if (warehouseId !== null) {
-        queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, (current) => [
+        queryClient.setQueryData(draftSalesQuery(terminalId, warehouseId).queryKey, (current) => [
           ...(current ?? []),
           created,
         ]);
@@ -90,13 +91,14 @@ export function PosHomePage() {
     mutate: openSale,
   } = openSaleMutation;
 
-  // Reanuda una venta abierta de esta caja, o abre la primera — recargar
-  // la página no puede dejar huérfano un carrito a medias. Se ejecuta una
+  // Reanuda la venta abierta más reciente de esta caja, o abre una nueva —
+  // las demás siguen explícitamente en OpenSalesBar. Recargar la página no
+  // puede dejar huérfano un carrito a medias. Se ejecuta una
   // vez por cada `sale` vacío (el propio `isOpeningSale` corta la
   // reentrada); que vuelva a saltar después de cobrar o cancelar es
   // justamente lo que hace falta, porque es cuando hay que pasar a otra.
   useEffect(() => {
-    if (sale !== null || warehouseId === null || locationId === null) {
+    if (sale !== null || terminalId === null || warehouseId === null || locationId === null) {
       return;
     }
     if (draftSales.data === undefined) {
@@ -110,7 +112,16 @@ export function PosHomePage() {
     if (!isOpeningSale && !failedToOpenSale) {
       openSale();
     }
-  }, [sale, warehouseId, locationId, draftSales.data, isOpeningSale, failedToOpenSale, openSale]);
+  }, [
+    sale,
+    terminalId,
+    warehouseId,
+    locationId,
+    draftSales.data,
+    isOpeningSale,
+    failedToOpenSale,
+    openSale,
+  ]);
 
   /** Guarda la venta que acaba de devolver el servidor: como activa y, a la
    * vez, en la lista de abiertas.
@@ -123,7 +134,7 @@ export function PosHomePage() {
   function syncSale(updated: Sale) {
     setSale(updated);
     if (warehouseId === null) return;
-    queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, (current) =>
+    queryClient.setQueryData(draftSalesQuery(terminalId, warehouseId).queryKey, (current) =>
       (current ?? []).map((candidate) => (candidate.id === updated.id ? updated : candidate)),
     );
   }
@@ -134,7 +145,7 @@ export function PosHomePage() {
   function closeSale(closedId: number) {
     let remaining: Sale[] = [];
     if (warehouseId !== null) {
-      queryClient.setQueryData(draftSalesQuery(warehouseId).queryKey, (current) => {
+      queryClient.setQueryData(draftSalesQuery(terminalId, warehouseId).queryKey, (current) => {
         remaining = (current ?? []).filter((candidate) => candidate.id !== closedId);
         return remaining;
       });
@@ -149,7 +160,7 @@ export function PosHomePage() {
 
   const addLineMutation = useMutation({
     mutationFn: ({ product, quantity }: { product: Product; quantity: string }) =>
-      addLine(sale!.id, {
+      addLine(sale!.id, terminalId as number, {
         product_id: product.id,
         package_id: basePackage(product).id,
         quantity_packages: quantity,
@@ -188,7 +199,10 @@ export function PosHomePage() {
 
   const addBarcodeLineMutation = useMutation({
     mutationFn: ({ code, quantity }: { code: string; quantity: string }) =>
-      addLineByBarcode(sale!.id, { barcode: code, quantity_packages: quantity }),
+      addLineByBarcode(sale!.id, terminalId as number, {
+        barcode: code,
+        quantity_packages: quantity,
+      }),
     onSuccess: (updated) => {
       setLineError(null);
       syncSale(updated);
@@ -237,7 +251,7 @@ export function PosHomePage() {
   });
 
   const removeLineMutation = useMutation({
-    mutationFn: (line: SaleLine) => removeLine(sale!.id, line.id),
+    mutationFn: (line: SaleLine) => removeLine(sale!.id, line.id, terminalId as number),
     onSuccess: (updated) => {
       setLineError(null);
       syncSale(updated);
@@ -246,14 +260,14 @@ export function PosHomePage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (saleId: number) => cancelSale(saleId),
+    mutationFn: (saleId: number) => cancelSale(saleId, terminalId as number),
     onSuccess: (_result, saleId) => closeSale(saleId),
     onError: (error) => setLineError(describeError(error)),
   });
 
   const checkoutMutation = useMutation({
     mutationFn: ({ saleId, payments, key }: { saleId: number; payments: Tender[]; key: string }) =>
-      checkout(saleId, payments, key),
+      checkout(saleId, payments, key, terminalId as number),
     onSuccess: (completed) => {
       checkoutAttemptRef.current = null;
       setCheckoutError(null);
@@ -303,10 +317,8 @@ export function PosHomePage() {
   }
 
   const sessionLoading =
-    warehouses.isPending ||
-    (warehouseId !== null && locations.isPending) ||
-    (warehouseId !== null && draftSales.isPending);
-  const sessionErrored = warehouses.isError || locations.isError || draftSales.isError;
+    (warehouseId !== null && locations.isPending) || (warehouseId !== null && draftSales.isPending);
+  const sessionErrored = locations.isError || draftSales.isError;
 
   return (
     <section className="flex h-full flex-col">

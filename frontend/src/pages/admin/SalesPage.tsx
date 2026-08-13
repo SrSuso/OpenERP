@@ -98,6 +98,7 @@ export function SalesPage() {
                 <th className="px-4 py-2 font-medium">Venta</th>
                 <th className="px-4 py-2 font-medium">Hora</th>
                 <th className="px-4 py-2 font-medium">Estado</th>
+                <th className="px-4 py-2 font-medium">Terminal</th>
                 <th className="px-4 py-2 font-medium">Artículos</th>
                 <th className="px-4 py-2 font-medium">Total</th>
                 <th className="px-4 py-2 font-medium" />
@@ -122,6 +123,9 @@ export function SalesPage() {
                     >
                       {STATUS_LABEL[sale.status]}
                     </span>
+                  </td>
+                  <td className="px-4 py-2 text-slate-600">
+                    {sale.terminal_name ?? 'No asignado'}
                   </td>
                   <td className="px-4 py-2 text-slate-600">{sale.lines.length}</td>
                   <td className="px-4 py-2 font-medium text-slate-800">
