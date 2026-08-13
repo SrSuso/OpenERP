@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
 from app.main import create_app
@@ -94,9 +95,28 @@ def test_file_value_precedes_direct_environment_value(
 
 
 def test_valid_production_infrastructure_passes_startup_validation() -> None:
-    settings = _settings(environment="production")
+    settings = _settings(environment="production", cors_origins=[])
 
     assert create_app(settings).state.settings is settings
+
+
+def test_production_rejects_cross_origin_configuration() -> None:
+    settings = _settings(environment="production", cors_origins=["https://other.example"])
+
+    with pytest.raises(ValueError, match="must be empty in production"):
+        create_app(settings)
+
+
+async def test_production_does_not_publish_interactive_api_documentation() -> None:
+    app = create_app(_settings(environment="production", cors_origins=[]))
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
+        for path in ("/api/docs", "/api/redoc", "/api/openapi.json"):
+            assert (await client.get(path)).status_code == 404
+
+    # Disabling the HTTP endpoint must not break internal schema generation.
+    assert app.openapi()["info"]["title"] == "OpenERP"
 
 
 def test_production_without_explicit_database_fails_before_startup(

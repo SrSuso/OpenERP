@@ -98,6 +98,7 @@ def test_deploy_stops_all_writers_before_backup_and_migration(tmp_path: Path) ->
     assert commands.index("prod-preflight") < commands.index("prod-preserve-current-images")
     assert commands.index("prod-preserve-current-images") < commands.index("prod-build")
     assert commands.index("prod-build") < commands.index("prod-start-maintenance-web")
+    assert commands.index("prod-validate-api-config") < commands.index("prod-start-maintenance-web")
     assert commands.index("prod-start-maintenance-web") < commands.index("prod-stop-writers")
     assert commands.index("prod-stop-writers") < commands.index("prod-backup")
     assert commands.index("prod-backup") < commands.index("prod-migrate")

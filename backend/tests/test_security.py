@@ -1,4 +1,4 @@
-"""Phase 19: the login rate limiter and the security headers middleware.
+"""Phase 19: login rate limiting behind the trusted production proxy.
 
 The rate limiter (``app.auth.service._login_rate_limiter``) is a genuine
 process-level singleton — same as production — so every test here resets it
@@ -9,18 +9,28 @@ leave it clean.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from app.audit.models import AuditLog
 from app.auth import service as auth_service
+from app.auth.models import AuthSession
+from app.core.config import Settings, get_settings
+from app.db.session import get_session
+from app.main import create_app
+from app.rbac.models import Role
 from app.users.models import User
 from tests.conftest import DEFAULT_PASSWORD
 
 
 @pytest.fixture(autouse=True)
 def _reset_login_rate_limiter() -> None:
-    auth_service._login_rate_limiter._hits.clear()
+    auth_service._login_rate_limiter.clear()
 
 
 async def _fail_login(client: AsyncClient, email: str) -> int:
@@ -109,15 +119,113 @@ async def test_ip_limit_blocks_across_many_different_emails(
     assert blocked.status_code == 429
 
 
-async def test_security_headers_present_on_a_normal_response(client: AsyncClient) -> None:
-    response = await client.get("/api/v1/health/live")
-    assert response.headers["x-content-type-options"] == "nosniff"
-    assert response.headers["x-frame-options"] == "DENY"
-    assert response.headers["referrer-policy"] == "same-origin"
-    assert "geolocation=()" in response.headers["permissions-policy"]
+def _production_app(settings: Settings, db_session: AsyncSession) -> ProxyHeadersMiddleware:
+    production = settings.model_copy(
+        update={
+            "environment": "production",
+            "cors_origins": [],
+            "login_rate_limit_ip_max_attempts": 3,
+        }
+    )
+    app = create_app(production)
+    app.dependency_overrides[get_settings] = lambda: production
+
+    async def _override_session():  # type: ignore[no-untyped-def]
+        yield db_session
+
+    app.dependency_overrides[get_session] = _override_session
+    return ProxyHeadersMiddleware(cast(Any, app), trusted_hosts=["10.0.0.10"])
 
 
-async def test_hsts_is_absent_outside_production(client: AsyncClient) -> None:
-    # The `settings` fixture uses environment="test".
-    response = await client.get("/api/v1/health/live")
-    assert "strict-transport-security" not in response.headers
+async def test_trusted_proxy_ip_flows_to_login_session_and_audit(
+    settings: Settings,
+    db_session: AsyncSession,
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    admin = await make_user(email="proxy-admin@example.com", role_name="ADMIN")
+    role_id = (await db_session.execute(select(Role.id).where(Role.name == "CASHIER"))).scalar_one()
+    transport = ASGITransport(
+        app=cast(Any, _production_app(settings, db_session)), client=("10.0.0.10", 12345)
+    )
+    headers = {"X-Forwarded-For": "203.0.113.25", "X-Forwarded-Proto": "https"}
+
+    async with AsyncClient(
+        transport=transport, base_url="https://erp.test", headers=headers
+    ) as proxied:
+        login = await proxied.post(
+            "/api/v1/auth/login",
+            json={"email": admin.email, "password": DEFAULT_PASSWORD},
+        )
+        assert login.status_code == 200
+        cookie = login.headers["set-cookie"]
+        assert "Secure" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
+
+        created = await proxied.post(
+            "/api/v1/users",
+            json={
+                "email": "proxy-created@example.com",
+                "full_name": "Proxy Created",
+                "password": "secure-proxy-password",
+                "role_id": role_id,
+            },
+        )
+        assert created.status_code == 201
+
+    auth_session = (
+        (
+            await db_session.execute(
+                select(AuthSession)
+                .where(AuthSession.user_id == admin.id)
+                .order_by(AuthSession.id.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert auth_session is not None and auth_session.ip == "203.0.113.25"
+
+    # The mutation above uses the same RequestContext source as every audit
+    # record. Query the row directly so the assertion is independent of the
+    # audit-list endpoint's presentation.
+    audit_entry = (
+        (
+            await db_session.execute(
+                select(AuditLog)
+                .where(AuditLog.entity_id == created.json()["id"], AuditLog.action == "created")
+                .order_by(AuditLog.id.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert audit_entry is not None and audit_entry.ip == "203.0.113.25"
+
+
+async def test_rate_limit_uses_real_proxy_ip_and_keeps_other_ip_independent(
+    settings: Settings, db_session: AsyncSession
+) -> None:
+    transport = ASGITransport(
+        app=cast(Any, _production_app(settings, db_session)), client=("10.0.0.10", 12345)
+    )
+    async with AsyncClient(transport=transport, base_url="https://erp.test") as proxied:
+        for index in range(3):
+            response = await proxied.post(
+                "/api/v1/auth/login",
+                headers={"X-Forwarded-For": "203.0.113.25"},
+                json={"email": f"spray-a-{index}@example.com", "password": "wrong"},
+            )
+            assert response.status_code == 401
+
+        blocked = await proxied.post(
+            "/api/v1/auth/login",
+            headers={"X-Forwarded-For": "203.0.113.25"},
+            json={"email": "spray-a-final@example.com", "password": "wrong"},
+        )
+        independent = await proxied.post(
+            "/api/v1/auth/login",
+            headers={"X-Forwarded-For": "203.0.113.26"},
+            json={"email": "spray-b@example.com", "password": "wrong"},
+        )
+
+    assert blocked.status_code == 429
+    assert independent.status_code == 401

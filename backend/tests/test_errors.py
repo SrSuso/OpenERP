@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from unittest.mock import patch
 
 import pytest
 from fastapi import APIRouter
 from httpx import ASGITransport, AsyncClient
 
+from app.core import errors as error_module
 from app.core.config import Settings
 from app.core.errors import (
     ConflictError,
@@ -28,7 +30,8 @@ _ERRORS = [
 @pytest.fixture
 def error_app(settings: Settings):  # type: ignore[no-untyped-def]
     """An app exposing one route per error type, plus an unhandled crash."""
-    app = create_app(settings)
+    production = settings.model_copy(update={"environment": "production", "cors_origins": []})
+    app = create_app(production)
     router = APIRouter()
 
     def _raiser(error: Exception) -> Callable[[], Awaitable[None]]:
@@ -68,12 +71,19 @@ async def test_domain_errors_map_to_status_and_code(error_app, index, expected) 
 
 
 async def test_unhandled_error_does_not_leak_internals(error_app) -> None:  # type: ignore[no-untyped-def]
-    response = await _get(error_app, "/boom/unhandled")
+    with patch.object(error_module.logger, "error") as logged:
+        response = await _get(error_app, "/boom/unhandled")
 
     assert response.status_code == 500
     body = response.json()
     assert body["error"]["code"] == "internal_error"
     assert "something nobody mapped" not in body["error"]["message"]
+    assert "traceback" not in response.text.lower()
+    assert "/home/" not in response.text
+    assert logged.call_count == 1
+    assert "something nobody mapped" not in repr(logged.call_args)
+    assert logged.call_args.kwargs["extra"]["error_type"] == "RuntimeError"
+    assert logged.call_args.kwargs["extra"]["error_location"]["function"] == "endpoint"
 
 
 async def test_unknown_route_uses_the_same_envelope(client: AsyncClient) -> None:
