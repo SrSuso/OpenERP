@@ -25,15 +25,16 @@ def parse_timezone(value: str) -> ZoneInfo:
         ) from exc
 
 
-def _require_aware(instant: datetime) -> None:
+def require_aware(instant: datetime) -> datetime:
+    """Reject a datetime whose offset is open to server/session interpretation."""
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError("El instante debe incluir zona horaria.")
+    return instant
 
 
 def to_business_time(instant: datetime, timezone: ZoneInfo) -> datetime:
     """Represent an absolute instant in the shop timezone."""
-    _require_aware(instant)
-    return instant.astimezone(timezone)
+    return require_aware(instant).astimezone(timezone)
 
 
 def business_date(instant: datetime, timezone: ZoneInfo) -> date:

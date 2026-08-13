@@ -510,7 +510,7 @@ async def test_sales_can_be_listed_by_the_day_they_were_opened(
     cerrado por abajo y abierto por arriba para poder pedirlo entero."""
     await login(role_name="ADMIN")
     sale = await _open_sale(client)
-    today = datetime.now(UTC).date()
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
     same_day = await client.get(
         "/api/v1/sales",
@@ -574,3 +574,14 @@ async def test_business_date_cannot_be_mixed_with_absolute_sale_bounds(
     )
 
     assert response.status_code == 422
+
+
+async def test_absolute_sale_bounds_require_an_explicit_offset(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+
+    response = await client.get("/api/v1/sales", params={"created_from": "2026-08-13T00:00:00"})
+
+    assert response.status_code == 422
+    assert "explicit timezone offset" in response.json()["error"]["message"]

@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query
 
 from app.auth.dependencies import CurrentUser, SessionDep
-from app.core.business_time import business_day_utc_range
+from app.core.business_time import business_day_utc_range, require_aware
 from app.core.errors import ValidationError
 from app.pricing.dependencies import PricingSettingsDep
 from app.rbac.dependencies import require_permission
@@ -69,6 +69,14 @@ async def list_sales(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[SaleRead]:
+    for name, value in (("created_from", created_from), ("created_to", created_to)):
+        if value is not None:
+            try:
+                require_aware(value)
+            except ValueError as exc:
+                raise ValidationError(
+                    f"{name} must be an absolute datetime with an explicit timezone offset."
+                ) from exc
     if business_date is not None and (created_from is not None or created_to is not None):
         raise ValidationError("business_date cannot be combined with created_from or created_to.")
     business_from = business_to = None
