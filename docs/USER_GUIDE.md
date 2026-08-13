@@ -286,6 +286,10 @@ tener varios y, cuando los hay, aparece **Dashboard activo** para elegir cuál
 mostrar. Conocer el UUID o ID de otro usuario no concede acceso y no existe una
 función de compartir.
 
+Si la cuenta todavía no tiene ninguno, la pantalla crea automáticamente **Mi
+panel**. La UI actual no ofrece un botón para crear un segundo dashboard; el
+selector permite alternar entre varios cuando ya existen para esa cuenta.
+
 Con `dashboard.manage` se añaden o quitan widgets de ventas por fecha,
 productos más vendidos, valor de inventario y productos bajo mínimo. Los datos
 se calculan al abrirlos; la configuración del widget sí queda guardada.

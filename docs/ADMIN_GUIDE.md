@@ -464,12 +464,12 @@ llamadas HTTP manuales.
 | Rol | Permisos por defecto | Pensado para |
 | --- | --- | --- |
 | `ADMIN` | todos | Dueño/gerencia con acceso total. |
-| `MANAGER` | `admin.access`, `users.manage` | Encargado de tienda: entra al panel, da de alta/desactiva personal y les asigna un rol existente — no puede crear roles nuevos ni tocar qué permisos tiene cada uno. |
-| `CASHIER` | `pos.access` | Cajero: sólo el TPV. |
+| `MANAGER` | `admin.access`, `users.manage` y gestión ordinaria de catálogo, precios, proveedores, compras/recepciones, inventario/lotes, ventas, devoluciones, tickets, dashboards, avisos, outbox e informes | Encargado de tienda. Por defecto no gestiona roles, auditoría ni configuración funcional global. |
+| `CASHIER` | `pos.access`, lectura de producto/inventario/lotes y lectura/gestión de ventas | Cajero: opera el TPV y dispone de las lecturas que éste necesita, sin acceso al panel. |
 
-No son una lista cerrada: en **Roles** (sólo visible para `ADMIN` —
-necesita `roles.manage`) se pueden crear roles nuevos y marcar qué
-permisos tiene cada uno. El catálogo completo de claves disponibles (a fecha
+No son una lista cerrada: en **Roles** (requiere `roles.manage`, concedido por
+defecto a `ADMIN`) se pueden crear roles nuevos y marcar qué permisos tiene
+cada uno. El catálogo completo de claves disponibles (a fecha
 de esta guía incluye, entre otras:
 `admin.access`, `pos.access`, `users.manage`, `roles.manage`, `audit.read`,
 `product.read`/`product.manage`, `pricing.manage`, `supplier.read`/`.manage`,
