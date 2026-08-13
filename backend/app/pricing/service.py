@@ -180,6 +180,29 @@ async def _product_or_404(session: AsyncSession, product_id: int) -> Product:
     return product
 
 
+async def get_products_for_update(session: AsyncSession, product_ids: list[int]) -> list[Product]:
+    """Lock pricing products in a deterministic order.
+
+    Purchasing uses this after locking its receipt aggregate.  Keeping the
+    pricing relationships loaded here means the exact same canonical pricing
+    calculation is available without a second unlocked product read.
+    """
+    if not product_ids:
+        return []
+    stmt = (
+        select(Product)
+        .where(Product.id.in_(product_ids))
+        .options(*_PRODUCT_PRICING_OPTIONS)
+        .order_by(Product.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    products = list((await session.execute(stmt)).scalars())
+    if len(products) != len(set(product_ids)):
+        raise NotFoundError("One or more products no longer exist.")
+    return products
+
+
 async def _record_history(session: AsyncSession, product: Product) -> None:
     """Records the *effective* tax/margin actually used for this price —
     not the raw (possibly ``None``/inherited) columns — so a history row
@@ -287,6 +310,38 @@ async def set_pricing_inputs(
         after=_snapshot(product),
     )
     return await catalog.get_product(session, product_id)
+
+
+async def apply_received_catalog_cost(
+    session: AsyncSession,
+    product: Product,
+    received_unit_cost: Decimal,
+    *,
+    receipt_id: int,
+) -> bool:
+    """Apply an explicitly confirmed receipt cost through pricing's one path.
+
+    The caller owns the product row lock.  This deliberately shares
+    ``_recompute_with`` and price-history handling with ordinary changes to
+    pricing inputs; purchasing never reimplements the formula.
+    """
+    if product.cost == received_unit_cost:
+        return False
+
+    before = _snapshot(product)
+    product.cost = received_unit_cost
+    _recompute_with(product, await get_settings(session))
+    await session.flush()
+    await _record_history(session, product)
+    await audit.record(
+        session,
+        action="received_cost_applied",
+        entity_type="product",
+        entity_id=product.id,
+        before=before,
+        after={**_snapshot(product), "goods_receipt_id": receipt_id},
+    )
+    return True
 
 
 async def set_price_formula(session: AsyncSession, product_id: int, formula_text: str) -> Product:

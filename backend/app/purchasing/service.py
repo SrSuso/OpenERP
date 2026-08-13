@@ -28,6 +28,7 @@ from app.idempotency import service as idempotency_service
 from app.inventory import service as inventory_service
 from app.lots import service as lots_service
 from app.lots.schemas import LotCreate
+from app.pricing import service as pricing_service
 from app.purchasing.models import (
     GoodsReceipt,
     GoodsReceiptLine,
@@ -36,6 +37,7 @@ from app.purchasing.models import (
     PurchaseOrderStatus,
 )
 from app.purchasing.schemas import (
+    ApplyReceivedCostsRequest,
     GoodsReceiptCreate,
     GoodsReceiptLineCreate,
     PurchaseOrderCreate,
@@ -344,6 +346,101 @@ async def get_goods_receipt(session: AsyncSession, receipt_id: int) -> GoodsRece
     if receipt is None:
         raise NotFoundError(f"Goods receipt {receipt_id} not found.")
     return receipt
+
+
+async def _get_goods_receipt_for_update(session: AsyncSession, receipt_id: int) -> GoodsReceipt:
+    """First lock in the B10 order: receipt, then products by id, then pricing.
+
+    A receipt is immutable once created, but locking it makes the aggregate
+    boundary and the lock order explicit for the subsequent cost confirmation.
+    """
+    stmt = (
+        select(GoodsReceipt)
+        .where(GoodsReceipt.id == receipt_id)
+        .options(*_RECEIPT_OPTIONS)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    receipt = (await session.execute(stmt)).scalar_one_or_none()
+    if receipt is None:
+        raise NotFoundError(f"Goods receipt {receipt_id} not found.")
+    return receipt
+
+
+def received_unit_cost(line: GoodsReceiptLine) -> Decimal:
+    """The persisted PO snapshot converted from package to base-unit cost."""
+    return (line.purchase_order_line.unit_cost / line.purchase_order_line.package_factor).quantize(
+        NUMERIC_EPSILON
+    )
+
+
+def receipt_cost_proposals(receipt: GoodsReceipt) -> list[tuple[GoodsReceiptLine, Decimal]]:
+    """Return only receipt-line costs that still differ from catalog cost."""
+    proposals: list[tuple[GoodsReceiptLine, Decimal]] = []
+    for line in receipt.lines:
+        cost = received_unit_cost(line)
+        if cost != line.purchase_order_line.product.cost:
+            proposals.append((line, cost))
+    return proposals
+
+
+async def apply_received_costs(
+    session: AsyncSession,
+    receipt_id: int,
+    payload: ApplyReceivedCostsRequest,
+) -> GoodsReceipt:
+    """Confirm selected catalog costs from a completed receipt.
+
+    Lock order is Receipt -> Product ids ascending -> pricing recomputation.
+    The source cost is only ever the persisted purchase-order-line snapshot;
+    the request carries an optimistic expected catalog cost, never a price.
+    """
+    receipt = await _get_goods_receipt_for_update(session, receipt_id)
+    receipt_lines = {line.id: line for line in receipt.lines}
+    requested_ids = [line.receipt_line_id for line in payload.lines]
+    if len(requested_ids) != len(set(requested_ids)):
+        raise ValidationError("Each receipt line can be selected only once.")
+
+    selected: list[tuple[GoodsReceiptLine, Decimal, Decimal]] = []
+    for request_line in payload.lines:
+        receipt_line = receipt_lines.get(request_line.receipt_line_id)
+        if receipt_line is None:
+            raise ValidationError(
+                f"Receipt line {request_line.receipt_line_id} does not belong to "
+                f"receipt {receipt_id}."
+            )
+        selected.append(
+            (receipt_line, received_unit_cost(receipt_line), request_line.expected_current_cost)
+        )
+
+    product_ids = [line.purchase_order_line.product_id for line, _, _ in selected]
+    if len(product_ids) != len(set(product_ids)):
+        raise ValidationError("Select at most one received cost for each product.")
+
+    products = await pricing_service.get_products_for_update(session, sorted(product_ids))
+    products_by_id = {product.id: product for product in products}
+
+    # Validate all optimistic expectations before changing any product, so a
+    # partial selection remains one all-or-nothing commercial decision.
+    for receipt_line, received_cost, expected_cost in selected:
+        product = products_by_id[receipt_line.purchase_order_line.product_id]
+        if product.cost == received_cost:
+            continue  # Natural idempotent replay: there is no second effect.
+        if product.cost != expected_cost:
+            raise ConflictError(
+                "The catalog cost changed since this receipt was reviewed; refresh the proposal."
+            )
+
+    for receipt_line, received_cost, _ in selected:
+        product = products_by_id[receipt_line.purchase_order_line.product_id]
+        await pricing_service.apply_received_catalog_cost(
+            session,
+            product,
+            received_cost,
+            receipt_id=receipt.id,
+        )
+
+    return await get_goods_receipt(session, receipt.id)
 
 
 async def list_goods_receipts(session: AsyncSession, purchase_order_id: int) -> list[GoodsReceipt]:

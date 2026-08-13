@@ -99,6 +99,23 @@ class GoodsReceiptLineRead(BaseModel):
     stock_movement_id: int | None
 
 
+class ReceivedCostProposalRead(BaseModel):
+    """A catalog-cost change derived from a persisted receipt line.
+
+    ``received_unit_cost`` is always in the product's base unit.  It is a
+    proposal, not a write: recording a receipt must remain independent from
+    the commercial decision to update the catalog.
+    """
+
+    receipt_line_id: int
+    product_id: int
+    product_sku: str
+    product_name: str
+    current_catalog_cost: Decimal
+    received_unit_cost: Decimal
+    difference: Decimal
+
+
 class GoodsReceiptRead(BaseModel):
     id: int
     purchase_order_id: int
@@ -107,3 +124,15 @@ class GoodsReceiptRead(BaseModel):
     notes: str
     received_at: datetime
     lines: list[GoodsReceiptLineRead]
+    cost_proposals: list[ReceivedCostProposalRead]
+
+
+class ApplyReceivedCostLine(BaseModel):
+    """The client selects a persisted receipt line, never a new cost."""
+
+    receipt_line_id: int
+    expected_current_cost: Decimal = Field(ge=0)
+
+
+class ApplyReceivedCostsRequest(BaseModel):
+    lines: list[ApplyReceivedCostLine] = Field(min_length=1)

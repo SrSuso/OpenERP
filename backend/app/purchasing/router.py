@@ -12,6 +12,7 @@ from app.auth.dependencies import CurrentUser, SessionDep
 from app.purchasing import service
 from app.purchasing.models import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.purchasing.schemas import (
+    ApplyReceivedCostsRequest,
     GoodsReceiptCreate,
     GoodsReceiptLineRead,
     GoodsReceiptRead,
@@ -20,9 +21,11 @@ from app.purchasing.schemas import (
     PurchaseOrderLineCreate,
     PurchaseOrderLineRead,
     PurchaseOrderRead,
+    ReceivedCostProposalRead,
 )
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import (
+    PRICING_MANAGE,
     PURCHASE_MANAGE,
     PURCHASE_READ,
     RECEIVING_MANAGE,
@@ -35,6 +38,7 @@ _require_read = Depends(require_permission(PURCHASE_READ))
 _require_manage = Depends(require_permission(PURCHASE_MANAGE))
 _require_receiving_read = Depends(require_permission(RECEIVING_READ))
 _require_receiving_manage = Depends(require_permission(RECEIVING_MANAGE))
+_require_pricing_manage = Depends(require_permission(PRICING_MANAGE))
 
 
 def _line_to_read(line: PurchaseOrderLine) -> PurchaseOrderLineRead:
@@ -208,6 +212,18 @@ def _receipt_to_read(receipt: GoodsReceipt) -> GoodsReceiptRead:
         notes=receipt.notes,
         received_at=receipt.received_at,
         lines=[_receipt_line_to_read(line) for line in receipt.lines],
+        cost_proposals=[
+            ReceivedCostProposalRead(
+                receipt_line_id=line.id,
+                product_id=line.purchase_order_line.product_id,
+                product_sku=line.purchase_order_line.product.sku,
+                product_name=line.purchase_order_line.product.name,
+                current_catalog_cost=line.purchase_order_line.product.cost,
+                received_unit_cost=received_cost,
+                difference=received_cost - line.purchase_order_line.product.cost,
+            )
+            for line, received_cost in service.receipt_cost_proposals(receipt)
+        ],
     )
 
 
@@ -255,3 +271,14 @@ async def list_goods_receipts(order_id: int, session: SessionDep) -> list[GoodsR
 )
 async def get_goods_receipt(receipt_id: int, session: SessionDep) -> GoodsReceiptRead:
     return _receipt_to_read(await service.get_goods_receipt(session, receipt_id))
+
+
+@router.post(
+    "/goods-receipts/{receipt_id}/apply-costs",
+    response_model=GoodsReceiptRead,
+    dependencies=[_require_receiving_read, _require_pricing_manage],
+)
+async def apply_received_costs(
+    receipt_id: int, payload: ApplyReceivedCostsRequest, session: SessionDep
+) -> GoodsReceiptRead:
+    return _receipt_to_read(await service.apply_received_costs(session, receipt_id, payload))
