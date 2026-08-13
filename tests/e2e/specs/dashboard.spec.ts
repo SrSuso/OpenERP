@@ -55,6 +55,17 @@ test.describe.serial('Admin dashboard (phase 16)', () => {
   });
 
   test('a chart widget renders an actual chart canvas', async ({ page }) => {
+    // A freshly seeded E2E database intentionally has no completed sales, so
+    // its honest dashboard response is the empty state. Intercept only this
+    // widget-data response to exercise the browser rendering contract (and
+    // therefore the lazy ECharts chunk) with a valid line-series payload.
+    await page.route(/\/api\/v1\/dashboards\/\d+\/widgets\/\d+\/data$/, (route) =>
+      route.fulfill({
+        json: {
+          data: [{ date: '2026-08-13', sales_count: 1, total: '12.500000' }],
+        },
+      }),
+    );
     await page.getByRole('button', { name: /añadir widget/i }).click();
     await page.getByLabel(/métrica/i).selectOption('Ventas por día');
     await page.getByRole('button', { name: /^añadir$/i }).click();
