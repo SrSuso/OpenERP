@@ -1,7 +1,7 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from "@playwright/test";
 
-const FRONTEND_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173';
-const BACKEND_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:8000';
+const FRONTEND_URL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:5173";
+const BACKEND_URL = process.env.E2E_API_URL ?? "http://127.0.0.1:8000";
 const isCI = Boolean(process.env.CI);
 
 /**
@@ -16,38 +16,45 @@ const isCI = Boolean(process.env.CI);
  * upgrade never perturbs the application's dependency tree.
  */
 export default defineConfig({
-  testDir: './specs',
-  outputDir: './.artifacts/test-results',
-  fullyParallel: true,
+  testDir: "./specs",
+  outputDir: "./.artifacts/test-results",
+  // The specs share one deliberately seeded ERP database (including the same
+  // POS terminal and dashboard owner). Running files in parallel makes them
+  // mutate those aggregates underneath each other, so the official gate is
+  // serialized locally and in CI.
+  fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  workers: isCI ? 1 : undefined,
+  workers: 1,
   reporter: isCI
-    ? [['list'], ['html', { outputFolder: './.artifacts/report', open: 'never' }]]
-    : [['list']],
+    ? [
+        ["list"],
+        ["html", { outputFolder: "./.artifacts/report", open: "never" }],
+      ]
+    : [["list"]],
   timeout: 30_000,
   expect: { timeout: 10_000 },
 
   use: {
     baseURL: FRONTEND_URL,
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
 
   projects: [
     {
-      name: 'admin',
+      name: "admin",
       testMatch: /.*\.spec\.ts/,
       testIgnore: /pos\..*/,
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices["Desktop Chrome"] },
     },
     {
       // The till is a touch device, so the POS specs run as one.
-      name: 'pos',
+      name: "pos",
       testMatch: /pos\..*\.spec\.ts/,
       use: {
-        ...devices['Desktop Chrome'],
+        ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 800 },
         hasTouch: true,
         isMobile: false,
@@ -57,17 +64,17 @@ export default defineConfig({
 
   webServer: [
     {
-      command: 'uv run uvicorn app.main:app --host 127.0.0.1 --port 8000',
-      cwd: '../../backend',
+      command: "uv run uvicorn app.main:app --host 127.0.0.1 --port 8000",
+      cwd: "../../backend",
       url: `${BACKEND_URL}/api/v1/health/ready`,
       reuseExistingServer: !isCI,
       timeout: 120_000,
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdout: "pipe",
+      stderr: "pipe",
     },
     {
-      command: 'npm run dev -- --port 5173 --strictPort',
-      cwd: '../../frontend',
+      command: "npm run dev -- --port 5173 --strictPort",
+      cwd: "../../frontend",
       url: FRONTEND_URL,
       reuseExistingServer: !isCI,
       timeout: 120_000,

@@ -7,6 +7,38 @@ import { openPreparedPos } from "../helpers/pos";
 // suite runs (CI seeds it explicitly; see docs/USAGE.md for local dev).
 const MILK_NAME = /leche entera 1l/i;
 const WATER_BARCODE = "8410000000027";
+const PRINTED_TICKET_KEY = "openerp.e2e.printedTicket";
+
+async function captureBrowserPrint(page: Page): Promise<void> {
+  // window.print() opens real OS/browser chrome Playwright cannot drive.
+  // Capture the real rendered text at that boundary; the backend request,
+  // template rendering and automatic dismissal still run unchanged.
+  await page.addInitScript((storageKey) => {
+    window.print = () => {
+      const text =
+        document.querySelector(".ticket-print-root pre")?.textContent ?? "";
+      window.sessionStorage.setItem(storageKey, text);
+    };
+  }, PRINTED_TICKET_KEY);
+  await page.goto("/pos");
+}
+
+async function waitForPrintedTicket(page: Page): Promise<string> {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (storageKey) => window.sessionStorage.getItem(storageKey),
+        PRINTED_TICKET_KEY,
+      ),
+    )
+    .toMatch(/Venta #\d+/);
+  return (
+    (await page.evaluate(
+      (storageKey) => window.sessionStorage.getItem(storageKey),
+      PRINTED_TICKET_KEY,
+    )) ?? ""
+  );
+}
 
 /**
  * Cancelling always succeeds on an open `DRAFT` sale, empty or not (phase
@@ -96,49 +128,40 @@ test.describe.serial("POS cart & checkout (phases 12/13)", () => {
     await page.getByRole("button", { name: /confirmar cobro/i }).click();
 
     await expect(page.getByText(/venta cobrada/i)).toBeVisible();
-    await page.getByRole("button", { name: /nueva venta/i }).click();
-
+    // Auto-print is enabled by default. Once the real ticket request has
+    // completed, Receipt dismisses itself and opens the next sale; clicking
+    // its short-lived fallback button races that documented transition.
     await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
   });
 
-  test("printing the ticket shows the rendered receipt text", async ({
+  test("auto-print sends the rendered receipt text to the browser", async ({
     page,
   }) => {
-    // window.print() opens real OS/browser chrome Playwright can't drive —
-    // stub it so the test only exercises the app's own logic up to that
-    // call, same as any other E2E suite that has to cross this boundary.
-    await page.addInitScript(() => {
-      window.print = () => {};
-    });
-    await page.goto("/pos");
+    await captureBrowserPrint(page);
     await page.getByRole("button", { name: MILK_NAME }).click();
     await page.getByRole("button", { name: /^cobrar$/i }).click();
     await page.getByRole("button", { name: /confirmar cobro/i }).click();
     await expect(page.getByText(/venta cobrada/i)).toBeVisible();
 
-    await page.getByRole("button", { name: /imprimir ticket/i }).click();
-
-    await expect(page.getByText(/Venta #\d+/)).toBeVisible();
-    await expect(page.getByText(MILK_NAME)).toBeVisible();
-
-    await page.getByRole("button", { name: "Cerrar", exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: /nueva venta/i }),
-    ).toBeVisible();
+    const printedTicket = await waitForPrintedTicket(page);
+    expect(printedTicket).toMatch(MILK_NAME);
+    await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
   });
 
-  test("a cash overpayment shows the change due on the receipt", async ({
+  test("a cash overpayment reaches the printed receipt with the correct change", async ({
     page,
   }) => {
-    await page.getByRole("button", { name: MILK_NAME }).click(); // 1,32 €
+    await captureBrowserPrint(page);
+    await page.getByRole("button", { name: MILK_NAME }).click(); // 1,20 €
     await page.getByRole("button", { name: /^cobrar$/i }).click();
 
     await page.getByLabel(/importe recibido/i).fill("2.00");
+    await expect(page.getByText("0,80 €")).toBeVisible();
     await page.getByRole("button", { name: /confirmar cobro/i }).click();
 
-    await expect(page.getByText(/cambio a entregar/i)).toBeVisible();
-    await expect(page.getByText("0,68 €")).toBeVisible();
-    await page.getByRole("button", { name: /nueva venta/i }).click();
+    const printedTicket = await waitForPrintedTicket(page);
+    expect(printedTicket).toMatch(/Cambio\s+0\.80/);
+    await expect(page.getByText(/el carrito está vacío/i)).toBeVisible();
   });
 
   test('"Volver" from checkout returns to the cart without charging', async ({
