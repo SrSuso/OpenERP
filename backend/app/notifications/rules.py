@@ -124,9 +124,9 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
 
 
 async def _detect_expiring_lots(
-    session: AsyncSession, params: ExpiringLotParams
+    session: AsyncSession, params: ExpiringLotParams, today: date
 ) -> list[Detection]:
-    threshold = date.today() + timedelta(days=params.days_before_expiration)
+    threshold = today + timedelta(days=params.days_before_expiration)
 
     balance_stmt = (
         select(StockBalance.lot_id, func.sum(StockBalance.quantity).label("quantity"))
@@ -154,7 +154,11 @@ async def _detect_expiring_lots(
 
 
 async def detect(
-    session: AsyncSession, rule_type: RuleType, raw_params: dict[str, Any]
+    session: AsyncSession,
+    rule_type: RuleType,
+    raw_params: dict[str, Any],
+    *,
+    today: date,
 ) -> list[Detection]:
     params = validate_params(rule_type, raw_params)
     if rule_type == RuleType.CONDITION:
@@ -169,4 +173,4 @@ async def detect(
         assert isinstance(params, LowStockParams)
         return await _detect_low_stock(session, params)
     assert isinstance(params, ExpiringLotParams)
-    return await _detect_expiring_lots(session, params)
+    return await _detect_expiring_lots(session, params, today)

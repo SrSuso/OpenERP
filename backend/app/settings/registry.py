@@ -29,6 +29,8 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any
 
+from app.core.business_time import parse_timezone
+
 
 class SettingType(StrEnum):
     BOOL = "BOOL"
@@ -40,6 +42,8 @@ class SettingType(StrEnum):
     TEXT = "TEXT"
     #: One of `SettingDef.choices`.
     ENUM = "ENUM"
+    #: IANA name (Europe/Madrid, Europe/Lisbon, UTC), resolved by zoneinfo.
+    TIMEZONE = "TIMEZONE"
     #: Un color, en hexadecimal (`#22c55e`). El panel lo pinta como un
     #: cuadro de colores: nadie tiene por qué saberse un hexadecimal para
     #: elegir el verde que quiere.
@@ -102,6 +106,9 @@ class SettingDef:
             if raw not in [c.value for c in self.choices]:
                 allowed = ", ".join(c.label for c in self.choices)
                 raise ValueError(f"Tiene que ser una de estas opciones: {allowed}.")
+            return raw
+        if self.type is SettingType.TIMEZONE:
+            parse_timezone(raw)
             return raw
         return raw
 
@@ -389,6 +396,17 @@ SETTINGS: tuple[SettingDef, ...] = (
         ),
         type=SettingType.STRING,
         default="OpenERP",
+    ),
+    SettingDef(
+        key="business.timezone",
+        group=GROUP_STORE,
+        label="Zona horaria comercial",
+        help=(
+            "Calendario y hora de la tienda para mostrar, filtrar y agrupar operaciones. "
+            "Escribe un nombre IANA, por ejemplo Europe/Madrid, Europe/Lisbon o UTC."
+        ),
+        type=SettingType.TIMEZONE,
+        default="Europe/Madrid",
     ),
     # --- caja --------------------------------------------------------------
     SettingDef(

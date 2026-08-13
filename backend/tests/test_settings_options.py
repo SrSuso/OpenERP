@@ -61,6 +61,23 @@ async def test_an_unchanged_option_reports_the_registry_default(
 
     assert options["pos.weighed_units"]["value"] == "KG"
     assert options["pos.weighed_units"]["default"] == "KG"
+    assert options["business.timezone"]["value"] == "Europe/Madrid"
+    assert options["business.timezone"]["default"] == "Europe/Madrid"
+
+
+async def test_an_invalid_business_timezone_is_rejected_clearly(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+
+    response = await client.put(
+        "/api/v1/settings/options", json={"values": {"business.timezone": "Europe/No_Existe"}}
+    )
+
+    assert response.status_code == 422
+    message = response.json()["error"]["message"]
+    assert "Zona horaria comercial" in message
+    assert "zona horaria IANA válida" in message
 
 
 async def test_a_bad_value_is_rejected_with_a_message_for_a_human(

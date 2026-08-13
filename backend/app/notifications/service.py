@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
+from app.core.business_time import business_today
 from app.core.errors import NotFoundError
 from app.jobs import service as outbox
 from app.notifications import rules as rule_engine
 from app.notifications.models import Incident, NotificationRule
 from app.notifications.schemas import NotificationRuleCreate, NotificationRuleUpdate
 from app.settings import store as settings_store
+from app.settings.business_time import get_business_timezone
 from app.settings.service import get_effective_settings
 
 # --- rules ---------------------------------------------------------------------
@@ -170,10 +172,11 @@ async def evaluate_rules(session: AsyncSession) -> list[Incident]:
     subject_prefix = str(
         await settings_store.get_value(session, "notifications.email_subject_prefix")
     )
+    today = business_today(await get_business_timezone(session), now=now)
 
     for rule in await list_rules(session, active_only=True):
         detections = await rule_engine.detect(
-            session, rule_engine.RuleType(rule.rule_type), rule.params
+            session, rule_engine.RuleType(rule.rule_type), rule.params, today=today
         )
         detected_keys = {(d.subject_type, d.subject_id) for d in detections}
 

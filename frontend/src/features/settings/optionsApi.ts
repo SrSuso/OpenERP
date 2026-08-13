@@ -15,6 +15,7 @@ export const settingTypeSchema = z.enum([
   'STRING',
   'TEXT',
   'ENUM',
+  'TIMEZONE',
   // Un color: se elige de un cuadro de colores, no tecleando un
   // hexadecimal.
   'COLOR',
