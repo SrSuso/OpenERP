@@ -79,10 +79,9 @@ certificado no confiable hasta que lo importes como autoridad de confianza:
 - **Chrome/Edge en Linux**: importarlo también en el almacén NSS
   (`certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n openerp -i fullchain.pem`).
 
-Si esto es para probar rápido y prefieres no distribuir el certificado a
-cada equipo todavía, cada usuario puede aceptar la advertencia del
-navegador manualmente ("Avanzado → continuar de todos modos") — funciona,
-pero cada uno la vuelve a ver hasta que se importe el certificado.
+No normalices ni documentes como rutina «continuar de todos modos» ante una
+advertencia TLS. Importa el certificado o usa la CA interna antes de anunciar
+la instalación: el equipo no debe acostumbrarse a ignorar avisos de identidad.
 
 **b) Certificado de una CA interna de la empresa (recomendado si ya existe):**
 pide un certificado+clave para el hostname del servidor a quien gestione
@@ -106,7 +105,7 @@ Edita `.env.production` (nunca se commitea — está en `.gitignore`):
 - Mantén `OPENERP_TRUSTED_PROXY_IP` dentro de `OPENERP_BACKEND_SUBNET`. Sólo
   hace falta cambiar ambos si `172.30.0.0/24` colisiona con una red del host.
 - Configura `OPENERP_SMTP_*` con el relay corporativo si vas a enviar avisos;
-  Mailpit queda exclusivamente en desarrollo (§6).
+  Mailpit queda exclusivamente en desarrollo (§7).
 - Para no poner un secreto directamente en el entorno, monta un fichero y usa
   `OPENERP_DATABASE_URL_FILE`, `OPENERP_SMTP_PASSWORD_FILE`, etc. Cualquier
   campo admite la forma genérica `OPENERP_<CAMPO>_FILE`, que tiene precedencia
@@ -114,7 +113,7 @@ Edita `.env.production` (nunca se commitea — está en `.gitignore`):
   `worker` y `migrate` cuando el campo sea compartido.
 - El resto de valores por defecto sirven para arrancar; el fichero
   documenta cada uno inline. Detalle de qué es cada variable en
-  [`ARCHITECTURE.md`](ARCHITECTURE.md#22-configuración-appcoreconfigpy).
+  [`ARCHITECTURE.md`](ARCHITECTURE.md#3-configuración).
 
 Estos son parámetros de proceso: no aparecen en el panel y cambiar una fila
 de `settings` no puede alterarlos. Reinicia API y worker tras cambiarlos;
@@ -141,7 +140,7 @@ make prod-logs      # Ctrl-C para dejar de seguir
 
 No hay registro público — se crea una vez por instalación. Con
 `OPENERP_BOOTSTRAP_ADMIN_EMAIL`/`OPENERP_BOOTSTRAP_ADMIN_PASSWORD` ya puestos
-en `.env.production` (la plantilla trae un valor por defecto, §2.3), no
+en `.env.production` (la plantilla trae placeholders `CAMBIAR`, §2.3), no
 hace falta contestar nada:
 
 ```bash
@@ -150,7 +149,7 @@ make prod-bootstrap-admin
 
 Es idempotente: si ya existe un admin con ese email, no hace nada y termina
 bien — seguro de dejar en un procedimiento de despliegue repetible. Si
-prefieres no dejar la contraseña por defecto en el `.env.production`
+prefieres no dejar la contraseña inicial en el `.env.production`
 (queda en texto plano en el servidor), borra esas dos líneas del fichero
 antes de este paso y el comando te la pedirá de forma interactiva en su
 lugar.
@@ -158,7 +157,7 @@ lugar.
 **Entra y cámbiala de inmediato**: `https://<host>/admin` con el email y la
 contraseña de `.env.production` → **Mi cuenta** en el menú lateral →
 cambia la contraseña ahí. Mientras no lo hagas, cualquiera con el
-`.env.production` (o con el valor por defecto de este documento) tiene
+`.env.production` tiene
 acceso de administrador total.
 
 ### 2.6. Verificar
@@ -294,8 +293,8 @@ nombre del terminal en la cabecera del TPV.
 Si se rompe una caja con un borrador pendiente, **no la borres ni esperes que
 el borrador se mueva solo**. Desactiva el terminal para impedir más operación
 y localiza la venta «Sin cobrar» en **Ventas**: allí permanece visible con el
-terminal que la originó. A9 no transfiere borradores entre cajas; cualquier
-recuperación/transferencia supervisada pertenece a una fase posterior.
+terminal que la originó. La versión actual no transfiere borradores entre
+terminales.
 
 ## 3.4. La caja: imprimir el ticket sin cuadro de impresión
 
@@ -408,9 +407,10 @@ Después del mensaje `verified restore`:
 
 1. Ajusta sólo el nombre de base en `OPENERP_DATABASE_URL` o su fichero secreto.
 2. Selecciona la imagen compatible mediante `export OPENERP_VERSION=<commit>`.
-3. Arranca API/web, espera health y ejecuta `make prod-smoke`.
-4. Arranca y verifica worker.
-5. Sólo entonces borra `deploy/maintenance/enabled`.
+3. Ejecuta `make prod-start-api-web`, `make prod-wait-api` y
+   `make prod-smoke`.
+4. Ejecuta `make prod-start-worker` y `make prod-worker-check`.
+5. Sólo entonces ejecuta `rm deploy/maintenance/enabled`.
 
 ### 4.3. Rollback de un upgrade fallido
 
@@ -441,7 +441,8 @@ Si health/smoke falla, API/worker vuelven a quedar parados. En los tres casos el
 La retención anterior es local. Automatizar `make prod-backup` puede ser útil,
 pero además hay que copiar dumps, checksums y metadata a otra máquina o medio
 cifrado: el mismo disco no protege contra incendio, ransomware, robo o pérdida
-del host. A18 no implementa offsite ni recuperación punto en el tiempo.
+del host. OpenERP no implementa todavía copia offsite ni recuperación punto en
+el tiempo.
 
 ```cron
 # ejemplo: backup diario a las 3:00
@@ -454,10 +455,9 @@ del host. A18 no implementa offsite ni recuperación punto en el tiempo.
 
 Desde el propio panel, en `https://<host>/admin`: **Usuarios y roles** en
 el menú lateral, con una pestaña **Usuarios** y otra **Roles** dentro
-(cada pestaña visible según tus permisos — ver §5.1). Ya no hace
-falta `curl` ni Swagger UI para esto; se dejan documentados al final de
-cada apartado sólo como referencia/alternativa si alguna vez la necesitas
-(automatizar un alta en un script, por ejemplo).
+(cada pestaña visible según tus permisos — ver §5.1). Esta es la vía normal y
+soportada de administración; Swagger no existe en producción y no se requieren
+llamadas HTTP manuales.
 
 ### 5.1. Roles de partida
 
@@ -469,9 +469,8 @@ cada apartado sólo como referencia/alternativa si alguna vez la necesitas
 
 No son una lista cerrada: en **Roles** (sólo visible para `ADMIN` —
 necesita `roles.manage`) se pueden crear roles nuevos y marcar qué
-permisos tiene cada uno. Referencia por `curl`:
-`GET /api/v1/permissions`/`PATCH /roles/{id}/permissions` — el catálogo
-completo de claves disponibles (a fecha de esta guía incluye, entre otras:
+permisos tiene cada uno. El catálogo completo de claves disponibles (a fecha
+de esta guía incluye, entre otras:
 `admin.access`, `pos.access`, `users.manage`, `roles.manage`, `audit.read`,
 `product.read`/`product.manage`, `pricing.manage`, `supplier.read`/`.manage`,
 `purchase.read`/`.manage`, `receiving.read`/`.manage`, `inventory.read`/`.manage`,
@@ -480,50 +479,63 @@ completo de claves disponibles (a fecha de esta guía incluye, entre otras:
 `notification.read`/`.manage`, `job.read`/`.manage`) también se ve en la
 propia pantalla **Roles** al crear/editar uno.
 
+La autoridad depende de permisos, no del nombre del rol. Un usuario no puede
+crear o asignar un rol que contenga permisos que él mismo no posee. Tampoco se
+puede desactivar o degradar al último usuario activo capaz de gestionar tanto
+usuarios como roles; esa protección evita dejar la instalación sin una vía de
+recuperación administrativa.
+
 ### 5.2. Dar de alta un usuario
 
 En **Usuarios** → **Nuevo usuario**: email, nombre, contraseña provisional
 y rol (desplegable con los roles existentes). La persona debería cambiar
-esa contraseña provisional desde **Mi cuenta** en su primer inicio de
-sesión — el panel no fuerza el cambio todavía, es cosa de decírselo.
+esa contraseña provisional desde **Mi cuenta**. Comunícala por un canal seguro:
+la creación inicial no fuerza automáticamente el cambio en la versión actual.
 
-Por `curl`, si hiciera falta automatizarlo:
-
-```bash
-curl -b cookies.txt https://<host>/api/v1/roles          # averigua el id del rol
-curl -b cookies.txt -X POST https://<host>/api/v1/users \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "email": "cajero1@tuempresa.example",
-    "full_name": "Nombre Apellido",
-    "password": "una contraseña de al menos 8 caracteres",
-    "role_id": 3
-  }'
-```
+**Restablecer contraseña** es distinto: establece una clave temporal de al
+menos 12 caracteres, revoca todas las sesiones de esa cuenta y activa
+`must_change_password`. En el siguiente login el usuario sólo puede elegir una
+contraseña nueva; no puede entrar al TPV o al panel hasta hacerlo. No existe un
+flujo autónomo «olvidé mi contraseña» por email.
 
 ### 5.3. Desactivar un usuario
 
 Los usuarios nunca se borran (conservan su histórico) — se desactivan, y
 desde ese momento no pueden iniciar sesión. Botón **Desactivar** en la fila
 del usuario en **Usuarios** (no aparece en tu propia fila — no puedes
-desactivarte a ti mismo desde el panel). Por `curl`:
+desactivarte a ti mismo desde el panel). **Activar** permite recuperarlo sin
+perder su historial.
 
-```bash
-curl -b cookies.txt -X POST https://<host>/api/v1/users/<id>/deactivate
-```
+### 5.4. Cerrar otra sesión propia
 
-### 5.4. Cerrar la sesión de otro terminal
-
-Útil cuando alguien se dejó una sesión abierta en un TPV:
-
-```bash
-curl -b cookies.txt https://<host>/api/v1/auth/sessions
-curl -b cookies.txt -X DELETE https://<host>/api/v1/auth/sessions/<id>
-```
+En **Mi cuenta → Sesiones activas**, cada usuario puede revisar dispositivo,
+IP y última actividad y cerrar sus otras sesiones. La sesión actual se cierra
+con **Salir**. `users.manage` no concede una pantalla para revocar sesiones de
+otra persona; un restablecimiento de contraseña o la desactivación sí revoca
+todas las sesiones de esa cuenta.
 
 ---
 
-## 6. Correo de producción
+## 6. Configuración funcional de la tienda
+
+La pantalla **Configuración** requiere `settings.read` para consultar y
+`settings.manage` para guardar. Los valores residen en PostgreSQL y afectan a
+la operación de la tienda: nombre visible, `business.timezone`, TPV, reglas de
+venta y catálogo, avisos y apariencia.
+
+`business.timezone` debe ser un nombre IANA, por ejemplo `Europe/Madrid`.
+Ventas, tickets, dashboards, informes, recepciones, devoluciones y auditoría la
+usan para mostrar o agrupar fechas. Cambiarla no modifica timestamps
+históricos, aunque puede cambiar el día comercial en el que se presenta un
+instante cercano a medianoche.
+
+No añadas al registro funcional secretos ni parámetros de proceso. Base de
+datos, pool, CORS, cookies, rate limit, bootstrap, proxy y credenciales SMTP se
+configuran exclusivamente mediante entorno o `*_FILE` (§2.3).
+
+---
+
+## 7. Correo de producción
 
 Mailpit sólo forma parte de `docker/compose.yml` de desarrollo y nunca publica
 una interfaz en el stack de producción. Si producción debe enviar avisos,
@@ -546,13 +558,13 @@ la tienda. Para cambiar el relay:
 2. `make prod-restart` para que API y, especialmente, el worker lean la
    configuración nueva.
 
-Regla 10 del proyecto sigue aplicando: si el SMTP corporativo está caído,
+Si el SMTP corporativo está caído,
 las ventas y el resto de la aplicación no se ven afectadas — los mensajes
 sólo se acumulan `PENDING` en la cola hasta que el worker pueda entregarlos.
 
 ---
 
-## 7. Monitorización y solución de problemas
+## 8. Monitorización y solución de problemas
 
 | Síntoma | Dónde mirar | Causa típica |
 | --- | --- | --- |
@@ -560,7 +572,7 @@ sólo se acumulan `PENDING` en la cola hasta que el worker pueda entregarlos.
 | El navegador dice que el certificado no es válido | — | Certificado autofirmado sin importar en ese equipo (§2.2) — no es un fallo del servidor. |
 | `make prod-smoke` falla en readiness | `make prod-logs` (servicio `api`) | PostgreSQL no arrancó o `OPENERP_DATABASE_URL` no coincide con `POSTGRES_*`. |
 | Un correo de incidencia no llega | Logs del servicio `worker` | El worker no está corriendo, o el SMTP configurado rechaza la conexión — la venta/incidencia en sí no se ve afectada (regla 10). |
-| Tras un `git pull` la app sigue con el código viejo | — | Falta `make prod-build` (reconstruir imágenes) antes de `make prod-up`. |
+| Hay una versión nueva pendiente | — | Las actualizaciones se hacen con `make prod-deploy`; no combines `git pull`, `prod-build` y `prod-up` manualmente. |
 
 `make prod-logs` sigue los logs de los servicios a la vez; para uno
 solo: `docker compose -f docker/compose.prod.yml --env-file .env.production
@@ -568,7 +580,7 @@ logs -f <servicio>`.
 
 ---
 
-## 8. Seguridad — qué revisar antes de anunciar el despliegue
+## 9. Seguridad — qué revisar antes de anunciar el despliegue
 
 - `.env.production` con contraseñas propias, no las de `.env.production.example`.
 - HTTPS con un certificado importado en los equipos que van a usarlo (§2.2).
@@ -579,6 +591,6 @@ logs -f <servicio>`.
 - `OPENERP_LOGIN_RATE_LIMIT_*` (valores por defecto ya razonables: 5
   intentos por email, 20 por IP, cada 5 minutos) — sólo tocar si la tienda
   tiene un patrón de uso atípico.
-- Backups (§4) probados al menos una vez con `make db-restore` contra una
-  base de datos de prueba — un backup que nunca se ha restaurado no está
-  verificado.
+- Backups (§4) probados al menos una vez con `make prod-restore` hacia una base
+  nueva y descartable — un backup que nunca se ha restaurado no demuestra que
+  el procedimiento de recuperación funciona.
