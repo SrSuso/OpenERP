@@ -8,12 +8,12 @@ from app.auth.dependencies import SessionDep
 from app.pos import service
 from app.pos.models import PosTerminal
 from app.pos.schemas import PosTerminalCreate, PosTerminalRead, PosTerminalUpdate
-from app.rbac.dependencies import require_permission
+from app.rbac.dependencies import require_any_permission, require_permission
 from app.rbac.permissions import INVENTORY_MANAGE, SALE_READ
 
 router = APIRouter(tags=["pos-terminals"])
 
-_require_sale_read = Depends(require_permission(SALE_READ))
+_require_terminal_read = Depends(require_any_permission(SALE_READ, INVENTORY_MANAGE))
 _require_manage = Depends(require_permission(INVENTORY_MANAGE))
 
 
@@ -29,7 +29,7 @@ def _to_read(terminal: PosTerminal) -> PosTerminalRead:
 
 
 @router.get(
-    "/pos-terminals", response_model=list[PosTerminalRead], dependencies=[_require_sale_read]
+    "/pos-terminals", response_model=list[PosTerminalRead], dependencies=[_require_terminal_read]
 )
 async def list_pos_terminals(
     session: SessionDep, active_only: bool = True

@@ -216,9 +216,12 @@ def test_pos_terminal_migration_preserves_existing_sales_and_is_reversible(
 
     run_alembic(url, "upgrade", "3e7b1c9d5a42")
     with engine.begin() as connection:
-        assert connection.scalar(
-            text("SELECT terminal_id FROM sales WHERE id = :id"), {"id": historical_sale_id}
-        ) is None
+        assert (
+            connection.scalar(
+                text("SELECT terminal_id FROM sales WHERE id = :id"), {"id": historical_sale_id}
+            )
+            is None
+        )
         columns = set(
             connection.execute(
                 text(

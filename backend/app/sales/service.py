@@ -201,11 +201,13 @@ async def _get_sale_for_update(session: AsyncSession, sale_id: int) -> Sale:
     return sale
 
 
-def _assert_pos_terminal(
+async def _assert_pos_terminal(
+    session: AsyncSession,
     sale: Sale,
     terminal_id: int | None,
     *,
     require_active: bool = True,
+    lock_terminal: bool = True,
 ) -> None:
     """Reject POS access that is absent, cross-terminal or no longer active.
 
@@ -223,9 +225,10 @@ def _assert_pos_terminal(
         raise ConflictError(f"Sale {sale.id} requires its POS terminal identity.")
     if sale.terminal_id != terminal_id:
         raise ConflictError(f"Sale {sale.id} belongs to a different POS terminal.")
-    if sale.terminal is None or sale.terminal.warehouse_id != sale.warehouse_id:
+    terminal = await pos_service.get_terminal(session, terminal_id, for_update=lock_terminal)
+    if terminal.warehouse_id != sale.warehouse_id:
         raise ConflictError(f"Sale {sale.id} has an invalid POS terminal assignment.")
-    if require_active and not sale.terminal.is_active:
+    if require_active and not terminal.is_active:
         raise ConflictError(f"POS terminal {terminal_id} is inactive.")
 
 
@@ -274,7 +277,9 @@ async def list_sales(
 async def create_sale(session: AsyncSession, payload: SaleCreate) -> Sale:
     terminal = None
     if payload.terminal_id is not None:
-        terminal = await pos_service.require_active_terminal(session, payload.terminal_id)
+        terminal = await pos_service.require_active_terminal(
+            session, payload.terminal_id, for_update=True
+        )
         if terminal.warehouse_id != payload.warehouse_id:
             raise ValidationError(
                 f"POS terminal {terminal.id} does not belong to warehouse {payload.warehouse_id}."
@@ -414,7 +419,7 @@ async def add_line(
     terminal_id: int | None = None,
 ) -> Sale:
     sale = await _get_sale_for_update(session, sale_id)
-    _assert_pos_terminal(sale, terminal_id)
+    await _assert_pos_terminal(session, sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError("Lines can only be added to a draft sale.")
     product = await _sellable_product_or_422(session, payload.product_id)
@@ -457,7 +462,7 @@ async def add_line_by_barcode(
     terminal_id: int | None = None,
 ) -> Sale:
     sale = await _get_sale_for_update(session, sale_id)
-    _assert_pos_terminal(sale, terminal_id)
+    await _assert_pos_terminal(session, sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError("Lines can only be added to a draft sale.")
 
@@ -503,7 +508,7 @@ async def remove_line(
     terminal_id: int | None = None,
 ) -> Sale:
     sale = await _get_sale_for_update(session, sale_id)
-    _assert_pos_terminal(sale, terminal_id)
+    await _assert_pos_terminal(session, sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError("Lines can only be removed from a draft sale.")
     line = next((candidate for candidate in sale.lines if candidate.id == line_id), None)
@@ -536,7 +541,7 @@ async def cancel_sale(
     cualquier otro borrado de la aplicación.
     """
     sale = await _get_sale_for_update(session, sale_id)
-    _assert_pos_terminal(sale, terminal_id)
+    await _assert_pos_terminal(session, sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError(f"Cannot cancel a sale that is already {sale.status}.")
 
@@ -614,7 +619,13 @@ async def checkout(
         )
         if not claim.is_new:
             completed = await get_sale(session, claim.record.resource_id)
-            _assert_pos_terminal(completed, terminal_id, require_active=False)
+            await _assert_pos_terminal(
+                session,
+                completed,
+                terminal_id,
+                require_active=False,
+                lock_terminal=False,
+            )
             if completed.status != SaleStatus.COMPLETED:
                 raise ConflictError("The idempotent checkout result is not available.")
             return completed
@@ -625,7 +636,7 @@ async def checkout(
     await accounting.lock_warehouse_cut(session, warehouse_id)
 
     sale = await _get_sale_for_update(session, sale_id)
-    _assert_pos_terminal(sale, terminal_id)
+    await _assert_pos_terminal(session, sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError(f"Cannot check out a sale that is already {sale.status}.")
     if not sale.lines:

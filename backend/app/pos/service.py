@@ -30,8 +30,10 @@ async def get_terminal(
     return terminal
 
 
-async def require_active_terminal(session: AsyncSession, terminal_id: int) -> PosTerminal:
-    terminal = await get_terminal(session, terminal_id)
+async def require_active_terminal(
+    session: AsyncSession, terminal_id: int, *, for_update: bool = False
+) -> PosTerminal:
+    terminal = await get_terminal(session, terminal_id, for_update=for_update)
     if not terminal.is_active:
         raise ConflictError(f"POS terminal {terminal_id} is inactive.")
     return terminal
