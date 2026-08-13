@@ -1363,9 +1363,12 @@ Deuda técnica conocida:
   expone — con sólo cuatro métricas no compensaba construir un generador
   de formularios genérico; si el catálogo crece, ese endpoint ya da lo
   necesario para hacerlo.
-- El bundle de `/admin` crece con ECharts (aviso de Vite al construir,
-  ~935KB sin comprimir) — no se ha aplicado *code-splitting* por ruta
-  todavía; candidato natural para la fase 20 (Rendimiento).
+- ECharts se actualizó a 6.1.0 en la fase B7 para salir del advisory XSS de
+  5.x. `EChart.tsx` mantiene el shell de cada gráfica y carga su implementación
+  Canvas de forma diferida sólo cuando se renderiza un widget Line o Bar; por
+  ello login, POS, informes y las pantallas administrativas no gráficas no
+  descargan el chunk de gráficos. El registro sigue limitado a `LineChart`,
+  `BarChart`, `GridComponent`, `TooltipComponent` y `CanvasRenderer`.
 - Sin edición de un widget existente (sólo añadir/quitar) — cambiar sus
   parámetros hoy es quitarlo y añadirlo de nuevo.
 

@@ -219,6 +219,15 @@ def test_real_nginx_surface_headers_maintenance_and_client_ip(tmp_path: Path) ->
         _assert_security_headers(headers)
         assert "eval(" not in asset_body and "new Function" not in asset_body
 
+        lazy_asset = re.search(r'"\./(EChartImpl-[^"]+\.js)"', asset_body)
+        assert lazy_asset is not None
+        status, headers, lazy_asset_body = _response(
+            port, f"/assets/{lazy_asset.group(1)}", tmp_path
+        )
+        assert status == 200
+        _assert_security_headers(headers)
+        assert "eval(" not in lazy_asset_body and "new Function" not in lazy_asset_body
+
         status, headers, _ = _response(port, "/api/v1/probe", tmp_path)
         assert status == 200
         _assert_security_headers(headers)
