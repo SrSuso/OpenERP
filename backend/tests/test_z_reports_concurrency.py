@@ -329,7 +329,17 @@ async def test_two_different_close_keys_for_the_same_observed_period_conflict(
             .select_from(ZReport)
             .where(ZReport.warehouse_id == ready.warehouse_id)
         )
-    assert report_count == 1
+        audit_count = await session.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .join(ZReport, ZReport.id == AuditLog.entity_id)
+            .where(
+                ZReport.warehouse_id == ready.warehouse_id,
+                AuditLog.entity_type == "z_report",
+                AuditLog.action == "closed",
+            )
+        )
+    assert report_count == audit_count == 1
 
 
 async def test_same_close_key_replays_sequentially_with_one_audit(
