@@ -297,12 +297,19 @@ async def set_price_formula(session: AsyncSession, product_id: int, formula_text
 
     product = await _product_or_404(session, product_id)
     before = _snapshot(product)
+    previous_formula = product.price_formula
     product.price_formula = formula_text
+    # One canonical computation for every automatic trigger.  In
+    # particular this includes the effective fixed margin and rounds only
+    # after it has been added, exactly like cost/tax/category changes.
     try:
-        result = formula.evaluate(formula_text, _variables(product))
-    except FormulaError as exc:
-        raise ValidationError(str(exc)) from exc
-    product.list_price = _quantize_price(result)
+        _recompute_with(product, await get_settings(session))
+    except ValidationError:
+        # A1 will roll the request back as well, but keep the service's ORM
+        # state coherent for callers that deliberately catch a validation
+        # error and continue using the same transaction.
+        product.price_formula = previous_formula
+        raise
 
     await session.flush()
     await _record_history(session, product)
