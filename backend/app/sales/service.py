@@ -36,6 +36,7 @@ from app.idempotency import service as idempotency_service
 from app.inventory import service as inventory_service
 from app.inventory.models import MovementType
 from app.lots import service as lots_service
+from app.pos import service as pos_service
 from app.pricing import service as pricing_service
 from app.sales import accounting
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus
@@ -51,6 +52,7 @@ from app.users.models import User
 _SALE_OPTIONS = (
     selectinload(Sale.lines),
     selectinload(Sale.payments),
+    selectinload(Sale.terminal),
 )
 
 _CHECKOUT_OPERATION = "sale.checkout"
@@ -160,6 +162,7 @@ def _sale_snapshot(sale: Sale) -> dict[str, Any]:
     return {
         "warehouse_id": sale.warehouse_id,
         "location_id": sale.location_id,
+        "terminal_id": sale.terminal_id,
         "status": sale.status,
         "notes": sale.notes,
     }
@@ -178,8 +181,8 @@ async def get_sale(session: AsyncSession, sale_id: int) -> Sale:
     return sale
 
 
-async def _get_sale_for_checkout(session: AsyncSession, sale_id: int) -> Sale:
-    """Load and lock the aggregate that owns the checkout state change.
+async def _get_sale_for_update(session: AsyncSession, sale_id: int) -> Sale:
+    """Load and lock the aggregate that owns any draft state change.
 
     Under PostgreSQL READ COMMITTED, a waiter sees the row version committed
     by the previous owner of the lock. ``populate_existing`` also prevents a
@@ -198,17 +201,52 @@ async def _get_sale_for_checkout(session: AsyncSession, sale_id: int) -> Sale:
     return sale
 
 
+def _assert_pos_terminal(
+    sale: Sale,
+    terminal_id: int | None,
+    *,
+    require_active: bool = True,
+) -> None:
+    """Reject POS access that is absent, cross-terminal or no longer active.
+
+    Legacy/non-POS sales have no terminal and retain the pre-A9 generic API
+    path. Once a sale has a terminal, however, every normal POS mutation must
+    carry that same identity. This check is called only after the Sale row is
+    locked for mutations, so terminal ownership and state are not read from a
+    stale aggregate.
+    """
+    if sale.terminal_id is None:
+        if terminal_id is not None:
+            raise ConflictError(f"Sale {sale.id} is not assigned to a POS terminal.")
+        return
+    if terminal_id is None:
+        raise ConflictError(f"Sale {sale.id} requires its POS terminal identity.")
+    if sale.terminal_id != terminal_id:
+        raise ConflictError(f"Sale {sale.id} belongs to a different POS terminal.")
+    if sale.terminal is None or sale.terminal.warehouse_id != sale.warehouse_id:
+        raise ConflictError(f"Sale {sale.id} has an invalid POS terminal assignment.")
+    if require_active and not sale.terminal.is_active:
+        raise ConflictError(f"POS terminal {terminal_id} is inactive.")
+
+
 async def list_sales(
     session: AsyncSession,
     *,
     status: str | None = None,
     warehouse_id: int | None = None,
+    terminal_id: int | None = None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     number: int | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[Sale]:
+    if terminal_id is not None:
+        terminal = await pos_service.require_active_terminal(session, terminal_id)
+        if warehouse_id is not None and terminal.warehouse_id != warehouse_id:
+            raise ValidationError(
+                f"POS terminal {terminal_id} does not belong to warehouse {warehouse_id}."
+            )
     stmt = (
         select(Sale)
         .options(*_SALE_OPTIONS)
@@ -220,6 +258,8 @@ async def list_sales(
         stmt = stmt.where(Sale.status == status)
     if warehouse_id is not None:
         stmt = stmt.where(Sale.warehouse_id == warehouse_id)
+    if terminal_id is not None:
+        stmt = stmt.where(Sale.terminal_id == terminal_id)
     # Por fecha de apertura: es la que se pregunta ("las de hoy"), y la
     # única que tienen también las que se quedaron sin cobrar.
     if created_from is not None:
@@ -232,6 +272,13 @@ async def list_sales(
 
 
 async def create_sale(session: AsyncSession, payload: SaleCreate) -> Sale:
+    terminal = None
+    if payload.terminal_id is not None:
+        terminal = await pos_service.require_active_terminal(session, payload.terminal_id)
+        if terminal.warehouse_id != payload.warehouse_id:
+            raise ValidationError(
+                f"POS terminal {terminal.id} does not belong to warehouse {payload.warehouse_id}."
+            )
     await inventory_service.validate_stock_location(
         session, warehouse_id=payload.warehouse_id, location_id=payload.location_id
     )
@@ -239,6 +286,7 @@ async def create_sale(session: AsyncSession, payload: SaleCreate) -> Sale:
     sale = Sale(
         warehouse_id=payload.warehouse_id,
         location_id=payload.location_id,
+        terminal_id=terminal.id if terminal is not None else None,
         notes=payload.notes,
         cashier_user_id=get_user_id(),
     )
@@ -358,8 +406,15 @@ async def _assert_discount_allowed(session: AsyncSession, discount_rate: Decimal
         )
 
 
-async def add_line(session: AsyncSession, sale_id: int, payload: SaleLineCreate) -> Sale:
-    sale = await get_sale(session, sale_id)
+async def add_line(
+    session: AsyncSession,
+    sale_id: int,
+    payload: SaleLineCreate,
+    *,
+    terminal_id: int | None = None,
+) -> Sale:
+    sale = await _get_sale_for_update(session, sale_id)
+    _assert_pos_terminal(sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError("Lines can only be added to a draft sale.")
     product = await _sellable_product_or_422(session, payload.product_id)
@@ -395,9 +450,14 @@ async def add_line(session: AsyncSession, sale_id: int, payload: SaleLineCreate)
 
 
 async def add_line_by_barcode(
-    session: AsyncSession, sale_id: int, payload: SaleLineByBarcodeCreate
+    session: AsyncSession,
+    sale_id: int,
+    payload: SaleLineByBarcodeCreate,
+    *,
+    terminal_id: int | None = None,
 ) -> Sale:
-    sale = await get_sale(session, sale_id)
+    sale = await _get_sale_for_update(session, sale_id)
+    _assert_pos_terminal(sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError("Lines can only be added to a draft sale.")
 
@@ -435,8 +495,15 @@ async def add_line_by_barcode(
     return await get_sale(session, sale_id)
 
 
-async def remove_line(session: AsyncSession, sale_id: int, line_id: int) -> Sale:
-    sale = await get_sale(session, sale_id)
+async def remove_line(
+    session: AsyncSession,
+    sale_id: int,
+    line_id: int,
+    *,
+    terminal_id: int | None = None,
+) -> Sale:
+    sale = await _get_sale_for_update(session, sale_id)
+    _assert_pos_terminal(sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError("Lines can only be removed from a draft sale.")
     line = next((candidate for candidate in sale.lines if candidate.id == line_id), None)
@@ -455,7 +522,9 @@ async def remove_line(session: AsyncSession, sale_id: int, line_id: int) -> Sale
     return await get_sale(session, sale_id)
 
 
-async def cancel_sale(session: AsyncSession, sale_id: int) -> None:
+async def cancel_sale(
+    session: AsyncSession, sale_id: int, *, terminal_id: int | None = None
+) -> None:
     """Cancelar un carrito lo borra, no lo deja marcado.
 
     Sólo se puede cancelar un borrador, y un borrador no ha tocado nada:
@@ -466,7 +535,8 @@ async def cancel_sale(session: AsyncSession, sale_id: int) -> None:
     De que existió queda constancia en el registro de auditoría, como de
     cualquier otro borrado de la aplicación.
     """
-    sale = await get_sale(session, sale_id)
+    sale = await _get_sale_for_update(session, sale_id)
+    _assert_pos_terminal(sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError(f"Cannot cancel a sale that is already {sale.status}.")
 
@@ -527,6 +597,7 @@ async def checkout(
     *,
     idempotency_key: str | None = None,
     actor_user_id: int | None = None,
+    terminal_id: int | None = None,
 ) -> Sale:
     claim = None
     if idempotency_key is not None:
@@ -543,6 +614,7 @@ async def checkout(
         )
         if not claim.is_new:
             completed = await get_sale(session, claim.record.resource_id)
+            _assert_pos_terminal(completed, terminal_id, require_active=False)
             if completed.status != SaleStatus.COMPLETED:
                 raise ConflictError("The idempotent checkout result is not available.")
             return completed
@@ -552,7 +624,8 @@ async def checkout(
         raise NotFoundError(f"Sale {sale_id} not found.")
     await accounting.lock_warehouse_cut(session, warehouse_id)
 
-    sale = await _get_sale_for_checkout(session, sale_id)
+    sale = await _get_sale_for_update(session, sale_id)
+    _assert_pos_terminal(sale, terminal_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError(f"Cannot check out a sale that is already {sale.status}.")
     if not sale.lines:

@@ -55,6 +55,11 @@ def sale_to_read(sale: Sale, *, prices_include_tax: bool) -> SaleRead:
         number=sale.number,
         warehouse_id=sale.warehouse_id,
         location_id=sale.location_id,
+        terminal_id=sale.terminal_id,
+        # The stable historical fact is terminal_id. The label deliberately
+        # reflects its current administrative name; no fiscal value depends
+        # on it, so a duplicate snapshot would only create two names to manage.
+        terminal_name=sale.terminal.name if sale.terminal is not None else None,
         status=sale.status,
         notes=sale.notes,
         cashier_user_id=sale.cashier_user_id,

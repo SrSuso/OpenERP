@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 class SaleCreate(BaseModel):
     warehouse_id: int
     location_id: int
+    #: Required by the browser POS. Nullable at the generic domain boundary
+    #: for historical imports and any future non-POS sale source.
+    terminal_id: int | None = None
     notes: str = Field(default="", max_length=2000)
 
 
@@ -82,6 +85,8 @@ class SaleRead(BaseModel):
     number: int | None
     warehouse_id: int
     location_id: int
+    terminal_id: int | None
+    terminal_name: str | None
     status: str
     notes: str
     cashier_user_id: int | None

@@ -34,6 +34,11 @@ router = APIRouter(tags=["sales"])
 _require_read = Depends(require_permission(SALE_READ))
 _require_manage = Depends(require_permission(SALE_MANAGE))
 
+PosTerminalHeader = Annotated[
+    int | None,
+    Header(alias="X-POS-Terminal-ID", ge=1),
+]
+
 
 def _to_read(sale: Sale, pricing: PricingSettingsDep) -> SaleRead:
     return _sale_to_read(sale, prices_include_tax=pricing.prices_include_tax)
@@ -45,6 +50,7 @@ async def list_sales(
     pricing: PricingSettingsDep,
     status: Annotated[str | None, Query()] = None,
     warehouse_id: Annotated[int | None, Query()] = None,
+    terminal_id: Annotated[int | None, Query()] = None,
     #: Rango sobre la fecha de apertura, cerrado por abajo y abierto por
     #: arriba, para poder pedir un día entero sin pelearse con la última
     #: hora: `created_from=2026-08-11&created_to=2026-08-12`.
@@ -60,6 +66,7 @@ async def list_sales(
         session,
         status=status,
         warehouse_id=warehouse_id,
+        terminal_id=terminal_id,
         created_from=created_from,
         created_to=created_to,
         number=number,
@@ -88,9 +95,15 @@ async def get_sale(sale_id: int, session: SessionDep, pricing: PricingSettingsDe
     dependencies=[_require_manage],
 )
 async def add_line(
-    sale_id: int, payload: SaleLineCreate, session: SessionDep, pricing: PricingSettingsDep
+    sale_id: int,
+    payload: SaleLineCreate,
+    session: SessionDep,
+    pricing: PricingSettingsDep,
+    pos_terminal_id: PosTerminalHeader = None,
 ) -> SaleRead:
-    return _to_read(await service.add_line(session, sale_id, payload), pricing)
+    return _to_read(
+        await service.add_line(session, sale_id, payload, terminal_id=pos_terminal_id), pricing
+    )
 
 
 @router.post(
@@ -104,23 +117,35 @@ async def add_line_by_barcode(
     payload: SaleLineByBarcodeCreate,
     session: SessionDep,
     pricing: PricingSettingsDep,
+    pos_terminal_id: PosTerminalHeader = None,
 ) -> SaleRead:
-    return _to_read(await service.add_line_by_barcode(session, sale_id, payload), pricing)
+    return _to_read(
+        await service.add_line_by_barcode(session, sale_id, payload, terminal_id=pos_terminal_id),
+        pricing,
+    )
 
 
 @router.delete(
     "/sales/{sale_id}/lines/{line_id}", response_model=SaleRead, dependencies=[_require_manage]
 )
 async def remove_line(
-    sale_id: int, line_id: int, session: SessionDep, pricing: PricingSettingsDep
+    sale_id: int,
+    line_id: int,
+    session: SessionDep,
+    pricing: PricingSettingsDep,
+    pos_terminal_id: PosTerminalHeader = None,
 ) -> SaleRead:
-    return _to_read(await service.remove_line(session, sale_id, line_id), pricing)
+    return _to_read(
+        await service.remove_line(session, sale_id, line_id, terminal_id=pos_terminal_id), pricing
+    )
 
 
 @router.post("/sales/{sale_id}/cancel", status_code=204, dependencies=[_require_manage])
-async def cancel_sale(sale_id: int, session: SessionDep) -> None:
+async def cancel_sale(
+    sale_id: int, session: SessionDep, pos_terminal_id: PosTerminalHeader = None
+) -> None:
     """Cancelar un carrito lo borra: no queda venta que devolver."""
-    await service.cancel_sale(session, sale_id)
+    await service.cancel_sale(session, sale_id, terminal_id=pos_terminal_id)
 
 
 @router.post("/sales/{sale_id}/checkout", response_model=SaleRead, dependencies=[_require_manage])
@@ -130,6 +155,7 @@ async def checkout(
     session: SessionDep,
     pricing: PricingSettingsDep,
     current_user: CurrentUser,
+    pos_terminal_id: PosTerminalHeader = None,
     idempotency_key: Annotated[
         str | None,
         Header(alias="Idempotency-Key", min_length=1, max_length=200),
@@ -142,6 +168,7 @@ async def checkout(
             payload,
             idempotency_key=idempotency_key,
             actor_user_id=current_user.id,
+            terminal_id=pos_terminal_id,
         ),
         pricing,
     )
