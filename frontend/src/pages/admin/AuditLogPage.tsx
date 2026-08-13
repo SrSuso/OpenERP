@@ -51,7 +51,7 @@ export function AuditLogPage() {
           Tipo de entidad
           <input
             type="text"
-            placeholder="p.ej. product, sale, system_settings"
+            placeholder="p.ej. product, sale, settings"
             value={entityType}
             onChange={(event) => updateFilter(setEntityType, event.target.value)}
             className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"

@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
-import { type SystemSettings } from '@/features/settings/api';
 import { settingsValuesQuery, type SettingsOptions } from '@/features/settings/optionsApi';
 
 import { SettingsPage } from './SettingsPage';
@@ -24,22 +23,11 @@ const ME = {
   permissions: ['admin.access', 'settings.read', 'settings.manage'],
 };
 
-const DEFAULT_SETTINGS: SystemSettings = {
-  smtp_host: '127.0.0.1',
-  smtp_port: 1025,
-  smtp_use_tls: false,
-  smtp_username: null,
-  smtp_password_set: false,
-  smtp_from_email: 'no-reply@openerp.local',
-  notification_recipient_email: null,
-  updated_at: null,
-};
-
 /** Una muestra del registro real (backend/app/settings/registry.py) con un
  * ajuste de cada tipo: la pantalla no conoce ninguna de estas claves, las
  * pinta a partir de esta respuesta. */
 const DEFAULT_OPTIONS: SettingsOptions = {
-  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Avisos', 'Pantalla', 'Servidor (avanzado)'],
+  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Avisos', 'Pantalla'],
   settings: [
     {
       key: 'store.name',
@@ -170,41 +158,19 @@ const DEFAULT_OPTIONS: SettingsOptions = {
       maximum: null,
       caution: null,
     },
-    {
-      key: 'server.database_url',
-      group: 'Servidor (avanzado)',
-      label: 'Dirección de la base de datos',
-      help: 'No se muestra porque lleva la contraseña.',
-      type: 'SECRET',
-      // El servidor nunca devuelve un secreto: sólo dice que hay uno.
-      value: '',
-      is_set: true,
-      default: '',
-      choices: [],
-      minimum: null,
-      maximum: null,
-      caution: null,
-    },
   ],
 };
 
 interface BackendStub {
-  /** Cuerpos de `PUT /settings/smtp`. */
-  putCalls: Record<string, unknown>[];
-  /** Cuerpos de `POST /settings/smtp/test`. */
-  testCalls: Record<string, unknown>[];
   /** El `values` de cada `PUT /settings/options`. */
   optionsPutCalls: Record<string, string>[];
 }
 
 function stubBackend(options?: { optionsError?: string }): BackendStub {
-  let settings: SystemSettings = { ...DEFAULT_SETTINGS };
   let optionValues: SettingsOptions = {
     groups: [...DEFAULT_OPTIONS.groups],
     settings: DEFAULT_OPTIONS.settings.map((definition) => ({ ...definition })),
   };
-  const putCalls: Record<string, unknown>[] = [];
-  const testCalls: Record<string, unknown>[] = [];
   const optionsPutCalls: Record<string, string>[] = [];
 
   vi.stubGlobal(
@@ -241,34 +207,11 @@ function stubBackend(options?: { optionsError?: string }): BackendStub {
         return Promise.resolve(jsonResponse(optionValues));
       }
 
-      if (method === 'GET' && url.includes('/settings/smtp')) {
-        return Promise.resolve(jsonResponse(settings));
-      }
-      if (method === 'PUT' && url.includes('/settings/smtp')) {
-        const b = body();
-        putCalls.push(b);
-        settings = {
-          ...settings,
-          ...(b['smtp_host'] !== undefined ? { smtp_host: b['smtp_host'] as string } : {}),
-          ...(b['smtp_port'] !== undefined ? { smtp_port: b['smtp_port'] as number } : {}),
-          ...(b['smtp_use_tls'] !== undefined
-            ? { smtp_use_tls: b['smtp_use_tls'] as boolean }
-            : {}),
-          ...(b['smtp_password'] ? { smtp_password_set: true } : {}),
-          updated_at: '2026-08-10T12:00:00Z',
-        };
-        return Promise.resolve(jsonResponse(settings));
-      }
-      if (method === 'POST' && url.includes('/settings/smtp/test')) {
-        testCalls.push(body());
-        return Promise.resolve(new Response(null, { status: 204 }));
-      }
-
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { putCalls, testCalls, optionsPutCalls };
+  return { optionsPutCalls };
 }
 
 function renderPage() {
@@ -283,58 +226,17 @@ function renderPage() {
   return queryClient;
 }
 
-describe('SettingsPage — SMTP', () => {
-  it('loads the current SMTP config, saves a change, and leaves the password alone', async () => {
-    const backend = stubBackend();
-    renderPage();
-
-    expect(await screen.findByDisplayValue('127.0.0.1')).toBeInTheDocument();
-
-    const hostInput = screen.getByLabelText('Host');
-    await userEvent.clear(hostInput);
-    await userEvent.type(hostInput, 'smtp.miempresa.com');
-    const portInput = screen.getByLabelText('Puerto');
-    await userEvent.clear(portInput);
-    await userEvent.type(portInput, '587');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    await screen.findByText('Configuración guardada.');
-    expect(backend.putCalls).toEqual([
-      {
-        smtp_host: 'smtp.miempresa.com',
-        smtp_port: 587,
-        smtp_use_tls: false,
-        smtp_username: '',
-        smtp_from_email: 'no-reply@openerp.local',
-        notification_recipient_email: '',
-      },
-    ]);
-  });
-
-  it('sends a test email using whatever is currently in the form', async () => {
-    const backend = stubBackend();
-    renderPage();
-
-    await screen.findByDisplayValue('127.0.0.1');
-    await userEvent.type(screen.getByLabelText('Enviar correo de prueba a'), 'destino@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Enviar correo de prueba' }));
-
-    await screen.findByText('Correo de prueba enviado.');
-    expect(backend.testCalls).toEqual([
-      {
-        to_email: 'destino@example.com',
-        smtp_host: '127.0.0.1',
-        smtp_port: 1025,
-        smtp_use_tls: false,
-        smtp_username: '',
-        smtp_from_email: 'no-reply@openerp.local',
-      },
-    ]);
-  });
-});
-
 describe('SettingsPage — opciones del registro', () => {
+  it('shows business settings without infrastructure or SMTP controls', async () => {
+    stubBackend();
+    renderPage();
+
+    expect(await screen.findByLabelText('Zona horaria comercial')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Servidor (avanzado)' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Dirección de la base de datos')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Host')).not.toBeInTheDocument();
+  });
+
   it('paints one card per group and the right control for every type', async () => {
     stubBackend();
     renderPage();
@@ -470,25 +372,6 @@ describe('SettingsPage — opciones del registro', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios de Pantalla' }));
 
     expect(backend.optionsPutCalls).toEqual([{ 'ui.button_color': '#22c55e' }]);
-  });
-
-  it('lets a secret be written but never shows it', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Servidor (avanzado)');
-
-    const field = screen.getByLabelText('Dirección de la base de datos');
-    // Llega vacío: el servidor no devuelve un secreto, sólo dice que lo hay.
-    expect(field).toHaveValue('');
-    expect(field).toHaveAttribute('type', 'password');
-    expect(field).toHaveAttribute('placeholder', 'Guardada — escribe para cambiarla');
-
-    await userEvent.type(field, 'postgresql://nueva');
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Guardar cambios de Servidor (avanzado)' }),
-    );
-
-    expect(backend.optionsPutCalls).toEqual([{ 'server.database_url': 'postgresql://nueva' }]);
   });
 
   it('filters the options by label and help text', async () => {
