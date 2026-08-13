@@ -201,12 +201,22 @@ def test_remove_orphans_stays_within_its_compose_project(tmp_path: Path) -> None
             "-d",
             "--remove-orphans",
         )
-        assert (
-            _run(
-                "docker", "compose", "-p", project, "-f", str(new), "ps", "-aq", "obsolete"
-            ).stdout.strip()
-            == ""
+        missing_service = _run(
+            "docker",
+            "compose",
+            "-p",
+            project,
+            "-f",
+            str(new),
+            "ps",
+            "-aq",
+            "obsolete",
+            check=False,
         )
+        assert missing_service.returncode in {0, 1}
+        assert missing_service.stdout.strip() == ""
+        if missing_service.returncode == 1:
+            assert "no such service: obsolete" in missing_service.stderr.lower()
         assert _run(
             "docker",
             "compose",
