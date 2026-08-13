@@ -196,7 +196,24 @@ commitear (`git status`), para no pisarlos con el `pull`.
 
 ---
 
-## 3.1. La caja: imprimir el ticket sin cuadro de impresión
+## 3.1. Registrar los terminales POS
+
+Antes de abrir el TPV por primera vez, entra en **Inventario → Terminales
+POS** y crea cada puesto físico (Caja 1, Caja 2…) asignándolo a su almacén.
+El almacén no se puede cambiar después: las ventas conservan el ID del
+terminal como histórico. Se puede renombrar o desactivar, pero no borrar.
+
+El navegador pide uno de los terminales activos y guarda la elección
+localmente. Cambiar de usuario no cambia de caja. Para elegir otra, pulsa el
+nombre del terminal en la cabecera del TPV.
+
+Si se rompe una caja con un borrador pendiente, **no la borres ni esperes que
+el borrador se mueva solo**. Desactiva el terminal para impedir más operación
+y localiza la venta «Sin cobrar» en **Ventas**: allí permanece visible con el
+terminal que la originó. A9 no transfiere borradores entre cajas; cualquier
+recuperación/transferencia supervisada pertenece a una fase posterior.
+
+## 3.2. La caja: imprimir el ticket sin cuadro de impresión
 
 Una página web no puede saltarse el cuadro de impresión del navegador.
 `window.print()` lo abre siempre, y es una restricción de seguridad

@@ -39,11 +39,18 @@ terminal que usan varias personas.
 
 Pantalla táctil pensada para cobrar rápido, a pantalla completa.
 
+La primera vez, el navegador pide qué **terminal** físico representa (por
+ejemplo, Caja 1 o Caja 2). No elige ninguno por su cuenta. La elección queda
+guardada en ese navegador aunque cambie el usuario; para cambiarla
+expresamente, pulsa el nombre de la caja en la cabecera. Si el terminal fue
+desactivado, el TPV bloquea la operativa y avisa: no borra la venta pendiente.
+
 ### 2.1. La venta en curso
 
-Al entrar, se retoma automáticamente la venta que tuvieras abierta (si
-recargas la página o si la cerraste sin cobrar, sigue ahí) o se abre una
-nueva si no había ninguna.
+Al entrar, se retoma automáticamente la venta más reciente abierta en **ese
+terminal** (si recargas la página o si la cerraste sin cobrar, sigue ahí) o
+se abre una nueva si no había ninguna. Otras cajas del mismo almacén tienen
+sus propios borradores y no pueden modificar el tuyo.
 
 ### 2.2. Añadir productos
 

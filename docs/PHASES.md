@@ -1015,17 +1015,11 @@ Deuda técnica conocida:
   soportado por `POST /sales/{id}/lines` (fase 11), no tiene UI todavía.
   Candidato natural para un modal/*long-press* cuando haga falta, sin tocar
   el backend.
-- **La sesión de venta es por almacén, no por cajero ni por terminal**:
-  `GET /sales?status=DRAFT&warehouse_id=` no filtra por
-  `cashier_user_id`, así que dos cajeros (o dos pestañas) abiertos a la vez
-  contra el mismo almacén reanudarían y mutarían el mismo ticket — correcto
-  para el único TPV que existe hoy (un almacén, una ubicación, sembrados
-  por la fase 7), pero no aguanta varios terminales físicos por tienda. Lo
-  expuso la propia suite E2E (dos tests de `pos.sale.spec.ts` corriendo en
-  paralelo se pisaban el ticket el uno al otro); el spec se dejó en
-  ejecución serial (`test.describe.serial`) como mitigación de test, no
-  como arreglo de producto. Una fase futura que necesite multi-terminal
-  añadiría un identificador de sesión/terminal explícito al filtro.
+- ~~La sesión de venta era por almacén, no por terminal.~~ Resuelto por A9:
+  cada navegador selecciona un `PosTerminal`, los borradores se consultan
+  por `terminal_id + DRAFT` y las mutaciones validan esa identidad después
+  de bloquear la venta. Se conservan varias ventas aparcadas dentro de una
+  misma caja porque esa barra ya era funcionalidad intencionada.
 - Sin pantalla de ventas en `/admin` todavía (mismo criterio que fases
   1–11): la API está completa y documentada en `/api/docs`.
 - No hay botón de cobro — a propósito, es la fase 13.

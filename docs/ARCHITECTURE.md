@@ -67,6 +67,7 @@ detalle de cada uno):
 | `purchasing/` | Pedidos de compra y, desde la fase 9, recepciones. |
 | `inventory/` | `stock_movements` (histórico, fuente de verdad) y `stock_balance` (proyección). |
 | `lots/` | Lotes y caducidad. |
+| `pos/` | Identidad y administración mínima de terminales físicos POS. |
 | `sales/` | Ventas, líneas, pagos. |
 | `returns/` | Devoluciones económicas y físicas (conceptos independientes). |
 | `tickets/` | Plantillas e impresión de recibos 58/80mm. |
@@ -437,6 +438,22 @@ Dos cosas que cuestan un rato de depurar si no se saben:
   la misma pestaña— la pestaña se avisa a sí misma: en el TPV eso era
   recargar el catálogo entero en cada toque a un producto, porque cada línea
   del carrito es una escritura. Por eso hay **uno solo por pestaña**.
+
+### 4bis.3a. Identidad de terminal y borradores
+
+`PosTerminal` es sólo un puesto lógico (`name`, `warehouse_id`, activo); no
+modela turnos, sesiones ni efectivo. El navegador guarda su ID en
+`localStorage`, mientras la autenticación sigue identificando a la persona.
+Las ventas POS conservan `terminal_id` y la consulta habitual usa el índice
+`(terminal_id, status)`.
+
+Toda mutación de una venta asociada exige `X-POS-Terminal-ID`. El backend
+toma `Sale FOR UPDATE`, relee el agregado, bloquea/valida el terminal y sólo
+entonces aplica el comando. Como las APIs del carrito son órdenes delta
+(`add/merge`) o borrado por ID y no reemplazos de estado cliente, este lock
+evita *lost updates* sin añadir una versión optimista. Checkout conserva su
+orden anterior: idempotencia → lock contable del almacén → Sale → terminal →
+stock. La Z sigue siendo por almacén y suma todas sus cajas.
 
 ### 4bis.4. Cambios sin guardar
 
