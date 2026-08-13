@@ -10,7 +10,7 @@
 # available; this script exists so the test suite can still run on a real
 # PostgreSQL when it is not.
 #
-#   scripts/dev-postgres.sh install|start|stop|status|url
+#   scripts/dev-postgres.sh install|start|stop|status
 #
 set -euo pipefail
 
@@ -86,9 +86,10 @@ start() {
 
   # createdb is not shipped with these binaries; the Python helper does it.
   ( cd "$(dirname "$0")/../backend" \
-    && OPENERP_DATABASE_URL="$(url)" uv run python -m scripts.devdb create )
+    && OPENERP_DATABASE_URL="$(database_url)" uv run python -m scripts.devdb create )
 
-  printf '\n  OPENERP_DATABASE_URL=%s\n\n' "$(url)"
+  printf '\n  PostgreSQL ready on 127.0.0.1:%s (source scripts/env.sh for the URL)\n\n' \
+    "${PG_PORT}"
 }
 
 stop() {
@@ -105,7 +106,7 @@ status() {
   fi
 }
 
-url() {
+database_url() {
   printf 'postgresql://%s:%s@127.0.0.1:%s/%s' \
     "${PG_USER}" "${PG_PASSWORD}" "${PG_PORT}" "${PG_DATABASE}"
 }
@@ -116,6 +117,5 @@ case "${1:-start}" in
   stop)    stop ;;
   restart) stop || true; start ;;
   status)  status ;;
-  url)     url; echo ;;
-  *)       die "usage: $0 {install|start|stop|restart|status|url}" ;;
+  *)       die "usage: $0 {install|start|stop|restart|status}" ;;
 esac

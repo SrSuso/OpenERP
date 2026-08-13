@@ -105,9 +105,18 @@ Edita `.env.production` (nunca se commitea — está en `.gitignore`):
   (deben coincidir) — pon una contraseña larga y aleatoria, no la de
   ejemplo.
 - `OPENERP_CORS_ORIGINS` — el `https://` + hostname/IP que elegiste en 2.2.
+- Para no poner un secreto directamente en el entorno, monta un fichero y usa
+  `OPENERP_DATABASE_URL_FILE`, `OPENERP_SMTP_PASSWORD_FILE`, etc. Cualquier
+  campo admite la forma genérica `OPENERP_<CAMPO>_FILE`, que tiene precedencia
+  sobre la variable directa. Compose debe montar ese fichero en `api`,
+  `worker` y `migrate` cuando el campo sea compartido.
 - El resto de valores por defecto sirven para arrancar; el fichero
   documenta cada uno inline. Detalle de qué es cada variable en
   [`ARCHITECTURE.md`](ARCHITECTURE.md#22-configuración-appcoreconfigpy).
+
+Estos son parámetros de proceso: no aparecen en el panel y cambiar una fila
+de `settings` no puede alterarlos. Reinicia API y worker tras cambiarlos;
+Alembic y bootstrap leerán el valor nuevo en su siguiente ejecución.
 
 ### 2.4. Construir y arrancar
 
@@ -388,26 +397,9 @@ propio equipo) — suficiente para verificar que las notificaciones se
 generan sin depender del servidor de correo de la empresa desde el primer
 día. Cuando quieras enviar correo de verdad:
 
-### 6.1. Desde el panel de administración (recomendado)
-
-Con un usuario `ADMIN`, entra en **Configuración** (`/admin/settings`,
-permiso `settings.manage` — sólo `ADMIN` lo tiene por defecto) y rellena
-host, puerto, usuario/contraseña, remitente y, si quieres, TLS. El botón
-**"Enviar correo de prueba"** manda un correo real con lo que hay en el
-formulario ahora mismo, sin necesidad de guardarlo antes ni de reiniciar
-nada — así confirmas que las credenciales funcionan antes de darle a
-Guardar. Al guardar, el cambio se aplica en el siguiente sondeo del
-worker (`app/jobs/worker.py`, cada pocos segundos), sin `make
-prod-restart` ni tocar `.env.production`. La contraseña nunca se vuelve
-a mostrar una vez guardada (sólo indica si hay una guardada); dejar el
-campo en blanco al editar el resto de campos la deja como estaba.
-
-### 6.2. Por variables de entorno (arranque inicial / infra-as-code)
-
-Sigue siendo la base que usa la app cuando no hay nada guardado desde el
-panel (`app/settings/service.py` sólo sobreescribe lo que se ha
-configurado ahí — un despliegue nuevo, sin nada guardado todavía, se
-comporta exactamente igual que antes de la fase 21):
+SMTP es infraestructura y sus credenciales no se almacenan ni se editan en
+PostgreSQL. El panel **Configuración** contiene sólo opciones funcionales de
+la tienda. Para cambiar el relay:
 
 1. En `.env.production`, cambia:
    ```
@@ -418,8 +410,9 @@ comporta exactamente igual que antes de la fase 21):
    OPENERP_SMTP_PASSWORD=<contraseña>
    OPENERP_SMTP_FROM_EMAIL=<remitente autorizado por ese SMTP>
    ```
-2. `make prod-restart` (sólo recrea `api`/`worker`, que son los que leen
-   estas variables).
+   También puedes usar `OPENERP_SMTP_PASSWORD_FILE=/run/secrets/...`.
+2. `make prod-restart` para que API y, especialmente, el worker lean la
+   configuración nueva.
 3. Opcional: quita el servicio `mailpit` de `docker/compose.prod.yml` y su
    entrada en `.env.production` si ya no lo vas a usar ni para pruebas.
 

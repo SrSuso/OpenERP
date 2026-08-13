@@ -54,9 +54,12 @@ services:
       timeout: 5s
       retries: 20
 
-  # One-shot: applies Alembic migrations, then exits 0. `api` and `worker`
-  # both wait on it via `service_completed_successfully`, so a deploy never
-  # races the app against a schema that isn't there yet.
+  # `migrate`, `api` and `worker` intentionally share the same env_file and
+  # therefore the same database/runtime source. `prod-bootstrap-admin` runs
+  # against the `api` service and inherits it too. Mounted Docker secrets can
+  # be referenced with OPENERP_<FIELD>_FILE=/run/secrets/... when required.
+  # This one-shot applies Alembic migrations, then exits 0; API and worker
+  # wait on it so a deploy never races against a schema that isn't there yet.
   migrate:
     build:
       context: ../backend

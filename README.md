@@ -101,6 +101,21 @@ make dev-worker
 
 El `Makefile` de la raíz agrupa todo lo anterior (`make help`).
 
+### Configuración
+
+La infraestructura (`database_url`, pool, CORS, cookie/sesiones, bootstrap,
+SMTP y rate limit) procede exclusivamente de `OPENERP_*` o de un fichero
+montado indicado por `OPENERP_<CAMPO>_FILE`. La variante `_FILE` tiene
+precedencia sobre la variable directa y sirve para Docker secrets sin añadir
+un gestor de secretos. API, worker, Alembic y bootstrap comparten el mismo
+modelo; un cambio requiere reiniciar los procesos afectados.
+
+La configuración funcional de la tienda —incluida `business.timezone`— sí se
+guarda en PostgreSQL y se edita desde **Configuración**. El panel nunca lee ni
+modifica credenciales o parámetros de despliegue. Consulta las variables en
+[`.env.example`](.env.example) y el despliegue en
+[`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md).
+
 ---
 
 ## Tests

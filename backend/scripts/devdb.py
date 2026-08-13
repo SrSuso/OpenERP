@@ -36,19 +36,26 @@ def _target_database(url: str) -> str:
     return urlsplit(url).path.lstrip("/")
 
 
+def _database_endpoint(url: str) -> str:
+    """A diagnostic target that never includes username or password."""
+    parts = urlsplit(url)
+    host = parts.hostname or "unknown host"
+    return f"{host}:{parts.port}" if parts.port is not None else host
+
+
 def wait_for_server(url: str, *, timeout: float = 30.0) -> None:
     """Block until the server accepts connections on the maintenance database."""
     deadline = time.monotonic() + timeout
     admin_url = _libpq_url(url, "postgres")
-    last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
             with psycopg.connect(admin_url, connect_timeout=3):
                 return
-        except psycopg.OperationalError as exc:  # server not up yet
-            last_error = exc
+        except psycopg.OperationalError:  # server not up yet
             time.sleep(0.5)
-    raise TimeoutError(f"PostgreSQL not reachable within {timeout}s: {last_error}")
+    raise TimeoutError(
+        f"PostgreSQL not reachable at {_database_endpoint(url)} within {timeout}s."
+    ) from None
 
 
 def create_database(url: str, database: str) -> bool:
@@ -90,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "wait":
         wait_for_server(url, timeout=args.timeout)
-        print(f"postgres is accepting connections ({urlsplit(url).netloc})")
+        print(f"postgres is accepting connections ({_database_endpoint(url)})")
         return 0
 
     wait_for_server(url, timeout=args.timeout)

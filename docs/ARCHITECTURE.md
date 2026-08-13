@@ -84,9 +84,18 @@ demás.
 
 ### 2.2. Configuración: `app/core/config.py`
 
-Un único `Settings` (Pydantic `BaseSettings`) leído de variables de entorno
-con prefijo `OPENERP_`, más `.env`. Nada en el código lee `os.environ`
-directamente. Puntos a tener en cuenta al desplegar (detalle operativo en
+Un único `Settings` (Pydantic `BaseSettings`) interpreta la infraestructura
+para API, worker, Alembic, bootstrap y scripts. Lee variables `OPENERP_*`,
+`.env` en desarrollo y, opcionalmente, `OPENERP_<CAMPO>_FILE` para secretos
+montados. La precedencia es: argumento explícito (tests), `_FILE`, variable
+directa, `.env`, default no sensible. Ninguna fila de PostgreSQL puede
+sobrescribir esta configuración.
+
+El registro `app/settings/registry.py` tiene una responsabilidad diferente:
+opciones funcionales de la tienda persistidas en PostgreSQL y editables desde
+el panel, como `business.timezone`, ticket o preferencias comerciales. Nunca
+contiene conexión de base de datos, SMTP, bootstrap, CORS, cookies, pool ni
+rate limit. Puntos a tener en cuenta al desplegar (detalle operativo en
 `ADMIN_GUIDE.md`):
 
 - `session_cookie_secure` es una `@property`, no una variable: es `True`
@@ -99,6 +108,9 @@ directamente. Puntos a tener en cuenta al desplegar (detalle operativo en
 - `async_database_url`/`sync_database_url` normalizan cualquier URL
   `postgres://`/`postgresql://` al driver `psycopg` (v3); no hace falta
   escribir el driver a mano en `OPENERP_DATABASE_URL`.
+- Producción rechaza el `database_url` local por defecto antes de atender
+  tráfico. Los secretos se excluyen del `repr` y los errores de URL no
+  reproducen credenciales.
 
 ### 2.3. Autenticación y autorización
 
