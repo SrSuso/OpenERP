@@ -16,6 +16,7 @@ from app.inventory.router import router as inventory_router
 from app.jobs.router import router as jobs_router
 from app.lots.router import router as lots_router
 from app.notifications.router import router as notifications_router
+from app.pos.router import router as pos_router
 from app.pricing.router import router as pricing_router
 from app.purchasing.router import router as purchasing_router
 from app.rbac.router import router as rbac_router
@@ -45,6 +46,7 @@ api_router.include_router(returns_router)
 api_router.include_router(tickets_router)
 api_router.include_router(dashboards_router)
 api_router.include_router(notifications_router)
+api_router.include_router(pos_router)
 api_router.include_router(jobs_router)
 api_router.include_router(reports_router)
 api_router.include_router(settings_router)
