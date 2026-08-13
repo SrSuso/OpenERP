@@ -150,17 +150,15 @@ Para el ciclo rápido, selección por dominio y puertas completas, consulta
 ## Copias de seguridad
 
 ```bash
-make db-backup                              # vuelca a backups/openerp_<timestamp>.dump
-make db-restore f=backups/openerp_....dump  # pide confirmación explícita
+make db-backup
+make db-restore f=backups/openerp_....dump target=openerp_restore_prueba
 ```
 
-Copia lógica con `pg_dump -Fc`/`pg_restore` (`scripts/{backup,restore}-postgres.sh`)
-— requiere los clientes de PostgreSQL (`pg_dump`/`pg_restore`; paquete
-`postgresql-client`, no el mismo que el servidor) en el `PATH`. La restauración
-es destructiva (`--clean`) y se niega a ejecutar sin `--yes` o una confirmación
-escrita a mano. `backend/tests/test_backup_restore.py` la comprueba de extremo
-a extremo contra PostgreSQL real, no simulada: vuelca una base sembrada,
-restaura sobre una vacía y verifica fila por fila.
+Copia lógica custom verificada con `pg_restore --list`, SHA-256 y metadata. El
+restore nunca limpia la base configurada: exige un nombre nuevo, crea esa base
+y valida revisión/tablas/datos. `backend/tests/test_backup_restore.py` prueba el
+recorrido real con PostgreSQL. El procedimiento de producción y rollback está
+centralizado en [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md#4-backup-restore-y-rollback).
 
 ---
 
@@ -177,7 +175,6 @@ make prod-cert host=openerp.tuempresa.local   # certificado TLS interno
 cp .env.production.example .env.production    # y edítalo (contraseñas, dominio)
 make prod-build
 make prod-up
-make prod-migrate
 make prod-bootstrap-admin
 ```
 

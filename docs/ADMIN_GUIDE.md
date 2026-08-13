@@ -122,12 +122,13 @@ Alembic y bootstrap leerán el valor nuevo en su siguiente ejecución.
 
 ```bash
 make prod-build     # construye las imágenes propias de backend y frontend
-make prod-up        # levanta postgres, mailpit, aplica el compose completo
-make prod-migrate   # aplica las migraciones (también se puede repetir sin riesgo)
+make prod-up        # con escritores aún offline: levanta, migra y arranca el stack
 ```
 
-`make prod-up` espera a que los healthchecks pasen antes de devolver el
-control (`--wait`). Compruébalo en cualquier momento con:
+`make prod-up` se reserva para instalación inicial o un stack completamente
+parado: comprueba que API/worker no estén activos y espera a que los
+healthchecks pasen (`--wait`). Para actualizar usa siempre `prod-deploy`.
+Compruébalo en cualquier momento con:
 
 ```bash
 make prod-ps
@@ -176,36 +177,53 @@ Desde un equipo de la red interna, con el certificado ya importado (§2.2):
 | Ver logs en vivo | `make prod-logs` |
 | Parar el stack (conserva los datos) | `make prod-down` |
 | Reiniciar API y worker (tras editar `.env.production`) | `make prod-restart` |
-| Aplicar migraciones pendientes | `make prod-migrate` |
+| Desplegar código/migraciones | `make prod-deploy` |
 
 ### 3.1. Desplegar una actualización de código
 
 ```bash
-make prod-deploy               # git pull + build + migrate + up, en ese orden
-make prod-deploy backup=1      # además, hace un prod-backup antes de tocar nada
-make prod-deploy force=1       # redespliega aunque git pull no traiga commits nuevos
+make prod-deploy          # actualización normal, con backup obligatorio
+make prod-deploy force=1  # reconstruye aunque el commit ya esté desplegado
 ```
 
-Equivale a `scripts/deploy-update.sh`, que hace exactamente estos cuatro
-pasos y para en seco si alguno falla:
+No ejecutes `prod-migrate` por separado con la tienda abierta. El script usa
+un lock local para impedir dos deploys simultáneos y sigue este orden:
 
-```bash
-git pull --ff-only
-make prod-build
-make prod-migrate
-make prod-up          # recrea los contenedores con las imágenes nuevas
+```text
+preflight + git pull + build con la versión antigua online
+→ mantenimiento ON (nginx devuelve 503)
+→ API y worker OFF; comprobación de que ambos pararon
+→ backup pre-upgrade obligatorio + checksum + pg_restore --list
+→ Alembic con la imagen nueva; comprobación current == head
+→ API/web nuevos; health y smoke sin escrituras
+→ worker nuevo y dos comprobaciones de proceso separadas
+→ mantenimiento OFF
 ```
 
-El orden importa: `migrate` corre y debe terminar con éxito antes de que
-`api`/`worker` arranquen (lo hace `docker compose` solo, vía
-`depends_on: condition: service_completed_successfully`) — un despliegue
-nunca deja la aplicación corriendo contra un esquema a medio migrar. El
-script también se niega a arrancar si el checkout tiene cambios locales sin
-commitear (`git status`), para no pisarlos con el `pull`.
+El build ocurre antes de parar la tienda. El fichero
+`deploy/maintenance/enabled`, montado en nginx, cambia las rutas SPA/API a una
+página 503 sin tocar PostgreSQL. No lo borres manualmente hasta completar las
+comprobaciones. El smoke sólo consulta readiness, la revisión Alembic y el
+health de nginx; no crea ventas ni altera datos.
+
+Los escritores gestionados son `api` (incluido el disparador manual del outbox)
+y `worker`; ambos se paran y su estado Docker se inspecciona antes del dump.
+Durante la ventana tampoco debe ejecutarse manualmente `bootstrap-admin`,
+scripts de seed, otro Alembic ni utilidades que abran `session_scope`: son
+escritores externos al Compose persistente y el operador debe mantenerlos fuera
+de la ventana. PostgreSQL y nginx permanecen levantados.
+
+La imagen que estaba ejecutándose se etiqueta con el commit anterior antes
+del build. Los commits anterior/actual quedan en `deploy/state/`; no se depende
+de `latest` para recuperar la versión previa.
+
+Si falla backup, migración, health, smoke o worker, el script vuelve a parar
+API/worker, conserva el backup si llegó a crearse y deja mantenimiento activo.
+No hace downgrade ni restore automático. Lee el error y aplica §4.3.
 
 ---
 
-## 3.1. Registrar los terminales POS
+## 3.2. Registrar los terminales POS
 
 Antes de abrir el TPV por primera vez, entra en **Inventario → Terminales
 POS** y crea cada puesto físico (Caja 1, Caja 2…) asignándolo a su almacén.
@@ -222,7 +240,7 @@ y localiza la venta «Sin cobrar» en **Ventas**: allí permanece visible con el
 terminal que la originó. A9 no transfiere borradores entre cajas; cualquier
 recuperación/transferencia supervisada pertenece a una fase posterior.
 
-## 3.2. La caja: imprimir el ticket sin cuadro de impresión
+## 3.3. La caja: imprimir el ticket sin cuadro de impresión
 
 Una página web no puede saltarse el cuadro de impresión del navegador.
 `window.print()` lo abre siempre, y es una restricción de seguridad
@@ -285,29 +303,88 @@ inicio de sesión del escritorio.
 
 ---
 
-## 4. Copias de seguridad
+## 4. Backup, restore y rollback
 
-Los mismos scripts que en desarrollo (`scripts/backup-postgres.sh`,
-`scripts/restore-postgres.sh`), ya que `postgres` publica su puerto sólo en
-`127.0.0.1` del propio servidor:
+### 4.1. Copia verificada
 
-```bash
-make prod-backup   # vuelca a backups/openerp_<timestamp>.dump
-```
-
-Para restaurar (¡destructivo, pide confirmación explícita!) hace falta
-apuntar explícitamente al `127.0.0.1:5432` publicado por `postgres` — a
-diferencia del backup, `make db-restore` no hace esa sustitución por ti:
+`make prod-deploy` siempre crea su backup después de parar API/worker. Para
+una copia periódica adicional:
 
 ```bash
-./scripts/restore-postgres.sh backups/openerp_....dump \
-  "postgresql://openerp:<la contraseña de POSTGRES_PASSWORD>@127.0.0.1:5432/openerp"
+make prod-backup
 ```
 
-Recomendado: automatizar `make prod-backup` con un cron del sistema y copiar
-`backups/` fuera del servidor (a otra máquina o almacenamiento de red) — un
-`pg_dump` en el mismo disco que la base de datos no protege de un fallo de
-disco.
+El resultado es `pg_dump --format=custom --no-owner --no-privileges`, con
+nombre que incluye base, UTC y commit. El script exige fichero no vacío,
+ejecuta `pg_restore --list` y guarda al lado:
+
+- `.sha256`, validado obligatoriamente antes de restaurar;
+- `.metadata`, con fecha, base, commit y revisión Alembic.
+
+Directorio `0700`; dump y metadatos `0600`. Se conservan las 14 copias locales
+más recientes por defecto (`OPENERP_BACKUP_KEEP_COUNT`), sin seguir symlinks y
+sin borrar la recién creada.
+
+### 4.2. Restore por desastre: siempre a una base nueva
+
+Primero activa mantenimiento y detén/verifica escritores:
+
+```bash
+mkdir -p deploy/maintenance && touch deploy/maintenance/enabled
+make prod-stop-writers
+make prod-writers-stopped
+make prod-restore f=backups/openerp_....dump target=openerp_restore_20260813
+```
+
+`prod-restore` rechaza la base configurada, cualquier base ya existente,
+symlinks, dumps sin metadata/checksum y checksums incorrectos. Crea una base
+nueva, restaura sin `--clean`, y valida conexión, revisión Alembic, tablas
+críticas y conteos de usuarios/productos/ventas. No termina conexiones ni
+modifica la base original.
+
+Si `OPENERP_DATABASE_URL_FILE` sólo existe dentro del contenedor, proporciona
+al proceso del host `OPENERP_RESTORE_SERVER_URL_FILE` (o
+`OPENERP_RESTORE_SERVER_URL`) apuntando al mismo servidor. No pases una URL con
+contraseña como argumento del comando.
+
+Después del mensaje `verified restore`:
+
+1. Ajusta sólo el nombre de base en `OPENERP_DATABASE_URL` o su fichero secreto.
+2. Selecciona la imagen compatible mediante `export OPENERP_VERSION=<commit>`.
+3. Arranca API/web, espera health y ejecuta `make prod-smoke`.
+4. Arranca y verifica worker.
+5. Sólo entonces borra `deploy/maintenance/enabled`.
+
+### 4.3. Rollback de un upgrade fallido
+
+No arranques código antiguo sobre el esquema nuevo y no uses un downgrade
+genérico. Mantén mantenimiento y escritores parados; conserva la base fallida
+para diagnóstico y restaura el backup pre-upgrade en otra base:
+
+```bash
+PREVIOUS="$(cat deploy/state/previous-version)"
+make prod-restore f="$(cat deploy/state/last-backup)" \
+  target=openerp_rollback_$(date -u +%Y%m%dT%H%M%SZ)
+export OPENERP_VERSION="$PREVIOUS"
+# cambia OPENERP_DATABASE_URL[_FILE] para apuntar a la base restaurada
+make prod-start-api-web
+make prod-wait-api
+make prod-smoke
+make prod-start-worker
+make prod-worker-check
+rm deploy/maintenance/enabled
+```
+
+Si el backup falla, no comienza Alembic. Si Alembic falla, no arranca la API.
+Si health/smoke falla, API/worker vuelven a quedar parados. En los tres casos el
+503 de mantenimiento permanece hasta una decisión del operador.
+
+### 4.4. Copia externa
+
+La retención anterior es local. Automatizar `make prod-backup` puede ser útil,
+pero además hay que copiar dumps, checksums y metadata a otra máquina o medio
+cifrado: el mismo disco no protege contra incendio, ransomware, robo o pérdida
+del host. A18 no implementa offsite ni recuperación punto en el tiempo.
 
 ```cron
 # ejemplo: backup diario a las 3:00
