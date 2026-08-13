@@ -16,6 +16,7 @@ PYTEST   := cd $(BACKEND) && uv run pytest -q
 SALES_TESTS := \
 	tests/test_sales.py \
 	tests/test_checkout.py \
+	tests/test_checkout_cashier_attribution.py \
 	tests/test_returns.py \
 	tests/test_tickets.py \
 	tests/test_sale_history.py

@@ -93,8 +93,9 @@ class Sale(IntPrimaryKeyMixin, TimestampMixin, Base):
         String(20), default=SaleStatus.DRAFT, server_default=SaleStatus.DRAFT, index=True
     )
     notes: Mapped[str] = mapped_column(String(2000), default="")
-    #: Nullable: the cashier who rang it up may since have been deactivated
-    #: (rule 14) without invalidating the historical sale.
+    #: While DRAFT this identifies the user who opened the cart. Checkout
+    #: replaces it with the authenticated user who actually took payment;
+    #: that user may later be deactivated without invalidating history.
     cashier_user_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=True
     )

@@ -165,6 +165,8 @@ def _sale_snapshot(sale: Sale) -> dict[str, Any]:
         "terminal_id": sale.terminal_id,
         "status": sale.status,
         "notes": sale.notes,
+        "cashier_user_id": sale.cashier_user_id,
+        "cashier_name": sale.cashier_name,
     }
 
 
@@ -604,10 +606,13 @@ async def checkout(
     actor_user_id: int | None = None,
     terminal_id: int | None = None,
 ) -> Sale:
+    # The router supplies this from CurrentUser. It is deliberately not part
+    # of CheckoutRequest: a browser may choose a physical terminal, but it
+    # may never choose the identity of the cashier using it.
+    checkout_actor_id = actor_user_id if actor_user_id is not None else get_user_id()
     claim = None
     if idempotency_key is not None:
-        actor_id = actor_user_id if actor_user_id is not None else get_user_id()
-        if actor_id is None:
+        if checkout_actor_id is None:
             raise ValidationError("An authenticated user is required for an idempotent checkout.")
         claim = await idempotency_service.claim(
             session,
@@ -615,7 +620,7 @@ async def checkout(
             idempotency_key=idempotency_key,
             request_fingerprint=checkout_request_fingerprint(sale_id, payload),
             resource_id=sale_id,
-            actor_user_id=actor_id,
+            actor_user_id=checkout_actor_id,
         )
         if not claim.is_new:
             completed = await get_sale(session, claim.record.resource_id)
@@ -641,6 +646,20 @@ async def checkout(
         raise ConflictError(f"Cannot check out a sale that is already {sale.status}.")
     if not sale.lines:
         raise ValidationError("Cannot check out a sale with no lines.")
+    if sale.terminal_id is not None and checkout_actor_id is None:
+        raise ValidationError("An authenticated user is required to check out a POS sale.")
+
+    effective_cashier = None
+    if checkout_actor_id is not None:
+        effective_cashier = await session.get(User, checkout_actor_id)
+        if effective_cashier is None:
+            raise ValidationError("The authenticated checkout user no longer exists.")
+    elif sale.cashier_user_id is not None:
+        # Preserve the historical generic/non-POS service boundary for
+        # trusted callers without request context. Browser POS checkouts are
+        # covered by the authenticated branch above.
+        effective_cashier = await session.get(User, sale.cashier_user_id)
+        assert effective_cashier is not None  # foreign key invariant
 
     prices_include_tax = (await pricing_service.get_settings(session)).prices_include_tax
     sale_total = payable(
@@ -745,10 +764,9 @@ async def checkout(
     sale.status = SaleStatus.COMPLETED
     sale.completed_at = await accounting.database_clock(session)
     sale.prices_include_tax = prices_include_tax
-    if sale.cashier_user_id is not None:
-        cashier = await session.get(User, sale.cashier_user_id)
-        assert cashier is not None  # foreign key invariant
-        sale.cashier_name = cashier.full_name
+    if effective_cashier is not None:
+        sale.cashier_user_id = effective_cashier.id
+        sale.cashier_name = effective_cashier.full_name
     sale.number = await _next_sale_number(session)
     await session.flush()
     await audit.record(
