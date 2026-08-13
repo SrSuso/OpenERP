@@ -1,325 +1,410 @@
 # Manual de usuario
 
-Cómo usar OpenERP en el día a día: iniciar sesión, cobrar en el punto de
-venta (TPV) y usar el panel de administración. No hace falta ningún
-conocimiento técnico. Si algo de esto no funciona como se describe aquí,
-o no tienes un usuario todavía, contacta con quien administra el sistema
-en tu tienda (ver [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md) si esa persona eres tú).
+Esta guía explica las tareas que se realizan desde la interfaz de OpenERP.
+No requiere Swagger, comandos ni conocimiento de la base de datos. Las
+opciones que ve cada persona dependen de sus permisos; que un enlace no
+aparezca no significa que la función no exista.
+
+Para instalar, actualizar o recuperar el servidor, consulta
+[`ADMIN_GUIDE.md`](ADMIN_GUIDE.md).
 
 ---
 
-## 1. Iniciar sesión
+## 1. Entrar, salir y proteger la cuenta
 
-Abre en el navegador la dirección que te haya dado tu administrador (por
-ejemplo `https://openerp.tuempresa.local`). Verás la pantalla de inicio de
-sesión con dos campos: correo electrónico y contraseña.
+Abre la dirección HTTPS facilitada por el administrador e introduce el correo
+y la contraseña. No existe registro público ni recuperación autónoma por
+email: las cuentas y los restablecimientos los gestiona una persona con
+`users.manage`.
 
-- Si tu cuenta es de **cajero**, tras entrar irás directamente al **TPV**.
-- Si tu cuenta es de **administrador o encargado**, irás al **panel de
-  administración**.
+- Con `admin.access` se puede entrar al panel `/admin`.
+- Con `pos.access` se puede entrar al TPV `/pos`.
+- Si se tienen ambos permisos, la página inicial prioriza el panel.
 
-No hay forma de registrarse por tu cuenta — las cuentas las crea un
-administrador. Si no tienes credenciales, pídeselas a esa persona.
+Cuando un administrador restablece una contraseña, se cierran las sesiones de
+esa cuenta. En el siguiente acceso sólo se muestra **Cambiar contraseña** y no
+se permite continuar hasta elegir una contraseña nueva. Esto es distinto de
+«he olvidado mi contraseña»: no hay envío de enlaces por correo.
 
-La sesión se mantiene abierta mientras la usas y expira sola tras 30 días
-sin actividad. Para cerrarla tú mismo (por ejemplo, al terminar tu turno en
-un TPV compartido), usa el botón **Salir** / **Cerrar sesión** — es
-importante usar ese botón y no sólo cerrar la pestaña, especialmente en un
-terminal que usan varias personas.
-
-> **La primera vez que accedes a la aplicación**, el navegador puede avisar
-> de que "la conexión no es privada" o "el certificado no es válido". Es
-> normal en una red interna sin conexión a internet pública — tu
-> administrador te dirá si hay que instalar un certificado en tu equipo o
-> si basta con aceptar el aviso ("Avanzado → continuar de todos modos").
+En **Mi cuenta** se puede cambiar la contraseña conociendo la actual y revisar
+las sesiones abiertas. Desde allí se puede cerrar una sesión abandonada en
+otro equipo. Usa siempre **Salir** o **Cerrar sesión** al terminar en un equipo
+compartido.
 
 ---
 
-## 2. El punto de venta (TPV) — `/pos`
+## 2. Punto de venta (TPV)
 
-Pantalla táctil pensada para cobrar rápido, a pantalla completa.
+### 2.1. Terminal y cajero son identidades distintas
 
-La primera vez, el navegador pide qué **terminal** físico representa (por
-ejemplo, Caja 1 o Caja 2). No elige ninguno por su cuenta. La elección queda
-guardada en ese navegador aunque cambie el usuario; para cambiarla
-expresamente, pulsa el nombre de la caja en la cabecera. Si el terminal fue
-desactivado, el TPV bloquea la operativa y avisa: no borra la venta pendiente.
+La primera vez que se abre `/pos`, el navegador pide seleccionar un terminal
+activo, como «Caja 1». La selección queda guardada en ese navegador aunque
+cambie la persona que inicia sesión.
 
-### 2.1. La venta en curso
+- **Terminal**: puesto físico y almacén desde el que sale la mercancía.
+- **Cajero**: usuario autenticado que confirma el cobro.
 
-Al entrar, se retoma automáticamente la venta más reciente abierta en **ese
-terminal** (si recargas la página o si la cerraste sin cobrar, sigue ahí) o
-se abre una nueva si no había ninguna. Otras cajas del mismo almacén tienen
-sus propios borradores y no pueden modificar el tuyo.
+Una venta cobrada conserva ambos datos históricos. El cajero efectivo es quien
+pulsa **Confirmar cobro**, aunque otra persona hubiese creado o modificado el
+borrador. Renombrar después el usuario o el terminal no cambia el ticket ni los
+informes históricos.
 
-### 2.2. Añadir productos
+Pulsa el nombre del terminal en la cabecera para escoger otro. Si el terminal
+guardado se desactiva, la caja bloquea la operativa y conserva sus borradores;
+hay que reactivarlo o elegir otro terminal activo. El sistema no implementa
+turnos, sesiones de efectivo, presencia ni asignación permanente de personas a
+cajas.
 
-- **Tocando la rejilla**: cada toque añade una unidad de ese producto al
-  ticket. Las pestañas de arriba filtran por categoría.
-- **Con el lector de código de barras**: apunta al código y dispara —
-  añade la línea correspondiente automáticamente, sin tocar la rejilla.
-  El mismo campo también acepta escribir el código a mano y pulsar Intro.
+### 2.2. Ventas abiertas y aparcadas
 
-### 2.3. Cancelar la venta
+El TPV recupera los borradores del terminal seleccionado. Puede haber varios a
+la vez: pulsa **+ Venta nueva** para aparcar el actual y atender a otra persona,
+y usa la barra superior para volver a cualquiera de ellos.
 
-El botón **Cancelar venta** anula el ticket completo (no se puede deshacer)
-y abre uno nuevo automáticamente. Si sólo quieres quitar un producto, usa el
-control de esa línea en concreto — no hace falta cancelar todo el ticket.
+Los borradores se guardan en el servidor y sobreviven a una recarga o al cierre
+del navegador. No se mezclan con los borradores de otro terminal. No existe una
+transferencia supervisada de borradores entre terminales.
+
+### 2.3. Añadir artículos
+
+- Toca un botón del catálogo para añadir su presentación base.
+- Usa el multiplicador antes de tocar el producto si necesitas varias unidades.
+- Para unidades configuradas como pesables, el TPV pide la cantidad antes de
+  añadir la línea.
+- Escanea un código de barras sin enfocar ningún campo, o escríbelo y pulsa
+  **Añadir**. El código identifica la presentación exacta —unidad, caja de seis,
+  etc.— y conserva su factor y nombre en la venta.
+- Las pestañas de colores filtran las categorías POS.
+
+**Cancelar venta** anula el borrador completo. Para quitar sólo una línea, usa
+el control de esa línea.
 
 ### 2.4. Cobrar
 
-Pulsa **Cobrar** y elige el método:
+Pulsa **Cobrar**, elige el método disponible y confirma:
 
-- **Efectivo**: escribe el importe recibido; el cambio se calcula al
-  momento, según lo vas escribiendo.
-- **Tarjeta**: el importe es el total exacto, no hay cambio.
+- **Efectivo**: permite escribir el importe recibido y calcula el cambio.
+- **Tarjeta**: usa el total exacto.
+- **Otro**: sólo aparece si la tienda lo habilitó; puede llamarse Bizum, vale u
+  otro nombre configurado.
 
-Al confirmar:
+El servidor vuelve a comprobar venta, terminal, importes y stock antes de
+confirmar. Si falla, el borrador permanece abierto sin efectos parciales. Si la
+respuesta se pierde y se reintenta el mismo cobro, OpenERP recupera el resultado
+ya confirmado en vez de cobrar o descontar stock dos veces.
 
-- Si todo va bien, la venta se cierra, se muestra un recibo en pantalla con
-  el cambio a entregar, y se abre automáticamente un ticket nuevo para la
-  siguiente venta.
-- Si no hay stock suficiente de algún producto, o el importe no cubre el
-  total, se rechaza con un aviso claro y **el ticket sigue abierto tal cual
-  estaba** — no se pierde nada, puedes corregir y volver a intentarlo.
+Por defecto no se permite dejar stock negativo. La tienda puede habilitarlo en
+**Configuración**, salvo para productos controlados por lotes: éstos siempre
+necesitan un lote disponible. Un producto configurado sin control de
+existencias se vende sin comprobar ni mover stock.
 
-### 2.5. Imprimir el ticket
+### 2.5. Ticket e impresión
 
-Desde la propia pantalla de confirmación de cobro, **Imprimir ticket** manda
-el recibo ya formateado a la impresora (58 o 80 mm, según la que tengas
-configurada). Si el botón da un error en vez de imprimir, avisa a tu
-administrador — normalmente significa que no hay una plantilla de ticket
-activa configurada.
+Tras el cobro se muestra el total, los pagos y el cambio. Según la configuración
+de la tienda, el ticket se imprime automáticamente o mediante **Imprimir
+ticket**. Si se repite la impresión se reutiliza el ticket congelado, no se
+genera uno con nombres o precios actuales.
 
-**Que salga directo, sin preguntar.** Si al imprimir se abre el cuadro de
-impresión del navegador y hay que darle a «Imprimir» cada vez, es que la
-caja no está arrancada en modo caja. Una página web no puede saltarse ese
-cuadro por su cuenta —el navegador no se lo permite a ninguna, por
-seguridad—, así que la caja se abre con un acceso directo especial:
-`scripts\pos-kiosk.cmd` en Windows, `scripts/pos-kiosk.sh` en Linux. Eso
-arranca el navegador preparado para imprimir directo en la impresora
-predeterminada. Si a ti te sigue saliendo el cuadro, es que has abierto el
-TPV desde una pestaña normal del navegador en vez de con ese acceso
-directo — díselo a tu administrador, en `docs/ADMIN_GUIDE.md` está cómo
-dejarlo puesto para que arranque solo.
+La impresión silenciosa necesita que el navegador de la caja se inicie en modo
+kiosco. Su preparación está en
+[`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-impresión-sin-cuadro-del-navegador).
 
-### 2.6. La caja se entera sola de los cambios
+### 2.6. Cerrar caja y sesión
 
-No hay que recargar el TPV ni cerrarlo y abrirlo. Lo que cambies en el panel
-—un precio, el nombre de un producto, un botón, una foto, los colores— llega
-a la caja en unos segundos, aunque esté en otro ordenador. Sigue vendiendo
-mientras tanto: la venta que tengas empezada no se toca.
+En el TPV, **Cerrar sesión** abre primero el cierre Z del almacén. La vista
+previa muestra ventas abiertas y totales pendientes. No se puede cerrar
+mientras haya borradores abiertos: hay que cobrarlos o cancelarlos.
 
-Cada cuántos segundos mira si hay novedades se ajusta en Configuración →
-TPV; de fábrica, cada 3.
+Al confirmar se guarda el corte y después se cierra la sesión. El cierre
+incluye todas las terminales del almacén, no sólo el navegador actual, y no
+puede perder ventas o devoluciones confirmadas durante el cierre. Un reintento
+incierto recupera el mismo cierre.
 
 ---
 
-## 3. El panel de administración — `/admin`
+## 3. Ventas, tickets y cierres Z
 
-Pensado para encargados y administradores: gestión general de la tienda y
-seguimiento del negocio mediante indicadores.
+Con `sale.read`, **Ventas** permite filtrar por día comercial y por estado,
+consultar terminal, número, total y número de líneas. Las ventas cobradas
+ofrecen **Reimprimir**; el texto es exactamente el que quedó guardado al
+generarse originalmente.
 
-### 3.1. Mi panel
+**Cierres de caja** muestra los cierres Z ya guardados: periodo cubierto,
+ventas, efectivo, tarjeta, otros medios, devoluciones y total neto. Son
+instantáneas históricas y no cambian si después se registra otra operación.
 
-Al entrar la primera vez se crea automáticamente tu panel personal, vacío.
-Cada usuario tiene el suyo — lo que añadas o quites no afecta al de otros
-compañeros.
+---
 
-### 3.2. Añadir un indicador (widget)
+## 4. Devoluciones económicas y físicas
 
-Botón **Añadir widget** → elige uno de los disponibles:
+La pantalla **Devoluciones** requiere `return.read`; registrar una requiere
+`return.manage`. Busca una venta cobrada por su número y, para cada línea,
+indica dos cantidades independientes:
 
-- **Ventas por día** — evolución de ventas en un rango de fechas.
-- **Productos más vendidos** — ranking por cantidad o importe.
-- **Valor de inventario** — cuánto vale el stock actual.
-- **Productos bajo mínimo** — qué hay que reponer.
+- **Cantidad a reembolsar**: lo que se devuelve económicamente al cliente.
+- **Cantidad que vuelve a stock**: lo que vuelve físicamente al almacén.
 
-Cada uno tiene sus propios filtros (rango de fechas, almacén/tienda si
-gestionas más de uno). Los datos se consultan al momento cada vez que ves
-el panel — nunca es información guardada de antes, así que siempre refleja
-la situación actual.
+Esto permite cuatro casos:
 
-### 3.3. Quitar un widget
+| Caso | Reembolso | Vuelve a stock |
+| --- | ---: | ---: |
+| Devolución normal | Sí | Sí |
+| Producto roto o no recuperado | Sí | No |
+| Cambio o reposición sin dinero | No | Sí |
+| Cantidades diferentes | Una cantidad | Otra cantidad |
 
-Cada widget tiene su propio control para retirarlo del panel. Se quita sin
-más — no hay confirmación adicional ni forma de deshacerlo, aunque puedes
-volver a añadir el mismo indicador cuando quieras.
+Ejemplo: de una venta de 5 unidades se reembolsan 3 y sólo 1 vuelve en buen
+estado. El cliente recibe el importe histórico de 3; el almacén recupera 1.
 
-### 3.4. Usuarios (si tienes permiso)
+Si hay reembolso, selecciona el medio ya utilizado:
 
-Enlace **Usuarios y roles** en el menú lateral — sólo lo ves si tu cuenta
-puede gestionar personal o roles (`ADMIN` o `MANAGER`). Dentro, pestaña
-**Usuarios** (siempre presente si ves la sección):
+- `CASH`: efectivo entregado.
+- `CARD`: el operador confirma que ya hizo el abono en el datáfono externo.
+- `OTHER`: otro medio ya realizado.
 
-- **Nuevo usuario**: email, nombre, una contraseña provisional y el rol
-  (cajero, encargado...). Dile a esa persona que la cambie en cuanto entre
-  la primera vez (§4).
-- Cambiar el rol de alguien: el desplegable de la columna «Rol» de su fila.
-- **Desactivar**: la persona deja de poder iniciar sesión, pero su
-  histórico (ventas, movimientos...) no se pierde — nunca se borra a
-  nadie. No puedes desactivar tu propia cuenta desde aquí.
+OpenERP no está integrado automáticamente con el banco o datáfono. El importe
+se calcula desde los precios e impuestos congelados en la venta, no desde el
+precio actual. Actualmente los reembolsos que registra el sistema quedan
+directamente en estado `COMPLETED`. Una devolución sólo física no crea un
+reembolso económico ficticio.
 
-### 3.5. Roles y permisos (sólo `ADMIN`)
+Si el producto controla lotes, la cantidad física exige indicar el lote que
+regresa.
 
-Dentro de **Usuarios y roles**, pestaña **Roles** — sólo aparece con
-permiso para gestionar roles (por defecto, únicamente `ADMIN`; un
-`MANAGER` sólo ve la pestaña Usuarios). Desde ahí puedes crear un rol nuevo (por
-ejemplo "Encargado de almacén") y marcar qué puede hacer cada uno, casilla
-a casilla. Cambia el conjunto completo de permisos de ese rol — no hay
-"añadir uno más", cada guardado deja el rol exactamente con lo que esté
-marcado en ese momento.
+---
 
-### 3.6. Catálogo (productos y categorías)
+## 5. Inventario y catálogo
 
-Enlace **Catálogo** — visible si tu cuenta puede ver productos (`ADMIN`,
-`MANAGER` y, de hecho, también `CASHIER`, aunque un cajero no tiene acceso
-al panel para llegar hasta aquí). Dos pestañas:
+El apartado **Inventario** agrupa productos, categorías, lotes, saldos,
+movimientos, almacenes y terminales. Cada pestaña se muestra según los permisos
+de lectura correspondientes.
 
-- **Productos**: buscar, filtrar por categoría, ver el listado. No hace
-  falta poner un SKU — el sistema le pone uno internamente él solo, nunca
-  hay que pensarlo. Si además puedes gestionar catálogo: **Nuevo
-  producto** (nombre, unidad — se elige de una lista, no se escribe —,
-  coste, margen opcional, qué impuestos aplican — como etiquetas que se
-  tocan para marcar/desmarcar, igual que en cualquier otro sitio de la
-  aplicación donde se eligen impuestos —, precio de venta con una vista
-  previa calculada en el momento), **Editar** (nombre, descripción,
-  categorías, stock mínimo, si controla lotes/caducidad), **Precio**
-  (coste, margen propio o heredado de la categoría, impuestos propios o
-  heredados) y **Desactivar**. El botón **Presentaciones** despliega los
-  formatos de venta del producto (unidad suelta, caja de 6...) y permite
-  añadir uno nuevo o un código de barras.
-- **Categorías**: categorías de estantería (nombre, y opcionalmente un
-  margen/impuestos por defecto que heredan sus productos — botón
-  «Margen/impuestos»), categorías POS (las pestañas de colores del TPV,
-  necesitan un permiso propio) y **Unidades** (la lista que alimenta el
-  desplegable de "unidad base" al dar de alta un producto — con flechas
-  ↑/↓ para ordenarlas como más cómodo resulte).
+### 5.1. Productos, presentaciones y códigos
 
-### 3.7. Precios
+Con `product.read` se puede buscar y consultar productos. Con
+`product.manage` se pueden crear, editar, desactivar y configurar:
 
-Enlace **Precios** — sólo lo ves si puedes gestionar precios (`ADMIN` o
-`MANAGER`). Dos pestañas:
+- nombre, descripción, unidad base y stock mínimo;
+- categorías de producto y categoría POS;
+- control de existencias y seguimiento por lotes;
+- imagen;
+- presentaciones, como unidad, bandeja o caja, con su factor de equivalencia;
+- uno o más códigos de barras por presentación.
 
-- **Impuestos**: el catálogo de impuestos (nombre + tasa, p.ej. «IVA
-  general» 21%) — **Editar** en cada fila para cambiar el nombre o la
-  tasa de uno ya creado (si cambias la tasa, se recalcula en el momento
-  el precio de todo lo que lo tenga puesto). Se asignan a una categoría o
-  a un producto concreto desde sus propias pantallas en Catálogo — varios
-  pueden aplicar a la vez sobre el mismo producto (se suman).
-- **Fórmula**: la fórmula que calcula el precio de venta de cualquier
-  producto que no tenga la suya propia, a partir del coste y del
-  margen/impuestos que le correspondan (los suyos si los tiene, si no los
-  de su categoría). Encima del cuadro de la fórmula hay una tabla con
-  todas las variables y funciones que se pueden usar, con lo que
-  significa cada una. Se puede probar con unos valores de ejemplo antes
-  de guardarla; al guardarla se recalculan en el momento todos los
+El SKU se genera automáticamente. Desactivar conserva todo el histórico. En la
+ficha también aparecen el precio, sus cambios y el histórico de compra cuando
+los permisos lo permiten.
+
+**Categorías** gestiona categorías de producto, categorías de botones del TPV y
+la lista ordenada de unidades. Las acciones requieren `product.manage` o
+`pos_category.manage`, según el bloque.
+
+### 5.2. Saldos, movimientos, ajustes y transferencias
+
+Con `inventory.read`:
+
+- **Saldos** muestra existencias por producto, almacén y ubicación.
+- **Movimientos** muestra el historial: recepción, venta, devolución, ajuste,
+  merma y cada lado de una transferencia.
+- **Almacenes** muestra almacenes y sus ubicaciones.
+
+Con `inventory.manage` se pueden crear y activar/desactivar almacenes y
+ubicaciones, registrar ajustes y transferencias entre ubicaciones, y reconstruir
+la proyección de saldos desde el historial de movimientos. Una transferencia
+real está disponible desde la pantalla de saldos.
+
+El stock se almacena en la unidad base. Las presentaciones convierten la
+cantidad antes de crear el movimiento.
+
+### 5.3. Lotes, caducidad y FEFO
+
+Con `lot.read`, **Lotes** permite buscar un producto, consultar números de lote,
+fabricación, caducidad y saldo por ubicación. Con `lot.manage` se pueden crear
+lotes y preparar una salida FEFO.
+
+FEFO propone primero el lote con caducidad más próxima y deja los lotes sin
+fecha para el final. La pantalla permite revisar el plan antes de confirmar una
+salida por ajuste o merma. El checkout de un producto trazado aplica también
+FEFO. Una recepción o devolución física de un producto trazado registra el
+lote correspondiente.
+
+---
+
+## 6. Proveedores, compras y recepciones
+
+**Proveedores** requiere `supplier.read`; crear, editar, desactivar y relacionar
+productos requiere `supplier.manage`.
+
+**Compras** requiere `purchase.read` y permite consultar pedidos por estado:
+borrador, realizado, recibido parcialmente, recibido o cancelado.
+
+Con `purchase.manage` se puede:
+
+1. crear un pedido para un proveedor;
+2. añadir presentaciones, cantidades, coste e impuestos;
+3. marcar el pedido como realizado;
+4. cancelarlo mientras su estado lo permita.
+
+Con `receiving.manage`, un pedido realizado o recibido parcialmente ofrece
+**Registrar recepción**. Se seleccionan almacén y ubicación, fecha y cantidades
+recibidas. Para productos trazados se introduce lote, fabricación y caducidad.
+La recepción aumenta inventario y actualiza el estado del pedido; admite
+recepciones parciales.
+
+---
+
+## 7. Precios e impuestos
+
+La pantalla **Precios e impuestos** requiere `pricing.manage`.
+
+- **Impuestos** permite crear y modificar tasas. Cambiar una tasa recalcula los
   productos afectados.
+- **Fórmula** define el cálculo general de la tienda y permite probarlo antes
+  de guardar.
+- En cada producto o categoría puede definirse un margen porcentual, un margen
+  fijo y una fórmula propia. Un campo vacío hereda categoría y después tienda;
+  un cero explícito no significa herencia.
+- Cambiar coste, impuestos, margen o fórmula recalcula el precio y registra el
+  cambio. También se puede fijar un PVP manual.
 
-### 3.8. Poner precios: las tres maneras
+El margen fijo se suma al resultado de la fórmula. El precio calculado se
+redondea a céntimos. Cambiar el precio actual nunca modifica ventas, compras o
+tickets históricos.
 
-Un producto puede sacar su precio de venta de tres formas, y **eliges tú
-cuál** — en el producto, o en su categoría para que la hereden todos los
-suyos:
-
-1. **Margen en %** — lo de siempre. Un 30% sobre el coste con impuestos.
-2. **Margen fijo en €** — «este me deja 25 céntimos y punto». Se suma al
-   final, después de impuestos y del porcentaje, así que es lo que te
-   queda limpio con cada unidad. Puedes usarla sola o junto al porcentaje.
-3. **Fórmula** — para cuando ninguna de las dos sirve. También se puede
-   poner en la categoría, y así no la repites en cada artículo.
-
-En las tres, dejar el hueco **en blanco** significa «hereda lo que diga mi
-categoría», que no es lo mismo que poner 0.
-
-**Si cambias el coste, cambia el precio de venta.** Sube el género, sube la
-etiqueta, automáticamente y desde donde lo cambies. Si después quieres otro
-precio distinto, lo pones a mano y ese se respeta hasta el próximo cambio de
-coste.
-
-### 3.9. Los precios del día, en la propia lista
-
-Para lo que se vende al peso (la fruta, la carne), Inventario → Productos
-lleva dos columnas que se teclean en la propia fila, sin abrir la ficha:
-**Coste** y **Precio**. Intro o salir del recuadro guarda; Escape deshace.
-
-Tecleando el **coste**, el precio de venta sale solo con el margen que tenga
-ese producto (o el de su categoría). Antes de guardar avisa y te dice cuánto
-te queda de ese producto en almacén: cambiar el precio afecta también a lo
-que ya está en la estantería, y a veces prefieres despachar antes lo que
-compraste barato.
-
-Qué unidades salen tecleables se configura en Configuración → Productos
-(«KG» de fábrica).
-
-### 3.10. Productos que no se agotan
-
-Lo que se repone del saco sin contarlo no necesita que le lleves stock. En
-la **categoría** («Llevar control de existencias») o en cada **producto**
-(«Control de existencias»: lo que diga su categoría / sí / no) puedes
-apagarlo. Apagado, ese producto se vende sin comprobar ni descontar
-existencias — la caja no se planta nunca por falta de stock.
-
-Lo decides producto a producto: puedes tener «Fruta» sin control y dejar dos
-o tres piezas concretas contadas, o al revés.
-
-### 3.11. Compras, proveedores, inventario...
-
-Estas áreas todavía no tienen pantallas propias en el panel — las gestiona
-tu administrador directamente. Si necesitas dar de alta un proveedor o un
-pedido de compra, pídeselo a la persona que administra el sistema.
+Para unidades configuradas como edición rápida, coste y PVP pueden cambiarse
+desde la lista de productos. Cambiar el coste recalcula el PVP; cambiar el PVP
+lo fija manualmente.
 
 ---
 
-## 4. Registrar una devolución
+## 8. Dashboards e informes
 
-En **Devoluciones**, busca la venta por el número impreso en el ticket. Para
-cada línea indica por separado:
+### 8.1. Dashboards privados
 
-- **Cantidad a reembolsar**: unidades cuyo importe se devuelve al cliente.
-- **Cantidad que vuelve a stock**: unidades que regresan físicamente al
-  almacén. Puede ser menor, mayor o cero; es independiente de la anterior.
-- **Lote**: sólo aparece y es obligatorio cuando vuelve cantidad física de un
-  producto trazado por lotes.
+Con `dashboard.read`, cada usuario ve únicamente sus propios dashboards. Puede
+tener varios y, cuando los hay, aparece **Dashboard activo** para elegir cuál
+mostrar. Conocer el UUID o ID de otro usuario no concede acceso y no existe una
+función de compartir.
 
-Una devolución normal empieza con ambas cantidades iguales. Redúcelas cuando,
-por ejemplo, parte del producto está roto/no vuelve, o cuando es un cambio de
-artículo sin reembolso. Si hay efecto económico, elige cómo se realizó:
-efectivo, tarjeta confirmada en el datáfono externo u otro medio ya realizado.
-El importe lo calcula el servidor desde la venta original; no depende del
-precio actual del producto.
+Con `dashboard.manage` se añaden o quitan widgets de ventas por fecha,
+productos más vendidos, valor de inventario y productos bajo mínimo. Los datos
+se calculan al abrirlos; la configuración del widget sí queda guardada.
 
-La pantalla muestra después las dos cantidades, el importe, el medio y el
-estado histórico. Una operación exclusivamente física no crea ni muestra un
-reembolso económico.
+### 8.2. Informes
+
+Con `report.read`, **Informes** permite construir consultas de ventas, compras
+y movimientos de inventario escogiendo agrupaciones, métricas y filtros de una
+lista cerrada. Con `report.manage` se pueden guardar y eliminar definiciones
+para volver a ejecutarlas.
 
 ---
 
-## 5. Cambiar tu contraseña
+## 9. Usuarios, roles y permisos
 
-Enlace **Mi cuenta** en el menú lateral de `/admin` (visible para
-cualquiera con acceso al panel): pide tu contraseña actual y la nueva dos
-veces. Si entraste con una contraseña provisional que te dio un
-administrador, cámbiala aquí lo antes posible — es el primer paso
-recomendado tras tu primer inicio de sesión.
+**Usuarios y roles** muestra cada pestaña sólo si se tiene `users.manage` o
+`roles.manage`.
+
+Con `users.manage` se puede crear un usuario, asignarle un rol permitido,
+activarlo, desactivarlo y restablecer su contraseña. Una persona nunca puede
+asignar un rol que contenga permisos que ella misma no posee. Tampoco puede
+desactivarse a sí misma ni dejar la instalación sin al menos un administrador
+activo capaz de gestionar usuarios y roles.
+
+El restablecimiento administrativo:
+
+1. establece una contraseña temporal;
+2. revoca las sesiones existentes;
+3. marca `must_change_password`;
+4. obliga a cambiarla en el siguiente login.
+
+Crear un usuario nuevo etiqueta la contraseña como provisional, pero en la
+versión actual la obligación automática sólo se activa al usar
+**Restablecer contraseña**. Comunica la clave inicial por un canal seguro.
+
+Con `roles.manage` se crean roles y se modifica su conjunto completo de
+permisos. Los nombres `ADMIN`, `MANAGER` y `CASHIER` son valores iniciales; la
+autorización real depende de permisos, no del nombre del rol.
 
 ---
 
-## 6. Preguntas frecuentes
+## 10. Terminales, tickets, avisos y auditoría
 
-**¿Por qué no puedo entrar en `/admin` si mi cuenta es de cajero?**
-Tu cuenta sólo tiene permiso para el TPV. Si necesitas acceso al panel,
-tiene que dártelo un administrador cambiando tu rol o tus permisos.
+### 10.1. Terminales
 
-**Cobré algo por error, ¿puedo deshacerlo?**
-Una venta ya cobrada no se cancela — se gestiona como una devolución.
-Pídesela a quien tenga permiso de devoluciones en tu tienda.
+Con `inventory.manage`, **Inventario → Terminales POS** permite crear,
+renombrar, activar y desactivar terminales. El almacén se elige al crearlos y
+queda fijo para no reinterpretar ventas históricas.
 
-**El TPV dice que no hay stock suficiente pero sé que sí hay producto en la tienda.**
-Puede que el inventario del sistema no esté actualizado (por ejemplo, si
-falta registrar una recepción de mercancía reciente). Avisa a tu
-administrador — no fuerces la venta de otra forma.
+### 10.2. Plantillas de ticket
 
-**¿Qué hago si se me olvidó la contraseña?**
-No hay recuperación automática por correo — pídele a un administrador que
-te la cambie.
+Con `ticket.manage` se crean y revisan plantillas de 58/80 mm. Sólo una
+plantilla está activa globalmente. Editar crea una nueva revisión y activar una
+desactiva la anterior. Los tickets ya generados quedan congelados y la
+reimpresión usa ese histórico.
+
+### 10.3. Avisos y correo
+
+Con `notification.read` se consultan reglas e incidencias; con
+`notification.manage` se crean reglas, se evalúan y se resuelven incidencias.
+El contador del menú señala las abiertas.
+
+Con `job.read`, **Correo enviado** muestra mensajes pendientes, enviados o
+fallidos. `job.manage` permite pedir un procesamiento manual. Esta pantalla no
+configura servidor, usuario o contraseña SMTP: eso es infraestructura.
+
+### 10.4. Auditoría
+
+Con `audit.read`, **Auditoría** permite filtrar acciones sensibles. Es un
+registro de consulta; no permite alterar los eventos.
+
+---
+
+## 11. Configuración funcional de la tienda
+
+La pantalla **Configuración** requiere `settings.read`; guardar requiere
+`settings.manage`. Sólo contiene opciones funcionales almacenadas en
+PostgreSQL, entre ellas:
+
+- nombre visible de la tienda y `business.timezone`;
+- impresión, actualización del catálogo, unidades pesables y métodos del TPV;
+- stock negativo y descuento máximo;
+- prefijo SKU, stock mínimo y unidades de precio rápido;
+- textos de avisos;
+- tamaño de letra y colores.
+
+`business.timezone` es la zona horaria comercial usada para mostrar, filtrar y
+agrupar ventas, recepciones, devoluciones, auditoría, tickets, dashboards e
+informes. Los instantes históricos no se modifican al cambiarla, pero una
+operación cercana a medianoche puede pasar a otro día comercial al
+reinterpretarse con la nueva zona.
+
+La pantalla nunca configura URL de base de datos, pool, CORS, cookies, rate
+limit, bootstrap ni credenciales SMTP. Esos parámetros pertenecen al entorno de
+producción y se explican en `ADMIN_GUIDE.md`.
+
+---
+
+## 12. Preguntas frecuentes
+
+**¿Por qué no veo una opción del menú?**
+
+Tu rol no tiene el permiso de lectura correspondiente. Pide a quien gestione
+roles que compruebe los permisos; cambiar sólo el nombre del rol no da acceso.
+
+**¿Puedo borrar una venta cobrada?**
+
+No. Registra una devolución con los efectos económico y físico adecuados.
+
+**¿Qué hago si olvidé la contraseña?**
+
+Pide un restablecimiento administrativo. No existe recuperación autónoma por
+email.
+
+**¿Puedo mover un borrador de una caja a otra?**
+
+No. Los borradores pertenecen al terminal que los creó.
+
+**¿La tarjeta se reembolsa automáticamente?**
+
+No. Realiza primero el reembolso en el datáfono y después regístralo como
+`CARD`.
