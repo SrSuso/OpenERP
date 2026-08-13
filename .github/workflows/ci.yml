@@ -214,7 +214,7 @@ jobs:
         working-directory: backend
         run: uv run python -m scripts.seed_e2e_users
 
-      - name: Seed E2E catalog (POS category/products for the till)
+      - name: Seed E2E terminal and catalog
         working-directory: backend
         run: uv run python -m scripts.seed_e2e_catalog
 

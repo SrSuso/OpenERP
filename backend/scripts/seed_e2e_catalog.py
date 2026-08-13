@@ -2,13 +2,16 @@
 
 Without this, `/pos` has a warehouse/location (seeded by the phase 7
 migration) but nothing to sell — the grid would always render its empty
-state. Since phase 13, checking out also needs actual stock (checkout
+state. A9 also requires a real active POS terminal before the till can be
+used. Since phase 13, checking out also needs actual stock (checkout
 validates availability before it will complete a sale), so this seeds a
 generous quantity of each product too. Since phase 15, printing a ticket
 needs an active `TicketTemplate` to exist at all, so this seeds a default
 one too. Idempotent — safe to run on every CI job / local E2E run; does
 nothing to a POS category, product or ticket template that already exists
-(matched by name/SKU/"any template already active", respectively). Stock
+(matched by name/SKU/"any template already active", respectively). The named
+E2E terminal is reactivated if necessary because it is browser setup, not
+catalog data. Stock
 is only seeded the moment a product is *created*, not topped up on later
 runs — same philosophy as `seed_e2e_users.py` (acts once, doesn't "fix up"
 state on every call); re-seed a depleted local database with
@@ -35,6 +38,9 @@ from app.db import registry as _registry  # noqa: F401 — registers every ORM m
 from app.db.session import session_scope
 from app.inventory import service as inventory
 from app.inventory.models import Location, Warehouse
+from app.pos import service as terminals
+from app.pos.models import PosTerminal
+from app.pos.schemas import PosTerminalCreate, PosTerminalUpdate
 from app.tickets import service as tickets
 from app.tickets.models import TicketTemplate
 from app.tickets.schemas import TicketTemplateCreate
@@ -55,6 +61,7 @@ class _ProductSpec:
 
 
 _POS_CATEGORY_NAME = "Bebidas"
+_POS_TERMINAL_NAME = "Terminal E2E"
 
 _PRODUCTS = (
     _ProductSpec(
@@ -90,6 +97,30 @@ async def _seed() -> int:
                 )
             )
         ).scalar_one()
+
+        terminal = (
+            await session.execute(
+                select(PosTerminal).where(
+                    PosTerminal.warehouse_id == warehouse.id,
+                    PosTerminal.name == _POS_TERMINAL_NAME,
+                )
+            )
+        ).scalar_one_or_none()
+        if terminal is None:
+            terminal = await terminals.create_terminal(
+                session,
+                PosTerminalCreate(name=_POS_TERMINAL_NAME, warehouse_id=warehouse.id),
+            )
+            print(f"created POS terminal: {terminal.name}")
+        elif not terminal.is_active:
+            await terminals.update_terminal(
+                session,
+                terminal.id,
+                PosTerminalUpdate(is_active=True),
+            )
+            print(f"reactivated POS terminal: {terminal.name}")
+        else:
+            print(f"already present: POS terminal {terminal.name}")
 
         category = (
             await session.execute(select(PosCategory).where(PosCategory.name == _POS_CATEGORY_NAME))

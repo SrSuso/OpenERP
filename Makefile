@@ -115,7 +115,7 @@ seed-e2e:  ## Seed the fixed admin/cashier accounts the Playwright suite logs in
 	cd $(BACKEND) && uv run python -m scripts.seed_e2e_users
 
 .PHONY: seed-e2e-catalog
-seed-e2e-catalog:  ## Seed a minimal POS category/products so /pos has something to sell
+seed-e2e-catalog:  ## Seed the E2E terminal and minimal POS catalog/stock
 	cd $(BACKEND) && uv run python -m scripts.seed_e2e_catalog
 
 # --- run -------------------------------------------------------------------

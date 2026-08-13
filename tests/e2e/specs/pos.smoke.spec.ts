@@ -1,41 +1,50 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 
-const CASHIER_EMAIL = process.env.E2E_CASHIER_EMAIL ?? 'e2e-cashier@example.com';
-const CASHIER_PASSWORD = process.env.E2E_CASHIER_PASSWORD ?? 'e2e-cashier-pass-123';
+import {
+  getE2eTerminal,
+  loginAsCashier,
+  openPreparedPos,
+  selectedTerminalId,
+} from "../helpers/pos";
 
-async function loginAsCashier(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(/^email$/i).fill(CASHIER_EMAIL);
-  await page.getByLabel(/contraseña/i).fill(CASHIER_PASSWORD);
-  await page.getByRole('button', { name: /entrar/i }).click();
-  await expect(page).toHaveURL(/\/pos$/);
-}
-
-test.describe('POS shell', () => {
-  test('a cashier lands on the till, not the admin panel', async ({ page }) => {
-    await loginAsCashier(page);
-
-    await expect(page.getByRole('heading', { name: /punto de venta/i })).toBeVisible();
-  });
-
-  test('the till does not expose the admin navigation', async ({ page }) => {
-    await loginAsCashier(page);
-
-    await expect(page.getByRole('heading', { name: /punto de venta/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /inicio/i })).toHaveCount(0);
-  });
-
-  test('a cashier is bounced away from the admin panel (403 at the API, not just hidden)', async ({
+test.describe("POS shell", () => {
+  test("a cashier selects a real terminal through the UI before using the till", async ({
     page,
   }) => {
     await loginAsCashier(page);
+    await expect(
+      page.getByRole("heading", { name: /seleccionar terminal/i }),
+    ).toBeVisible();
+    const terminal = await getE2eTerminal(page);
 
-    await page.goto('/admin');
+    await page.getByRole("button").filter({ hasText: terminal.name }).click();
+
+    await expect(
+      page.getByRole("heading", { name: /punto de venta/i }),
+    ).toBeVisible();
+    expect(await selectedTerminalId(page)).toBe(String(terminal.id));
+  });
+
+  test("the till does not expose the admin navigation", async ({ page }) => {
+    await openPreparedPos(page);
+
+    await expect(
+      page.getByRole("heading", { name: /punto de venta/i }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /inicio/i })).toHaveCount(0);
+  });
+
+  test("a cashier is bounced away from the admin panel (403 at the API, not just hidden)", async ({
+    page,
+  }) => {
+    await openPreparedPos(page);
+
+    await page.goto("/admin");
     // RequirePermission sends them back through `/`, which resolves to their
     // own home — never to /admin, and never to /login (they *are* signed in).
     await expect(page).toHaveURL(/\/pos$/);
 
-    const response = await page.request.get('/api/v1/users');
+    const response = await page.request.get("/api/v1/users");
     expect(response.status()).toBe(403);
   });
 });
