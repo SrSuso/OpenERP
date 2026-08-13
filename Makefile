@@ -200,8 +200,19 @@ test-backend-migrations:  ## Run every migration and historical-fixture test
 .PHONY: test
 test: test-backend test-frontend  ## Run backend and frontend unit/integration tests
 
+.PHONY: check-test-mailpit
+check-test-mailpit:  ## Fail explicitly when the real SMTP integration dependency is unavailable
+	@curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8025/api/v1/info >/dev/null || { \
+		echo 'ERROR: Mailpit HTTP API is required on 127.0.0.1:8025 for backend tests.' >&2; \
+		exit 1; \
+	}
+	@cd $(BACKEND) && uv run python -c "import socket; socket.create_connection(('127.0.0.1', 1025), 3).close()" || { \
+		echo 'ERROR: Mailpit SMTP is required on 127.0.0.1:1025 for backend tests.' >&2; \
+		exit 1; \
+	}
+
 .PHONY: test-backend
-test-backend:  ## pytest against a real PostgreSQL
+test-backend: check-test-mailpit  ## pytest against a real PostgreSQL and Mailpit
 	$(PYTEST)
 
 .PHONY: test-frontend
