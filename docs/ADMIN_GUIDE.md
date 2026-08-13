@@ -122,9 +122,17 @@ Alembic y bootstrap leerán el valor nuevo en su siguiente ejecución.
 ### 2.4. Construir y arrancar
 
 ```bash
-make prod-build     # construye las imágenes propias de backend y frontend
+make prod-build     # refresca las bases fijadas y construye backend/frontend
 make prod-up        # con escritores aún offline: levanta, migra y arranca el stack
 ```
+
+Las imágenes de runtime se fijan por versión de parche (`Python 3.13.15`,
+`Node 22.22.0`, `Nginx 1.27.5` y `PostgreSQL 17.10`). `make prod-build` usa
+`docker compose build --pull`: conserva la caché de capas de aplicación, pero
+comprueba deliberadamente la base correspondiente al tag fijado. Actualiza esos
+tags mediante un commit revisado; no se usan `latest` ni tags de major para el
+runtime de producción. Para diagnosticar una caché o preparar una release existe
+`make prod-build-clean`, que añade `--no-cache`; no es el camino habitual.
 
 `make prod-up` se reserva para instalación inicial o un stack completamente
 parado: comprueba que API/worker no estén activos y espera a que los
@@ -208,6 +216,12 @@ El build ocurre antes de parar la tienda. El fichero
 página 503 sin tocar PostgreSQL. No lo borres manualmente hasta completar las
 comprobaciones. El smoke sólo consulta readiness, la revisión Alembic y el
 health de nginx; no crea ventas ni altera datos.
+
+Los `up` del procedimiento oficial incluyen `--remove-orphans`. El nombre de
+proyecto estable `openerp-prod` acota esa limpieza a contenedores que pertenezcan
+a este Compose; no ejecuta `docker system prune`, ni borra imágenes, volúmenes o
+contenedores de otros proyectos. Durante un deploy se aplica al recrear Nginx,
+cuando mantenimiento ya está activo.
 
 Los escritores gestionados son `api` (incluido el disparador manual del outbox)
 y `worker`; ambos se paran y su estado Docker se inspecciona antes del dump.
@@ -577,6 +591,20 @@ sólo se acumulan `PENDING` en la cola hasta que el worker pueda entregarlos.
 `make prod-logs` sigue los logs de los servicios a la vez; para uno
 solo: `docker compose -f docker/compose.prod.yml --env-file .env.production
 logs -f <servicio>`.
+
+Los cinco servicios de producción usan el driver Docker `json-file` con cinco
+ficheros de hasta 10 MiB cada uno. Esta rotación limita stdout/stderr del stack
+a unos 250 MiB; no limita el volumen de PostgreSQL, su WAL ni los backups. API y
+worker respetan `OPENERP_LOG_FORMAT`: `json` produce una línea JSON por evento y
+`console` conserva el formato legible para desarrollo.
+
+Antes de un deploy, `make prod-preflight` exige al menos 1 GiB libre (ajustable
+con `OPENERP_DEPLOY_MIN_FREE_KB`) en el checkout/backups y en el directorio de
+datos de Docker si existe. Vigila además el volumen `postgres-data`, `backups/`
+según la retención de A18 y la caché/imágenes Docker. PostgreSQL no tiene un
+límite Compose arbitrario: el operador debe reservar memoria y CPU suficientes
+para el tamaño de la base y los informes; API (512 MiB/1 CPU), worker (256
+MiB/0,5 CPU) y web (128 MiB/0,5 CPU) sí tienen límites de contención.
 
 ---
 
