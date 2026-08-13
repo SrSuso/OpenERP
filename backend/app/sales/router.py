@@ -5,13 +5,15 @@ endpoints protected the same way)."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
 
 from app.auth.dependencies import CurrentUser, SessionDep
+from app.core.business_time import business_day_utc_range
+from app.core.errors import ValidationError
 from app.pricing.dependencies import PricingSettingsDep
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import SALE_MANAGE, SALE_READ
@@ -28,6 +30,7 @@ from app.sales.schemas import (
     ZReportPreview,
     ZReportRead,
 )
+from app.settings.business_time import get_business_timezone
 
 router = APIRouter(tags=["sales"])
 
@@ -56,12 +59,23 @@ async def list_sales(
     #: hora: `created_from=2026-08-11&created_to=2026-08-12`.
     created_from: Annotated[datetime | None, Query()] = None,
     created_to: Annotated[datetime | None, Query()] = None,
+    #: Día lógico de la tienda. A diferencia de los dos límites absolutos
+    #: anteriores, el backend lo convierte desde medianoche local hasta la
+    #: siguiente medianoche local con la zona comercial configurada.
+    business_date: Annotated[date | None, Query()] = None,
     #: El número impreso en el ticket, que es por el que pregunta un
     #: cliente que vuelve — no el `id` interno.
     number: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[SaleRead]:
+    if business_date is not None and (created_from is not None or created_to is not None):
+        raise ValidationError("business_date cannot be combined with created_from or created_to.")
+    business_from = business_to = None
+    if business_date is not None:
+        business_from, business_to = business_day_utc_range(
+            business_date, await get_business_timezone(session)
+        )
     sales = await service.list_sales(
         session,
         status=status,
@@ -69,6 +83,8 @@ async def list_sales(
         terminal_id=terminal_id,
         created_from=created_from,
         created_to=created_to,
+        business_from=business_from,
+        business_to=business_to,
         number=number,
         limit=limit,
         offset=offset,

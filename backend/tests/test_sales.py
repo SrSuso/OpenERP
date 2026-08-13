@@ -10,6 +10,10 @@ from decimal import Decimal
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.sales.models import Sale
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
@@ -525,3 +529,48 @@ async def test_sales_can_be_listed_by_the_day_they_were_opened(
         },
     )
     assert tomorrow_only.json() == []
+
+
+async def test_sales_business_date_is_resolved_by_the_backend_timezone(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    assert (
+        await client.put(
+            "/api/v1/settings/options",
+            json={"values": {"business.timezone": "Europe/Madrid"}},
+        )
+    ).status_code == 200
+    previous_day = await _open_sale(client)
+    next_day = await _open_sale(client)
+    await db_session.execute(
+        update(Sale)
+        .where(Sale.id == previous_day["id"])
+        .values(created_at=datetime(2026, 8, 12, 21, 59, tzinfo=UTC))
+    )
+    await db_session.execute(
+        update(Sale)
+        .where(Sale.id == next_day["id"])
+        .values(created_at=datetime(2026, 8, 12, 22, 1, tzinfo=UTC))
+    )
+    await db_session.flush()
+
+    response = await client.get("/api/v1/sales", params={"business_date": "2026-08-13"})
+
+    assert response.status_code == 200
+    assert [sale["id"] for sale in response.json()] == [next_day["id"]]
+
+
+async def test_business_date_cannot_be_mixed_with_absolute_sale_bounds(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+
+    response = await client.get(
+        "/api/v1/sales",
+        params={"business_date": "2026-08-13", "created_from": "2026-08-13T00:00:00Z"},
+    )
+
+    assert response.status_code == 422

@@ -8,7 +8,9 @@ that decides *when* a ticket gets generated (once, ever, per sale).
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
+from zoneinfo import ZoneInfo
 
+from app.core.business_time import to_business_time
 from app.sales.models import Sale, SaleLine
 from app.tickets.models import TicketTaxDisplay, TicketTemplate
 
@@ -110,6 +112,7 @@ def render_ticket(
     template: TicketTemplate,
     *,
     prices_include_tax: bool,
+    business_timezone: ZoneInfo,
     cashier_name: str | None = None,
 ) -> str:
     """Todo lo que decide cómo se ve el ticket sale de `template`, y de
@@ -143,7 +146,7 @@ def render_ticket(
     # sólo se imprime de una venta cobrada, así que aquí siempre lo hay.
     rows.append(f"{template.sale_number_prefix}{sale.number or sale.id}")
     when = sale.completed_at or sale.created_at
-    rows.append(when.strftime(template.date_format))
+    rows.append(to_business_time(when, business_timezone).strftime(template.date_format))
     if template.show_cashier and cashier_name:
         rows.append(f"Le atendió: {cashier_name}")
     rows.append(_rule(width))

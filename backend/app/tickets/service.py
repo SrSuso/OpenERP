@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 from app.audit import service as audit
 from app.core.errors import NotFoundError, ValidationError
 from app.sales.models import Sale, SaleStatus
+from app.settings.business_time import get_business_timezone
 from app.tickets.models import Ticket, TicketTemplate
 from app.tickets.render import render_ticket
 from app.tickets.schemas import TicketTemplateCreate, TicketTemplateRevise
@@ -198,6 +199,7 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
         sale,
         template,
         prices_include_tax=sale.prices_include_tax,
+        business_timezone=await get_business_timezone(session),
         cashier_name=sale.cashier_name,
     )
 

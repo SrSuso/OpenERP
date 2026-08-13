@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from app.sales.models import Payment, Sale, SaleLine, SaleStatus
 from app.tickets.models import TicketTaxDisplay, TicketTemplate
@@ -34,8 +35,8 @@ def _line(name: str, qty: str, price: str, tax: str = "0", discount: str = "0") 
 
 def _sale(lines: list[SaleLine], payments: list[Payment]) -> Sale:
     sale = Sale(id=42, warehouse_id=1, location_id=1, status=SaleStatus.COMPLETED)
-    sale.created_at = datetime(2026, 8, 8, 10, 30)
-    sale.completed_at = datetime(2026, 8, 8, 10, 31)
+    sale.created_at = datetime(2026, 8, 8, 10, 30, tzinfo=UTC)
+    sale.completed_at = datetime(2026, 8, 8, 10, 31, tzinfo=UTC)
     sale.lines = lines
     sale.payments = payments
     return sale
@@ -52,6 +53,7 @@ def _render(
         sale,
         template,
         prices_include_tax=prices_include_tax,
+        business_timezone=ZoneInfo("Europe/Madrid"),
         cashier_name=cashier_name,
     )
 
@@ -102,7 +104,7 @@ def test_renders_sale_id_and_date() -> None:
     text = _render(sale, _template())
 
     assert "Venta #42" in text
-    assert "2026-08-08 10:31" in text
+    assert "2026-08-08 12:31" in text
 
 
 def test_renders_each_line_with_name_and_total() -> None:

@@ -18,15 +18,17 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import Date, Select, case, cast, func, select
+from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import Product
+from app.core.business_time import business_date_expression, business_day_utc_range
 from app.core.errors import ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.inventory.models import StockMovement, Warehouse
 from app.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus
 from app.sales.models import Sale, SaleLine, SaleStatus
+from app.settings.business_time import get_business_timezone
 from app.suppliers.models import Supplier
 
 
@@ -64,6 +66,10 @@ class FieldDef:
     #: ``Any`` rather than their common ancestor, which mypy does not treat
     #: as interchangeable with either.
     columns: dict[str, Any]
+    #: This field is the subject's timestamp projected onto the configured
+    #: commercial calendar.  Its SQL expression has to be built at runtime,
+    #: once the store timezone is known.
+    is_business_date: bool = False
 
 
 @dataclass(frozen=True)
@@ -71,9 +77,9 @@ class SubjectDef:
     label: str
     dimensions: dict[str, FieldDef]
     metrics: dict[str, FieldDef]
-    #: Same expression as the "date" dimension's column — reused to apply
-    #: date_from/date_to without duplicating it.
-    date_expr: Any
+    #: Absolute timestamp used for date grouping/filtering. It remains a
+    #: TIMESTAMPTZ expression; only the projection to a business date varies.
+    timestamp_expr: Any
     #: Adds select_from/joins/base "only this counts" filtering (e.g. only
     #: COMPLETED sales) to a ``select(...)`` that already has its columns.
     build_from: Callable[[Select[Any]], Select[Any]]
@@ -113,12 +119,10 @@ def _sales_build_from(stmt: Select[Any]) -> Select[Any]:
     )
 
 
-_SALES_DATE = cast(Sale.completed_at, Date)
-
 _SALES = SubjectDef(
     label="Ventas",
     dimensions={
-        "date": FieldDef("Fecha", {"date": _SALES_DATE}),
+        "date": FieldDef("Fecha", {}, is_business_date=True),
         "product": FieldDef(
             "Producto",
             {"product_sku": SaleLine.product_sku, "product_name": SaleLine.product_name},
@@ -140,7 +144,7 @@ _SALES = SubjectDef(
         "tickets": FieldDef("Nº de tickets", {"tickets": func.count(func.distinct(Sale.id))}),
         "lines": FieldDef("Nº de líneas", {"lines": func.count(SaleLine.id)}),
     },
-    date_expr=_SALES_DATE,
+    timestamp_expr=Sale.completed_at,
     build_from=_sales_build_from,
     filter_appliers={
         "warehouse_id": lambda v: Sale.warehouse_id == v,
@@ -164,12 +168,12 @@ def _purchases_build_from(stmt: Select[Any]) -> Select[Any]:
     )
 
 
-_PURCHASES_DATE = cast(func.coalesce(PurchaseOrder.ordered_at, PurchaseOrder.created_at), Date)
+_PURCHASES_TIMESTAMP = func.coalesce(PurchaseOrder.ordered_at, PurchaseOrder.created_at)
 
 _PURCHASES = SubjectDef(
     label="Compras",
     dimensions={
-        "date": FieldDef("Fecha", {"date": _PURCHASES_DATE}),
+        "date": FieldDef("Fecha", {}, is_business_date=True),
         "product": FieldDef("Producto", {"product_sku": Product.sku, "product_name": Product.name}),
         "supplier": FieldDef("Proveedor", {"supplier_name": Supplier.name}),
     },
@@ -190,7 +194,7 @@ _PURCHASES = SubjectDef(
             "Nº de pedidos", {"orders": func.count(func.distinct(PurchaseOrder.id))}
         ),
     },
-    date_expr=_PURCHASES_DATE,
+    timestamp_expr=_PURCHASES_TIMESTAMP,
     build_from=_purchases_build_from,
     filter_appliers={
         "supplier_id": lambda v: PurchaseOrder.supplier_id == v,
@@ -210,12 +214,10 @@ def _movements_build_from(stmt: Select[Any]) -> Select[Any]:
     )
 
 
-_MOVEMENTS_DATE = cast(StockMovement.created_at, Date)
-
 _INVENTORY_MOVEMENTS = SubjectDef(
     label="Movimientos de inventario",
     dimensions={
-        "date": FieldDef("Fecha", {"date": _MOVEMENTS_DATE}),
+        "date": FieldDef("Fecha", {}, is_business_date=True),
         "product": FieldDef("Producto", {"product_sku": Product.sku, "product_name": Product.name}),
         "warehouse": FieldDef("Almacén", {"warehouse_name": Warehouse.name}),
         "movement_type": FieldDef("Tipo", {"movement_type": StockMovement.movement_type}),
@@ -226,7 +228,7 @@ _INVENTORY_MOVEMENTS = SubjectDef(
         ),
         "movements": FieldDef("Nº de movimientos", {"movements": func.count(StockMovement.id)}),
     },
-    date_expr=_MOVEMENTS_DATE,
+    timestamp_expr=StockMovement.created_at,
     build_from=_movements_build_from,
     filter_appliers={
         "warehouse_id": lambda v: StockMovement.warehouse_id == v,
@@ -278,9 +280,13 @@ async def run_report(
     select_exprs: list[Any] = []
     group_by_exprs: list[Any] = []
     output_keys: list[str] = []
+    timezone = await get_business_timezone(session)
+    date_expr = business_date_expression(subject_def.timestamp_expr, timezone)
 
     for dim_key in dimensions:
-        for col_key, expr in subject_def.dimensions[dim_key].columns.items():
+        field_def = subject_def.dimensions[dim_key]
+        columns = {"date": date_expr} if field_def.is_business_date else field_def.columns
+        for col_key, expr in columns.items():
             select_exprs.append(expr.label(col_key))
             group_by_exprs.append(expr)
             output_keys.append(col_key)
@@ -292,9 +298,11 @@ async def run_report(
     stmt = subject_def.build_from(select(*select_exprs))
 
     if filters.date_from is not None:
-        stmt = stmt.where(subject_def.date_expr >= filters.date_from)
+        start, _ = business_day_utc_range(filters.date_from, timezone)
+        stmt = stmt.where(subject_def.timestamp_expr >= start)
     if filters.date_to is not None:
-        stmt = stmt.where(subject_def.date_expr <= filters.date_to)
+        _, end = business_day_utc_range(filters.date_to, timezone)
+        stmt = stmt.where(subject_def.timestamp_expr < end)
     for filter_key, applier in subject_def.filter_appliers.items():
         value = getattr(filters, filter_key)
         if value is not None:

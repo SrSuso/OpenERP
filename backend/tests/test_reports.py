@@ -5,9 +5,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy import text, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.sales.models import Sale
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
@@ -115,6 +120,68 @@ async def test_run_sales_report_groups_by_product_and_sums_quantity_and_revenue(
     assert row["quantity"] == "3.000000"
     assert row["revenue"] == str(sale["total"])
     assert row["tickets"] == 1
+
+
+async def test_sales_dates_use_the_business_calendar_not_the_postgresql_timezone(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    assert (
+        await client.put(
+            "/api/v1/settings/options",
+            json={"values": {"business.timezone": "Europe/Madrid"}},
+        )
+    ).status_code == 200
+    product = await _create_product(client)
+    before_midnight = await _completed_sale(client, product=product, quantity="1")
+    after_midnight = await _completed_sale(client, product=product, quantity="1")
+    await db_session.execute(
+        update(Sale)
+        .where(Sale.id == before_midnight["id"])
+        .values(completed_at=datetime(2026, 8, 12, 21, 59, tzinfo=UTC))
+    )
+    await db_session.execute(
+        update(Sale)
+        .where(Sale.id == after_midnight["id"])
+        .values(completed_at=datetime(2026, 8, 12, 22, 1, tzinfo=UTC))
+    )
+    # The old DATE(timestamptz) changed result with this session setting.
+    # The new timezone(text, timestamptz) expression is explicit.
+    await db_session.execute(text("SET LOCAL TIME ZONE 'Pacific/Honolulu'"))
+    await db_session.flush()
+
+    grouped = await client.post(
+        "/api/v1/reports/run",
+        json={
+            "subject": "SALES",
+            "dimensions": ["date"],
+            "metrics": ["tickets"],
+            "filters": {"product_id": product["id"]},
+        },
+    )
+    filtered = await client.post(
+        "/api/v1/reports/run",
+        json={
+            "subject": "SALES",
+            "dimensions": ["date"],
+            "metrics": ["tickets"],
+            "filters": {
+                "product_id": product["id"],
+                "date_from": "2026-08-13",
+                "date_to": "2026-08-13",
+            },
+        },
+    )
+
+    assert grouped.status_code == 200
+    assert grouped.json()["rows"] == [
+        {"date": "2026-08-12", "tickets": 1},
+        {"date": "2026-08-13", "tickets": 1},
+    ]
+    assert filtered.status_code == 200
+    assert filtered.json()["rows"] == [{"date": "2026-08-13", "tickets": 1}]
 
 
 async def test_sales_report_revenue_respects_prices_include_tax(

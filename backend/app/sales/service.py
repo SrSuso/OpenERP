@@ -242,6 +242,8 @@ async def list_sales(
     terminal_id: int | None = None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
+    business_from: datetime | None = None,
+    business_to: datetime | None = None,
     number: int | None = None,
     limit: int = 100,
     offset: int = 0,
@@ -271,6 +273,14 @@ async def list_sales(
         stmt = stmt.where(Sale.created_at >= created_from)
     if created_to is not None:
         stmt = stmt.where(Sale.created_at < created_to)
+    # A completed sale belongs to the day it was actually charged. Drafts
+    # have no completed_at yet, so their commercial day remains the day the
+    # cart was opened.
+    business_instant = func.coalesce(Sale.completed_at, Sale.created_at)
+    if business_from is not None:
+        stmt = stmt.where(business_instant >= business_from)
+    if business_to is not None:
+        stmt = stmt.where(business_instant < business_to)
     if number is not None:
         stmt = stmt.where(Sale.number == number)
     return list((await session.execute(stmt)).scalars())

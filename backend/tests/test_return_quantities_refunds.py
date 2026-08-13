@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -13,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditLog
 from app.catalog.models import Product
+from app.core.business_time import business_date_expression
 from app.inventory.models import StockMovement
 from app.returns.models import Refund
+from app.settings.business_time import get_business_timezone
 from tests.test_returns import _completed_sale, _create_product, _default_location, _stock
 
 
@@ -395,3 +398,38 @@ async def test_refund_amount_is_the_sum_of_each_historical_sale_line(
     body = returned.json()
     assert [line["refund_amount"] for line in body["lines"]] == ["2.000000", "6.000000"]
     assert body["refund"]["amount"] == body["total_refund"] == "8.000000"
+
+
+async def test_completed_refund_uses_business_day_without_changing_its_z_cut(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    """A13/T7: calendar grouping is local; Z ownership remains absolute."""
+    await login(role_name="ADMIN")
+    assert (
+        await client.put(
+            "/api/v1/settings/options",
+            json={"values": {"business.timezone": "Europe/Madrid"}},
+        )
+    ).status_code == 200
+    _, sale, warehouse_id, _ = await _new_sale(client, tag="BUSINESS-DAY", quantity="1")
+    returned = await _return(client, sale, refund="1", stock="0")
+    assert returned.status_code == 201
+    refund_id = returned.json()["refund"]["id"]
+    await db_session.execute(
+        update(Refund)
+        .where(Refund.id == refund_id)
+        .values(completed_at=datetime(2026, 8, 12, 22, 30, tzinfo=UTC))
+    )
+    await db_session.flush()
+
+    timezone = await get_business_timezone(db_session)
+    day = business_date_expression(Refund.completed_at, timezone)
+    grouped_day = await db_session.scalar(select(day).where(Refund.id == refund_id))
+    z = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+
+    assert grouped_day == date(2026, 8, 13)
+    assert z.status_code == 201
+    assert z.json()["returns_count"] == 1
+    assert z.json()["returns_total"] == "2.000000"
