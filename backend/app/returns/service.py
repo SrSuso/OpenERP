@@ -22,6 +22,7 @@ from app.lots import service as lots_service
 from app.lots.schemas import LotCreate
 from app.returns.models import Return, ReturnLine
 from app.returns.schemas import ReturnCreate, ReturnLineCreate
+from app.sales import accounting
 from app.sales.models import Sale, SaleLine, SaleStatus
 
 _RETURN_OPTIONS = (
@@ -152,6 +153,11 @@ async def create_return(
                 raise ConflictError("The idempotent return result is not available.")
             return await get_return(session, claim.record.result_resource_id)
 
+    warehouse_id = await session.scalar(select(Sale.warehouse_id).where(Sale.id == sale_id))
+    if warehouse_id is None:
+        raise ValidationError(f"Sale {sale_id} does not exist.")
+    await accounting.lock_warehouse_cut(session, warehouse_id)
+
     sale = await _get_sale_for_return(session, sale_id)
     if sale.status != SaleStatus.COMPLETED:
         raise ValidationError(
@@ -246,7 +252,16 @@ async def create_return(
             location_id=sale.location_id,
         )
 
-    ret = Return(sale_id=sale_id, notes=payload.notes, processed_by_user_id=get_user_id())
+    ret = Return(
+        sale_id=sale_id,
+        notes=payload.notes,
+        processed_by_user_id=get_user_id(),
+        # TimestampMixin's server ``now()`` is the transaction start.  A
+        # return may have waited behind a Z cut, so use the DB wall clock
+        # after acquiring that cut or it could be dated into the closed
+        # period while becoming visible only afterwards.
+        created_at=await accounting.database_clock(session),
+    )
     session.add(ret)
     await session.flush()
 

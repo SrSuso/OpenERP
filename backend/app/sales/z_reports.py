@@ -18,7 +18,9 @@ Dos reglas que la hacen fiable:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import hashlib
+import json
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -27,11 +29,15 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.core.context import get_user_id
-from app.core.errors import ConflictError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
+from app.idempotency import service as idempotency_service
 from app.returns.models import Return, ReturnLine
+from app.sales import accounting
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus, ZReport
 from app.sales.service import compute_line_totals, payable
+
+_CLOSE_OPERATION = "z_report.close"
 
 
 def _q(value: Decimal) -> Decimal:
@@ -75,13 +81,19 @@ async def preview(session: AsyncSession, warehouse_id: int) -> dict[str, object]
 
 
 async def _totals(
-    session: AsyncSession, warehouse_id: int, *, since: datetime | None
+    session: AsyncSession,
+    warehouse_id: int,
+    *,
+    since: datetime | None,
+    until: datetime | None = None,
 ) -> dict[str, object]:
     sales_stmt = select(Sale).where(
         Sale.warehouse_id == warehouse_id, Sale.status == SaleStatus.COMPLETED
     )
     if since is not None:
         sales_stmt = sales_stmt.where(Sale.completed_at > since)
+    if until is not None:
+        sales_stmt = sales_stmt.where(Sale.completed_at <= until)
     sales = list((await session.execute(sales_stmt)).scalars())
     sale_ids = [sale.id for sale in sales]
     fiscal_mode_by_sale = {sale.id: sale.prices_include_tax for sale in sales}
@@ -140,6 +152,8 @@ async def _totals(
     )
     if since is not None:
         returns_stmt = returns_stmt.where(Return.created_at > since)
+    if until is not None:
+        returns_stmt = returns_stmt.where(Return.created_at <= until)
     returns = list((await session.execute(returns_stmt)).scalars())
     returns_total = Decimal(0)
     if returns:
@@ -165,8 +179,55 @@ async def _totals(
     }
 
 
-async def close(session: AsyncSession, warehouse_id: int) -> ZReport:
+def close_request_fingerprint(warehouse_id: int) -> str:
+    canonical = json.dumps({"warehouse_id": warehouse_id}, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def get_report(session: AsyncSession, report_id: int) -> ZReport:
+    report = await session.get(ZReport, report_id)
+    if report is None:
+        raise NotFoundError(f"Z report {report_id} not found.")
+    return report
+
+
+async def close(
+    session: AsyncSession,
+    warehouse_id: int,
+    *,
+    idempotency_key: str | None = None,
+    actor_user_id: int | None = None,
+) -> ZReport:
     """Cierra el turno: calcula los totales, los congela y los numera."""
+    claim = None
+    closing_user_id = actor_user_id if actor_user_id is not None else get_user_id()
+    if idempotency_key is not None:
+        if closing_user_id is None:
+            raise ValidationError("An authenticated user is required for an idempotent Z close.")
+        claim = await idempotency_service.claim(
+            session,
+            operation=_CLOSE_OPERATION,
+            idempotency_key=idempotency_key,
+            request_fingerprint=close_request_fingerprint(warehouse_id),
+            resource_id=warehouse_id,
+            actor_user_id=closing_user_id,
+        )
+        if not claim.is_new:
+            if claim.record.result_resource_id is None:
+                raise ConflictError("The idempotent Z report result is not available.")
+            return await get_report(session, claim.record.result_resource_id)
+
+    # Observe the period before waiting.  A different-key closer that saw
+    # this same period but lost the accounting lock must not silently create
+    # the following empty Z after it wakes up.
+    observed_last = await _last_close(session, warehouse_id)
+    observed_last_id = observed_last.id if observed_last is not None else None
+    await accounting.lock_warehouse_cut(session, warehouse_id)
+    last = await _last_close(session, warehouse_id)
+    last_id = last.id if last is not None else None
+    if last_id != observed_last_id:
+        raise ConflictError("This Z period was closed by another request.")
+
     pending = await open_sales(session, warehouse_id)
     if pending:
         numbers = ", ".join(f"#{sale.id}" for sale in pending)
@@ -176,14 +237,19 @@ async def close(session: AsyncSession, warehouse_id: int) -> ZReport:
             "cuadraría ni esta Z ni la siguiente."
         )
 
-    last = await _last_close(session, warehouse_id)
-    totals = await _totals(session, warehouse_id, since=last.closed_at if last else None)
+    closed_at = await accounting.database_clock(session)
+    totals = await _totals(
+        session,
+        warehouse_id,
+        since=last.closed_at if last else None,
+        until=closed_at,
+    )
 
     report = ZReport(
         warehouse_id=warehouse_id,
         number=(last.number + 1) if last else 1,
-        closed_at=datetime.now(UTC),
-        closed_by_user_id=get_user_id(),
+        closed_at=closed_at,
+        closed_by_user_id=closing_user_id,
         **totals,
     )
     session.add(report)
@@ -200,6 +266,8 @@ async def close(session: AsyncSession, warehouse_id: int) -> ZReport:
             "gross_total": str(report.gross_total),
         },
     )
+    if claim is not None:
+        await idempotency_service.complete(session, claim.record, result_resource_id=report.id)
     return report
 
 

@@ -214,5 +214,20 @@ async def preview_z_report(
 @router.post(
     "/z-reports", response_model=ZReportRead, status_code=201, dependencies=[_require_manage]
 )
-async def close_z_report(session: SessionDep, warehouse_id: Annotated[int, Query()]) -> ZReportRead:
-    return _z_to_read(await z_reports.close(session, warehouse_id))
+async def close_z_report(
+    session: SessionDep,
+    current_user: CurrentUser,
+    warehouse_id: Annotated[int, Query()],
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=1, max_length=200),
+    ] = None,
+) -> ZReportRead:
+    return _z_to_read(
+        await z_reports.close(
+            session,
+            warehouse_id,
+            idempotency_key=idempotency_key,
+            actor_user_id=current_user.id,
+        )
+    )

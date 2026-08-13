@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -37,6 +37,7 @@ from app.inventory import service as inventory_service
 from app.inventory.models import MovementType
 from app.lots import service as lots_service
 from app.pricing import service as pricing_service
+from app.sales import accounting
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus
 from app.sales.schemas import (
     CheckoutRequest,
@@ -546,6 +547,11 @@ async def checkout(
                 raise ConflictError("The idempotent checkout result is not available.")
             return completed
 
+    warehouse_id = await session.scalar(select(Sale.warehouse_id).where(Sale.id == sale_id))
+    if warehouse_id is None:
+        raise NotFoundError(f"Sale {sale_id} not found.")
+    await accounting.lock_warehouse_cut(session, warehouse_id)
+
     sale = await _get_sale_for_checkout(session, sale_id)
     if sale.status != SaleStatus.DRAFT:
         raise ConflictError(f"Cannot check out a sale that is already {sale.status}.")
@@ -597,10 +603,10 @@ async def checkout(
     # the sale itself yet, so a DRAFT sale that fails checkout is exactly
     # as it was, ready to retry (e.g. after a restock).
     # Every checkout acquires resources in this order:
-    # idempotency key -> Sale -> stock groups by product id -> balance rows
-    # by id -> global sale-number advisory lock. Sorting here means two sales with
-    # the same products cannot deadlock merely because their lines were
-    # scanned in opposite orders.
+    # idempotency key -> warehouse accounting cut -> Sale -> stock groups by
+    # product id -> balance rows by id -> global sale-number advisory lock.
+    # Sorting here means two sales with the same products cannot deadlock
+    # merely because their lines were scanned in opposite orders.
     stock_lines = sorted(
         (line for line in sale.lines if line.tracks_stock),
         key=lambda line: (line.product_id, line.id),
@@ -653,7 +659,7 @@ async def checkout(
 
     before = _sale_snapshot(sale)
     sale.status = SaleStatus.COMPLETED
-    sale.completed_at = datetime.now(UTC)
+    sale.completed_at = await accounting.database_clock(session)
     sale.prices_include_tax = prices_include_tax
     if sale.cashier_user_id is not None:
         cashier = await session.get(User, sale.cashier_user_id)
