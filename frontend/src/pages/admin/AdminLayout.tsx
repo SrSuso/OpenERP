@@ -34,6 +34,11 @@ const SECTIONS: NavSection[] = [
     entries: [
       { to: '/admin', label: 'Inicio', permissions: [] },
       {
+        to: '/admin/inventory/terminals',
+        label: 'Terminales POS',
+        permissions: ['inventory.manage'],
+      },
+      {
         to: '/admin/inventory',
         label: 'Inventario',
         permissions: ['product.read', 'lot.read', 'inventory.read'],
