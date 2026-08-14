@@ -117,7 +117,7 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
     if existing is not None:
         raise ConflictError("A category with this name already exists.")
 
-    category = ProductCategory(name=payload.name)
+    category = ProductCategory(name=payload.name, tracks_stock=payload.tracks_stock)
     session.add(category)
     await session.flush()
     await audit.record(
@@ -125,7 +125,7 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
         action="created",
         entity_type="product_category",
         entity_id=category.id,
-        after={"name": category.name},
+        after={"name": category.name, "tracks_stock": category.tracks_stock},
     )
     return await get_category(session, category.id)
 

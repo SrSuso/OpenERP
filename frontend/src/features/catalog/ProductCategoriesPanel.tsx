@@ -29,6 +29,12 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   const taxes = useQuery(taxesQuery);
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
+  const [tracksStock, setTracksStock] = useState(true);
+  const [marginInput, setMarginInput] = useState('');
+  const [amountInput, setAmountInput] = useState('');
+  const [formulaInput, setFormulaInput] = useState('');
+  const [taxIds, setTaxIds] = useState<Set<number>>(new Set());
+  const createFormulaFieldId = useId();
   const [error, setError] = useState<string | null>(null);
   //: Cuál está abierta para editar (ninguna = null).
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -51,10 +57,15 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   };
 
   const createMutation = useMutation({
-    mutationFn: (value: string) => createProductCategory(value),
+    mutationFn: createProductCategory,
     onSuccess: () => {
       invalidate();
       setName('');
+      setTracksStock(true);
+      setMarginInput('');
+      setAmountInput('');
+      setFormulaInput('');
+      setTaxIds(new Set());
       setError(null);
     },
     onError: (err: unknown) => {
@@ -69,7 +80,14 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) return;
-    createMutation.mutate(name.trim());
+    createMutation.mutate({
+      name: name.trim(),
+      tracks_stock: tracksStock,
+      margin_rate: marginInput.trim() === '' ? null : marginInput,
+      margin_amount: amountInput.trim() === '' ? null : amountInput,
+      price_formula: formulaInput.trim() === '' ? null : formulaInput.trim(),
+      tax_ids: [...taxIds],
+    });
   }
 
   return (
@@ -122,22 +140,92 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
         )}
       </ul>
 
-      {canManage && (
-        <form onSubmit={submit} className="flex gap-2">
-          <input
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Nombre de la categoría"
-            className="w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={createMutation.isPending}
-            className="rounded bg-brand-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            Añadir
-          </button>
+      {canManage && editingId === null && (
+        <form onSubmit={submit} className="rounded border border-slate-200 bg-slate-50 p-3">
+          <h4 className="text-sm font-medium text-slate-700">Nueva categoría</h4>
+          <div className="mt-3 flex flex-wrap items-start gap-4">
+            <label className="text-xs text-slate-600">
+              Nombre
+              <input
+                type="text"
+                aria-label="Nombre de la categoría"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Nombre de la categoría"
+                className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              />
+            </label>
+
+            <label className="text-xs text-slate-600">
+              Margen por defecto (%)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={marginInput}
+                onChange={(event) => setMarginInput(event.target.value)}
+                placeholder="vacío = sin margen por defecto"
+                className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+              />
+            </label>
+
+            <label className="text-xs text-slate-600">
+              Margen fijo por defecto (€)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amountInput}
+                onChange={(event) => setAmountInput(event.target.value)}
+                placeholder="p. ej. 0,25"
+                className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+              />
+            </label>
+          </div>
+
+          <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={tracksStock}
+              onChange={(event) => setTracksStock(event.target.checked)}
+            />
+            <span>
+              Llevar control de existencias
+              <span className="mt-0.5 block text-slate-400">
+                Apagado, sus productos se venden sin comprobar ni descontar stock.
+              </span>
+            </span>
+          </label>
+
+          <div className="mt-3 text-xs text-slate-600">
+            <label htmlFor={createFormulaFieldId}>Fórmula por defecto</label>
+            <input
+              id={createFormulaFieldId}
+              type="text"
+              value={formulaInput}
+              onChange={(event) => setFormulaInput(event.target.value)}
+              placeholder="vacío = la fórmula de la tienda"
+              className="mt-1 block w-full rounded border border-slate-300 px-2 py-1 font-mono text-sm"
+            />
+            <span className="mt-1 block text-slate-400">
+              Variables: cost, tax_rate, surcharge_rate, margin_rate. El margen fijo se suma aparte.
+            </span>
+          </div>
+
+          <p className="mt-3 mb-1 text-xs text-slate-600">Impuestos por defecto</p>
+          <TaxChips taxes={taxes.data ?? []} selected={taxIds} onChange={setTaxIds} />
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={createMutation.isPending || name.trim() === ''}
+              className="rounded bg-brand-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Creando…' : 'Añadir'}
+            </button>
+            <span className="text-xs text-slate-400">
+              La foto se añade después: necesita el identificador de la categoría recién creada.
+            </span>
+          </div>
         </form>
       )}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

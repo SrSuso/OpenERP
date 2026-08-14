@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -54,7 +54,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
     { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '5.2', is_active: true },
     { id: 2, name: 'IVA reducido', rate: '10', surcharge_rate: '1.4', is_active: true },
   ];
-  const createCategoryCalls: string[] = [];
+  const createCategoryCalls: Record<string, unknown>[] = [];
   const deleteCategoryCalls: number[] = [];
   const updateCategoryCalls: { id: number; name: string; tracks_stock: boolean }[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
@@ -115,18 +115,18 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
       }
       if (method === 'POST' && url.includes('/product-categories')) {
         const body = init?.body
-          ? (JSON.parse(init.body as string) as { name: string })
+          ? (JSON.parse(init.body as string) as Record<string, unknown>)
           : { name: '' };
-        createCategoryCalls.push(body.name);
-        const created = {
+        createCategoryCalls.push(body);
+        const created: ProductCategory = {
           id: 2,
-          name: body.name,
+          name: body['name'] as string,
           is_active: true,
-          margin_rate: null,
-          margin_amount: null,
-          price_formula: null,
-          tracks_stock: true,
-          taxes: [],
+          margin_rate: (body['margin_rate'] as string | null) ?? null,
+          margin_amount: (body['margin_amount'] as string | null) ?? null,
+          price_formula: (body['price_formula'] as string | null) ?? null,
+          tracks_stock: (body['tracks_stock'] as boolean | undefined) ?? true,
+          taxes: taxes.filter((tax) => (body['tax_ids'] as number[] | undefined)?.includes(tax.id)),
         };
         categories.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
@@ -245,7 +245,42 @@ describe('CategoriesPage', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
 
     expect(await screen.findByText('Lácteos')).toBeInTheDocument();
-    expect(backend.createCategoryCalls).toEqual(['Lácteos']);
+    expect(backend.createCategoryCalls).toEqual([
+      {
+        name: 'Lácteos',
+        tracks_stock: true,
+        margin_rate: null,
+        margin_amount: null,
+        price_formula: null,
+        tax_ids: [],
+      },
+    ]);
+  });
+
+  it('creates a product category with all its initial defaults', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.type(screen.getByLabelText('Nombre de la categoría'), 'Congelados');
+    await userEvent.type(screen.getByLabelText('Margen por defecto (%)'), '25');
+    await userEvent.type(screen.getByLabelText('Margen fijo por defecto (€)'), '0.25');
+    await userEvent.type(screen.getByLabelText('Fórmula por defecto'), 'cost * 2');
+    await userEvent.click(screen.getByRole('checkbox', { name: /Llevar control de existencias/ }));
+    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
+    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
+
+    expect(await screen.findByText('Congelados')).toBeInTheDocument();
+    expect(backend.createCategoryCalls).toEqual([
+      {
+        name: 'Congelados',
+        tracks_stock: false,
+        margin_rate: '25',
+        margin_amount: '0.25',
+        price_formula: 'cost * 2',
+        tax_ids: [1],
+      },
+    ]);
   });
 
   it('creates a POS category with a name, color and order', async () => {
@@ -253,7 +288,8 @@ describe('CategoriesPage', () => {
     renderPage();
     await screen.findByText('Ofertas');
 
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Congelados');
+    const posPanel = screen.getByRole('heading', { name: 'Categorías POS' }).parentElement!;
+    await userEvent.type(within(posPanel).getByLabelText('Nombre'), 'Congelados');
     // Tres botones "Añadir" en esta página (categorías de producto, POS y
     // unidades); el de POS es el segundo en el orden del DOM.
     await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[1]!);

@@ -37,7 +37,7 @@ from app.catalog.schemas import (
 )
 from app.catalog.version import catalog_version
 from app.rbac.dependencies import check_permission, require_permission
-from app.rbac.permissions import POS_CATEGORY_MANAGE, PRODUCT_MANAGE, PRODUCT_READ
+from app.rbac.permissions import POS_CATEGORY_MANAGE, PRICING_MANAGE, PRODUCT_MANAGE, PRODUCT_READ
 
 router = APIRouter(tags=["catalog"])
 
@@ -82,9 +82,39 @@ async def list_categories(session: SessionDep) -> list[ProductCategoryRead]:
     dependencies=[_require_manage],
 )
 async def create_category(
-    payload: ProductCategoryCreate, session: SessionDep
+    payload: ProductCategoryCreate, session: SessionDep, user: CurrentUser
 ) -> ProductCategoryRead:
-    return _category_to_read(await service.create_category(session, payload))
+    # Crear una categoría sigue pidiendo ``product.manage``. Si se envían
+    # valores de precios o impuestos, conservar el mismo límite de permiso
+    # que PATCH /product-categories/{id}/pricing; ocultar el campo en React
+    # nunca puede ser la barrera de seguridad.
+    has_pricing_values = (
+        payload.margin_rate is not None
+        or payload.margin_amount is not None
+        or bool(payload.price_formula)
+        or bool(payload.tax_ids)
+    )
+    if has_pricing_values:
+        check_permission(user, PRICING_MANAGE)
+
+    category = await service.create_category(session, payload)
+    if has_pricing_values:
+        # Pricing owns formula/tax validation, recomputation and its audit.
+        # The import is local because pricing already depends on catalog.
+        from app.pricing import service as pricing_service
+        from app.pricing.schemas import CategoryPricingUpdate
+
+        category = await pricing_service.update_category_pricing(
+            session,
+            category.id,
+            CategoryPricingUpdate(
+                margin_rate=payload.margin_rate,
+                margin_amount=payload.margin_amount,
+                price_formula=payload.price_formula,
+                tax_ids=payload.tax_ids,
+            ),
+        )
+    return _category_to_read(category)
 
 
 @router.patch(

@@ -45,11 +45,22 @@ export const productCategoriesQuery = queryOptions({
     }),
 });
 
-export async function createProductCategory(name: string): Promise<ProductCategory> {
+export interface ProductCategoryCreate {
+  name: string;
+  tracks_stock: boolean;
+  margin_rate: string | null;
+  margin_amount: string | null;
+  price_formula: string | null;
+  tax_ids: number[];
+}
+
+export async function createProductCategory(
+  payload: ProductCategoryCreate,
+): Promise<ProductCategory> {
   return apiFetch(`${API_V1}/product-categories`, {
     method: 'POST',
     schema: productCategorySchema,
-    body: { name },
+    body: payload,
   });
 }
 

@@ -10,6 +10,15 @@ from pydantic import BaseModel, Field
 
 class ProductCategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    #: Los mismos valores por defecto que se pueden cambiar después desde
+    #: precios. Se aceptan aquí para que una categoría quede lista desde su
+    #: creación; la validación de fórmula e impuestos sigue viviendo en
+    #: ``app.pricing``.
+    tracks_stock: bool = True
+    margin_rate: Decimal | None = Field(default=None, ge=0)
+    margin_amount: Decimal | None = Field(default=None, ge=0)
+    price_formula: str | None = Field(default=None, max_length=500)
+    tax_ids: list[int] = Field(default_factory=list)
 
 
 class ProductCategoryUpdate(BaseModel):
