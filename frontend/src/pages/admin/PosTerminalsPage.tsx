@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import { warehousesQuery } from '@/features/inventory/api';
 import {
@@ -67,6 +67,13 @@ export function PosTerminalsPage() {
   const warehouses = useQuery(warehousesQuery);
   const [name, setName] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
+
+  useEffect(() => {
+    if (warehouseId === '' && warehouses.data?.[0]) {
+      setWarehouseId(String(warehouses.data[0].id));
+    }
+  }, [warehouseId, warehouses.data]);
+
   const create = useMutation({
     mutationFn: () => createPosTerminal(name.trim(), Number(warehouseId)),
     onSuccess: () => {
@@ -130,7 +137,6 @@ export function PosTerminalsPage() {
             onChange={(event) => setWarehouseId(event.target.value)}
             className="mt-1 block rounded border border-slate-300 px-3 py-1.5"
           >
-            <option value="">Seleccionar…</option>
             {(warehouses.data ?? []).map((warehouse) => (
               <option key={warehouse.id} value={warehouse.id}>
                 {warehouse.name}

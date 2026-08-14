@@ -81,9 +81,9 @@ describe('PosTerminalsPage', () => {
     await screen.findByDisplayValue('Caja 1');
 
     await userEvent.type(screen.getByPlaceholderText('Caja 1'), 'Caja 2');
-    await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir terminal' }));
     expect(await screen.findByDisplayValue('Caja 2')).toBeInTheDocument();
+    expect(backend.writes).toContainEqual({ name: 'Caja 2', warehouse_id: 1 });
 
     const firstName = screen.getByLabelText('Nombre de Caja 1');
     await userEvent.clear(firstName);
