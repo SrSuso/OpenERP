@@ -16,7 +16,7 @@ from app.auth.dependencies import (
     SettingsDep,
 )
 from app.auth.models import AuthSession
-from app.auth.schemas import LoginRequest, MeResponse, PosLoginRequest, SessionRead
+from app.auth.schemas import LoginRequest, MeResponse, PosLoginRequest, PosLoginUser, SessionRead
 from app.core.errors import AuthenticationError, NotFoundError
 from app.rbac.dependencies import user_permissions
 from app.users.models import User
@@ -33,6 +33,15 @@ def _me(user: User) -> MeResponse:
         permissions=sorted(user_permissions(user)),
         must_change_password=user.must_change_password,
     )
+
+
+@router.get("/auth/pos/users", response_model=list[PosLoginUser])
+async def pos_login_users(session: SessionDep) -> list[PosLoginUser]:
+    """Names selectable on the unauthenticated POS sign-in screen."""
+    return [
+        PosLoginUser(id=user.id, full_name=user.full_name, username=user.pos_username or "")
+        for user in await service.list_pos_login_users(session)
+    ]
 
 
 @router.post("/auth/login", response_model=MeResponse)

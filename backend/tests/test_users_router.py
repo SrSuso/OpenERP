@@ -101,6 +101,44 @@ async def test_admin_can_edit_an_existing_users_name_and_email(
     assert response.json()["full_name"] == "Después"
 
 
+async def test_admin_can_disable_pos_access_without_losing_credentials(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    await login(role_name="ADMIN")
+    target = await make_user(email="cashier@example.com", role_name="CASHIER")
+    target.pos_username = "cashier"
+    target.pos_pin_hash = _CONCURRENCY_HASHER.hash("1234")
+    target.pos_access_enabled = True
+
+    response = await client.patch(f"/api/v1/users/{target.id}/pos-access", json={"enabled": False})
+
+    assert response.status_code == 200
+    assert response.json()["pos_access_enabled"] is False
+    assert response.json()["pos_username"] == "cashier"
+    assert response.json()["pos_pin_configured"] is True
+
+
+async def test_changing_to_a_role_without_pos_access_revokes_pos_selection(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    target = await make_user(email="cashier@example.com", role_name="CASHIER")
+    target.pos_username = "cashier"
+    target.pos_pin_hash = _CONCURRENCY_HASHER.hash("1234")
+    target.pos_access_enabled = True
+    manager_role = await _role(db_session, "MANAGER")
+
+    response = await client.patch(f"/api/v1/users/{target.id}", json={"role_id": manager_role.id})
+
+    assert response.status_code == 200
+    assert response.json()["pos_access_enabled"] is False
+
+
 async def test_deactivated_user_can_no_longer_log_in(
     client: AsyncClient,
     login: Callable[..., Awaitable[dict[str, Any]]],

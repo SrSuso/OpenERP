@@ -78,6 +78,10 @@ class PosCredentialsUpdate(BaseModel):
         return normalise_pos_username(value)
 
 
+class PosAccessUpdate(BaseModel):
+    enabled: bool
+
+
 class UserRead(BaseModel):
     id: int
     email: str
@@ -88,3 +92,4 @@ class UserRead(BaseModel):
     role_name: str
     pos_username: str | None
     pos_pin_configured: bool
+    pos_access_enabled: bool

@@ -29,6 +29,14 @@ class PosLoginRequest(BaseModel):
         return normalise_pos_username(value)
 
 
+class PosLoginUser(BaseModel):
+    """Public, deliberately minimal identity used by the shared POS screen."""
+
+    id: int
+    full_name: str
+    username: str
+
+
 class MeResponse(BaseModel):
     """The signed-in user plus their effective permissions, so the frontend
     can build its nav and route guards from one call instead of re-deriving

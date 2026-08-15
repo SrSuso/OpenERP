@@ -33,6 +33,11 @@ class User(IntPrimaryKeyMixin, TimestampMixin, Base):
     # el PIN se guarda con el mismo hasher, nunca en claro.
     pos_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pos_pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Configurar un PIN no basta para abrir una caja: Administración decide
+    # explícitamente qué cuentas están habilitadas para la superficie POS.
+    pos_access_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"

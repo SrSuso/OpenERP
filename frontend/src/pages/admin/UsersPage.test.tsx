@@ -46,6 +46,7 @@ function baseUsers(): User[] {
       role_name: 'ADMIN',
       pos_username: null,
       pos_pin_configured: false,
+      pos_access_enabled: false,
     },
     {
       id: 2,
@@ -57,6 +58,7 @@ function baseUsers(): User[] {
       role_name: 'CASHIER',
       pos_username: null,
       pos_pin_configured: false,
+      pos_access_enabled: false,
     },
   ];
 }
@@ -71,6 +73,7 @@ function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] }
   const deactivateCalls: number[] = [];
   const activateCalls: number[] = [];
   const resetCalls: { userId: number; temporaryPassword: string }[] = [];
+  const posAccessCalls: { userId: number; enabled: boolean }[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -108,6 +111,7 @@ function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] }
           role_name: 'CASHIER',
           pos_username: null,
           pos_pin_configured: false,
+          pos_access_enabled: false,
         };
         users.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
@@ -147,12 +151,28 @@ function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] }
         resetCalls.push({ userId, temporaryPassword: body.temporary_password });
         return Promise.resolve(new Response(null, { status: 204 }));
       }
+      if (method === 'PATCH' && /\/users\/(\d+)\/pos-access$/.test(url)) {
+        const userId = Number(/\/users\/(\d+)\/pos-access$/.exec(url)![1]);
+        const body = JSON.parse(init?.body as string) as { enabled: boolean };
+        posAccessCalls.push({ userId, enabled: body.enabled });
+        const user = users.find((candidate) => candidate.id === userId)!;
+        user.pos_access_enabled = body.enabled;
+        return Promise.resolve(jsonResponse(user));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createCalls, patchCalls, editCalls, deactivateCalls, activateCalls, resetCalls };
+  return {
+    createCalls,
+    patchCalls,
+    editCalls,
+    deactivateCalls,
+    activateCalls,
+    resetCalls,
+    posAccessCalls,
+  };
 }
 
 function renderPage() {
@@ -307,5 +327,19 @@ describe('UsersPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar contraseña temporal' }));
 
     expect(backend.resetCalls).toEqual([{ userId: 2, temporaryPassword: 'temporary-password-42' }]);
+  });
+
+  it('lets administration enable a configured user for the POS picker', async () => {
+    const users = baseUsers();
+    users[1]!.pos_username = 'cajero';
+    users[1]!.pos_pin_configured = true;
+    const backend = stubBackend({ users });
+    renderPage();
+    await screen.findByText('Cajero Dos');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dar acceso TPV' }));
+
+    await screen.findByText('Habilitado');
+    expect(backend.posAccessCalls).toEqual([{ userId: 2, enabled: true }]);
   });
 });

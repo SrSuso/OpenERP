@@ -87,6 +87,23 @@ export async function posLogin(username: string, pin: string): Promise<Me> {
   });
 }
 
+export const posLoginUserSchema = z.object({
+  id: z.number(),
+  full_name: z.string(),
+  username: z.string(),
+});
+export type PosLoginUser = z.infer<typeof posLoginUserSchema>;
+
+export const posLoginUsersQuery = queryOptions({
+  queryKey: ['auth', 'pos', 'login-users'] as const,
+  queryFn: ({ signal }) =>
+    apiFetch(`${API_V1}/auth/pos/users`, {
+      schema: z.array(posLoginUserSchema),
+      signal,
+      headers: posSessionHeaders,
+    }),
+});
+
 export async function posLogout(): Promise<void> {
   await apiFetch(`${API_V1}/auth/pos/logout`, {
     method: 'POST',

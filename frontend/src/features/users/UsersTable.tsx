@@ -10,6 +10,7 @@ interface UsersTableProps {
   onActivate: (userId: number) => void;
   onResetPassword: (userId: number) => void;
   onSetPosCredentials: (userId: number) => void;
+  onSetPosAccess: (userId: number, enabled: boolean) => void;
   onEdit: (userId: number) => void;
   isChangingRole: boolean;
   isDeactivating: boolean;
@@ -25,6 +26,7 @@ export function UsersTable({
   onActivate,
   onResetPassword,
   onSetPosCredentials,
+  onSetPosAccess,
   onEdit,
   isChangingRole,
   isDeactivating,
@@ -38,6 +40,7 @@ export function UsersTable({
             <th className="px-4 py-2 font-medium">Usuario</th>
             <th className="px-4 py-2 font-medium">Rol</th>
             <th className="px-4 py-2 font-medium">Estado</th>
+            <th className="px-4 py-2 font-medium">TPV</th>
             <th className="px-4 py-2 font-medium" />
           </tr>
         </thead>
@@ -81,6 +84,17 @@ export function UsersTable({
                     </span>
                   )}
                 </td>
+                <td className="px-4 py-2">
+                  {user.pos_access_enabled ? (
+                    <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                      Habilitado
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                      No habilitado
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-right">
                   {!isSelf && currentRoleIsAssignable && (
                     <div className="flex justify-end gap-3">
@@ -103,8 +117,26 @@ export function UsersTable({
                         onClick={() => onSetPosCredentials(user.id)}
                         className="text-sm font-medium text-brand-700 hover:underline"
                       >
-                        Acceso TPV
+                        Configurar TPV
                       </button>
+                      {user.pos_access_enabled ? (
+                        <button
+                          type="button"
+                          onClick={() => onSetPosAccess(user.id, false)}
+                          className="text-sm font-medium text-amber-700 hover:underline"
+                        >
+                          Quitar acceso TPV
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onSetPosAccess(user.id, true)}
+                          disabled={!user.pos_pin_configured}
+                          className="text-sm font-medium text-green-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Dar acceso TPV
+                        </button>
+                      )}
                       {user.is_active ? (
                         <button
                           type="button"

@@ -92,12 +92,39 @@ async def authenticate_pos(session: AsyncSession, *, username: str, pin: str) ->
     if (
         user is None
         or not user.is_active
+        or not user.pos_access_enabled
         or user.pos_pin_hash is None
         or not verify_password(pin, user.pos_pin_hash)
         or POS_ACCESS not in {permission.key for permission in user.role.permissions}
     ):
         raise AuthenticationError("Invalid POS username or PIN.")
     return user
+
+
+async def list_pos_login_users(session: AsyncSession) -> list[User]:
+    """Return only intentionally enabled cashiers for the POS picker.
+
+    This endpoint is intentionally unauthenticated: the picker is rendered
+    before a POS session exists. It exposes neither email nor any credential
+    material, and authentication still requires the user's PIN.
+    """
+    stmt = (
+        select(User)
+        .where(
+            User.is_active.is_(True),
+            User.pos_access_enabled.is_(True),
+            User.pos_username.is_not(None),
+            User.pos_pin_hash.is_not(None),
+        )
+        .options(selectinload(User.role).selectinload(Role.permissions))
+        .order_by(User.full_name, User.pos_username)
+    )
+    users = list((await session.execute(stmt)).scalars())
+    return [
+        user
+        for user in users
+        if POS_ACCESS in {permission.key for permission in user.role.permissions}
+    ]
 
 
 async def create_session(

@@ -10,6 +10,7 @@ import {
   deactivateUser,
   resetUserPassword,
   setUserPosCredentials,
+  setUserPosAccess,
   updateUser,
   updateUserRole,
   usersQuery,
@@ -115,7 +116,27 @@ export function UsersPage() {
       setPosPin('');
       void queryClient.invalidateQueries({ queryKey: usersQuery.queryKey });
     },
-    onError: () => setOperationError('No se ha podido guardar el acceso TPV.'),
+    onError: (error: unknown) =>
+      setOperationError(
+        error instanceof ApiError && error.code === 'validation_error'
+          ? 'El rol del usuario debe tener acceso TPV antes de configurar sus credenciales.'
+          : 'No se ha podido guardar el acceso TPV.',
+      ),
+  });
+
+  const posAccessMutation = useMutation({
+    mutationFn: ({ userId, enabled }: { userId: number; enabled: boolean }) =>
+      setUserPosAccess(userId, enabled),
+    onSuccess: () => {
+      setOperationError(null);
+      void queryClient.invalidateQueries({ queryKey: usersQuery.queryKey });
+    },
+    onError: (error: unknown) =>
+      setOperationError(
+        error instanceof ApiError && error.code === 'validation_error'
+          ? 'Configura antes un usuario y PIN TPV, y usa un rol con acceso TPV.'
+          : 'No se ha podido actualizar el acceso TPV.',
+      ),
   });
 
   const editMutation = useMutation({
@@ -253,6 +274,10 @@ export function UsersPage() {
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             />
           </label>
+          <p className="mt-2 text-xs text-slate-500">
+            Al guardar, este usuario aparecerá en el acceso TPV. Puedes quitarle el acceso sin
+            borrar sus credenciales.
+          </p>
           <div className="mt-3 flex gap-2">
             <button
               type="submit"
@@ -365,6 +390,7 @@ export function UsersPage() {
             setPosUsername(target?.pos_username ?? '');
             setPosPin('');
           }}
+          onSetPosAccess={(userId, enabled) => posAccessMutation.mutate({ userId, enabled })}
           onEdit={(userId) => {
             const target = users.data.find((user) => user.id === userId) ?? null;
             setEditTarget(target);

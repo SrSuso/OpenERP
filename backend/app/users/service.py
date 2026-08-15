@@ -13,6 +13,7 @@ from app.auth import service as auth_service
 from app.auth.security import hash_password, verify_password
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.rbac.models import Role
+from app.rbac.permissions import POS_ACCESS
 from app.rbac.policy import (
     ensure_role_is_assignable,
     ensure_user_is_manageable,
@@ -23,6 +24,7 @@ from app.users.models import User
 from app.users.schemas import (
     AdminPasswordReset,
     PasswordChange,
+    PosAccessUpdate,
     PosCredentialsUpdate,
     UserCreate,
     UserUpdate,
@@ -40,6 +42,7 @@ def _snapshot(user: User) -> dict[str, Any]:
         "role_name": user.role.name,
         "pos_username": user.pos_username,
         "pos_pin_configured": user.pos_pin_hash is not None,
+        "pos_access_enabled": user.pos_access_enabled,
     }
 
 
@@ -89,6 +92,7 @@ async def create_user(session: AsyncSession, payload: UserCreate, *, actor: User
         password_hash=hash_password(payload.password),
         pos_username=payload.pos_username,
         pos_pin_hash=hash_password(payload.pos_pin) if payload.pos_pin is not None else None,
+        pos_access_enabled=payload.pos_username is not None,
         role_id=payload.role_id,
     )
     session.add(user)
@@ -113,6 +117,8 @@ async def set_pos_credentials(
 ) -> User:
     user = await get_user(session, user_id)
     ensure_user_is_manageable(actor, user)
+    if POS_ACCESS not in {permission.key for permission in user.role.permissions}:
+        raise ValidationError("The user's role does not allow POS access.")
     clash = (
         await session.execute(
             select(User).where(User.pos_username == payload.pos_username, User.id != user_id)
@@ -122,6 +128,7 @@ async def set_pos_credentials(
         raise ConflictError("A user with this POS username already exists.")
     user.pos_username = payload.pos_username
     user.pos_pin_hash = hash_password(payload.pos_pin)
+    user.pos_access_enabled = True
     await auth_service.revoke_user_sessions(session, user_id=user.id)
     await session.flush()
     updated = await get_user(session, user_id)
@@ -130,7 +137,53 @@ async def set_pos_credentials(
         action="pos_credentials_updated",
         entity_type="user",
         entity_id=user_id,
-        after={"pos_username": updated.pos_username, "pos_pin_configured": True},
+        after={
+            "pos_username": updated.pos_username,
+            "pos_pin_configured": True,
+            "pos_access_enabled": True,
+        },
+    )
+    return updated
+
+
+async def set_pos_access(
+    session: AsyncSession,
+    user_id: int,
+    payload: PosAccessUpdate,
+    *,
+    actor: User,
+) -> User:
+    """Enable or disable a user's existing POS credentials.
+
+    The role permission remains a separate RBAC boundary: this per-user
+    switch decides who appears on a shared POS login screen, while the role
+    decides what that person may do once authenticated.
+    """
+    user = await get_user(session, user_id)
+    ensure_user_is_manageable(actor, user)
+    if payload.enabled and (user.pos_username is None or user.pos_pin_hash is None):
+        raise ValidationError("Configure the POS username and PIN before enabling POS access.")
+    role_permissions = {permission.key for permission in user.role.permissions}
+    if payload.enabled and POS_ACCESS not in role_permissions:
+        raise ValidationError("The user's role does not allow POS access.")
+    if user.pos_access_enabled == payload.enabled:
+        return user
+
+    before = _snapshot(user)
+    user.pos_access_enabled = payload.enabled
+    # Closing a selected user's access must immediately invalidate a POS
+    # cookie that may still be open on a shared terminal.
+    if not payload.enabled:
+        await auth_service.revoke_user_sessions(session, user_id=user.id)
+    await session.flush()
+    updated = await get_user(session, user_id)
+    await audit.record(
+        session,
+        action="pos_access_enabled" if payload.enabled else "pos_access_disabled",
+        entity_type="user",
+        entity_id=user_id,
+        before=before,
+        after=_snapshot(updated),
     )
     return updated
 
@@ -145,6 +198,7 @@ async def update_user(
     before = _snapshot(user)
     new_email = payload.email
     credentials_changed = False
+    pos_access_revoked = False
     if new_email is not None and new_email != user.email:
         clash = (
             await session.execute(select(User).where(User.email == new_email))
@@ -165,8 +219,11 @@ async def update_user(
         # changing only role_id would leave ``user.role`` stale in the
         # identity map until a later request.
         user.role = role
+        if POS_ACCESS not in {permission.key for permission in role.permissions}:
+            pos_access_revoked = user.pos_access_enabled
+            user.pos_access_enabled = False
     await session.flush()
-    if credentials_changed:
+    if credentials_changed or pos_access_revoked:
         await auth_service.revoke_user_sessions(session, user_id=user.id)
     updated = await get_user(session, user_id)
     await audit.record(

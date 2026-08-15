@@ -13,6 +13,7 @@ export const userSchema = z.object({
   role_name: z.string(),
   pos_username: z.string().nullable().default(null),
   pos_pin_configured: z.boolean().default(false),
+  pos_access_enabled: z.boolean().default(false),
 });
 export type User = z.infer<typeof userSchema>;
 
@@ -87,6 +88,14 @@ export async function setUserPosCredentials(
     method: 'PUT',
     schema: userSchema,
     body: payload,
+  });
+}
+
+export async function setUserPosAccess(userId: number, enabled: boolean): Promise<User> {
+  return apiFetch(`${API_V1}/users/${userId}/pos-access`, {
+    method: 'PATCH',
+    schema: userSchema,
+    body: { enabled },
   });
 }
 

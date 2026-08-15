@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 
+import { posLoginUsersQuery } from '@/features/auth/api';
 import { usePosAuth } from '@/features/auth/usePosAuth';
 import { ApiError } from '@/lib/api';
 
@@ -13,6 +15,7 @@ export function PosLoginPage() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const loginUsers = useQuery({ ...posLoginUsersQuery, retry: false });
 
   const press = (key: string) => {
     if (key === '←') return setPin((value) => value.slice(0, -1));
@@ -44,13 +47,30 @@ export function PosLoginPage() {
         <h1 className="text-center text-2xl font-semibold">Acceso TPV</h1>
         <label className="mt-6 block text-sm font-medium">
           Usuario
-          <input
+          <select
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            autoComplete="username"
             className="mt-2 w-full rounded-lg bg-white px-4 py-3 text-lg text-slate-900"
-          />
+            disabled={loginUsers.isPending || loginUsers.isError || pending}
+          >
+            <option value="">
+              {loginUsers.isPending ? 'Cargando usuarios…' : 'Selecciona tu usuario'}
+            </option>
+            {(loginUsers.data ?? []).map((user) => (
+              <option key={user.id} value={user.username}>
+                {user.full_name}
+              </option>
+            ))}
+          </select>
         </label>
+        {loginUsers.isError && (
+          <p className="mt-2 text-sm text-red-300">No se han podido cargar los usuarios TPV.</p>
+        )}
+        {!loginUsers.isPending && !loginUsers.isError && loginUsers.data?.length === 0 && (
+          <p className="mt-2 text-sm text-slate-300">
+            No hay usuarios TPV habilitados. Pídelo a Administración.
+          </p>
+        )}
         <div
           className="mt-5 rounded-lg bg-slate-950 px-4 py-3 text-center text-2xl tracking-[0.5em]"
           aria-label="PIN"
