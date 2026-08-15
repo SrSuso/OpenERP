@@ -286,6 +286,24 @@ describe('ProductsPage', () => {
     expect(backend.pricingCalls).toEqual([]);
   });
 
+  it('creates a named open-price button for the POS', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Charcutería');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    await userEvent.click(screen.getByLabelText('Precio libre en TPV'));
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    expect(await screen.findByText('Charcutería')).toBeInTheDocument();
+    expect(backend.createCalls[0]).toMatchObject({
+      name: 'Charcutería',
+      is_open_price: true,
+    });
+  });
+
   it('assigns the chosen taxes right after creating the product', async () => {
     const backend = stubBackend();
     renderPage();

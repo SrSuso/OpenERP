@@ -123,6 +123,11 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: Sort position of this product's button within its POS category grid
     #: (phase 12); lower first. Ties break by name at the query layer.
     pos_display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    #: A named POS button whose amount is entered by the cashier at sale
+    #: time (for example, the total supplied by a deli counter). This is
+    #: deliberately opt-in per product; ordinary catalogue prices remain
+    #: authoritative and cannot be overridden by the browser.
+    is_open_price: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     #: Name of the base inventory unit ("BRIK", "UNIT", "KG", ...). Every
     #: stock quantity for this product, everywhere, is expressed in this

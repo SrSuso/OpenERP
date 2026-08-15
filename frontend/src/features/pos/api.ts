@@ -117,6 +117,7 @@ export const productSchema = z.object({
   name: z.string(),
   pos_category_id: z.number().nullable(),
   pos_category_name: z.string().nullable(),
+  is_open_price: z.boolean().optional(),
   // En qué se vende: lo que decide si un toque vende una unidad o hay que
   // preguntar cuánto pesa (ver el ajuste `pos.weighed_units`).
   base_unit_name: z.string(),
@@ -314,7 +315,12 @@ export async function createSale(
 export async function addLine(
   saleId: number,
   terminalId: number,
-  line: { product_id: number; package_id: number; quantity_packages: string },
+  line: {
+    product_id: number;
+    package_id: number;
+    quantity_packages: string;
+    open_price_total?: string;
+  },
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines`, {
     method: 'POST',

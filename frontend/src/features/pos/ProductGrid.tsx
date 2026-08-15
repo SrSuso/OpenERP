@@ -83,7 +83,7 @@ function ProductButton({
         {product.name}
       </span>
       <span className="px-2 pb-2 text-sm font-semibold text-emerald-400">
-        {formatMoney(product.list_price)}
+        {product.is_open_price ? 'Precio libre' : formatMoney(product.list_price)}
       </span>
     </button>
   );

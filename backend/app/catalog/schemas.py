@@ -162,6 +162,7 @@ class ProductCreate(BaseModel):
     category_id: int | None = None
     pos_category_id: int | None = None
     pos_display_order: int = Field(default=0, ge=0)
+    is_open_price: bool = False
     base_unit_name: str = Field(min_length=1, max_length=20)
     base_barcode: str | None = Field(default=None, min_length=1, max_length=64)
     cost: Decimal = Field(ge=0)
@@ -201,6 +202,7 @@ class ProductUpdate(BaseModel):
     category_id: int | None = None
     pos_category_id: int | None = None
     pos_display_order: int | None = Field(default=None, ge=0)
+    is_open_price: bool | None = None
     min_stock: Decimal | None = Field(default=None, ge=0)
     track_lots: bool | None = None
     track_expiration: bool | None = None
@@ -221,6 +223,7 @@ class ProductRead(BaseModel):
     pos_category_id: int | None
     pos_category_name: str | None
     pos_display_order: int
+    is_open_price: bool
     base_unit_name: str
     cost: Decimal
     list_price: Decimal

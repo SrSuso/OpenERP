@@ -224,6 +224,7 @@ export const productSchema = z.object({
   pos_category_id: z.number().nullable(),
   pos_category_name: z.string().nullable(),
   pos_display_order: z.number(),
+  is_open_price: z.boolean().optional(),
   base_unit_name: z.string(),
   cost: z.string(),
   list_price: z.string(),
@@ -300,6 +301,7 @@ export interface ProductCreateInput {
   category_id: number | null;
   pos_category_id: number | null;
   pos_display_order: number;
+  is_open_price: boolean;
   base_unit_name: string;
   base_barcode: string | null;
   cost: string;
@@ -327,6 +329,7 @@ export interface ProductUpdateInput {
   category_id?: number | null;
   pos_category_id?: number | null;
   pos_display_order?: number;
+  is_open_price?: boolean;
   min_stock?: string;
   track_lots?: boolean;
   track_expiration?: boolean;

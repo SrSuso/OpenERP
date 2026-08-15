@@ -21,6 +21,10 @@ class SaleLineCreate(BaseModel):
     product_id: int
     package_id: int
     quantity_packages: Decimal = Field(gt=0)
+    #: Final amount shown to the customer, only valid for a product whose
+    #: administrator enabled `is_open_price`. The service derives the
+    #: stored net/gross unit price from the store's tax configuration.
+    open_price_total: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     discount_rate: Decimal = Field(default=Decimal(0), ge=0, le=100)
 
 

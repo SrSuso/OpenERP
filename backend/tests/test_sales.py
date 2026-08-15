@@ -14,6 +14,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.sales.models import Sale
+from app.sales.service import payable
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
@@ -92,6 +93,115 @@ async def test_cashier_can_open_a_sale_and_add_a_line(
     assert line["tax_amount"] == "5.206612"
     assert line["total"] == "30.000000"
     assert body["total"] == "30.000000"
+
+
+async def test_open_price_pos_product_uses_the_entered_final_total(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(
+        client,
+        sku="SALE-OPEN-PRICE",
+        name="Charcutería",
+        list_price="0",
+        tax_rate="21",
+        is_open_price=True,
+    )
+    base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={
+            "product_id": product["id"],
+            "package_id": base_id,
+            "quantity_packages": "1",
+            "open_price_total": "12.50",
+        },
+    )
+
+    assert response.status_code == 201
+    line = response.json()["lines"][0]
+    assert line["product_name"] == "Charcutería"
+    assert line["total"] == "12.500000"
+    assert line["unit_price"] == "12.500000"
+
+
+async def test_open_price_keeps_the_entered_total_when_catalogue_prices_are_net(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    pricing = (await client.get("/api/v1/pricing/settings")).json()
+    assert (
+        await client.put(
+            "/api/v1/pricing/settings",
+            json={"formula": pricing["formula"], "prices_include_tax": False},
+        )
+    ).status_code == 200
+    product = await _create_product(
+        client,
+        sku="SALE-OPEN-PRICE-NET",
+        list_price="0",
+        tax_rate="21",
+        is_open_price=True,
+    )
+    base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    sale = await _open_sale(client)
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={
+            "product_id": product["id"],
+            "package_id": base_id,
+            "quantity_packages": "1",
+            "open_price_total": "12.50",
+        },
+    )
+
+    assert response.status_code == 201
+    line = response.json()["lines"][0]
+    assert line["unit_price"] == "10.330579"
+    assert payable(Decimal(line["total"])) == Decimal("12.500000")
+
+
+async def test_open_price_cannot_be_forged_for_an_ordinary_product(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="SALE-NO-OPEN-PRICE")
+    base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={
+            "product_id": product["id"],
+            "package_id": base_id,
+            "quantity_packages": "1",
+            "open_price_total": "0.01",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+async def test_open_price_product_requires_its_entered_total(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="SALE-OPEN-PRICE-REQUIRED", is_open_price=True)
+    base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
+    )
+
+    assert response.status_code == 422
 
 
 async def test_line_price_is_a_snapshot_and_ignores_later_price_changes(

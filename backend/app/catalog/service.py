@@ -72,6 +72,7 @@ def _snapshot(product: Product) -> dict[str, Any]:
         "category_id": product.category_id,
         "pos_category_id": product.pos_category_id,
         "pos_display_order": product.pos_display_order,
+        "is_open_price": product.is_open_price,
         "base_unit_name": product.base_unit_name,
         "cost": str(product.cost),
         "list_price": str(product.list_price),
@@ -565,6 +566,7 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         category_id=payload.category_id,
         pos_category_id=payload.pos_category_id,
         pos_display_order=payload.pos_display_order,
+        is_open_price=payload.is_open_price,
         base_unit_name=payload.base_unit_name,
         cost=payload.cost,
         list_price=payload.list_price,
@@ -624,6 +626,8 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
         product.pos_category_id = payload.pos_category_id
     if payload.pos_display_order is not None:
         product.pos_display_order = payload.pos_display_order
+    if payload.is_open_price is not None:
+        product.is_open_price = payload.is_open_price
     if payload.min_stock is not None:
         product.min_stock = payload.min_stock
     if payload.track_lots is not None:

@@ -20,6 +20,7 @@ const editProductSchema = z.object({
   category_id: z.string(),
   pos_category_id: z.string(),
   pos_display_order: z.coerce.number().int().min(0),
+  is_open_price: z.boolean(),
   min_stock: decimalString({ min: 0 }),
   track_lots: z.boolean(),
   track_expiration: z.boolean(),
@@ -64,6 +65,7 @@ export function EditProductForm({
       category_id: product.category_id === null ? '' : String(product.category_id),
       pos_category_id: product.pos_category_id === null ? '' : String(product.pos_category_id),
       pos_display_order: product.pos_display_order,
+      is_open_price: product.is_open_price ?? false,
       min_stock: product.min_stock,
       track_lots: product.track_lots,
       track_expiration: product.track_expiration,
@@ -80,6 +82,7 @@ export function EditProductForm({
       category_id: values.category_id === '' ? null : Number(values.category_id),
       pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
       pos_display_order: values.pos_display_order,
+      is_open_price: values.is_open_price,
       min_stock: values.min_stock,
       track_lots: values.track_lots,
       track_expiration: values.track_expiration,
@@ -209,6 +212,17 @@ export function EditProductForm({
           <input type="checkbox" {...register('track_expiration')} />
           Controla caducidad
         </label>
+
+        <div className="text-sm text-slate-600 sm:col-span-3">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" {...register('is_open_price')} />
+            Precio libre en TPV
+          </label>
+          <p className="mt-1 text-xs text-slate-400">
+            El botón pedirá el importe total al venderlo. El nombre que edites aquí se verá en caja
+            y en el ticket.
+          </p>
+        </div>
       </div>
 
       {submitError && <p className="mt-3 text-sm text-red-600">{submitError}</p>}

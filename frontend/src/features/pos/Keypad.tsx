@@ -5,6 +5,8 @@ interface KeypadProps {
   /** Cuántos dígitos caben — evita que un dedo apoyado deje un número
    * absurdo. */
   maxLength?: number;
+  /** Amount prompts accept one decimal separator; quantities keep digits only. */
+  allowDecimal?: boolean;
   /** Se dibuja en la última casilla, junto a «C» y «←». */
   action?: { label: string; onPress: () => void; disabled?: boolean };
 }
@@ -20,12 +22,23 @@ const KEY =
  *
  * Sirve tanto para los gramos de lo que se pesa como para multiplicar
  * unidades — el número es el mismo gesto, lo que cambia es quién lo usa. */
-export function Keypad({ value, onChange, maxLength = 6, action }: KeypadProps) {
+export function Keypad({
+  value,
+  onChange,
+  maxLength = 6,
+  allowDecimal = false,
+  action,
+}: KeypadProps) {
   function press(digit: string) {
     // Un cero a la izquierda no significa nada y confunde al leerlo.
     const next = value === '0' ? digit : value + digit;
     if (next.length > maxLength) return;
     onChange(next);
+  }
+
+  function pressDecimal() {
+    if (!allowDecimal || value.includes(',') || value.includes('.')) return;
+    onChange(value === '' ? '0,' : `${value},`);
   }
 
   return (
@@ -49,6 +62,11 @@ export function Keypad({ value, onChange, maxLength = 6, action }: KeypadProps) 
       >
         ←
       </button>
+      {allowDecimal && (
+        <button type="button" onClick={pressDecimal} className={KEY}>
+          ,
+        </button>
+      )}
       {action && (
         <button
           type="button"

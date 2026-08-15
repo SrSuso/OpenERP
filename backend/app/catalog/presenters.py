@@ -49,6 +49,7 @@ def product_to_read(product: Product) -> ProductRead:
         pos_category_id=product.pos_category_id,
         pos_category_name=product.pos_category.name if product.pos_category else None,
         pos_display_order=product.pos_display_order,
+        is_open_price=product.is_open_price,
         base_unit_name=product.base_unit_name,
         cost=product.cost,
         list_price=product.list_price,

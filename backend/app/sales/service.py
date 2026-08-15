@@ -341,6 +341,7 @@ def _new_line(
     quantity_packages: Decimal,
     discount_rate: Decimal,
     tax_rate: Decimal,
+    unit_price: Decimal | None = None,
 ) -> SaleLine:
     return SaleLine(
         sale_id=sale_id,
@@ -363,7 +364,7 @@ def _new_line(
         # with the `Tax` entities, so a product priced from the admin
         # panel carries 0 there and its line would land on the receipt
         # with no tax to report at all.
-        unit_price=product.list_price,
+        unit_price=product.list_price if unit_price is None else unit_price,
         unit_cost=product.cost,
         tracks_stock=catalog_stock.tracks_stock(product),
         track_lots=product.track_lots,
@@ -423,6 +424,22 @@ async def _assert_discount_allowed(session: AsyncSession, discount_rate: Decimal
         )
 
 
+async def _open_price_unit_price(
+    session: AsyncSession, *, total: Decimal, tax_rate: Decimal
+) -> Decimal:
+    """Convert a cashier-entered final amount to the line's price basis.
+
+    The POS always asks for the amount the customer pays. When catalogue
+    prices are net, the stored unit price must be net too so every existing
+    tax, report, return and ticket calculation keeps its established
+    semantics.
+    """
+    settings = await pricing_service.get_settings(session)
+    if settings.prices_include_tax:
+        return _q(total)
+    return _q(total / (Decimal(1) + tax_rate / Decimal(100)))
+
+
 async def add_line(
     session: AsyncSession,
     sale_id: int,
@@ -437,6 +454,18 @@ async def add_line(
     product = await _sellable_product_or_422(session, payload.product_id)
     package = await _package_or_422(session, payload.product_id, payload.package_id)
     await _assert_discount_allowed(session, payload.discount_rate)
+    tax_rate = await pricing_service.effective_tax_rate_for(session, product.id)
+    unit_price: Decimal | None = None
+    if product.is_open_price:
+        if payload.open_price_total is None:
+            raise ValidationError("This POS button requires an entered total price.")
+        if not package.is_base or payload.quantity_packages != Decimal(1):
+            raise ValidationError("An open-price POS button must be sold as one base unit.")
+        unit_price = await _open_price_unit_price(
+            session, total=payload.open_price_total, tax_rate=tax_rate
+        )
+    elif payload.open_price_total is not None:
+        raise ValidationError("Only an open-price POS button accepts an entered price.")
 
     line = _add_or_merge(
         sale,
@@ -446,7 +475,8 @@ async def add_line(
             package=package,
             quantity_packages=payload.quantity_packages,
             discount_rate=payload.discount_rate,
-            tax_rate=await pricing_service.effective_tax_rate_for(session, product.id),
+            tax_rate=tax_rate,
+            unit_price=unit_price,
         ),
         session,
     )
@@ -461,6 +491,9 @@ async def add_line(
             "package": package.name,
             "quantity_packages": str(payload.quantity_packages),
             "line_quantity_packages": str(line.quantity_packages),
+            "open_price_total": (
+                str(payload.open_price_total) if payload.open_price_total is not None else None
+            ),
         },
     )
     return await get_sale(session, sale_id)

@@ -5,6 +5,7 @@ import { Cart } from '@/features/pos/Cart';
 import { CategoryTabs } from '@/features/pos/CategoryTabs';
 import { Checkout } from '@/features/pos/Checkout';
 import { OpenSalesBar } from '@/features/pos/OpenSalesBar';
+import { OpenPricePrompt } from '@/features/pos/OpenPricePrompt';
 import { ProductGrid } from '@/features/pos/ProductGrid';
 import { QuantityPad } from '@/features/pos/QuantityPad';
 import { Receipt } from '@/features/pos/Receipt';
@@ -159,16 +160,26 @@ export function PosHomePage() {
   );
 
   const addLineMutation = useMutation({
-    mutationFn: ({ product, quantity }: { product: Product; quantity: string }) =>
+    mutationFn: ({
+      product,
+      quantity,
+      openPriceTotal,
+    }: {
+      product: Product;
+      quantity: string;
+      openPriceTotal?: string;
+    }) =>
       addLine(sale!.id, terminalId as number, {
         product_id: product.id,
         package_id: basePackage(product).id,
         quantity_packages: quantity,
+        ...(openPriceTotal === undefined ? {} : { open_price_total: openPriceTotal }),
       }),
     onSuccess: (updated) => {
       setLineError(null);
       syncSale(updated);
       setWeighing(null);
+      setOpenPrice(null);
     },
     onError: (error) => setLineError(describeError(error)),
   });
@@ -181,6 +192,7 @@ export function PosHomePage() {
     .map((unit) => unit.trim().toUpperCase())
     .filter((unit) => unit !== '');
   const [weighing, setWeighing] = useState<{ product: Product; barcode?: string } | null>(null);
+  const [openPrice, setOpenPrice] = useState<Product | null>(null);
 
   // Lo tecleado en el multiplicador, vacío mientras no se toque (= una
   // unidad). Se limpia al añadir: es para el siguiente producto, no un modo
@@ -188,6 +200,11 @@ export function PosHomePage() {
   const [pendingQuantity, setPendingQuantity] = useState('');
 
   function pickProduct(product: Product) {
+    if (product.is_open_price) {
+      setOpenPrice(product);
+      setPendingQuantity('');
+      return;
+    }
     if (weighedUnits.includes(product.base_unit_name.toUpperCase())) {
       // Lo que se pesa lleva su propia cantidad, en gramos.
       setWeighing({ product });
@@ -305,7 +322,7 @@ export function PosHomePage() {
   // de lo que se pesa) manda el campo — lo decide el propio hook.
   useBarcodeScanner(
     (code) => resolveBarcodeMutation.mutate(code),
-    sale !== null && !busy && view === 'cart' && weighing === null,
+    sale !== null && !busy && view === 'cart' && weighing === null && openPrice === null,
   );
 
   function handleBarcodeSubmit(event: FormEvent<HTMLFormElement>) {
@@ -471,6 +488,17 @@ export function PosHomePage() {
             weighing.barcode === undefined
               ? addLineMutation.mutate({ product: weighing.product, quantity })
               : addBarcodeLineMutation.mutate({ code: weighing.barcode, quantity })
+          }
+        />
+      )}
+
+      {openPrice !== null && (
+        <OpenPricePrompt
+          product={openPrice}
+          isPending={addLineMutation.isPending}
+          onCancel={() => setOpenPrice(null)}
+          onConfirm={(total) =>
+            addLineMutation.mutate({ product: openPrice, quantity: '1', openPriceTotal: total })
           }
         />
       )}

@@ -26,6 +26,7 @@ const createProductSchema = z.object({
   category_id: z.string(),
   pos_category_id: z.string(),
   pos_display_order: z.coerce.number().int().min(0),
+  is_open_price: z.boolean(),
   base_unit_name: z.string().min(1, 'Elige una unidad.'),
   base_barcode: z.string().max(64).optional(),
   cost: decimalString({ min: 0 }),
@@ -120,6 +121,7 @@ export function CreateProductForm({
       category_id: '',
       pos_category_id: '',
       pos_display_order: 0,
+      is_open_price: false,
       base_unit_name: '',
       cost: '0',
       list_price: '0',
@@ -200,6 +202,7 @@ export function CreateProductForm({
         category_id: values.category_id === '' ? null : Number(values.category_id),
         pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
         pos_display_order: values.pos_display_order,
+        is_open_price: values.is_open_price,
         base_unit_name: values.base_unit_name,
         base_barcode: values.base_barcode === '' ? null : (values.base_barcode ?? null),
         cost: values.cost,
@@ -423,6 +426,17 @@ export function CreateProductForm({
           <input type="checkbox" {...register('track_expiration')} />
           Controla caducidad
         </label>
+
+        <div className="text-sm text-slate-600 sm:col-span-3">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" {...register('is_open_price')} />
+            Precio libre en TPV
+          </label>
+          <p className="mt-1 text-xs text-slate-400">
+            Al pulsar este botón en caja se pedirá el importe total. El nombre del producto será el
+            que aparezca en el carrito y en el ticket.
+          </p>
+        </div>
       </div>
 
       {submitError && <p className="mt-3 text-sm text-red-600">{submitError}</p>}

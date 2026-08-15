@@ -80,6 +80,27 @@ const MILK = {
     },
   ],
 };
+const DELI_TOTAL = {
+  id: 3,
+  sku: 'CHARCUTERIA',
+  name: 'Charcutería',
+  pos_category_id: 1,
+  pos_category_name: 'Bebidas',
+  is_open_price: true,
+  base_unit_name: 'UNIDAD',
+  list_price: '0.000000',
+  tax_rate: '10.000000',
+  is_active: true,
+  packages: [
+    {
+      id: 30,
+      name: 'UNIDAD',
+      factor: '1.000000',
+      is_base: true,
+      barcodes: [],
+    },
+  ],
+};
 
 function emptySale(id: number): Sale {
   return {
@@ -198,7 +219,7 @@ function stubBackend(
         return Promise.resolve(jsonResponse(found));
       }
       if (url.includes('/products')) {
-        return Promise.resolve(jsonResponse([MILK, TOMATO]));
+        return Promise.resolve(jsonResponse([MILK, TOMATO, DELI_TOTAL]));
       }
       if (url.includes('/sales') && url.includes('status=DRAFT')) {
         return Promise.resolve(jsonResponse(sale ? [sale] : []));
@@ -454,6 +475,23 @@ describe('PosHomePage', () => {
     ]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(backend.mutationTerminalHeaders).toContain(String(TERMINAL.id));
+  });
+
+  it('asks for the final total before adding an open-price deli button', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: /charcutería/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /importe de charcutería/i });
+    expect(backend.addLineCalls).toEqual([]);
+    await userEvent.type(within(dialog).getByLabelText('Importe total'), '12,50');
+    expect(within(dialog).getByText('12,50 €')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Añadir al carrito' }));
+
+    expect(backend.addLineCalls).toEqual([
+      { product_id: 3, package_id: 30, quantity_packages: '1', open_price_total: '12.50' },
+    ]);
   });
 
   it('shows a semantic backend rejection instead of applying a foreign-terminal mutation', async () => {
