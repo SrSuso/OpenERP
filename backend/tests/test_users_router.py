@@ -83,6 +83,24 @@ async def test_duplicate_email_is_a_conflict(
     assert second.json()["error"]["code"] == "conflict"
 
 
+async def test_admin_can_edit_an_existing_users_name_and_email(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[Any]],
+) -> None:
+    await login(role_name="ADMIN")
+    target = await make_user(email="before@example.com", role_name="CASHIER", full_name="Antes")
+
+    response = await client.patch(
+        f"/api/v1/users/{target.id}",
+        json={"email": "after@example.com", "full_name": "Después"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "after@example.com"
+    assert response.json()["full_name"] == "Después"
+
+
 async def test_deactivated_user_can_no_longer_log_in(
     client: AsyncClient,
     login: Callable[..., Awaitable[dict[str, Any]]],

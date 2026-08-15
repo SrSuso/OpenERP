@@ -67,6 +67,7 @@ function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] }
   const roles = options.roles ?? ROLES;
   const createCalls: unknown[] = [];
   const patchCalls: { userId: number; roleId: number }[] = [];
+  const editCalls: { userId: number; body: Record<string, unknown> }[] = [];
   const deactivateCalls: number[] = [];
   const activateCalls: number[] = [];
   const resetCalls: { userId: number; temporaryPassword: string }[] = [];
@@ -113,12 +114,17 @@ function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] }
       }
       if (method === 'PATCH' && /\/users\/(\d+)$/.test(url)) {
         const userId = Number(/\/users\/(\d+)$/.exec(url)![1]);
-        const body = init?.body
-          ? (JSON.parse(init.body as string) as { role_id: number })
-          : { role_id: 0 };
-        patchCalls.push({ userId, roleId: body.role_id });
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
         const user = users.find((u) => u.id === userId)!;
-        user.role_id = body.role_id;
+        if ('email' in body) {
+          editCalls.push({ userId, body });
+          user.email = body['email'] as string;
+          user.full_name = body['full_name'] as string;
+          user.role_id = body['role_id'] as number;
+        } else {
+          patchCalls.push({ userId, roleId: body['role_id'] as number });
+          user.role_id = body['role_id'] as number;
+        }
         return Promise.resolve(jsonResponse(user));
       }
       if (method === 'POST' && /\/users\/(\d+)\/deactivate$/.test(url)) {
@@ -146,7 +152,7 @@ function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] }
     }),
   );
 
-  return { createCalls, patchCalls, deactivateCalls, activateCalls, resetCalls };
+  return { createCalls, patchCalls, editCalls, deactivateCalls, activateCalls, resetCalls };
 }
 
 function renderPage() {
@@ -236,6 +242,28 @@ describe('UsersPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Rol de Cajero Dos'), 'ADMIN');
 
     expect(backend.patchCalls).toEqual([{ userId: 2, roleId: 1 }]);
+  });
+
+  it('edits an existing users name, email and role', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Cajero Dos');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    await userEvent.clear(screen.getByLabelText('Nombre completo'));
+    await userEvent.type(screen.getByLabelText('Nombre completo'), 'Cajera Nueva');
+    await userEvent.clear(screen.getByLabelText('Email'));
+    await userEvent.type(screen.getByLabelText('Email'), 'nueva@example.com');
+    await userEvent.selectOptions(screen.getByLabelText('Rol'), 'ADMIN');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(await screen.findByText('Cajera Nueva')).toBeInTheDocument();
+    expect(backend.editCalls).toEqual([
+      {
+        userId: 2,
+        body: { email: 'nueva@example.com', full_name: 'Cajera Nueva', role_id: 1 },
+      },
+    ]);
   });
 
   it('only offers roles whose permissions the signed-in user can grant', async () => {

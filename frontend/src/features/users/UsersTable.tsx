@@ -10,6 +10,7 @@ interface UsersTableProps {
   onActivate: (userId: number) => void;
   onResetPassword: (userId: number) => void;
   onSetPosCredentials: (userId: number) => void;
+  onEdit: (userId: number) => void;
   isChangingRole: boolean;
   isDeactivating: boolean;
   isActivating: boolean;
@@ -24,6 +25,7 @@ export function UsersTable({
   onActivate,
   onResetPassword,
   onSetPosCredentials,
+  onEdit,
   isChangingRole,
   isDeactivating,
   isActivating,
@@ -82,6 +84,13 @@ export function UsersTable({
                 <td className="px-4 py-2 text-right">
                   {!isSelf && currentRoleIsAssignable && (
                     <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(user.id)}
+                        className="text-sm font-medium text-brand-700 hover:underline"
+                      >
+                        Editar
+                      </button>
                       <button
                         type="button"
                         onClick={() => onResetPassword(user.id)}

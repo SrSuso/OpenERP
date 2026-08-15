@@ -10,6 +10,7 @@ import {
   deactivateUser,
   resetUserPassword,
   setUserPosCredentials,
+  updateUser,
   updateUserRole,
   usersQuery,
   type User,
@@ -40,6 +41,10 @@ export function UsersPage() {
   const [posTarget, setPosTarget] = useState<User | null>(null);
   const [posUsername, setPosUsername] = useState('');
   const [posPin, setPosPin] = useState('');
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRoleId, setEditRoleId] = useState<number | null>(null);
 
   const assignableRoles = (roles.data ?? []).filter((role) =>
     role.permissions.every((permission) => currentUser?.permissions.includes(permission) ?? false),
@@ -111,6 +116,26 @@ export function UsersPage() {
       void queryClient.invalidateQueries({ queryKey: usersQuery.queryKey });
     },
     onError: () => setOperationError('No se ha podido guardar el acceso TPV.'),
+  });
+
+  const editMutation = useMutation({
+    mutationFn: (payload: { userId: number; email: string; full_name: string; role_id: number }) =>
+      updateUser(payload.userId, {
+        email: payload.email,
+        full_name: payload.full_name,
+        role_id: payload.role_id,
+      }),
+    onSuccess: () => {
+      setEditTarget(null);
+      setOperationError(null);
+      void queryClient.invalidateQueries({ queryKey: usersQuery.queryKey });
+    },
+    onError: (error: unknown) =>
+      setOperationError(
+        error instanceof ApiError && error.code === 'conflict'
+          ? 'Ya existe un usuario con ese email.'
+          : 'No se ha podido guardar el usuario.',
+      ),
   });
 
   return (
@@ -251,6 +276,73 @@ export function UsersPage() {
         </form>
       )}
 
+      {editTarget && editRoleId !== null && (
+        <form
+          className="mb-4 max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+          onSubmit={(event) => {
+            event.preventDefault();
+            editMutation.mutate({
+              userId: editTarget.id,
+              email: editEmail,
+              full_name: editName,
+              role_id: editRoleId,
+            });
+          }}
+        >
+          <h2 className="text-sm font-semibold text-slate-800">Editar usuario</h2>
+          <label className="mt-3 block text-sm text-slate-600">
+            Nombre completo
+            <input
+              value={editName}
+              onChange={(event) => setEditName(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="mt-3 block text-sm text-slate-600">
+            Email
+            <input
+              type="email"
+              value={editEmail}
+              onChange={(event) => setEditEmail(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="mt-3 block text-sm text-slate-600">
+            Rol
+            <select
+              value={editRoleId}
+              onChange={(event) => setEditRoleId(Number(event.target.value))}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+              {assignableRoles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-2 text-xs text-slate-500">
+            Si cambia el email, el usuario tendrá que iniciar sesión de nuevo.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="submit"
+              disabled={editMutation.isPending || !editName.trim() || !editEmail.trim()}
+              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              Guardar cambios
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditTarget(null)}
+              className="rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
       {users.data && currentUser && (
         <UsersTable
           users={users.data}
@@ -272,6 +364,13 @@ export function UsersPage() {
             setPosTarget(target);
             setPosUsername(target?.pos_username ?? '');
             setPosPin('');
+          }}
+          onEdit={(userId) => {
+            const target = users.data.find((user) => user.id === userId) ?? null;
+            setEditTarget(target);
+            setEditName(target?.full_name ?? '');
+            setEditEmail(target?.email ?? '');
+            setEditRoleId(target?.role_id ?? null);
           }}
         />
       )}

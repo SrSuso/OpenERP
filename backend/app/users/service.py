@@ -143,6 +143,16 @@ async def update_user(
     user = await get_user(session, user_id)
     ensure_user_is_manageable(actor, user)
     before = _snapshot(user)
+    new_email = payload.email
+    credentials_changed = False
+    if new_email is not None and new_email != user.email:
+        clash = (
+            await session.execute(select(User).where(User.email == new_email))
+        ).scalar_one_or_none()
+        if clash is not None:
+            raise ConflictError("A user with this email already exists.")
+        user.email = new_email
+        credentials_changed = True
     if payload.full_name is not None:
         user.full_name = payload.full_name
     if payload.role_id is not None:
@@ -156,10 +166,14 @@ async def update_user(
         # identity map until a later request.
         user.role = role
     await session.flush()
+    if credentials_changed:
+        await auth_service.revoke_user_sessions(session, user_id=user.id)
     updated = await get_user(session, user_id)
     await audit.record(
         session,
-        action="role_changed" if payload.role_id is not None else "updated",
+        action=(
+            "role_changed" if payload.role_id is not None and not credentials_changed else "updated"
+        ),
         entity_type="user",
         entity_id=user_id,
         before=before,

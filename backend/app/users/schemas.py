@@ -42,8 +42,14 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    email: str | None = None
     full_name: str | None = Field(default=None, min_length=1, max_length=255)
     role_id: int | None = None
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str | None) -> str | None:
+        return normalise_email(value) if value is not None else None
 
 
 class PasswordChange(BaseModel):

@@ -46,6 +46,17 @@ export async function updateUserRole(userId: number, roleId: number): Promise<Us
   });
 }
 
+export async function updateUser(
+  userId: number,
+  payload: { email: string; full_name: string; role_id: number },
+): Promise<User> {
+  return apiFetch(`${API_V1}/users/${userId}`, {
+    method: 'PATCH',
+    schema: userSchema,
+    body: payload,
+  });
+}
+
 export async function deactivateUser(userId: number): Promise<User> {
   return apiFetch(`${API_V1}/users/${userId}/deactivate`, {
     method: 'POST',
