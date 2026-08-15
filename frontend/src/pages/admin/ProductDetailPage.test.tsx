@@ -420,6 +420,12 @@ describe('ProductDetailPage', () => {
     expect(screen.getByDisplayValue('Agua 1L fresca')).toBeInTheDocument();
     expect(backend.updateCalls).toEqual([]);
 
+    // La ficha general también se desmonta al cambiar de pestaña: no se
+    // puede perder su edición sin el mismo aviso que ya tenía Precios.
+    await userEvent.click(screen.getByRole('button', { name: 'Formatos' }));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('no has guardado'));
+    expect(screen.getByDisplayValue('Agua 1L fresca')).toBeInTheDocument();
+
     // Y una vez guardado ya no hay nada que perder: Cancelar no pregunta.
     confirmSpy.mockClear();
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));

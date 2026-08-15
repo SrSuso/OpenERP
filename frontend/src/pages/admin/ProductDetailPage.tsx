@@ -63,11 +63,16 @@ export function ProductDetailPage() {
   const canManageLots = hasPermission('lot.manage');
 
   const [tab, setTab] = useState<Tab>('general');
-  // El panel de precios se teclea y no se guarda solo: cambiar de pestaña
-  // se lo llevaría por delante sin decir nada.
+  // General y precios se teclean y no se guardan solos: cambiar de pestaña
+  // los desmontaría sin decir nada.
+  const [generalDirty, setGeneralDirty] = useState(false);
   const [pricingDirty, setPricingDirty] = useState(false);
   const goToTab = (next: Tab) => {
-    if (tab === 'pricing' && pricingDirty && !confirmDiscard()) return;
+    if (next === tab) return;
+    const hasUnsavedChanges =
+      (tab === 'general' && generalDirty) || (tab === 'pricing' && pricingDirty);
+    if (hasUnsavedChanges && !confirmDiscard()) return;
+    if (tab === 'general') setGeneralDirty(false);
     if (tab === 'pricing') setPricingDirty(false);
     setTab(next);
   };
@@ -114,6 +119,7 @@ export function ProductDetailPage() {
       queryClient.setQueryData(productQuery(productId).queryKey, saved);
       invalidateProduct();
       setEditError(null);
+      setGeneralDirty(false);
       setSavedGeneral((count) => count + 1);
     },
     onError: () => setEditError('No se ha podido guardar el producto.'),
@@ -326,6 +332,7 @@ export function ProductDetailPage() {
           isPending={updateMutation.isPending}
           submitError={editError}
           onCancel={() => setEditError(null)}
+          onDirtyChange={setGeneralDirty}
           onSubmit={(payload) => updateMutation.mutate(payload)}
         />
       )}

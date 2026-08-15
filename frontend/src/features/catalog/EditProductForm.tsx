@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -38,6 +39,7 @@ interface EditProductFormProps {
   onCancel: () => void;
   isPending: boolean;
   submitError: string | null;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 export function EditProductForm({
@@ -48,6 +50,7 @@ export function EditProductForm({
   onCancel,
   isPending,
   submitError,
+  onDirtyChange,
 }: EditProductFormProps) {
   // Para poder decir en el desplegable qué se hereda exactamente.
   const inheritedTracksStock =
@@ -74,6 +77,12 @@ export function EditProductForm({
   });
 
   useUnsavedWarning(isDirty);
+
+  // La ficha vive dentro de una pestaña: el padre necesita saber si puede
+  // desmontarla sin perder lo que se está editando.
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const submit = handleSubmit((values) =>
     onSubmit({
