@@ -27,6 +27,7 @@ function stubBackend() {
   let templates: TicketTemplate[] = [];
   const createCalls: Record<string, unknown>[] = [];
   const reviseCalls: { id: number; body: Record<string, unknown> }[] = [];
+  const deleteCalls: number[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -137,12 +138,19 @@ function stubBackend() {
         templates.push(revised);
         return Promise.resolve(jsonResponse(revised));
       }
+      const deleteMatch = /\/ticket-templates\/(\d+)$/.exec(url);
+      if (method === 'DELETE' && deleteMatch) {
+        const id = Number(deleteMatch[1]);
+        deleteCalls.push(id);
+        templates = templates.filter((template) => template.id !== id);
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createCalls, reviseCalls };
+  return { createCalls, reviseCalls, deleteCalls };
 }
 
 function renderPage() {
@@ -288,5 +296,22 @@ describe('TicketTemplatesPage', () => {
 
     await screen.findByText(/Activa: Antigua/);
     expect(backend.reviseCalls).toHaveLength(1);
+  });
+
+  it('deletes a template that was created by mistake', async () => {
+    const backend = stubBackend();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByText('Todavía no hay ninguna plantilla activa.');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Errónea');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    await screen.findByText(/Activa: Errónea/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+
+    expect(await screen.findByText('Todavía no hay ninguna plantilla activa.')).toBeInTheDocument();
+    expect(backend.deleteCalls).toEqual([1]);
   });
 });

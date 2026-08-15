@@ -9,6 +9,7 @@ import {
   activateTemplate,
   activeTicketTemplateQuery,
   createTemplate,
+  deleteTemplate,
   reviseTemplate,
   ticketTemplatesQuery,
   type TemplateFields,
@@ -77,6 +78,20 @@ export function TicketTemplatesPage() {
       setError(null);
     },
     onError: () => setError('No se ha podido guardar la nueva versión.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (template: TicketTemplate) => deleteTemplate(template.id),
+    onSuccess: () => {
+      invalidate();
+      setError(null);
+    },
+    onError: (err: unknown) =>
+      setError(
+        err instanceof ApiError && err.code === 'conflict'
+          ? 'No se puede eliminar una plantilla que ya se utilizó para generar tickets.'
+          : 'No se ha podido eliminar la plantilla.',
+      ),
   });
 
   return (
@@ -167,10 +182,23 @@ export function TicketTemplatesPage() {
         <TemplateHistoryTable
           templates={templates.data}
           isActivating={activateMutation.isPending}
+          isDeleting={deleteMutation.isPending}
           onActivate={(template) => activateMutation.mutate(template)}
           onEdit={(template) => {
             setEditing(template);
             setMode('revise');
+          }}
+          onDelete={(template) => {
+            const activeWarning = template.is_active
+              ? ' La caja se quedará sin plantilla activa hasta que crees o actives otra.'
+              : '';
+            if (
+              window.confirm(
+                `¿Eliminar la plantilla “${template.name}” v${template.version}?${activeWarning}`,
+              )
+            ) {
+              deleteMutation.mutate(template);
+            }
           }}
         />
       )}

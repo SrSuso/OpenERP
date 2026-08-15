@@ -5,14 +5,18 @@ interface TemplateHistoryTableProps {
   /** Poner en uso la plantilla de esa fila, o editarla sin ponerla en uso. */
   onActivate: (template: TicketTemplate) => void;
   onEdit: (template: TicketTemplate) => void;
+  onDelete: (template: TicketTemplate) => void;
   isActivating: boolean;
+  isDeleting: boolean;
 }
 
 export function TemplateHistoryTable({
   templates,
   onActivate,
   onEdit,
+  onDelete,
   isActivating,
+  isDeleting,
 }: TemplateHistoryTableProps) {
   if (templates.length === 0) {
     return <p className="text-sm text-slate-500">Todavía no hay ninguna plantilla.</p>;
@@ -66,6 +70,14 @@ export function TemplateHistoryTable({
                       Usar esta
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => onDelete(template)}
+                    className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                  >
+                    Eliminar
+                  </button>
                 </span>
               </td>
             </tr>

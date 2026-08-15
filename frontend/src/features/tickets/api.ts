@@ -124,3 +124,10 @@ export async function reviseTemplate(
     body: payload,
   });
 }
+
+export async function deleteTemplate(templateId: number): Promise<void> {
+  await apiFetch(`${API_V1}/ticket-templates/${templateId}`, {
+    method: 'DELETE',
+    schema: z.null(),
+  });
+}

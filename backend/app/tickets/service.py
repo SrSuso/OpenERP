@@ -219,6 +219,38 @@ async def activate_template(session: AsyncSession, template_id: int) -> TicketTe
     return template
 
 
+async def delete_template(session: AsyncSession, template_id: int) -> None:
+    """Delete a configuration mistake that has never rendered a ticket.
+
+    A generated receipt keeps a foreign key to its exact template version;
+    those rows are historical evidence and can never be deleted. An unused
+    active template is safe to remove: the store simply has no active layout
+    until an administrator creates or activates another one.
+    """
+    await _lock_template_scope(session)
+    template = await get_template(session, template_id)
+    ticket_id = await session.scalar(
+        select(Ticket.id).where(Ticket.template_id == template.id).limit(1)
+    )
+    if ticket_id is not None:
+        raise ConflictError("A ticket template that has generated tickets cannot be deleted.")
+
+    before = {
+        "name": template.name,
+        "version": template.version,
+        "is_active": template.is_active,
+    }
+    await session.delete(template)
+    await session.flush()
+    await audit.record(
+        session,
+        action="deleted",
+        entity_type="ticket_template",
+        entity_id=template_id,
+        before=before,
+    )
+
+
 async def get_ticket(session: AsyncSession, sale_id: int) -> Ticket:
     stmt = select(Ticket).where(Ticket.sale_id == sale_id)
     ticket = (await session.execute(stmt)).scalar_one_or_none()

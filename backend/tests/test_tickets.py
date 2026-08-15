@@ -173,6 +173,33 @@ async def test_activating_a_template_switches_which_one_the_till_prints(
     assert [t["id"] for t in templates if t["is_active"]] == [first["id"]]
 
 
+async def test_an_unused_template_can_be_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    mistaken = await _create_template(client, name="Errónea")
+    retained = await _create_template(client, name="Correcta")
+
+    response = await client.delete(f"/api/v1/ticket-templates/{mistaken['id']}")
+
+    assert response.status_code == 204
+    templates = (await client.get("/api/v1/ticket-templates")).json()
+    assert [template["id"] for template in templates] == [retained["id"]]
+
+
+async def test_an_active_unused_template_can_be_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    mistaken = await _create_template(client, name="Única errónea")
+
+    response = await client.delete(f"/api/v1/ticket-templates/{mistaken['id']}")
+
+    assert response.status_code == 204
+    assert (await client.get("/api/v1/ticket-templates")).json() == []
+    assert (await client.get("/api/v1/ticket-templates/active")).status_code == 422
+
+
 async def test_generating_a_ticket_for_a_completed_sale(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
@@ -214,6 +241,21 @@ async def test_generating_a_ticket_twice_is_idempotent_and_frozen(
     assert second_body["rendered_text"] == first_body["rendered_text"]
     assert "Cabecera original" in second_body["rendered_text"]
     assert "Cabecera nueva" not in second_body["rendered_text"]
+
+
+async def test_a_template_used_by_a_ticket_cannot_be_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    template = await _create_template(client, header_text="Histórica")
+    product = await _create_product(client, sku="TICKET-DELETE-HISTORY")
+    sale = await _completed_sale(client, product=product)
+    assert (await client.post(f"/api/v1/sales/{sale['id']}/tickets")).status_code == 201
+
+    response = await client.delete(f"/api/v1/ticket-templates/{template['id']}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
 
 
 async def test_cannot_generate_a_ticket_for_a_draft_sale(

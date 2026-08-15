@@ -76,6 +76,15 @@ async def activate_template(template_id: int, session: SessionDep) -> TicketTemp
     return _template_to_read(await service.activate_template(session, template_id))
 
 
+@router.delete(
+    "/ticket-templates/{template_id}",
+    status_code=204,
+    dependencies=[_require_manage],
+)
+async def delete_template(template_id: int, session: SessionDep) -> None:
+    await service.delete_template(session, template_id)
+
+
 @router.post(
     "/sales/{sale_id}/tickets",
     response_model=TicketRead,
