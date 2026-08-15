@@ -13,6 +13,7 @@ export const meSchema = z.object({
 });
 
 export type Me = z.infer<typeof meSchema>;
+const adminSessionHeaders = { 'X-OpenERP-Session-Surface': 'admin' };
 
 /**
  * The signed-in user, or `null` when signed out.
@@ -28,7 +29,11 @@ export const meQuery = queryOptions({
   queryKey: ['auth', 'me'] as const,
   queryFn: async ({ signal }): Promise<Me | null> => {
     try {
-      return await apiFetch(`${API_V1}/auth/me`, { schema: meSchema, signal });
+      return await apiFetch(`${API_V1}/auth/me`, {
+        schema: meSchema,
+        signal,
+        headers: adminSessionHeaders,
+      });
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthenticated) {
         return null;
@@ -43,11 +48,51 @@ export async function login(email: string, password: string): Promise<Me> {
     method: 'POST',
     schema: meSchema,
     body: { email, password },
+    headers: adminSessionHeaders,
   });
 }
 
 export async function logout(): Promise<void> {
-  await apiFetch(`${API_V1}/auth/logout`, { method: 'POST', schema: z.null() });
+  await apiFetch(`${API_V1}/auth/logout`, {
+    method: 'POST',
+    schema: z.null(),
+    headers: adminSessionHeaders,
+  });
+}
+
+const posSessionHeaders = { 'X-OpenERP-Session-Surface': 'pos' };
+
+export const posMeQuery = queryOptions({
+  queryKey: ['auth', 'pos', 'me'] as const,
+  queryFn: async ({ signal }): Promise<Me | null> => {
+    try {
+      return await apiFetch(`${API_V1}/auth/pos/me`, {
+        schema: meSchema,
+        signal,
+        headers: posSessionHeaders,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthenticated) return null;
+      throw error;
+    }
+  },
+});
+
+export async function posLogin(username: string, pin: string): Promise<Me> {
+  return apiFetch(`${API_V1}/auth/pos/login`, {
+    method: 'POST',
+    schema: meSchema,
+    body: { username, pin },
+    headers: posSessionHeaders,
+  });
+}
+
+export async function posLogout(): Promise<void> {
+  await apiFetch(`${API_V1}/auth/pos/logout`, {
+    method: 'POST',
+    schema: z.null(),
+    headers: posSessionHeaders,
+  });
 }
 
 // --- sesiones activas del usuario que ha iniciado sesión — nunca las de

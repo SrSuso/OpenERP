@@ -26,6 +26,9 @@ class AuthSession(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "auth_sessions"
 
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # ADMIN y POS viven en cookies y filas distintas, para que cerrar la
+    # caja nunca cierre una administración abierta en el mismo navegador.
+    surface: Mapped[str] = mapped_column(String(16), default="ADMIN", server_default="ADMIN")
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

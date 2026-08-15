@@ -11,6 +11,8 @@ export const userSchema = z.object({
   must_change_password: z.boolean().default(false),
   role_id: z.number(),
   role_name: z.string(),
+  pos_username: z.string().nullable().default(null),
+  pos_pin_configured: z.boolean().default(false),
 });
 export type User = z.infer<typeof userSchema>;
 
@@ -24,6 +26,8 @@ export interface UserCreate {
   full_name: string;
   password: string;
   role_id: number;
+  pos_username?: string;
+  pos_pin?: string;
 }
 
 export async function createUser(payload: UserCreate): Promise<User> {
@@ -61,6 +65,17 @@ export async function resetUserPassword(userId: number, temporaryPassword: strin
     method: 'POST',
     schema: z.null(),
     body: { temporary_password: temporaryPassword },
+  });
+}
+
+export async function setUserPosCredentials(
+  userId: number,
+  payload: { pos_username: string; pos_pin: string },
+): Promise<User> {
+  return apiFetch(`${API_V1}/users/${userId}/pos-credentials`, {
+    method: 'PUT',
+    schema: userSchema,
+    body: payload,
   });
 }
 

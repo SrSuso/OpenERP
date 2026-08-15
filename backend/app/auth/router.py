@@ -7,9 +7,16 @@ from sqlalchemy import select
 
 from app.api.client import client_ip
 from app.auth import service
-from app.auth.dependencies import AuthSessionDep, CurrentUser, SessionDep, SettingsDep
+from app.auth.dependencies import (
+    AuthSessionDep,
+    CurrentUser,
+    PosAuthSessionDep,
+    PosCurrentUser,
+    SessionDep,
+    SettingsDep,
+)
 from app.auth.models import AuthSession
-from app.auth.schemas import LoginRequest, MeResponse, SessionRead
+from app.auth.schemas import LoginRequest, MeResponse, PosLoginRequest, SessionRead
 from app.core.errors import AuthenticationError, NotFoundError
 from app.rbac.dependencies import user_permissions
 from app.users.models import User
@@ -54,6 +61,41 @@ async def login(
     return _me(user)
 
 
+@router.post("/auth/pos/login", response_model=MeResponse)
+async def pos_login(
+    payload: PosLoginRequest,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> MeResponse:
+    ip = client_ip(request)
+    identifier = f"pos:{payload.username}"
+    service.check_login_rate_limit(settings, ip=ip, email=identifier)
+    try:
+        user = await service.authenticate_pos(session, username=payload.username, pin=payload.pin)
+    except AuthenticationError:
+        service.record_login_failure(settings, ip=ip, email=identifier)
+        raise
+    service.reset_login_rate_limit(ip=ip, email=identifier)
+    auth_session, token = await service.create_session(
+        session,
+        user=user,
+        settings=settings,
+        user_agent=request.headers.get("user-agent"),
+        ip=ip,
+        surface="POS",
+    )
+    service.set_session_cookie(
+        response,
+        token,
+        auth_session.expires_at,
+        settings,
+        cookie_name=settings.pos_session_cookie_name,
+    )
+    return _me(user)
+
+
 @router.post("/auth/logout", status_code=204)
 async def logout(
     auth_session: AuthSessionDep, response: Response, session: SessionDep, settings: SettingsDep
@@ -62,8 +104,24 @@ async def logout(
     service.clear_session_cookie(response, settings)
 
 
+@router.post("/auth/pos/logout", status_code=204)
+async def pos_logout(
+    auth_session: PosAuthSessionDep,
+    response: Response,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> None:
+    await service.revoke_session(session, auth_session)
+    service.clear_session_cookie(response, settings, cookie_name=settings.pos_session_cookie_name)
+
+
 @router.get("/auth/me", response_model=MeResponse)
 async def me(user: CurrentUser) -> MeResponse:
+    return _me(user)
+
+
+@router.get("/auth/pos/me", response_model=MeResponse)
+async def pos_me(user: PosCurrentUser) -> MeResponse:
     return _me(user)
 
 

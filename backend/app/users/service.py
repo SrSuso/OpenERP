@@ -20,7 +20,13 @@ from app.rbac.policy import (
     lock_recoverable_admin_invariant,
 )
 from app.users.models import User
-from app.users.schemas import AdminPasswordReset, PasswordChange, UserCreate, UserUpdate
+from app.users.schemas import (
+    AdminPasswordReset,
+    PasswordChange,
+    PosCredentialsUpdate,
+    UserCreate,
+    UserUpdate,
+)
 
 
 def _snapshot(user: User) -> dict[str, Any]:
@@ -32,6 +38,8 @@ def _snapshot(user: User) -> dict[str, Any]:
         "must_change_password": user.must_change_password,
         "role_id": user.role_id,
         "role_name": user.role.name,
+        "pos_username": user.pos_username,
+        "pos_pin_configured": user.pos_pin_hash is not None,
     }
 
 
@@ -66,6 +74,12 @@ async def create_user(session: AsyncSession, payload: UserCreate, *, actor: User
     ).scalar_one_or_none()
     if existing is not None:
         raise ConflictError("A user with this email already exists.")
+    if payload.pos_username is not None:
+        pos_existing = (
+            await session.execute(select(User).where(User.pos_username == payload.pos_username))
+        ).scalar_one_or_none()
+        if pos_existing is not None:
+            raise ConflictError("A user with this POS username already exists.")
     role = await _role_or_422(session, payload.role_id)
     ensure_role_is_assignable(actor, role)
 
@@ -73,6 +87,8 @@ async def create_user(session: AsyncSession, payload: UserCreate, *, actor: User
         email=payload.email,
         full_name=payload.full_name,
         password_hash=hash_password(payload.password),
+        pos_username=payload.pos_username,
+        pos_pin_hash=hash_password(payload.pos_pin) if payload.pos_pin is not None else None,
         role_id=payload.role_id,
     )
     session.add(user)
@@ -86,6 +102,37 @@ async def create_user(session: AsyncSession, payload: UserCreate, *, actor: User
         after=_snapshot(created),
     )
     return created
+
+
+async def set_pos_credentials(
+    session: AsyncSession,
+    user_id: int,
+    payload: PosCredentialsUpdate,
+    *,
+    actor: User,
+) -> User:
+    user = await get_user(session, user_id)
+    ensure_user_is_manageable(actor, user)
+    clash = (
+        await session.execute(
+            select(User).where(User.pos_username == payload.pos_username, User.id != user_id)
+        )
+    ).scalar_one_or_none()
+    if clash is not None:
+        raise ConflictError("A user with this POS username already exists.")
+    user.pos_username = payload.pos_username
+    user.pos_pin_hash = hash_password(payload.pos_pin)
+    await auth_service.revoke_user_sessions(session, user_id=user.id)
+    await session.flush()
+    updated = await get_user(session, user_id)
+    await audit.record(
+        session,
+        action="pos_credentials_updated",
+        entity_type="user",
+        entity_id=user_id,
+        after={"pos_username": updated.pos_username, "pos_pin_configured": True},
+    )
+    return updated
 
 
 async def update_user(

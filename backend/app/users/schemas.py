@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -24,11 +24,21 @@ class UserCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=8, max_length=255)
     role_id: int
+    pos_username: str | None = Field(default=None, min_length=3, max_length=64)
+    pos_pin: str | None = Field(default=None, pattern=r"^\d{4,12}$")
 
     @field_validator("email")
     @classmethod
     def _email(cls, value: str) -> str:
         return normalise_email(value)
+
+    @model_validator(mode="after")
+    def _pos_credentials_together(self) -> UserCreate:
+        if (self.pos_username is None) != (self.pos_pin is None):
+            raise ValueError("POS username and PIN must be configured together.")
+        if self.pos_username is not None:
+            self.pos_username = normalise_pos_username(self.pos_username)
+        return self
 
 
 class UserUpdate(BaseModel):
@@ -45,6 +55,23 @@ class AdminPasswordReset(BaseModel):
     temporary_password: str = Field(min_length=12, max_length=255)
 
 
+def normalise_pos_username(value: str) -> str:
+    value = value.strip().lower()
+    if not re.fullmatch(r"[a-z0-9._-]{3,64}", value):
+        raise ValueError("Invalid POS username.")
+    return value
+
+
+class PosCredentialsUpdate(BaseModel):
+    pos_username: str = Field(min_length=3, max_length=64)
+    pos_pin: str = Field(pattern=r"^\d{4,12}$")
+
+    @field_validator("pos_username")
+    @classmethod
+    def _pos_username(cls, value: str) -> str:
+        return normalise_pos_username(value)
+
+
 class UserRead(BaseModel):
     id: int
     email: str
@@ -53,3 +80,5 @@ class UserRead(BaseModel):
     must_change_password: bool
     role_id: int
     role_name: str
+    pos_username: str | None
+    pos_pin_configured: bool

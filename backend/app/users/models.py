@@ -29,6 +29,10 @@ class User(IntPrimaryKeyMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255))
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Las credenciales de caja no reutilizan la contraseña de administración:
+    # el PIN se guarda con el mismo hasher, nunca en claro.
+    pos_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pos_pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
@@ -39,4 +43,7 @@ class User(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     # Referencing the `email` column object (not the string "email") is what
     # makes this a functional index on lower(email) rather than nonsense.
-    __table_args__ = (Index("uq_users_email_lower", func.lower(email), unique=True),)
+    __table_args__ = (
+        Index("uq_users_email_lower", func.lower(email), unique=True),
+        Index("uq_users_pos_username_lower", func.lower(pos_username), unique=True),
+    )

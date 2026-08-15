@@ -5,6 +5,7 @@ import {
   RequireAnyPermission,
   RequireAuth,
   RequirePermission,
+  RequirePosAuth,
 } from '@/features/auth/guards';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { AccessIndexRedirect, AccessPage } from '@/pages/admin/AccessPage';
@@ -41,6 +42,8 @@ import { LoginPage } from '@/pages/auth/LoginPage';
 import { ForcedPasswordChangePage } from '@/pages/auth/ForcedPasswordChangePage';
 import { PosHomePage } from '@/pages/pos/PosHomePage';
 import { PosLayout } from '@/pages/pos/PosLayout';
+import { PosLoginPage } from '@/pages/pos/PosLoginPage';
+import { PosAuthProvider } from '@/features/auth/PosAuthProvider';
 
 /**
  * Two independent surfaces under one SPA: `/admin` and `/pos`, each gated by
@@ -54,6 +57,14 @@ import { PosLayout } from '@/pages/pos/PosLayout';
 export const routes: RouteObject[] = [
   { index: true, element: <HomeRedirect /> },
   { path: '/login', element: <LoginPage /> },
+  {
+    path: '/pos/login',
+    element: (
+      <PosAuthProvider>
+        <PosLoginPage />
+      </PosAuthProvider>
+    ),
+  },
   {
     element: <RequireAuth />,
     children: [
@@ -232,15 +243,19 @@ export const routes: RouteObject[] = [
           },
         ],
       },
+    ],
+  },
+  {
+    element: (
+      <PosAuthProvider>
+        <RequirePosAuth />
+      </PosAuthProvider>
+    ),
+    children: [
       {
-        element: <RequirePermission permission="pos.access" />,
-        children: [
-          {
-            path: '/pos',
-            element: <PosLayout />,
-            children: [{ index: true, element: <PosHomePage /> }],
-          },
-        ],
+        path: '/pos',
+        element: <PosLayout />,
+        children: [{ index: true, element: <PosHomePage /> }],
       },
     ],
   },

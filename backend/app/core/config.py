@@ -124,6 +124,7 @@ class Settings(BaseSettings):
     # a compromised or shared-terminal session must be killable instantly, and
     # the frontend already sends `credentials: 'include'` on every request.
     session_cookie_name: str = "openerp_session"
+    pos_session_cookie_name: str = "openerp_pos_session"
     session_ttl_days: int = Field(default=30, ge=1)
     # Sliding expiry is only written to the database at most once per this
     # interval, so a busy POS terminal doesn't turn every request into a write.

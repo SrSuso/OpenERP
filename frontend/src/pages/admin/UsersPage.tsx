@@ -9,6 +9,7 @@ import {
   createUser,
   deactivateUser,
   resetUserPassword,
+  setUserPosCredentials,
   updateUserRole,
   usersQuery,
   type User,
@@ -36,6 +37,9 @@ export function UsersPage() {
   const [operationError, setOperationError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState('');
+  const [posTarget, setPosTarget] = useState<User | null>(null);
+  const [posUsername, setPosUsername] = useState('');
+  const [posPin, setPosPin] = useState('');
 
   const assignableRoles = (roles.data ?? []).filter((role) =>
     role.permissions.every((permission) => currentUser?.permissions.includes(permission) ?? false),
@@ -95,6 +99,18 @@ export function UsersPage() {
       setOperationError(null);
     },
     onError: () => setOperationError('No se ha podido restablecer la contraseña.'),
+  });
+
+  const posCredentialsMutation = useMutation({
+    mutationFn: ({ userId, username, pin }: { userId: number; username: string; pin: string }) =>
+      setUserPosCredentials(userId, { pos_username: username, pos_pin: pin }),
+    onSuccess: () => {
+      setPosTarget(null);
+      setPosUsername('');
+      setPosPin('');
+      void queryClient.invalidateQueries({ queryKey: usersQuery.queryKey });
+    },
+    onError: () => setOperationError('No se ha podido guardar el acceso TPV.'),
   });
 
   return (
@@ -179,6 +195,62 @@ export function UsersPage() {
         </form>
       )}
 
+      {posTarget && (
+        <form
+          className="mb-4 max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+          onSubmit={(event) => {
+            event.preventDefault();
+            posCredentialsMutation.mutate({
+              userId: posTarget.id,
+              username: posUsername,
+              pin: posPin,
+            });
+          }}
+        >
+          <h2 className="text-sm font-semibold text-slate-800">
+            Acceso TPV de {posTarget.full_name}
+          </h2>
+          <label className="mt-3 block text-sm text-slate-600">
+            Usuario TPV
+            <input
+              value={posUsername}
+              onChange={(event) => setPosUsername(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="mt-3 block text-sm text-slate-600">
+            PIN (4–12 dígitos)
+            <input
+              type="password"
+              inputMode="numeric"
+              value={posPin}
+              onChange={(event) => setPosPin(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="submit"
+              disabled={
+                !posUsername.trim() ||
+                !/^\d{4,12}$/.test(posPin) ||
+                posCredentialsMutation.isPending
+              }
+              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              Guardar acceso TPV
+            </button>
+            <button
+              type="button"
+              onClick={() => setPosTarget(null)}
+              className="rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
       {users.data && currentUser && (
         <UsersTable
           users={users.data}
@@ -194,6 +266,12 @@ export function UsersPage() {
             setOperationError(null);
             setTemporaryPassword('');
             setResetTarget(users.data.find((user) => user.id === userId) ?? null);
+          }}
+          onSetPosCredentials={(userId) => {
+            const target = users.data.find((user) => user.id === userId) ?? null;
+            setPosTarget(target);
+            setPosUsername(target?.pos_username ?? '');
+            setPosPin('');
           }}
         />
       )}

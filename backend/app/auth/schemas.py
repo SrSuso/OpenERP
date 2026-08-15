@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.users.schemas import normalise_email
+from app.users.schemas import normalise_email, normalise_pos_username
 
 
 class LoginRequest(BaseModel):
@@ -17,6 +17,16 @@ class LoginRequest(BaseModel):
     @classmethod
     def _email(cls, value: str) -> str:
         return normalise_email(value)
+
+
+class PosLoginRequest(BaseModel):
+    username: str
+    pin: str = Field(pattern=r"^\d{4,12}$")
+
+    @field_validator("username")
+    @classmethod
+    def _username(cls, value: str) -> str:
+        return normalise_pos_username(value)
 
 
 class MeResponse(BaseModel):

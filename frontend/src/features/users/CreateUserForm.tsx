@@ -14,6 +14,12 @@ const createUserSchema = z.object({
   full_name: z.string().min(1, 'Introduce un nombre.').max(255),
   password: z.string().min(8, 'Al menos 8 caracteres.').max(255),
   role_id: z.coerce.number().int('Elige un rol.').positive('Elige un rol.'),
+  pos_username: z.string().trim().min(3).max(64).optional().or(z.literal('')),
+  pos_pin: z
+    .string()
+    .regex(/^\d{4,12}$/)
+    .optional()
+    .or(z.literal('')),
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
@@ -43,7 +49,13 @@ export function CreateUserForm({
 
   useUnsavedWarning(isDirty);
 
-  const submit = handleSubmit((values) => onSubmit(values));
+  const submit = handleSubmit((values) => {
+    const { pos_username, pos_pin, ...user } = values;
+    onSubmit({
+      ...user,
+      ...(pos_username && pos_pin ? { pos_username, pos_pin } : {}),
+    });
+  });
 
   return (
     <form
@@ -63,6 +75,25 @@ export function CreateUserForm({
             {...register('email')}
           />
           {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
+        </label>
+
+        <label className="text-sm text-slate-600">
+          Usuario TPV (opcional)
+          <input
+            type="text"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('pos_username')}
+          />
+        </label>
+
+        <label className="text-sm text-slate-600">
+          PIN TPV (4–12 dígitos)
+          <input
+            type="password"
+            inputMode="numeric"
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            {...register('pos_pin')}
+          />
         </label>
 
         <label className="text-sm text-slate-600">

@@ -28,11 +28,14 @@ from app.users.models import User
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-async def _load_session(session: AsyncSession, token: str) -> AuthSession | None:
+POS_SURFACE_HEADER = "X-OpenERP-Session-Surface"
+
+
+async def _load_session(session: AsyncSession, token: str, *, surface: str) -> AuthSession | None:
     token_hash = hash_session_token(token)
     stmt = (
         select(AuthSession)
-        .where(AuthSession.token_hash == token_hash)
+        .where(AuthSession.token_hash == token_hash, AuthSession.surface == surface)
         .options(
             selectinload(AuthSession.user).selectinload(User.role).selectinload(Role.permissions)
         )
@@ -40,14 +43,22 @@ async def _load_session(session: AsyncSession, token: str) -> AuthSession | None
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def get_current_auth_session(
-    request: Request, response: Response, session: SessionDep, settings: SettingsDep
+async def _current_auth_session(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    settings: SettingsDep,
+    *,
+    surface: str,
 ) -> AuthSession:
-    token = request.cookies.get(settings.session_cookie_name)
+    cookie_name = (
+        settings.pos_session_cookie_name if surface == "POS" else settings.session_cookie_name
+    )
+    token = request.cookies.get(cookie_name)
     if not token:
         raise AuthenticationError("Not authenticated.")
 
-    auth_session = await _load_session(session, token)
+    auth_session = await _load_session(session, token, surface=surface)
     now = datetime.now(UTC)
     if (
         auth_session is None
@@ -76,13 +87,29 @@ async def get_current_auth_session(
     if elapsed >= settings.session_touch_interval_seconds:
         auth_session.last_seen_at = now
         auth_session.expires_at = now + timedelta(days=settings.session_ttl_days)
-        set_session_cookie(response, token, auth_session.expires_at, settings)
+        set_session_cookie(
+            response, token, auth_session.expires_at, settings, cookie_name=cookie_name
+        )
 
     set_user_id(auth_session.user.id)
     return auth_session
 
 
+async def get_current_auth_session(
+    request: Request, response: Response, session: SessionDep, settings: SettingsDep
+) -> AuthSession:
+    surface = "POS" if request.headers.get(POS_SURFACE_HEADER) == "pos" else "ADMIN"
+    return await _current_auth_session(request, response, session, settings, surface=surface)
+
+
+async def get_current_pos_auth_session(
+    request: Request, response: Response, session: SessionDep, settings: SettingsDep
+) -> AuthSession:
+    return await _current_auth_session(request, response, session, settings, surface="POS")
+
+
 AuthSessionDep = Annotated[AuthSession, Depends(get_current_auth_session)]
+PosAuthSessionDep = Annotated[AuthSession, Depends(get_current_pos_auth_session)]
 
 
 async def get_current_user(auth_session: AuthSessionDep) -> User:
@@ -90,3 +117,10 @@ async def get_current_user(auth_session: AuthSessionDep) -> User:
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def get_current_pos_user(auth_session: PosAuthSessionDep) -> User:
+    return auth_session.user
+
+
+PosCurrentUser = Annotated[User, Depends(get_current_pos_user)]

@@ -9,6 +9,7 @@ interface UsersTableProps {
   onDeactivate: (userId: number) => void;
   onActivate: (userId: number) => void;
   onResetPassword: (userId: number) => void;
+  onSetPosCredentials: (userId: number) => void;
   isChangingRole: boolean;
   isDeactivating: boolean;
   isActivating: boolean;
@@ -22,6 +23,7 @@ export function UsersTable({
   onDeactivate,
   onActivate,
   onResetPassword,
+  onSetPosCredentials,
   isChangingRole,
   isDeactivating,
   isActivating,
@@ -86,6 +88,13 @@ export function UsersTable({
                         className="text-sm font-medium text-brand-700 hover:underline"
                       >
                         Restablecer contraseña
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSetPosCredentials(user.id)}
+                        className="text-sm font-medium text-brand-700 hover:underline"
+                      >
+                        Acceso TPV
                       </button>
                       {user.is_active ? (
                         <button

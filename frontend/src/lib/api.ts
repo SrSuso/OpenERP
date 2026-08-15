@@ -105,6 +105,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions<T>): Pro
     credentials: 'include',
     headers: {
       Accept: 'application/json',
+      // Todas las llamadas iniciadas desde la caja usan la cookie POS, no
+      // la sesión de administración que pueda coexistir en el navegador.
+      ...(typeof window !== 'undefined' && window.location.pathname.startsWith('/pos')
+        ? { 'X-OpenERP-Session-Surface': 'pos' }
+        : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...headers,
     },

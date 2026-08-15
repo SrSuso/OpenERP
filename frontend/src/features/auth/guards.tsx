@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '@/features/auth/useAuth';
+import { usePosAuth } from '@/features/auth/usePosAuth';
 import { useBaseFontSize } from '@/features/settings/useBaseFontSize';
 import { useButtonColors } from '@/features/settings/useButtonColors';
 
@@ -30,6 +31,13 @@ export function RequireAuth() {
   // A temporary-password session may only load the change form, so it must
   // not trigger ordinary shop-settings requests before that change happens.
   return user.must_change_password ? <Outlet /> : <AuthenticatedContent />;
+}
+
+export function RequirePosAuth() {
+  const { user, isLoading, hasPermission } = usePosAuth();
+  if (isLoading) return null;
+  if (!user || !hasPermission('pos.access')) return <Navigate to="/pos/login" replace />;
+  return <Outlet />;
 }
 
 function AuthenticatedContent() {

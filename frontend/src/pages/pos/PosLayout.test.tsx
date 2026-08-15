@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AuthProvider } from '@/features/auth/AuthProvider';
+import { PosAuthProvider } from '@/features/auth/PosAuthProvider';
 import { POS_TERMINAL_STORAGE_KEY } from '@/features/pos/PosTerminalProvider';
 
 import { PosLayout } from './PosLayout';
@@ -66,8 +66,8 @@ function stubBackend(
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
 
-      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
-      if (url.includes('/auth/logout')) {
+      if (url.includes('/auth/pos/me')) return Promise.resolve(jsonResponse(ME));
+      if (url.includes('/auth/pos/logout')) {
         logoutCalls.push(url);
         // 204 sin cuerpo, como el backend de verdad
         // (backend/app/auth/router.py). Devolviendo `{}` el esquema de
@@ -125,11 +125,11 @@ function renderLayout({ configured = true }: { configured?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <PosAuthProvider>
         <MemoryRouter initialEntries={['/pos']}>
           <PosLayout />
         </MemoryRouter>
-      </AuthProvider>
+      </PosAuthProvider>
     </QueryClientProvider>,
   );
 }

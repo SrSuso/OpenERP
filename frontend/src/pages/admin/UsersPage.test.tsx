@@ -44,6 +44,8 @@ function baseUsers(): User[] {
       must_change_password: false,
       role_id: 1,
       role_name: 'ADMIN',
+      pos_username: null,
+      pos_pin_configured: false,
     },
     {
       id: 2,
@@ -53,6 +55,8 @@ function baseUsers(): User[] {
       must_change_password: false,
       role_id: 3,
       role_name: 'CASHIER',
+      pos_username: null,
+      pos_pin_configured: false,
     },
   ];
 }
@@ -101,6 +105,8 @@ function stubBackend(options: { users?: User[]; me?: typeof ME; roles?: Role[] }
           must_change_password: false,
           role_id: body['role_id'] as number,
           role_name: 'CASHIER',
+          pos_username: null,
+          pos_pin_configured: false,
         };
         users.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));

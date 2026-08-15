@@ -16,6 +16,7 @@ from app.users.models import User
 from app.users.schemas import (
     AdminPasswordReset,
     PasswordChange,
+    PosCredentialsUpdate,
     UserCreate,
     UserRead,
     UserUpdate,
@@ -35,6 +36,8 @@ def _to_read(user: User) -> UserRead:
         must_change_password=user.must_change_password,
         role_id=user.role_id,
         role_name=user.role.name,
+        pos_username=user.pos_username,
+        pos_pin_configured=user.pos_pin_hash is not None,
     )
 
 
@@ -92,6 +95,20 @@ async def reset_password(
     session: SessionDep,
 ) -> None:
     await service.reset_password(session, user_id, payload, actor=actor)
+
+
+@router.put(
+    "/users/{user_id}/pos-credentials",
+    response_model=UserRead,
+    dependencies=[_require_users_manage],
+)
+async def set_pos_credentials(
+    user_id: int,
+    payload: PosCredentialsUpdate,
+    actor: CurrentUser,
+    session: SessionDep,
+) -> UserRead:
+    return _to_read(await service.set_pos_credentials(session, user_id, payload, actor=actor))
 
 
 @router.post("/users/me/password", status_code=204)

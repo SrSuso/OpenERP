@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router';
 
-import { useAuth } from '@/features/auth/useAuth';
+import { usePosAuth } from '@/features/auth/usePosAuth';
 import { CloseTillDialog } from '@/features/pos/CloseTillDialog';
 import { PosTerminalProvider } from '@/features/pos/PosTerminalProvider';
 import { TerminalSelection } from '@/features/pos/TerminalSelection';
@@ -25,7 +25,7 @@ export function PosLayout() {
 }
 
 function PosLayoutContent() {
-  const { user, logout } = useAuth();
+  const { user, logout } = usePosAuth();
   // Lo que se cambie en el panel se ve aquí sin recargar la caja.
   useLiveCatalog();
   const shopName = useShopSetting('app.display_name', 'OpenERP');

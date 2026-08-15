@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Response
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,6 +15,7 @@ from app.core.config import Settings
 from app.core.errors import AuthenticationError, RateLimitedError
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.rbac.models import Role
+from app.rbac.permissions import POS_ACCESS
 from app.users.models import User
 
 #: Module-level singleton (see app.core.rate_limit's own docstring for why
@@ -80,6 +81,25 @@ async def authenticate(session: AsyncSession, *, email: str, password: str) -> U
     return user
 
 
+async def authenticate_pos(session: AsyncSession, *, username: str, pin: str) -> User:
+    """Authenticate a cashier through the POS-only username/PIN pair."""
+    stmt = (
+        select(User)
+        .where(func.lower(User.pos_username) == username)
+        .options(selectinload(User.role).selectinload(Role.permissions))
+    )
+    user = (await session.execute(stmt)).scalar_one_or_none()
+    if (
+        user is None
+        or not user.is_active
+        or user.pos_pin_hash is None
+        or not verify_password(pin, user.pos_pin_hash)
+        or POS_ACCESS not in {permission.key for permission in user.role.permissions}
+    ):
+        raise AuthenticationError("Invalid POS username or PIN.")
+    return user
+
+
 async def create_session(
     session: AsyncSession,
     *,
@@ -87,6 +107,7 @@ async def create_session(
     settings: Settings,
     user_agent: str | None,
     ip: str | None,
+    surface: str = "ADMIN",
 ) -> tuple[AuthSession, str]:
     """Start a new session for ``user``. Returns the row and the raw token —
     the only place the raw token ever exists outside the client's cookie."""
@@ -94,6 +115,7 @@ async def create_session(
     now = datetime.now(UTC)
     auth_session = AuthSession(
         token_hash=hash_session_token(token),
+        surface=surface,
         user_id=user.id,
         expires_at=now + timedelta(days=settings.session_ttl_days),
         last_seen_at=now,
@@ -125,10 +147,15 @@ async def revoke_user_sessions(
 
 
 def set_session_cookie(
-    response: Response, token: str, expires_at: datetime, settings: Settings
+    response: Response,
+    token: str,
+    expires_at: datetime,
+    settings: Settings,
+    *,
+    cookie_name: str | None = None,
 ) -> None:
     response.set_cookie(
-        settings.session_cookie_name,
+        cookie_name or settings.session_cookie_name,
         token,
         expires=expires_at,
         httponly=True,
@@ -138,5 +165,7 @@ def set_session_cookie(
     )
 
 
-def clear_session_cookie(response: Response, settings: Settings) -> None:
-    response.delete_cookie(settings.session_cookie_name, path="/")
+def clear_session_cookie(
+    response: Response, settings: Settings, *, cookie_name: str | None = None
+) -> None:
+    response.delete_cookie(cookie_name or settings.session_cookie_name, path="/")
