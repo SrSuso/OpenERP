@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
-import { generateTicket } from '@/features/pos/api';
+import { generateTicket, type Ticket } from '@/features/pos/api';
 import { ApiError } from '@/lib/api';
 
 interface TicketReprintButtonProps {
@@ -16,28 +16,31 @@ interface TicketReprintButtonProps {
  * vez, aunque la plantilla haya cambiado desde entonces. Reutiliza el
  * mismo overlay de impresión que `features/pos/Receipt.tsx`. */
 export function TicketReprintButton({ saleId }: TicketReprintButtonProps) {
-  const [ticketText, setTicketText] = useState<string | null>(null);
+  const [ticket, setTicket] = useState<Ticket | null>(null);
 
   const mutation = useMutation({
     mutationFn: () => generateTicket(saleId),
-    onSuccess: (ticket) => setTicketText(ticket.rendered_text),
+    onSuccess: setTicket,
   });
 
   useEffect(() => {
-    if (ticketText !== null) {
+    if (ticket !== null) {
       window.print();
     }
-  }, [ticketText]);
+  }, [ticket]);
 
-  if (ticketText !== null) {
+  if (ticket !== null) {
     return (
-      <div className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8">
+      <div
+        className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
+        data-ticket-width={ticket.width_mm}
+      >
         <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
-          {ticketText}
+          {ticket.rendered_text}
         </pre>
         <button
           type="button"
-          onClick={() => setTicketText(null)}
+          onClick={() => setTicket(null)}
           className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
         >
           Cerrar

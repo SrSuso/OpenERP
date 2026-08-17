@@ -52,14 +52,22 @@
  * `window.print()` never needs the rest of the till's chrome (or its dark
  * background) reproduced on paper. */
 @media print {
-  /* Sin márgenes: en un rollo térmico de 58/80 mm, los ~10 mm que el
-     navegador añade por su cuenta parten el ticket. Con el cuadro de
-     impresión se podían quitar a mano cada vez; imprimiendo directo
-     (Chrome con --kiosk-printing, ver scripts/pos-kiosk.sh) no hay dónde
-     tocarlos, así que se fijan aquí. El ancho del rollo lo pone el
-     controlador de la impresora, que es quien lo sabe. */
+  /* La mayoría de impresoras de rollo de 80 mm sólo tienen unos 72 mm de
+     cabeza imprimible. El ticket se compone con 48 caracteres para 80 mm,
+     así que dejar que el navegador use sus rellenos de pantalla o refluya
+     el <pre> estrechaba las líneas y algunos drivers las solapaban. La
+     altura sigue siendo continua y la decide el controlador térmico. */
   @page {
     margin: 0;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   body * {
@@ -87,5 +95,47 @@
     background: transparent !important;
     color: #000 !important;
     box-shadow: none !important;
+  }
+
+  /* Los tickets de venta llevan su ancho congelado junto con el texto. La
+     zona de 72 mm deja el margen físico habitual de una térmica de 80 mm;
+     a 9 px Courier New entran sus 48 caracteres (unos 69 mm) sin que el
+     navegador envuelva una línea ya compuesta por el backend. */
+  .ticket-print-root[data-ticket-width] {
+    position: static !important;
+    display: block !important;
+    width: 72mm !important;
+    min-width: 0 !important;
+    max-width: 72mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .ticket-print-root[data-ticket-width='58'] {
+    width: 48mm !important;
+    max-width: 48mm !important;
+  }
+
+  .ticket-print-root[data-ticket-width] pre {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    white-space: pre !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    font-family: 'Courier New', 'Liberation Mono', monospace !important;
+    font-size: 9px !important;
+    font-variant-ligatures: none;
+    line-height: 12px !important;
   }
 }

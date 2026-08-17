@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
-import { generateTicket, type Sale } from '@/features/pos/api';
+import { generateTicket, type Sale, type Ticket } from '@/features/pos/api';
 import { useSettledShopFlag } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
@@ -30,12 +30,12 @@ function describeError(error: unknown): string {
  * impresora se ha quedado sin papel.
  */
 export function Receipt({ sale, onDismiss }: ReceiptProps) {
-  const [ticketText, setTicketText] = useState<string | null>(null);
+  const [ticket, setTicket] = useState<Ticket | null>(null);
   const printOnCheckout = useSettledShopFlag('pos.print_ticket_on_checkout', true);
 
   const printMutation = useMutation({
     mutationFn: () => generateTicket(sale.id),
-    onSuccess: (ticket) => setTicketText(ticket.rendered_text),
+    onSuccess: setTicket,
   });
 
   // Una sola vez por venta: generar el ticket es idempotente, pero pedirlo
@@ -63,22 +63,25 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   // Sólo cuando el ticket ha salido solo: si se ha pedido a mano, es
   // porque alguien quería mirarlo, y ahí manda el botón de cerrar.
   useEffect(() => {
-    if (ticketText === null) return;
+    if (ticket === null) return;
     // `window.print()` no vuelve hasta que el trabajo está mandado, así que
     // el texto sigue en pantalla mientras se imprime.
     window.print();
     if (printOnCheckout === true) onDismiss();
-  }, [ticketText, printOnCheckout, onDismiss]);
+  }, [ticket, printOnCheckout, onDismiss]);
 
-  if (ticketText !== null) {
+  if (ticket !== null) {
     return (
-      <div className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8">
+      <div
+        className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
+        data-ticket-width={ticket.width_mm}
+      >
         <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
-          {ticketText}
+          {ticket.rendered_text}
         </pre>
         <button
           type="button"
-          onClick={() => setTicketText(null)}
+          onClick={() => setTicket(null)}
           className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
         >
           Cerrar

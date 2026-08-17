@@ -136,6 +136,10 @@ describe('Receipt', () => {
     await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
 
     expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/TOTAL 20\.00/).closest('[data-ticket-width]')).toHaveAttribute(
+      'data-ticket-width',
+      '58',
+    );
     expect(printMock).toHaveBeenCalled();
   });
 
