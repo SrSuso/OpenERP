@@ -76,6 +76,7 @@ describe('AdminLayout', () => {
     const alerts = await screen.findByRole('link', { name: /Avisos/ });
     const badge = await screen.findByLabelText('1 avisos sin resolver');
     const navigation = alerts.closest('nav')!;
+    expect(navigation).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto', 'overscroll-contain');
     const destinations = within(navigation)
       .getAllByRole('link')
       .map((link) => new URL(link.getAttribute('href')!, 'http://test').pathname);

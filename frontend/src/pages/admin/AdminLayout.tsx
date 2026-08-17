@@ -125,40 +125,42 @@ export function AdminLayout() {
 
   return (
     <div className="flex h-full">
-      <aside className="w-56 shrink-0 border-r border-slate-200 bg-white p-4">
-        <p className="mb-6 text-lg font-semibold text-brand-700">{shopName}</p>
-        <nav className="flex flex-col gap-1 text-sm">
-          {visible.map((section) => (
-            <div key={section.title ?? 'principal'} className="flex flex-col gap-1">
-              {section.title && (
-                <p className="mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  {section.title}
-                </p>
-              )}
-              {section.entries.map((entry) => (
-                <NavLink
-                  key={entry.to}
-                  to={entry.to}
-                  end={entry.to === '/admin'}
-                  className={linkClassName}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    {entry.label}
-                    {entry.to === '/admin/notifications' && worst && (
-                      <span
-                        aria-label={`${incidents.length} avisos sin resolver`}
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          SEVERITY_STYLES[worst].badge
-                        } ${SEVERITY_STYLES[worst].blink ? 'animate-pulse' : ''}`}
-                      >
-                        {incidents.length}
-                      </span>
-                    )}
-                  </span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+      <aside className="flex h-full w-56 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white p-4">
+        <p className="mb-6 shrink-0 text-lg font-semibold text-brand-700">{shopName}</p>
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 text-sm">
+          <div className="flex flex-col gap-1">
+            {visible.map((section) => (
+              <div key={section.title ?? 'principal'} className="flex flex-col gap-1">
+                {section.title && (
+                  <p className="mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    {section.title}
+                  </p>
+                )}
+                {section.entries.map((entry) => (
+                  <NavLink
+                    key={entry.to}
+                    to={entry.to}
+                    end={entry.to === '/admin'}
+                    className={linkClassName}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      {entry.label}
+                      {entry.to === '/admin/notifications' && worst && (
+                        <span
+                          aria-label={`${incidents.length} avisos sin resolver`}
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            SEVERITY_STYLES[worst].badge
+                          } ${SEVERITY_STYLES[worst].blink ? 'animate-pulse' : ''}`}
+                        >
+                          {incidents.length}
+                        </span>
+                      )}
+                    </span>
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </div>
         </nav>
       </aside>
       <div className="flex flex-1 flex-col overflow-auto">
