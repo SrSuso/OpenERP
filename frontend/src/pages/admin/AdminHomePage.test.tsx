@@ -15,7 +15,6 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
-const HEALTH = { status: 'ok', app: 'OpenERP', environment: 'test' };
 const USER_A = {
   id: 1,
   email: 'admin-a@example.com',
@@ -62,8 +61,8 @@ function stubBackend(
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
 
-      if (url.includes('/health/live')) {
-        return Promise.resolve(jsonResponse(HEALTH));
+      if (url.includes('/auth/me')) {
+        return Promise.resolve(jsonResponse(USER_A));
       }
       if (url.includes('/warehouses')) {
         return Promise.resolve(
@@ -144,7 +143,7 @@ describe('AdminHomePage', () => {
     stubBackend();
     renderPage();
 
-    expect(await screen.findByText('ok · OpenERP · test')).toBeInTheDocument();
+    expect(await screen.findByText('ok · OpenERP · sesión autenticada')).toBeInTheDocument();
   });
 
   it('creates a default dashboard when none exists yet', async () => {
