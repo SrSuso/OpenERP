@@ -12,6 +12,7 @@ from tests.conftest import BACKEND_ROOT
 
 PROJECT_ROOT = BACKEND_ROOT.parent
 DEPLOY_SCRIPT = BACKEND_ROOT.parent / "scripts" / "deploy-update.sh"
+PRESERVE_IMAGES_SCRIPT = BACKEND_ROOT.parent / "scripts" / "preserve-production-images.sh"
 PRUNE_SCRIPT = BACKEND_ROOT.parent / "scripts" / "prune-postgres-backups.sh"
 
 
@@ -86,6 +87,71 @@ def _run_deploy(script: Path, env: dict[str, str]) -> subprocess.CompletedProces
         timeout=30,
         check=False,
     )
+
+
+def test_preserve_images_uses_immutable_config_reference_when_compose_digest_is_missing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "checkout"
+    scripts = root / "scripts"
+    fake_bin = tmp_path / "bin"
+    scripts.mkdir(parents=True)
+    fake_bin.mkdir()
+    shutil.copy2(PRESERVE_IMAGES_SCRIPT, scripts / "preserve-production-images.sh")
+    tag_log = tmp_path / "tags.log"
+    version = "a" * 40
+
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/bin/sh
+case "$1" in
+  compose)
+    for arg in "$@"; do service="$arg"; done
+    printf '%s-container\\n' "$service"
+    ;;
+  inspect)
+    case "$4:$3" in
+      api-container:{{{{.Image}}}}) printf '%s\\n' sha256:api-config-digest ;;
+      web-container:{{{{.Image}}}}) printf '%s\\n' sha256:web-config-digest ;;
+      api-container:{{{{.Config.Image}}}}) printf '%s\\n' openerp-backend:{version} ;;
+      web-container:{{{{.Config.Image}}}}) printf '%s\\n' openerp-frontend:{version} ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  image)
+    case "$2:$3" in
+      inspect:openerp-backend:{version}|inspect:openerp-frontend:{version}) exit 0 ;;
+      inspect:*) exit 1 ;;
+      tag:openerp-backend:{version}|tag:openerp-frontend:{version})
+        printf '%s -> %s\\n' "$3" "$4" >> "$OPENERP_TEST_TAG_LOG"
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+""",
+    )
+
+    result = subprocess.run(
+        [str(scripts / "preserve-production-images.sh"), version],
+        cwd=root,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "OPENERP_TEST_TAG_LOG": str(tag_log),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert tag_log.read_text().splitlines() == [
+        f"openerp-backend:{version} -> openerp-backend:{version}",
+        f"openerp-frontend:{version} -> openerp-frontend:{version}",
+    ]
 
 
 def test_deploy_stops_all_writers_before_backup_and_migration(tmp_path: Path) -> None:
