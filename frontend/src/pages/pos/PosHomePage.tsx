@@ -7,6 +7,7 @@ import { Checkout } from '@/features/pos/Checkout';
 import { OpenSalesBar } from '@/features/pos/OpenSalesBar';
 import { OpenPricePrompt } from '@/features/pos/OpenPricePrompt';
 import { ProductGrid } from '@/features/pos/ProductGrid';
+import { ProductSearchDialog } from '@/features/pos/ProductSearchDialog';
 import { QuantityPad } from '@/features/pos/QuantityPad';
 import { Receipt } from '@/features/pos/Receipt';
 import { WeightPrompt } from '@/features/pos/WeightPrompt';
@@ -48,6 +49,8 @@ export function PosHomePage() {
   const terminalId = selectedTerminal?.id ?? null;
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [barcode, setBarcode] = useState('');
+  const [isProductSearchOpen, setProductSearchOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
   const [sale, setSale] = useState<Sale | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
@@ -61,6 +64,7 @@ export function PosHomePage() {
   const [receipt, setReceipt] = useState<Sale | null>(null);
 
   const warehouseId = selectedTerminal?.warehouse_id ?? null;
+  const showProductSearch = selectedTerminal?.show_product_search ?? true;
 
   const locations = useQuery(locationsQuery(warehouseId ?? Number.NaN));
   const locationId = locations.data?.[0]?.id ?? null;
@@ -157,6 +161,10 @@ export function PosHomePage() {
   const products = useQuery(
     productsQuery(selectedCategoryId !== null ? { posCategoryId: selectedCategoryId } : {}),
   );
+  const searchedProducts = useQuery({
+    ...productsQuery({ search: productSearch.trim() }),
+    enabled: isProductSearchOpen && productSearch.trim() !== '',
+  });
 
   const addLineMutation = useMutation({
     mutationFn: ({
@@ -314,7 +322,12 @@ export function PosHomePage() {
   // de lo que se pesa) manda el campo — lo decide el propio hook.
   useBarcodeScanner(
     (code) => resolveBarcodeMutation.mutate(code),
-    sale !== null && !busy && view === 'cart' && weighing === null && openPrice === null,
+    sale !== null &&
+      !busy &&
+      view === 'cart' &&
+      weighing === null &&
+      openPrice === null &&
+      !isProductSearchOpen,
   );
 
   function handleBarcodeSubmit(event: FormEvent<HTMLFormElement>) {
@@ -423,6 +436,16 @@ export function PosHomePage() {
                           >
                             Añadir
                           </button>
+                          {showProductSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setProductSearchOpen(true)}
+                              disabled={sale === null || busy}
+                              className="rounded bg-till-600 px-4 py-2 text-sm font-semibold text-white hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Buscar producto
+                            </button>
+                          )}
                         </form>
 
                         {lineError && (
@@ -492,6 +515,26 @@ export function PosHomePage() {
           onConfirm={(total) =>
             addLineMutation.mutate({ product: openPrice, quantity: '1', openPriceTotal: total })
           }
+        />
+      )}
+
+      {isProductSearchOpen && (
+        <ProductSearchDialog
+          query={productSearch}
+          onQueryChange={setProductSearch}
+          products={searchedProducts.data ?? []}
+          isPending={searchedProducts.isPending}
+          isError={searchedProducts.isError}
+          disabled={sale === null || busy}
+          onPick={(product) => {
+            setProductSearchOpen(false);
+            setProductSearch('');
+            pickProduct(product);
+          }}
+          onClose={() => {
+            setProductSearchOpen(false);
+            setProductSearch('');
+          }}
         />
       )}
     </section>

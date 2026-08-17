@@ -11,6 +11,10 @@ export const posTerminalSchema = z.object({
   warehouse_id: z.number(),
   warehouse_name: z.string(),
   is_active: z.boolean(),
+  // Mientras se actualiza una caja ya abierta, un backend anterior no lo
+  // envía todavía: mantener el buscador activo conserva el comportamiento
+  // útil por defecto hasta que se aplique la migración.
+  show_product_search: z.boolean().optional().default(true),
   created_at: z.string(),
 });
 export type PosTerminal = z.infer<typeof posTerminalSchema>;
@@ -36,7 +40,7 @@ export async function createPosTerminal(name: string, warehouseId: number): Prom
 
 export async function updatePosTerminal(
   terminalId: number,
-  changes: { name?: string; is_active?: boolean },
+  changes: { name?: string; is_active?: boolean; show_product_search?: boolean },
 ): Promise<PosTerminal> {
   return apiFetch(`${API_V1}/pos-terminals/${terminalId}`, {
     method: 'PATCH',

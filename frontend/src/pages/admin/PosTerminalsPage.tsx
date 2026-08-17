@@ -13,7 +13,7 @@ function TerminalRow({ terminal }: { terminal: PosTerminal }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(terminal.name);
   const update = useMutation({
-    mutationFn: (changes: { name?: string; is_active?: boolean }) =>
+    mutationFn: (changes: { name?: string; is_active?: boolean; show_product_search?: boolean }) =>
       updatePosTerminal(terminal.id, changes),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['pos', 'terminals'] });
@@ -35,6 +35,18 @@ function TerminalRow({ terminal }: { terminal: PosTerminal }) {
         <span className={terminal.is_active ? 'text-green-700' : 'text-slate-500'}>
           {terminal.is_active ? 'Activo' : 'Inactivo'}
         </span>
+      </td>
+      <td className="px-4 py-2">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            aria-label={`Buscador táctil de ${terminal.name}`}
+            checked={terminal.show_product_search}
+            disabled={update.isPending}
+            onChange={(event) => update.mutate({ show_product_search: event.target.checked })}
+          />
+          Buscar productos
+        </label>
       </td>
       <td className="px-4 py-2 text-right">
         <div className="flex justify-end gap-3">
@@ -102,6 +114,7 @@ export function PosTerminalsPage() {
               <th className="px-4 py-2 font-medium">Terminal</th>
               <th className="px-4 py-2 font-medium">Almacén</th>
               <th className="px-4 py-2 font-medium">Estado</th>
+              <th className="px-4 py-2 font-medium">Buscador táctil</th>
               <th className="px-4 py-2 font-medium" />
             </tr>
           </thead>
@@ -111,7 +124,7 @@ export function PosTerminalsPage() {
             ))}
             {terminals.data?.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-3 text-slate-500">
+                <td colSpan={5} className="px-4 py-3 text-slate-500">
                   Todavía no hay terminales POS.
                 </td>
               </tr>

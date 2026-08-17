@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, ForeignKey, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
@@ -20,5 +20,9 @@ class PosTerminal(IntPrimaryKeyMixin, TimestampMixin, Base):
         BigInteger, ForeignKey("warehouses.id", ondelete="RESTRICT"), index=True
     )
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+    #: Cada pantalla táctil puede optar por mostrar el buscador de catálogo.
+    #: No afecta a productos ni ventas: sólo a qué control aparece en esa
+    #: caja concreta.
+    show_product_search: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     warehouse: Mapped[Warehouse] = relationship()

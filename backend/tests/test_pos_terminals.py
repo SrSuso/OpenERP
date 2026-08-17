@@ -333,6 +333,12 @@ async def test_terminal_administration_renames_and_deactivates_but_never_moves_o
     )
     assert renamed.status_code == 200
     assert renamed.json()["name"] == "A9 Admin Renamed"
+    assert renamed.json()["show_product_search"] is True
+    search_disabled = await client.patch(
+        f"/api/v1/pos-terminals/{terminal['id']}", json={"show_product_search": False}
+    )
+    assert search_disabled.status_code == 200
+    assert search_disabled.json()["show_product_search"] is False
     # The stable historical datum is the FK; labels intentionally show the
     # current administrative name instead of keeping a redundant snapshot.
     historical = (await client.get(f"/api/v1/sales/{sale['id']}")).json()

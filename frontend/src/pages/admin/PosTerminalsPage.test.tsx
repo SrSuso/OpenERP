@@ -20,6 +20,7 @@ function stubBackend() {
       warehouse_id: 1,
       warehouse_name: 'Tienda',
       is_active: true,
+      show_product_search: true,
       created_at: '2026-08-11T09:00:00Z',
     },
   ];
@@ -45,6 +46,7 @@ function stubBackend() {
           warehouse_id: body['warehouse_id'],
           warehouse_name: 'Tienda',
           is_active: true,
+          show_product_search: true,
           created_at: '2026-08-11T10:00:00Z',
         };
         terminals = [...terminals, created as (typeof terminals)[number]];
@@ -92,6 +94,8 @@ describe('PosTerminalsPage', () => {
     await waitFor(() => expect(backend.writes).toContainEqual({ name: 'Caja principal' }));
     await userEvent.click(screen.getAllByRole('button', { name: 'Desactivar' })[0]!);
     await waitFor(() => expect(backend.writes).toContainEqual({ is_active: false }));
+    await userEvent.click(screen.getByLabelText('Buscador táctil de Caja principal'));
+    await waitFor(() => expect(backend.writes).toContainEqual({ show_product_search: false }));
 
     expect(screen.queryByRole('button', { name: /eliminar/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/cambiar almacén/i)).not.toBeInTheDocument();

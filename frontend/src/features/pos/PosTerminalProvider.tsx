@@ -21,7 +21,14 @@ function storedTerminalId(): number | null {
 export function PosTerminalProvider({ children }: { children: ReactNode }) {
   const [configuredId, setConfiguredId] = useState(storedTerminalId);
   const [changing, setChanging] = useState(configuredId === null);
-  const query = useQuery(posTerminalsQuery(true));
+  const query = useQuery({
+    ...posTerminalsQuery(true),
+    // La preferencia del buscador pertenece a esta caja. Consultarla cada
+    // pocos segundos permite activarla o quitarla desde Administración sin
+    // recargar el TPV ni interrumpir el carrito que esté abierto.
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+  });
   const terminals = useMemo(() => query.data ?? [], [query.data]);
   const selectedTerminal = terminals.find((terminal) => terminal.id === configuredId) ?? null;
   const storedTerminalUnavailable =

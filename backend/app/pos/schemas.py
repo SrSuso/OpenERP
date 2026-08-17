@@ -17,10 +17,11 @@ class PosTerminalUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     is_active: bool | None = None
+    show_product_search: bool | None = None
 
     @model_validator(mode="after")
     def _has_change(self) -> PosTerminalUpdate:
-        if self.name is None and self.is_active is None:
+        if self.name is None and self.is_active is None and self.show_product_search is None:
             raise ValueError("At least one terminal field must be changed.")
         return self
 
@@ -31,4 +32,5 @@ class PosTerminalRead(BaseModel):
     warehouse_id: int
     warehouse_name: str
     is_active: bool
+    show_product_search: bool
     created_at: datetime

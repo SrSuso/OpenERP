@@ -79,6 +79,7 @@ async def create_terminal(session: AsyncSession, payload: PosTerminalCreate) -> 
             "name": terminal.name,
             "warehouse_id": terminal.warehouse_id,
             "is_active": terminal.is_active,
+            "show_product_search": terminal.show_product_search,
         },
     )
     return await get_terminal(session, terminal.id)
@@ -88,7 +89,11 @@ async def update_terminal(
     session: AsyncSession, terminal_id: int, payload: PosTerminalUpdate
 ) -> PosTerminal:
     terminal = await get_terminal(session, terminal_id, for_update=True)
-    before = {"name": terminal.name, "is_active": terminal.is_active}
+    before = {
+        "name": terminal.name,
+        "is_active": terminal.is_active,
+        "show_product_search": terminal.show_product_search,
+    }
     if payload.name is not None and payload.name != terminal.name:
         duplicate = await session.scalar(
             select(PosTerminal.id).where(
@@ -108,6 +113,8 @@ async def update_terminal(
                 f"POS terminal {terminal_id} cannot be activated in an inactive warehouse."
             )
         terminal.is_active = payload.is_active
+    if payload.show_product_search is not None:
+        terminal.show_product_search = payload.show_product_search
 
     await session.flush()
     await audit.record(
@@ -116,6 +123,10 @@ async def update_terminal(
         entity_type="pos_terminal",
         entity_id=terminal.id,
         before=before,
-        after={"name": terminal.name, "is_active": terminal.is_active},
+        after={
+            "name": terminal.name,
+            "is_active": terminal.is_active,
+            "show_product_search": terminal.show_product_search,
+        },
     )
     return await get_terminal(session, terminal.id)

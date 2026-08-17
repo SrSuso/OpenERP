@@ -24,6 +24,7 @@ def _to_read(terminal: PosTerminal) -> PosTerminalRead:
         warehouse_id=terminal.warehouse_id,
         warehouse_name=terminal.warehouse.name,
         is_active=terminal.is_active,
+        show_product_search=terminal.show_product_search,
         created_at=terminal.created_at,
     )
 

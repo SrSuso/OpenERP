@@ -176,6 +176,7 @@ function stubBackend(
     checkoutFailures?: number;
     holdCheckout?: boolean;
     rejectLineOnce?: boolean;
+    showProductSearch?: boolean;
   } = {},
 ) {
   let sale: Sale | null = options.existingDraft ?? null;
@@ -189,6 +190,7 @@ function stubBackend(
   let remainingCheckoutFailures = options.checkoutFailures ?? 0;
   let remainingLineFailures = options.rejectLineOnce ? 1 : 0;
   const mutationTerminalHeaders: string[] = [];
+  const terminal = { ...TERMINAL, show_product_search: options.showProductSearch ?? true };
 
   vi.stubGlobal(
     'fetch',
@@ -201,7 +203,7 @@ function stubBackend(
       }
 
       if (url.includes('/pos-terminals')) {
-        return Promise.resolve(jsonResponse([TERMINAL]));
+        return Promise.resolve(jsonResponse([terminal]));
       }
       if (url.includes('/warehouses/1/locations')) {
         return Promise.resolve(jsonResponse([LOCATION]));
@@ -222,7 +224,15 @@ function stubBackend(
         return Promise.resolve(jsonResponse(found));
       }
       if (url.includes('/products')) {
-        return Promise.resolve(jsonResponse([MILK, TOMATO, DELI_TOTAL]));
+        const search = new URL(url, 'http://test').searchParams.get('search')?.toLowerCase();
+        const catalog = [MILK, TOMATO, DELI_TOTAL];
+        return Promise.resolve(
+          jsonResponse(
+            search
+              ? catalog.filter((product) => product.name.toLowerCase().includes(search))
+              : catalog,
+          ),
+        );
       }
       if (url.includes('/sales') && url.includes('status=DRAFT')) {
         return Promise.resolve(jsonResponse(sale ? [sale] : []));
@@ -444,6 +454,33 @@ describe('PosHomePage', () => {
     const cart = screen.getByRole('button', { name: /cancelar venta/i }).closest('aside')!;
     expect(within(cart).getByText('Leche entera 1L')).toBeInTheDocument();
     expect(within(cart).getAllByText('1,32 €').length).toBeGreaterThan(0);
+  });
+
+  it('finds a product from the touch search and adds the selected result', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Buscar producto' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Buscar productos' });
+    await userEvent.type(within(dialog).getByLabelText('Nombre, referencia o código'), 'Leche');
+    await userEvent.click(await within(dialog).findByRole('button', { name: /Leche entera 1L/ }));
+
+    await waitFor(() => {
+      expect(backend.addLineCalls).toContainEqual({
+        product_id: 1,
+        package_id: 10,
+        quantity_packages: '1',
+      });
+    });
+    expect(screen.queryByRole('dialog', { name: 'Buscar productos' })).not.toBeInTheDocument();
+  });
+
+  it('hides the touch search when that terminal has it disabled', async () => {
+    stubBackend({ showProductSearch: false });
+    renderPage();
+
+    await waitForScannerReady();
+    expect(screen.queryByRole('button', { name: 'Buscar producto' })).not.toBeInTheDocument();
   });
 
   it('asks how many grams before selling something that goes by weight', async () => {
