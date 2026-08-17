@@ -48,11 +48,6 @@ export function InventoryPage() {
             <NavLink to="warehouses" className={tabClassName}>
               Almacenes
             </NavLink>
-            {hasPermission('inventory.manage') && (
-              <NavLink to="terminals" className={tabClassName}>
-                Terminales POS
-              </NavLink>
-            )}
           </>
         )}
       </nav>

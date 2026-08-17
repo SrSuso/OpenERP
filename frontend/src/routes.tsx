@@ -144,10 +144,6 @@ export const routes: RouteObject[] = [
                           { path: 'warehouses', element: <InventoryWarehousesPage /> },
                         ],
                       },
-                      {
-                        element: <RequirePermission permission="inventory.manage" />,
-                        children: [{ path: 'terminals', element: <PosTerminalsPage /> }],
-                      },
                     ],
                   },
                   // Fuera del Outlet de InventoryPage a propósito — la
@@ -155,6 +151,18 @@ export const routes: RouteObject[] = [
                   // pestaña más (ver ProductDetailPage).
                   { path: 'products/:productId', element: <ProductDetailPage /> },
                 ],
+              },
+              // El terminal POS configura una caja, no las existencias: se
+              // muestra en Configuración de la tienda. Conservamos la URL
+              // antigua para los marcadores creados antes de moverlo.
+              {
+                path: 'inventory/terminals',
+                element: <Navigate to="/admin/pos-terminals" replace />,
+              },
+              {
+                path: 'pos-terminals',
+                element: <RequirePermission permission="inventory.manage" />,
+                children: [{ index: true, element: <PosTerminalsPage /> }],
               },
               // Enlaces viejos de antes de la reorganización — siguen
               // funcionando en vez de dar 404 (mismo criterio que

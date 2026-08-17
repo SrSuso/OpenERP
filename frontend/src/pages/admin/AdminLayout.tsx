@@ -34,11 +34,6 @@ const SECTIONS: NavSection[] = [
     entries: [
       { to: '/admin', label: 'Inicio', permissions: [] },
       {
-        to: '/admin/inventory/terminals',
-        label: 'Terminales POS',
-        permissions: ['inventory.manage'],
-      },
-      {
         to: '/admin/inventory',
         label: 'Inventario',
         permissions: ['product.read', 'lot.read', 'inventory.read'],
@@ -60,6 +55,11 @@ const SECTIONS: NavSection[] = [
     title: 'Configuración de la tienda',
     entries: [
       { to: '/admin/settings', label: 'Configuración', permissions: ['settings.read'] },
+      {
+        to: '/admin/pos-terminals',
+        label: 'Terminales POS',
+        permissions: ['inventory.manage'],
+      },
       { to: '/admin/pricing', label: 'Precios e impuestos', permissions: ['pricing.manage'] },
       {
         to: '/admin/ticket-templates',
