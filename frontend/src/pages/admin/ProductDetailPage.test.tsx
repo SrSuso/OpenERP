@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
-import { type Product, type ProductCategory } from '@/features/catalog/api';
+import { type Product, type ProductCategory, type Unit } from '@/features/catalog/api';
 import { type StockBalance } from '@/features/inventory/api';
 import { type ProductPurchaseHistoryEntry } from '@/features/purchasing/api';
 import { type Supplier } from '@/features/suppliers/api';
@@ -62,6 +62,11 @@ const CATEGORIES: ProductCategory[] = [
     tracks_stock: true,
     taxes: [],
   },
+];
+const UNITS: Unit[] = [
+  { id: 1, name: 'KG', display_order: 0 },
+  { id: 2, name: 'L', display_order: 1 },
+  { id: 3, name: 'UDS', display_order: 2 },
 ];
 
 function baseProduct(): Product {
@@ -177,6 +182,7 @@ function stubBackend(
       }
       if (method === 'GET' && url.includes('/pos-categories'))
         return Promise.resolve(jsonResponse([]));
+      if (method === 'GET' && url.includes('/units')) return Promise.resolve(jsonResponse(UNITS));
       if (method === 'GET' && url.includes('/taxes')) return Promise.resolve(jsonResponse(TAXES));
       if (method === 'GET' && /\/suppliers\?/.test(url))
         return Promise.resolve(jsonResponse([supplier]));
@@ -241,6 +247,10 @@ function stubBackend(
         const b = body();
         updateCalls.push(b);
         Object.assign(product, b);
+        if ('base_unit_name' in b) {
+          const basePackage = product.packages.find((pkg) => pkg.is_base)!;
+          basePackage.name = b['base_unit_name'] as string;
+        }
         return Promise.resolve(jsonResponse(product));
       }
       if (method === 'POST' && /\/products\/1\/packages$/.test(url)) {
@@ -384,6 +394,22 @@ describe('ProductDetailPage', () => {
       expect(backend.updateCalls[1]).toMatchObject({ inherit_tracks_stock: true });
     });
     expect(backend.updateCalls[1]).not.toHaveProperty('tracks_stock');
+  });
+
+  it('allows correcting the base unit from the managed unit selector', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    const baseUnit = screen.getByLabelText('Unidad base');
+    expect(baseUnit).toHaveValue('UNIT');
+    await userEvent.selectOptions(baseUnit, 'KG');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => {
+      expect(backend.updateCalls[0]).toMatchObject({ base_unit_name: 'KG' });
+    });
+    expect(screen.getByLabelText('Unidad base')).toHaveValue('KG');
   });
 
   it('prices a product with a fixed amount over cost instead of a percentage', async () => {

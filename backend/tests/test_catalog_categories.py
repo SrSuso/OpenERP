@@ -28,7 +28,6 @@ async def test_category_default_unit_is_selected_from_managed_units(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
-    assert (await client.post("/api/v1/units", json={"name": "KG"})).status_code == 201
 
     created = await client.post(
         "/api/v1/product-categories",

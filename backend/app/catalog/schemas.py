@@ -214,6 +214,10 @@ class ProductUpdate(BaseModel):
     pos_category_id: int | None = None
     pos_display_order: int | None = Field(default=None, ge=0)
     is_open_price: bool | None = None
+    #: La unidad se puede corregir mientras el producto todavía no tenga
+    #: historial ni formatos derivados. El servicio protege esa condición
+    #: para que un cambio no reinterprete cantidades ya guardadas.
+    base_unit_name: str | None = Field(default=None, min_length=1, max_length=20)
     min_stock: Decimal | None = Field(default=None, ge=0)
     track_lots: bool | None = None
     track_expiration: bool | None = None

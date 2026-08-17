@@ -12,6 +12,7 @@ import {
   posCategoriesQuery,
   productCategoriesQuery,
   productQuery,
+  unitsQuery,
   updateBarcode,
   updateProduct,
   type ProductUpdateInput,
@@ -83,6 +84,7 @@ export function ProductDetailPage() {
   const product = useQuery(productQuery(productId));
   const categories = useQuery(productCategoriesQuery);
   const posCategories = useQuery(posCategoriesQuery);
+  const units = useQuery(unitsQuery);
   const taxes = useQuery(taxesQuery);
   const suppliers = useQuery(suppliersQuery(true));
   const stockBalances = useQuery(stockBalanceQuery({ productId }));
@@ -122,7 +124,8 @@ export function ProductDetailPage() {
       setGeneralDirty(false);
       setSavedGeneral((count) => count + 1);
     },
-    onError: () => setEditError('No se ha podido guardar el producto.'),
+    onError: (err: unknown) =>
+      setEditError(err instanceof ApiError ? err.message : 'No se ha podido guardar el producto.'),
   });
 
   const deactivateMutation = useMutation({
@@ -340,6 +343,7 @@ export function ProductDetailPage() {
           product={data}
           categories={categories.data ?? []}
           posCategories={posCategories.data ?? []}
+          units={units.data ?? []}
           isPending={updateMutation.isPending}
           submitError={editError}
           onCancel={() => setEditError(null)}

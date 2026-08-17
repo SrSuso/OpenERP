@@ -8,6 +8,7 @@ import {
   type ProductCategory,
   type ProductUpdateInput,
   type PosCategory,
+  type Unit,
 } from '@/features/catalog/api';
 import { decimalString } from '@/lib/decimal';
 import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
@@ -22,6 +23,7 @@ const editProductSchema = z.object({
   pos_category_id: z.string(),
   pos_display_order: z.coerce.number().int().min(0),
   is_open_price: z.boolean(),
+  base_unit_name: z.string().min(1, 'Elige una unidad base.'),
   min_stock: decimalString({ min: 0 }),
   track_lots: z.boolean(),
   track_expiration: z.boolean(),
@@ -35,6 +37,7 @@ interface EditProductFormProps {
   product: Product;
   categories: ProductCategory[];
   posCategories: PosCategory[];
+  units: Unit[];
   onSubmit: (payload: ProductUpdateInput) => void;
   onCancel: () => void;
   isPending: boolean;
@@ -46,6 +49,7 @@ export function EditProductForm({
   product,
   categories,
   posCategories,
+  units,
   onSubmit,
   onCancel,
   isPending,
@@ -69,6 +73,7 @@ export function EditProductForm({
       pos_category_id: product.pos_category_id === null ? '' : String(product.pos_category_id),
       pos_display_order: product.pos_display_order,
       is_open_price: product.is_open_price ?? false,
+      base_unit_name: product.base_unit_name,
       min_stock: product.min_stock,
       track_lots: product.track_lots,
       track_expiration: product.track_expiration,
@@ -92,6 +97,7 @@ export function EditProductForm({
       pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
       pos_display_order: values.pos_display_order,
       is_open_price: values.is_open_price,
+      base_unit_name: values.base_unit_name,
       min_stock: values.min_stock,
       track_lots: values.track_lots,
       track_expiration: values.track_expiration,
@@ -188,6 +194,34 @@ export function EditProductForm({
             <p className="mt-1 text-sm text-red-600">{errors.min_stock.message}</p>
           )}
         </label>
+
+        <div className="text-sm text-slate-600">
+          <label>
+            Unidad base
+            <select
+              className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('base_unit_name')}
+            >
+              {/* Un producto antiguo puede conservar una unidad que aún no
+                  se haya añadido a la lista; mantenerla visible evita que
+                  editar otro campo cambie la selección por accidente. */}
+              {!units.some((unit) => unit.name === product.base_unit_name) && (
+                <option value={product.base_unit_name}>{product.base_unit_name}</option>
+              )}
+              {units.map((unit) => (
+                <option key={unit.id} value={unit.name}>
+                  {unit.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="mt-1 block text-xs text-slate-400">
+            Puedes corregirla antes de tener stock, ventas, compras, lotes o formatos adicionales.
+          </span>
+          {errors.base_unit_name && (
+            <p className="mt-1 text-sm text-red-600">{errors.base_unit_name.message}</p>
+          )}
+        </div>
 
         {/* La ayuda va fuera del <label>: dentro pasaría a formar parte
             del nombre accesible del desplegable. */}
