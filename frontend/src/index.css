@@ -97,26 +97,20 @@
     box-shadow: none !important;
   }
 
-  /* Los tickets de venta llevan su ancho congelado junto con el texto. La
-     zona de 72 mm deja el margen físico habitual de una térmica de 80 mm;
-     a 9 px Courier New entran sus 48 caracteres (unos 69 mm) sin que el
-     navegador envuelva una línea ya compuesta por el backend. */
+  /* Cada ticket congela su perfil de impresión: ancho útil, letra,
+     interlineado y márgenes. El ancho es la zona que realmente se imprime,
+     nunca el ancho nominal de la bobina. */
   .ticket-print-root[data-ticket-width] {
     position: static !important;
     display: block !important;
-    width: 72mm !important;
+    width: var(--ticket-printable-width) !important;
     min-width: 0 !important;
-    max-width: 72mm !important;
+    max-width: var(--ticket-printable-width) !important;
     height: auto !important;
     min-height: 0 !important;
-    margin: 0 auto !important;
+    margin: var(--ticket-margin-top) auto var(--ticket-margin-bottom) !important;
     padding: 0 !important;
     box-sizing: border-box !important;
-  }
-
-  .ticket-print-root[data-ticket-width='58'] {
-    width: 48mm !important;
-    max-width: 48mm !important;
   }
 
   .ticket-print-root[data-ticket-width] pre {
@@ -133,9 +127,10 @@
     white-space: pre !important;
     overflow-wrap: normal !important;
     word-break: normal !important;
-    font-family: 'Courier New', 'Liberation Mono', monospace !important;
-    font-size: 9px !important;
+    font-family: var(--ticket-font-family) !important;
+    font-size: var(--ticket-font-size) !important;
+    font-weight: var(--ticket-font-weight) !important;
     font-variant-ligatures: none;
-    line-height: 12px !important;
+    line-height: var(--ticket-line-height) !important;
   }
 }

@@ -7,8 +7,7 @@
 
 import { type TicketTaxDisplay } from '@/features/tickets/api';
 import { formatBusinessDateTime } from '@/lib/businessTime';
-
-const CHARS_PER_WIDTH: Record<58 | 80, number> = { 58: 32, 80: 48 };
+import { printableCharacters } from './printProfile';
 
 function center(text: string, width: number): string {
   const trimmed = text.trim();
@@ -49,7 +48,9 @@ const SAMPLE_LINES = [
 ];
 
 export interface TicketPreviewFields {
-  width_mm: 58 | 80;
+  printable_width_mm: number;
+  font_size_px: number;
+  font_weight: 'NORMAL' | 'BOLD';
   header_text: string;
   footer_text: string;
   tax_display: TicketTaxDisplay;
@@ -74,7 +75,7 @@ export interface TicketPreviewFields {
 }
 
 export function renderTicketPreview(fields: TicketPreviewFields): string {
-  const width = CHARS_PER_WIDTH[fields.width_mm];
+  const width = printableCharacters(fields);
   const rows: string[] = [];
 
   const headerLines = [

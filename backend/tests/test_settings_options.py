@@ -146,7 +146,7 @@ async def test_what_the_template_says_lands_on_the_next_ticket(
         "/api/v1/ticket-templates",
         json={
             "name": "Estándar",
-            "width_mm": 58,
+            "printable_width_mm": 48,
             "header_text": "",
             "footer_text": "",
             "store_name": "ALIMENTACION PEPE",

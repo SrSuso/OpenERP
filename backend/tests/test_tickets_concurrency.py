@@ -24,7 +24,7 @@ from app.main import create_app
 from app.rbac.models import Role
 from app.sales.models import Sale, SaleStatus
 from app.tickets import service as ticket_service
-from app.tickets.models import Ticket, TicketTemplate
+from app.tickets.models import Ticket, TicketFontWeight, TicketTemplate
 from app.tickets.schemas import TicketTemplateCreate
 from app.users.models import User
 from tests.conftest import DEFAULT_PASSWORD
@@ -35,7 +35,7 @@ _TEST_HASHER = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
 def _template_payload(name: str, header: str) -> TicketTemplateCreate:
     return TicketTemplateCreate(
         name=name,
-        width_mm=58,
+        printable_width_mm=48,
         header_text=header,
         footer_text="",
     )
@@ -166,7 +166,7 @@ async def test_concurrent_duplicate_template_creation_is_a_semantic_conflict(
     app, client_a, client_b = await _request_clients(settings, committing_sessionmaker, email)
     payload = {
         "name": f"duplicate-{tag}",
-        "width_mm": 58,
+        "printable_width_mm": 48,
         "header_text": "Concurrent create",
         "footer_text": "",
     }
@@ -205,7 +205,7 @@ async def test_concurrent_revision_of_the_same_version_is_a_semantic_conflict(
         email, original_id = admin.email, original.id
 
     app, client_a, client_b = await _request_clients(settings, committing_sessionmaker, email)
-    payload = {"width_mm": 80, "header_text": "Concurrent revision", "footer_text": ""}
+    payload = {"printable_width_mm": 72, "header_text": "Concurrent revision", "footer_text": ""}
     try:
         responses = await asyncio.gather(
             client_a.post(f"/api/v1/ticket-templates/{original_id}/revise", json=payload),
@@ -519,7 +519,13 @@ async def test_non_identity_integrity_error_is_not_treated_as_ticket_replay(
                 session,
                 sale_id=sale_id,
                 template_id=9_999_999_999,
-                width_mm=58,
+                printable_width_mm=48,
+                font_family="COURIER_NEW",
+                font_size_px=9,
+                line_height_px=12,
+                font_weight=TicketFontWeight.NORMAL,
+                margin_top_mm=0,
+                margin_bottom_mm=0,
                 rendered_text="invalid foreign key",
             )
         await session.rollback()

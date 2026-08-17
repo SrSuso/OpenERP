@@ -96,7 +96,11 @@ async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: Lo
     # A ticket template must exist before any sale can print one (fase 15).
     await client.post(
         "/api/v1/ticket-templates",
-        json={"name": "Aceptación", "width_mm": 58, "header_text": "Tienda de aceptación"},
+        json={
+            "name": "Aceptación",
+            "printable_width_mm": 48,
+            "header_text": "Tienda de aceptación",
+        },
     )
 
     # --- the sale itself, rung up by a cashier (fases 11-13) ---------------

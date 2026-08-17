@@ -131,7 +131,7 @@ async def test_completed_sale_keeps_its_fiscal_interpretation_after_settings_cha
 
     template = await client.post(
         "/api/v1/ticket-templates",
-        json={"name": "Histórico fiscal", "width_mm": 58, "tax_display": "BREAKDOWN"},
+        json={"name": "Histórico fiscal", "printable_width_mm": 48, "tax_display": "BREAKDOWN"},
     )
     assert template.status_code == 201
     ticket = (await client.post(f"/api/v1/sales/{sale['id']}/tickets")).json()
@@ -200,7 +200,7 @@ async def test_completed_sale_keeps_product_category_cost_and_cashier_snapshots(
     ).json()
     template = await client.post(
         "/api/v1/ticket-templates",
-        json={"name": "Histórico identidad", "width_mm": 58, "show_cashier": True},
+        json={"name": "Histórico identidad", "printable_width_mm": 48, "show_cashier": True},
     )
     assert template.status_code == 201
     warehouse_id, location_id = await _new_location(client, "Histórico identidad")

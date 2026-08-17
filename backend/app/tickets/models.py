@@ -43,6 +43,24 @@ class TicketTaxDisplay(StrEnum):
     BREAKDOWN = "BREAKDOWN"
 
 
+class TicketFontFamily(StrEnum):
+    """Safe, monospace fonts supported by the browser print view.
+
+    The receipt renderer aligns columns by character. Keeping this list
+    monospace is deliberate: allowing an arbitrary proportional CSS font
+    would make a line that fits on screen wrap on the thermal printer.
+    """
+
+    COURIER_NEW = "COURIER_NEW"
+    LIBERATION_MONO = "LIBERATION_MONO"
+    DEJAVU_SANS_MONO = "DEJAVU_SANS_MONO"
+
+
+class TicketFontWeight(StrEnum):
+    NORMAL = "NORMAL"
+    BOLD = "BOLD"
+
+
 class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "ticket_templates"
     __table_args__ = (
@@ -60,10 +78,23 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(100), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
-    #: 58mm/80mm are the two standard thermal roll widths; the character
-    #: count a monospace receipt font fits per line follows directly from
-    #: it (see ``app.tickets.render``).
-    width_mm: Mapped[int] = mapped_column(Integer)
+    #: The real printable width, rather than the nominal width of the paper
+    #: roll. An 80mm thermal printer commonly exposes about 72mm to ink.
+    printable_width_mm: Mapped[int] = mapped_column(Integer)
+    font_family: Mapped[str] = mapped_column(
+        String(30),
+        default=TicketFontFamily.COURIER_NEW,
+        server_default=TicketFontFamily.COURIER_NEW,
+    )
+    font_size_px: Mapped[int] = mapped_column(Integer, default=9, server_default="9")
+    line_height_px: Mapped[int] = mapped_column(Integer, default=12, server_default="12")
+    font_weight: Mapped[str] = mapped_column(
+        String(10), default=TicketFontWeight.NORMAL, server_default=TicketFontWeight.NORMAL
+    )
+    #: Thermal receipts have no useful fixed height: content determines when
+    #: the printer cuts. These margins are the controllable vertical size.
+    margin_top_mm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    margin_bottom_mm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     header_text: Mapped[str] = mapped_column(Text, default="")
     footer_text: Mapped[str] = mapped_column(Text, default="")
     #: How the receipt reports its tax — see ``TicketTaxDisplay`` and
@@ -125,7 +156,15 @@ class Ticket(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     sale_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sales.id"), index=True)
     template_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ticket_templates.id"))
-    width_mm: Mapped[int] = mapped_column(Integer)
+    #: Snapshot of the physical print profile. The template row is versioned
+    #: too, but keeping the values here makes an old ticket self-contained.
+    printable_width_mm: Mapped[int] = mapped_column(Integer)
+    font_family: Mapped[str] = mapped_column(String(30))
+    font_size_px: Mapped[int] = mapped_column(Integer)
+    line_height_px: Mapped[int] = mapped_column(Integer)
+    font_weight: Mapped[str] = mapped_column(String(10))
+    margin_top_mm: Mapped[int] = mapped_column(Integer)
+    margin_bottom_mm: Mapped[int] = mapped_column(Integer)
     #: The fully formatted receipt, frozen at generation time — see the
     #: module docstring for why this is never recomputed.
     rendered_text: Mapped[str] = mapped_column(Text)

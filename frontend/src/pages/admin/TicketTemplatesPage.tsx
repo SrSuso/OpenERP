@@ -106,7 +106,8 @@ export function TicketTemplatesPage() {
       {active.data && mode === 'none' && (
         <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-sm font-semibold text-slate-700">
-            Activa: {active.data.name} · v{active.data.version} · {active.data.width_mm} mm
+            Activa: {active.data.name} · v{active.data.version} · {active.data.printable_width_mm}{' '}
+            mm
           </p>
           <pre className="mt-2 max-w-xs whitespace-pre-wrap rounded bg-slate-50 p-2 text-xs text-slate-600">
             {active.data.header_text || '(sin cabecera)'}

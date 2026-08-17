@@ -99,7 +99,13 @@ async def create_template(session: AsyncSession, payload: TicketTemplateCreate) 
     template = TicketTemplate(
         name=payload.name,
         version=1,
-        width_mm=payload.width_mm,
+        printable_width_mm=payload.printable_width_mm,
+        font_family=payload.font_family,
+        font_size_px=payload.font_size_px,
+        line_height_px=payload.line_height_px,
+        font_weight=payload.font_weight,
+        margin_top_mm=payload.margin_top_mm,
+        margin_bottom_mm=payload.margin_bottom_mm,
         header_text=payload.header_text,
         footer_text=payload.footer_text,
         tax_display=payload.tax_display,
@@ -128,7 +134,11 @@ async def create_template(session: AsyncSession, payload: TicketTemplateCreate) 
         action="created",
         entity_type="ticket_template",
         entity_id=template.id,
-        after={"name": template.name, "version": template.version, "width_mm": template.width_mm},
+        after={
+            "name": template.name,
+            "version": template.version,
+            "printable_width_mm": template.printable_width_mm,
+        },
     )
     return template
 
@@ -157,7 +167,13 @@ async def revise_template(
     revised = TicketTemplate(
         name=current.name,
         version=current.version + 1,
-        width_mm=payload.width_mm,
+        printable_width_mm=payload.printable_width_mm,
+        font_family=payload.font_family,
+        font_size_px=payload.font_size_px,
+        line_height_px=payload.line_height_px,
+        font_weight=payload.font_weight,
+        margin_top_mm=payload.margin_top_mm,
+        margin_bottom_mm=payload.margin_bottom_mm,
         header_text=payload.header_text,
         footer_text=payload.footer_text,
         tax_display=payload.tax_display,
@@ -264,7 +280,13 @@ async def _insert_ticket(
     *,
     sale_id: int,
     template_id: int,
-    width_mm: int,
+    printable_width_mm: int,
+    font_family: str,
+    font_size_px: int,
+    line_height_px: int,
+    font_weight: str,
+    margin_top_mm: int,
+    margin_bottom_mm: int,
     rendered_text: str,
 ) -> int | None:
     """Insert against the natural identity without masking other failures."""
@@ -273,7 +295,13 @@ async def _insert_ticket(
         .values(
             sale_id=sale_id,
             template_id=template_id,
-            width_mm=width_mm,
+            printable_width_mm=printable_width_mm,
+            font_family=font_family,
+            font_size_px=font_size_px,
+            line_height_px=line_height_px,
+            font_weight=font_weight,
+            margin_top_mm=margin_top_mm,
+            margin_bottom_mm=margin_bottom_mm,
             rendered_text=rendered_text,
         )
         .on_conflict_do_nothing(constraint="uq_tickets_sale_id")
@@ -330,7 +358,13 @@ async def generate_ticket(session: AsyncSession, sale_id: int) -> Ticket:
         session,
         sale_id=sale_id,
         template_id=template.id,
-        width_mm=template.width_mm,
+        printable_width_mm=template.printable_width_mm,
+        font_family=template.font_family,
+        font_size_px=template.font_size_px,
+        line_height_px=template.line_height_px,
+        font_weight=template.font_weight,
+        margin_top_mm=template.margin_top_mm,
+        margin_bottom_mm=template.margin_bottom_mm,
         rendered_text=rendered_text,
     )
     if inserted_id is None:

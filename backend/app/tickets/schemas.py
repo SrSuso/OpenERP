@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.tickets.models import TicketTaxDisplay
+from app.tickets.models import TicketFontFamily, TicketFontWeight, TicketTaxDisplay
 
 
 class TicketTemplateCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    width_mm: Literal[58, 80]
+    printable_width_mm: int = Field(default=72, ge=25, le=80)
+    font_family: TicketFontFamily = TicketFontFamily.COURIER_NEW
+    font_size_px: int = Field(default=9, ge=6, le=16)
+    line_height_px: int = Field(default=12, ge=8, le=24)
+    font_weight: TicketFontWeight = TicketFontWeight.NORMAL
+    margin_top_mm: int = Field(default=0, ge=0, le=20)
+    margin_bottom_mm: int = Field(default=0, ge=0, le=20)
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
     tax_display: TicketTaxDisplay = TicketTaxDisplay.BREAKDOWN
@@ -42,7 +47,13 @@ class TicketTemplateRevise(BaseModel):
     """Every field is required — a revision is a whole new version, not a
     partial patch of the one it retires (see the model's docstring)."""
 
-    width_mm: Literal[58, 80]
+    printable_width_mm: int = Field(default=72, ge=25, le=80)
+    font_family: TicketFontFamily = TicketFontFamily.COURIER_NEW
+    font_size_px: int = Field(default=9, ge=6, le=16)
+    line_height_px: int = Field(default=12, ge=8, le=24)
+    font_weight: TicketFontWeight = TicketFontWeight.NORMAL
+    margin_top_mm: int = Field(default=0, ge=0, le=20)
+    margin_bottom_mm: int = Field(default=0, ge=0, le=20)
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
     tax_display: TicketTaxDisplay = TicketTaxDisplay.BREAKDOWN
@@ -72,7 +83,13 @@ class TicketTemplateRead(BaseModel):
     id: int
     name: str
     version: int
-    width_mm: int
+    printable_width_mm: int
+    font_family: TicketFontFamily
+    font_size_px: int
+    line_height_px: int
+    font_weight: TicketFontWeight
+    margin_top_mm: int
+    margin_bottom_mm: int
     header_text: str
     footer_text: str
     tax_display: TicketTaxDisplay
@@ -99,6 +116,12 @@ class TicketRead(BaseModel):
     id: int
     sale_id: int
     template_id: int
-    width_mm: int
+    printable_width_mm: int
+    font_family: TicketFontFamily
+    font_size_px: int
+    line_height_px: int
+    font_weight: TicketFontWeight
+    margin_top_mm: int
+    margin_bottom_mm: int
     rendered_text: str
     created_at: datetime

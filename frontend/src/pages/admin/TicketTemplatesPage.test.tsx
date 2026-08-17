@@ -23,6 +23,16 @@ const ME = {
   permissions: ['admin.access', 'ticket.manage'],
 };
 
+const PRINT_PROFILE = {
+  printable_width_mm: 72,
+  font_family: 'COURIER_NEW' as const,
+  font_size_px: 9,
+  line_height_px: 12,
+  font_weight: 'NORMAL' as const,
+  margin_top_mm: 0,
+  margin_bottom_mm: 0,
+};
+
 function stubBackend() {
   let templates: TicketTemplate[] = [];
   const createCalls: Record<string, unknown>[] = [];
@@ -69,7 +79,14 @@ function stubBackend() {
           id: templates.length + 1,
           name: b['name'] as string,
           version: 1,
-          width_mm: b['width_mm'] as 58 | 80,
+          ...PRINT_PROFILE,
+          printable_width_mm: b['printable_width_mm'] as number,
+          font_family: b['font_family'] as TicketTemplate['font_family'],
+          font_size_px: b['font_size_px'] as number,
+          line_height_px: b['line_height_px'] as number,
+          font_weight: b['font_weight'] as TicketTemplate['font_weight'],
+          margin_top_mm: b['margin_top_mm'] as number,
+          margin_bottom_mm: b['margin_bottom_mm'] as number,
           header_text: (b['header_text'] as string) ?? '',
           footer_text: (b['footer_text'] as string) ?? '',
           tax_display: b['tax_display'] as TicketTemplate['tax_display'],
@@ -112,7 +129,14 @@ function stubBackend() {
           id: templates.length + 1,
           name: current.name,
           version: current.version + 1,
-          width_mm: b['width_mm'] as 58 | 80,
+          ...PRINT_PROFILE,
+          printable_width_mm: b['printable_width_mm'] as number,
+          font_family: b['font_family'] as TicketTemplate['font_family'],
+          font_size_px: b['font_size_px'] as number,
+          line_height_px: b['line_height_px'] as number,
+          font_weight: b['font_weight'] as TicketTemplate['font_weight'],
+          margin_top_mm: b['margin_top_mm'] as number,
+          margin_bottom_mm: b['margin_bottom_mm'] as number,
           header_text: (b['header_text'] as string) ?? '',
           footer_text: (b['footer_text'] as string) ?? '',
           tax_display: b['tax_display'] as TicketTemplate['tax_display'],
@@ -173,17 +197,34 @@ describe('TicketTemplatesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
 
     await userEvent.type(screen.getByLabelText('Nombre'), 'Tienda principal');
-    await userEvent.selectOptions(screen.getByLabelText('Ancho del papel'), '58');
+    await userEvent.clear(screen.getByLabelText('Ancho imprimible (mm)'));
+    await userEvent.type(screen.getByLabelText('Ancho imprimible (mm)'), '48');
+    await userEvent.selectOptions(screen.getByLabelText('Tipo de letra'), 'LIBERATION_MONO');
+    await userEvent.clear(screen.getByLabelText('Tamaño de letra (px)'));
+    await userEvent.type(screen.getByLabelText('Tamaño de letra (px)'), '10');
+    await userEvent.clear(screen.getByLabelText('Interlineado (px)'));
+    await userEvent.type(screen.getByLabelText('Interlineado (px)'), '14');
+    await userEvent.selectOptions(screen.getByLabelText('Grosor de letra'), 'BOLD');
+    await userEvent.clear(screen.getByLabelText('Margen superior (mm)'));
+    await userEvent.type(screen.getByLabelText('Margen superior (mm)'), '2');
+    await userEvent.clear(screen.getByLabelText('Margen inferior (mm)'));
+    await userEvent.type(screen.getByLabelText('Margen inferior (mm)'), '3');
     await userEvent.type(screen.getByLabelText('Cabecera'), 'Gracias por su compra');
     // La vista previa se actualiza en vivo mientras se escribe, antes de guardar nada.
     expect(screen.getByText(/Gracias por su compra/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
-    await screen.findByText(/Activa: Tienda principal · v1 · 58 mm/);
+    await screen.findByText(/Activa: Tienda principal · v1 · 48 mm/);
     expect(backend.createCalls).toEqual([
       {
         name: 'Tienda principal',
-        width_mm: 58,
+        printable_width_mm: 48,
+        font_family: 'LIBERATION_MONO',
+        font_size_px: 10,
+        line_height_px: 14,
+        font_weight: 'BOLD',
+        margin_top_mm: 2,
+        margin_bottom_mm: 3,
         header_text: 'Gracias por su compra',
         footer_text: '',
         tax_display: 'BREAKDOWN',
@@ -212,12 +253,18 @@ describe('TicketTemplatesPage', () => {
     expect(screen.getByText(/Vuelva pronto/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Guardar nueva versión' }));
 
-    await screen.findByText(/Activa: Tienda principal · v2 · 58 mm/);
+    await screen.findByText(/Activa: Tienda principal · v2 · 48 mm/);
     expect(backend.reviseCalls).toEqual([
       {
         id: 1,
         body: {
-          width_mm: 58,
+          printable_width_mm: 48,
+          font_family: 'LIBERATION_MONO',
+          font_size_px: 10,
+          line_height_px: 14,
+          font_weight: 'BOLD',
+          margin_top_mm: 2,
+          margin_bottom_mm: 3,
           header_text: 'Gracias por su compra',
           footer_text: 'Vuelva pronto',
           tax_display: 'BREAKDOWN',

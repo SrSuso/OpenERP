@@ -14,6 +14,27 @@ import { API_V1, apiFetch } from '@/lib/api';
 export const ticketTaxDisplaySchema = z.enum(['NONE', 'NOTE', 'BREAKDOWN']);
 export type TicketTaxDisplay = z.infer<typeof ticketTaxDisplaySchema>;
 
+export const ticketFontFamilySchema = z.enum([
+  'COURIER_NEW',
+  'LIBERATION_MONO',
+  'DEJAVU_SANS_MONO',
+]);
+export type TicketFontFamily = z.infer<typeof ticketFontFamilySchema>;
+
+export const ticketFontWeightSchema = z.enum(['NORMAL', 'BOLD']);
+export type TicketFontWeight = z.infer<typeof ticketFontWeightSchema>;
+
+export const TICKET_FONT_FAMILY_LABELS: Record<TicketFontFamily, string> = {
+  COURIER_NEW: 'Courier New',
+  LIBERATION_MONO: 'Liberation Mono',
+  DEJAVU_SANS_MONO: 'DejaVu Sans Mono',
+};
+
+export const TICKET_FONT_WEIGHT_LABELS: Record<TicketFontWeight, string> = {
+  NORMAL: 'Normal',
+  BOLD: 'Negrita',
+};
+
 export const TAX_DISPLAY_LABELS: Record<TicketTaxDisplay, string> = {
   NONE: 'No indicar nada',
   NOTE: 'Sólo la nota «IVA incluido»',
@@ -24,7 +45,13 @@ export const ticketTemplateSchema = z.object({
   id: z.number(),
   name: z.string(),
   version: z.number(),
-  width_mm: z.union([z.literal(58), z.literal(80)]),
+  printable_width_mm: z.number().int().min(25).max(80),
+  font_family: ticketFontFamilySchema,
+  font_size_px: z.number().int().min(6).max(16),
+  line_height_px: z.number().int().min(8).max(24),
+  font_weight: ticketFontWeightSchema,
+  margin_top_mm: z.number().int().min(0).max(20),
+  margin_bottom_mm: z.number().int().min(0).max(20),
   header_text: z.string(),
   footer_text: z.string(),
   tax_display: ticketTaxDisplaySchema,
@@ -63,7 +90,13 @@ export const activeTicketTemplateQuery = queryOptions({
 });
 
 export interface TemplateFields {
-  width_mm: 58 | 80;
+  printable_width_mm: number;
+  font_family: TicketFontFamily;
+  font_size_px: number;
+  line_height_px: number;
+  font_weight: TicketFontWeight;
+  margin_top_mm: number;
+  margin_bottom_mm: number;
   header_text: string;
   footer_text: string;
   tax_display: TicketTaxDisplay;

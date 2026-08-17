@@ -12,12 +12,31 @@ from zoneinfo import ZoneInfo
 
 from app.core.business_time import to_business_time
 from app.sales.models import Sale, SaleLine
-from app.tickets.models import TicketTaxDisplay, TicketTemplate
+from app.tickets.models import TicketFontWeight, TicketTaxDisplay, TicketTemplate
 
 #: Characters a standard monospace receipt font fits per line, for each
 #: supported roll width — the two off only because thermal printers only
 #: come in these two widths in practice.
-CHARS_PER_WIDTH: dict[int, int] = {58: 32, 80: 48}
+_CSS_PIXELS_PER_INCH = Decimal(96)
+_MM_PER_INCH = Decimal("25.4")
+# Conservative monospace glyph widths. A bold glyph is a fraction wider, so
+# reserve more room and never let a backend-composed row wrap in the browser.
+_CHARACTER_WIDTH_EM = {
+    TicketFontWeight.NORMAL: Decimal("0.62"),
+    TicketFontWeight.BOLD: Decimal("0.65"),
+}
+
+
+def printable_characters(template: TicketTemplate) -> int:
+    """Return a safe line capacity for the selected physical print profile."""
+    glyph_width_mm = (
+        Decimal(template.font_size_px)
+        * _CHARACTER_WIDTH_EM[TicketFontWeight(template.font_weight)]
+        * _MM_PER_INCH
+        / _CSS_PIXELS_PER_INCH
+    )
+    return max(16, int(Decimal(template.printable_width_mm) / glyph_width_mm))
+
 
 _CENTS = Decimal("0.01")
 
@@ -123,7 +142,7 @@ def render_ticket(
     salían dos veces y no había forma de saber cuál mandaba. Ahora el
     ticket se edita en un único sitio, su plantilla, y de paso queda
     versionado con ella."""
-    width = CHARS_PER_WIDTH[template.width_mm]
+    width = printable_characters(template)
     rows: list[str] = []
 
     # Los datos de la tienda van antes de la cabecera libre, que queda para

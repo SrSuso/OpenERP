@@ -29,7 +29,7 @@ export function TemplateHistoryTable({
           <tr>
             <th className="px-4 py-2 font-medium">Nombre</th>
             <th className="px-4 py-2 font-medium">Versión</th>
-            <th className="px-4 py-2 font-medium">Ancho</th>
+            <th className="px-4 py-2 font-medium">Ancho imprimible</th>
             <th className="px-4 py-2 font-medium">Estado</th>
             <th className="px-4 py-2 font-medium" />
           </tr>
@@ -39,7 +39,7 @@ export function TemplateHistoryTable({
             <tr key={template.id} className="border-b border-slate-100 last:border-0">
               <td className="px-4 py-2 font-medium text-slate-800">{template.name}</td>
               <td className="px-4 py-2">v{template.version}</td>
-              <td className="px-4 py-2">{template.width_mm} mm</td>
+              <td className="px-4 py-2">{template.printable_width_mm} mm</td>
               <td className="px-4 py-2">
                 {template.is_active ? (
                   <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">

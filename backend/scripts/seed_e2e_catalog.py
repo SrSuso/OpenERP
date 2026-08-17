@@ -173,7 +173,7 @@ async def _seed() -> int:
                 session,
                 TicketTemplateCreate(
                     name="Estándar",
-                    width_mm=58,
+                    printable_width_mm=48,
                     header_text="OpenERP\nTienda de ejemplo",
                     footer_text="Gracias por su compra",
                 ),

@@ -39,7 +39,7 @@ async def _create_template(
 ) -> dict[str, Any]:
     payload = {
         "name": name,
-        "width_mm": 58,
+        "printable_width_mm": 48,
         "header_text": "Mi Tienda",
         "footer_text": "Gracias",
         "tax_display": "BREAKDOWN",
@@ -118,13 +118,17 @@ async def test_revising_the_active_template_creates_a_new_version(
 
     response = await client.post(
         f"/api/v1/ticket-templates/{template['id']}/revise",
-        json={"width_mm": 80, "header_text": "Nuevo header", "footer_text": "Nuevo footer"},
+        json={
+            "printable_width_mm": 72,
+            "header_text": "Nuevo header",
+            "footer_text": "Nuevo footer",
+        },
     )
 
     assert response.status_code == 200
     revised = response.json()
     assert revised["version"] == 2
-    assert revised["width_mm"] == 80
+    assert revised["printable_width_mm"] == 72
     assert revised["is_active"] is True
 
     templates = (await client.get("/api/v1/ticket-templates")).json()
@@ -143,7 +147,7 @@ async def test_revising_a_template_that_is_not_in_use_leaves_it_out_of_use(
 
     response = await client.post(
         f"/api/v1/ticket-templates/{retired['id']}/revise",
-        json={"width_mm": 80, "header_text": "Corregida", "footer_text": ""},
+        json={"printable_width_mm": 72, "header_text": "Corregida", "footer_text": ""},
     )
 
     assert response.status_code == 200
@@ -204,7 +208,17 @@ async def test_generating_a_ticket_for_a_completed_sale(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
-    await _create_template(client, header_text="Mi Tienda")
+    template = await _create_template(
+        client,
+        header_text="Mi Tienda",
+        printable_width_mm=64,
+        font_family="LIBERATION_MONO",
+        font_size_px=10,
+        line_height_px=14,
+        font_weight="BOLD",
+        margin_top_mm=2,
+        margin_bottom_mm=3,
+    )
     product = await _create_product(client, sku="TICKET-GEN", list_price="10.00", tax_rate="21")
     sale = await _completed_sale(client, product=product)
 
@@ -213,6 +227,27 @@ async def test_generating_a_ticket_for_a_completed_sale(
     assert response.status_code == 201
     ticket = response.json()
     assert ticket["sale_id"] == sale["id"]
+    assert ticket["template_id"] == template["id"]
+    assert {
+        key: ticket[key]
+        for key in (
+            "printable_width_mm",
+            "font_family",
+            "font_size_px",
+            "line_height_px",
+            "font_weight",
+            "margin_top_mm",
+            "margin_bottom_mm",
+        )
+    } == {
+        "printable_width_mm": 64,
+        "font_family": "LIBERATION_MONO",
+        "font_size_px": 10,
+        "line_height_px": 14,
+        "font_weight": "BOLD",
+        "margin_top_mm": 2,
+        "margin_bottom_mm": 3,
+    }
     assert "Mi Tienda" in ticket["rendered_text"]
     assert "Producto de ticket" in ticket["rendered_text"]
 
@@ -327,7 +362,7 @@ async def test_cashier_can_generate_and_read_tickets_but_not_manage_templates(
     assert (
         await client.post(
             "/api/v1/ticket-templates",
-            json={"name": "X", "width_mm": 58, "header_text": "", "footer_text": ""},
+            json={"name": "X", "printable_width_mm": 48, "header_text": "", "footer_text": ""},
         )
     ).status_code == 403
 

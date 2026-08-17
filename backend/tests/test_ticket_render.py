@@ -7,8 +7,8 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from app.sales.models import Payment, Sale, SaleLine, SaleStatus
-from app.tickets.models import TicketTaxDisplay, TicketTemplate
-from app.tickets.render import CHARS_PER_WIDTH, render_ticket
+from app.tickets.models import TicketFontWeight, TicketTaxDisplay, TicketTemplate
+from app.tickets.render import printable_characters, render_ticket
 
 
 def _line(name: str, qty: str, price: str, tax: str = "0", discount: str = "0") -> SaleLine:
@@ -63,7 +63,9 @@ def _template(**overrides: object) -> TicketTemplate:
         "id": 1,
         "name": "Estándar",
         "version": 1,
-        "width_mm": 58,
+        "printable_width_mm": 48,
+        "font_size_px": 9,
+        "font_weight": TicketFontWeight.NORMAL,
         "header_text": "Mi Tienda\nCIF B00000000",
         "footer_text": "Gracias por su compra",
         "tax_display": TicketTaxDisplay.BREAKDOWN,
@@ -269,19 +271,21 @@ def test_no_lines_fit_within_the_declared_width() -> None:
         [Payment(method="CASH", amount=Decimal("10.00"))],
     )
 
-    text = _render(sale, _template(width_mm=58))
+    template = _template(printable_width_mm=48)
+    text = _render(sale, template)
 
-    width = CHARS_PER_WIDTH[58]
+    width = printable_characters(template)
     for line in text.splitlines():
         assert len(line) <= width
 
 
-def test_80mm_template_uses_the_wider_column_count() -> None:
+def test_wider_printable_area_uses_the_wider_column_count() -> None:
     sale = _sale([_line("Leche", "1", "10.00")], [Payment(method="CASH", amount=Decimal("10.00"))])
 
-    text = _render(sale, _template(width_mm=80))
+    template = _template(printable_width_mm=72)
+    text = _render(sale, template)
 
-    assert len(text.splitlines()[0]) <= CHARS_PER_WIDTH[80]
+    assert len(text.splitlines()[0]) <= printable_characters(template)
 
 
 def test_prices_include_tax_extracts_it_instead_of_adding_it() -> None:

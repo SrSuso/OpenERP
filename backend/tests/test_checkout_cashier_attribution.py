@@ -71,7 +71,7 @@ async def _pos_setup(
     if ticket_with_cashier:
         template_response = await client.post(
             "/api/v1/ticket-templates",
-            json={"name": f"A9.1 {tag}", "width_mm": 58, "show_cashier": True},
+            json={"name": f"A9.1 {tag}", "printable_width_mm": 48, "show_cashier": True},
         )
         assert template_response.status_code == 201
     return warehouse_id, location_id, terminal_ids, product_response.json()

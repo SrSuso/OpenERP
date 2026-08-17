@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { renderTicketPreview } from './ticketPreview';
 
 const BASE_FIELDS = {
-  width_mm: 58 as const,
+  printable_width_mm: 48,
+  font_size_px: 9,
+  font_weight: 'NORMAL' as const,
   header_text: '',
   footer_text: '',
   tax_display: 'BREAKDOWN' as const,
@@ -35,7 +37,7 @@ describe('renderTicketPreview', () => {
 
     expect(lines[0]!.trim()).toBe('Mi Tienda');
     expect(lines[1]!.trim()).toBe('Gracias');
-    expect(lines[2]).toBe('-'.repeat(32)); // 58mm -> 32 caracteres
+    expect(lines[2]).toBe('-'.repeat(32)); // 48mm útiles -> 32 caracteres
   });
 
   it('omits the header rule entirely when there is no header text', () => {
@@ -51,8 +53,8 @@ describe('renderTicketPreview', () => {
     expect(utc).toContain('12/08/2026, 22:30');
   });
 
-  it('widens to 48 characters for an 80mm template', () => {
-    const preview = renderTicketPreview({ ...BASE_FIELDS, width_mm: 80, header_text: 'X' });
+  it('widens to 48 characters for a 72mm printable area', () => {
+    const preview = renderTicketPreview({ ...BASE_FIELDS, printable_width_mm: 72, header_text: 'X' });
     expect(preview.split('\n')[1]).toBe('-'.repeat(48));
   });
 

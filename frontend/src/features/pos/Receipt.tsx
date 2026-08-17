@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { generateTicket, type Sale, type Ticket } from '@/features/pos/api';
 import { useSettledShopFlag } from '@/features/settings/useShopSettings';
+import { ticketPrintStyle } from '@/features/tickets/printProfile';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
@@ -74,7 +75,8 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
     return (
       <div
         className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
-        data-ticket-width={ticket.width_mm}
+        data-ticket-width={ticket.printable_width_mm}
+        style={ticketPrintStyle(ticket)}
       >
         <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
           {ticket.rendered_text}

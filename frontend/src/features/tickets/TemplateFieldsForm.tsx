@@ -4,17 +4,28 @@ import { z } from 'zod';
 
 import {
   DATE_FORMATS,
+  TICKET_FONT_FAMILY_LABELS,
+  TICKET_FONT_WEIGHT_LABELS,
   TAX_DISPLAY_LABELS,
+  ticketFontFamilySchema,
+  ticketFontWeightSchema,
   ticketTaxDisplaySchema,
   type TemplateFields,
   type TicketTaxDisplay,
 } from '@/features/tickets/api';
 import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { ticketPreviewStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
 import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 
 const fieldsSchema = z.object({
   name: z.string().max(100).optional(),
-  width_mm: z.enum(['58', '80']),
+  printable_width_mm: z.coerce.number().int().min(25).max(80),
+  font_family: ticketFontFamilySchema,
+  font_size_px: z.coerce.number().int().min(6).max(16),
+  line_height_px: z.coerce.number().int().min(8).max(24),
+  font_weight: ticketFontWeightSchema,
+  margin_top_mm: z.coerce.number().int().min(0).max(20),
+  margin_bottom_mm: z.coerce.number().int().min(0).max(20),
   header_text: z.string().max(2000).optional(),
   footer_text: z.string().max(2000).optional(),
   tax_display: ticketTaxDisplaySchema,
@@ -39,6 +50,11 @@ const fieldsSchema = z.object({
 });
 
 type TemplateFormValues = z.infer<typeof fieldsSchema>;
+
+function previewNumber(value: unknown, fallback: number, minimum = 0): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= minimum ? numeric : fallback;
+}
 
 interface TemplateFieldsFormProps {
   mode: 'create' | 'revise';
@@ -75,7 +91,13 @@ export function TemplateFieldsForm({
   } = useForm<TemplateFormValues>({
     resolver: zodResolver(fieldsSchema),
     defaultValues: {
-      width_mm: defaults ? (String(defaults.width_mm) as '58' | '80') : '80',
+      printable_width_mm: defaults?.printable_width_mm ?? 72,
+      font_family: defaults?.font_family ?? 'COURIER_NEW',
+      font_size_px: defaults?.font_size_px ?? 9,
+      line_height_px: defaults?.line_height_px ?? 12,
+      font_weight: defaults?.font_weight ?? 'NORMAL',
+      margin_top_mm: defaults?.margin_top_mm ?? 0,
+      margin_bottom_mm: defaults?.margin_bottom_mm ?? 0,
       header_text: defaults?.header_text ?? '',
       footer_text: defaults?.footer_text ?? '',
       tax_display: defaults?.tax_display ?? 'BREAKDOWN',
@@ -98,8 +120,23 @@ export function TemplateFieldsForm({
     },
   });
 
+  // A number input is temporarily empty while it is being replaced. Keep
+  // preview calculation safe for that short editing state; Zod still blocks
+  // an invalid value when the form is submitted.
+  const printProfile = {
+    printable_width_mm: previewNumber(watch('printable_width_mm'), 72, 25),
+    font_family: watch('font_family') ?? 'COURIER_NEW',
+    font_size_px: previewNumber(watch('font_size_px'), 9, 6),
+    line_height_px: previewNumber(watch('line_height_px'), 12, 8),
+    font_weight: watch('font_weight') ?? 'NORMAL',
+    margin_top_mm: previewNumber(watch('margin_top_mm'), 0),
+    margin_bottom_mm: previewNumber(watch('margin_bottom_mm'), 0),
+  };
+
   const preview = renderTicketPreview({
-    width_mm: Number(watch('width_mm')) as 58 | 80,
+    printable_width_mm: printProfile.printable_width_mm,
+    font_size_px: printProfile.font_size_px,
+    font_weight: printProfile.font_weight,
     header_text: watch('header_text') ?? '',
     footer_text: watch('footer_text') ?? '',
     tax_display: watch('tax_display'),
@@ -126,7 +163,13 @@ export function TemplateFieldsForm({
     }
     onSubmit({
       ...(mode === 'create' ? { name: values.name!.trim() } : {}),
-      width_mm: Number(values.width_mm) as 58 | 80,
+      printable_width_mm: values.printable_width_mm,
+      font_family: values.font_family,
+      font_size_px: values.font_size_px,
+      line_height_px: values.line_height_px,
+      font_weight: values.font_weight,
+      margin_top_mm: values.margin_top_mm,
+      margin_bottom_mm: values.margin_bottom_mm,
       header_text: values.header_text ?? '',
       footer_text: values.footer_text ?? '',
       tax_display: values.tax_display,
@@ -173,18 +216,102 @@ export function TemplateFieldsForm({
             </label>
           )}
 
-          {/* Ancho justo para lo que contiene: son dos opciones de cinco
-              caracteres, y ocupaba una fila entera de lado a lado. */}
           <label className="text-sm text-slate-600">
-            Ancho del papel
-            <select
+            Ancho imprimible (mm)
+            <input
+              type="number"
+              min="25"
+              max="80"
               className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
-              {...register('width_mm')}
+              {...register('printable_width_mm')}
+            />
+            {errors.printable_width_mm && (
+              <p className="mt-1 text-sm text-red-600">{errors.printable_width_mm.message}</p>
+            )}
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Tipo de letra
+            <select
+              className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('font_family')}
             >
-              <option value="58">58 mm</option>
-              <option value="80">80 mm</option>
+              {ticketFontFamilySchema.options.map((font) => (
+                <option key={font} value={font}>
+                  {TICKET_FONT_FAMILY_LABELS[font]}
+                </option>
+              ))}
             </select>
           </label>
+
+          <label className="text-sm text-slate-600">
+            Tamaño de letra (px)
+            <input
+              type="number"
+              min="6"
+              max="16"
+              className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('font_size_px')}
+            />
+            {errors.font_size_px && (
+              <p className="mt-1 text-sm text-red-600">{errors.font_size_px.message}</p>
+            )}
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Interlineado (px)
+            <input
+              type="number"
+              min="8"
+              max="24"
+              className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('line_height_px')}
+            />
+            {errors.line_height_px && (
+              <p className="mt-1 text-sm text-red-600">{errors.line_height_px.message}</p>
+            )}
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Grosor de letra
+            <select
+              className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('font_weight')}
+            >
+              {ticketFontWeightSchema.options.map((weight) => (
+                <option key={weight} value={weight}>
+                  {TICKET_FONT_WEIGHT_LABELS[weight]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Margen superior (mm)
+            <input
+              type="number"
+              min="0"
+              max="20"
+              className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('margin_top_mm')}
+            />
+          </label>
+
+          <label className="text-sm text-slate-600">
+            Margen inferior (mm)
+            <input
+              type="number"
+              min="0"
+              max="20"
+              className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('margin_bottom_mm')}
+            />
+          </label>
+
+          <p className="text-xs text-slate-500 sm:col-span-2">
+            El largo del ticket es automático: una impresora térmica corta al terminar el contenido.
+            Fijar una altura podría cortar líneas o dejar papel en blanco.
+          </p>
 
           {/* Los datos de la tienda: aquí y no en Configuración, para que el
               ticket se edite en un solo sitio. */}
@@ -372,7 +499,10 @@ export function TemplateFieldsForm({
           <p className="mb-1 text-xs font-semibold uppercase text-slate-500">
             Vista previa (con datos de ejemplo)
           </p>
-          <pre className="overflow-x-auto rounded border border-dashed border-slate-300 bg-slate-50 p-4 font-mono text-sm leading-relaxed text-slate-700">
+          <pre
+            className="overflow-x-auto rounded border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-700"
+            style={{ ...ticketPrintStyle(printProfile), ...ticketPreviewStyle(printProfile) }}
+          >
             {preview}
           </pre>
         </div>

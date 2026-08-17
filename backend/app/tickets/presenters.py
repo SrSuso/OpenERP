@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from app.tickets.models import Ticket, TicketTaxDisplay, TicketTemplate
+from app.tickets.models import (
+    Ticket,
+    TicketFontFamily,
+    TicketFontWeight,
+    TicketTaxDisplay,
+    TicketTemplate,
+)
 from app.tickets.schemas import TicketRead, TicketTemplateRead
 
 
@@ -11,7 +17,13 @@ def template_to_read(template: TicketTemplate) -> TicketTemplateRead:
         id=template.id,
         name=template.name,
         version=template.version,
-        width_mm=template.width_mm,
+        printable_width_mm=template.printable_width_mm,
+        font_family=TicketFontFamily(template.font_family),
+        font_size_px=template.font_size_px,
+        line_height_px=template.line_height_px,
+        font_weight=TicketFontWeight(template.font_weight),
+        margin_top_mm=template.margin_top_mm,
+        margin_bottom_mm=template.margin_bottom_mm,
         header_text=template.header_text,
         footer_text=template.footer_text,
         tax_display=TicketTaxDisplay(template.tax_display),
@@ -40,7 +52,13 @@ def ticket_to_read(ticket: Ticket) -> TicketRead:
         id=ticket.id,
         sale_id=ticket.sale_id,
         template_id=ticket.template_id,
-        width_mm=ticket.width_mm,
+        printable_width_mm=ticket.printable_width_mm,
+        font_family=TicketFontFamily(ticket.font_family),
+        font_size_px=ticket.font_size_px,
+        line_height_px=ticket.line_height_px,
+        font_weight=TicketFontWeight(ticket.font_weight),
+        margin_top_mm=ticket.margin_top_mm,
+        margin_bottom_mm=ticket.margin_bottom_mm,
         rendered_text=ticket.rendered_text,
         created_at=ticket.created_at,
     )
