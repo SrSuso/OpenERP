@@ -283,7 +283,7 @@ prod-preserve-current-images:  ## Retag running images with the previous immutab
 
 .PHONY: prod-validate-web-config
 prod-validate-web-config:  ## Validate target nginx config before maintenance downtime
-	$(PROD_COMPOSE) run --rm --no-deps web nginx -t
+	$(PROD_COMPOSE) exec -T web nginx -t
 
 .PHONY: prod-validate-api-config
 prod-validate-api-config:  ## Validate target production settings before maintenance downtime

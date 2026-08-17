@@ -89,6 +89,13 @@ def test_production_commands_refresh_bases_and_remove_only_project_orphans() -> 
         assert "--remove-orphans" in result.stdout, target
 
 
+def test_web_config_validation_uses_the_running_nginx_without_a_second_static_ip() -> None:
+    result = _run("make", "-n", "prod-validate-web-config", cwd=PROJECT_ROOT)
+
+    assert "exec -T web nginx -t" in result.stdout
+    assert " run " not in result.stdout
+
+
 async def test_api_json_startup_does_not_log_runtime_secrets(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
