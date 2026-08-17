@@ -24,6 +24,7 @@ def category_to_read(category: ProductCategory) -> ProductCategoryRead:
         margin_amount=category.margin_amount,
         price_formula=category.price_formula,
         tracks_stock=category.tracks_stock,
+        is_sold_by_weight=category.is_sold_by_weight,
         taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in category.taxes],
     )
 
@@ -50,6 +51,7 @@ def product_to_read(product: Product) -> ProductRead:
         pos_category_name=product.pos_category.name if product.pos_category else None,
         pos_display_order=product.pos_display_order,
         is_open_price=product.is_open_price,
+        is_sold_by_weight=bool(product.category and product.category.is_sold_by_weight),
         base_unit_name=product.base_unit_name,
         cost=product.cost,
         list_price=product.list_price,

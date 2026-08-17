@@ -15,6 +15,7 @@ class ProductCategoryCreate(BaseModel):
     #: creación; la validación de fórmula e impuestos sigue viviendo en
     #: ``app.pricing``.
     tracks_stock: bool = True
+    is_sold_by_weight: bool = False
     margin_rate: Decimal | None = Field(default=None, ge=0)
     margin_amount: Decimal | None = Field(default=None, ge=0)
     price_formula: str | None = Field(default=None, max_length=500)
@@ -29,6 +30,9 @@ class ProductCategoryUpdate(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     tracks_stock: bool = True
+    #: ``None`` preserves existing categories for older callers that only
+    #: rename or change stock control.
+    is_sold_by_weight: bool | None = None
 
 
 class ProductTaxRead(BaseModel):
@@ -62,6 +66,9 @@ class ProductCategoryRead(BaseModel):
     #: Si sus productos llevan control de existencias, salvo que el
     #: producto diga lo contrario — ver `app.catalog.stock`.
     tracks_stock: bool
+    #: Resuelve la regla de venta por peso de la categoría para que el POS
+    #: no tenga que cargar ni interpretar categorías por su cuenta.
+    is_sold_by_weight: bool
     taxes: list[ProductTaxRead]
 
 
@@ -224,6 +231,9 @@ class ProductRead(BaseModel):
     pos_category_name: str | None
     pos_display_order: int
     is_open_price: bool
+    #: La categoría del producto decide este comportamiento de caja; no es
+    #: un dato que pueda enviar el navegador al crear la línea.
+    is_sold_by_weight: bool
     base_unit_name: str
     cost: Decimal
     list_price: Decimal

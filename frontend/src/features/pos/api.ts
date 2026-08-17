@@ -118,8 +118,10 @@ export const productSchema = z.object({
   pos_category_id: z.number().nullable(),
   pos_category_name: z.string().nullable(),
   is_open_price: z.boolean().optional(),
-  // En qué se vende: lo que decide si un toque vende una unidad o hay que
-  // preguntar cuánto pesa (ver el ajuste `pos.weighed_units`).
+  // La categoría comercial decide si un toque debe preguntar el peso.
+  // Ausente sólo mientras un frontend nuevo convive con un backend previo a
+  // la migración; se interpreta como el comportamiento histórico.
+  is_sold_by_weight: z.boolean().optional(),
   base_unit_name: z.string(),
   list_price: z.string(),
   tax_rate: z.string(),

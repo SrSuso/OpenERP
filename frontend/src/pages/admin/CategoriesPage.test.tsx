@@ -43,6 +43,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
       margin_amount: null,
       price_formula: null,
       tracks_stock: true,
+      is_sold_by_weight: false,
       taxes: [],
     },
   ];
@@ -56,7 +57,12 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   ];
   const createCategoryCalls: Record<string, unknown>[] = [];
   const deleteCategoryCalls: number[] = [];
-  const updateCategoryCalls: { id: number; name: string; tracks_stock: boolean }[] = [];
+  const updateCategoryCalls: {
+    id: number;
+    name: string;
+    tracks_stock: boolean;
+    is_sold_by_weight: boolean;
+  }[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
   const createUnitCalls: string[] = [];
@@ -77,12 +83,17 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
       if (method === 'PATCH' && /\/product-categories\/(\d+)$/.test(url)) {
         const id = Number(/\/product-categories\/(\d+)$/.exec(url)![1]);
         const body = init?.body
-          ? (JSON.parse(init.body as string) as { name: string; tracks_stock: boolean })
-          : { name: '', tracks_stock: true };
+          ? (JSON.parse(init.body as string) as {
+              name: string;
+              tracks_stock: boolean;
+              is_sold_by_weight: boolean;
+            })
+          : { name: '', tracks_stock: true, is_sold_by_weight: false };
         updateCategoryCalls.push({ id, ...body });
         const category = categories.find((c) => c.id === id)!;
         category.name = body.name;
         category.tracks_stock = body.tracks_stock;
+        category.is_sold_by_weight = body.is_sold_by_weight;
         return Promise.resolve(jsonResponse(category));
       }
       if (method === 'POST' && /\/product-categories\/(\d+)\/(de)?activate$/.test(url)) {
@@ -126,6 +137,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
           margin_amount: (body['margin_amount'] as string | null) ?? null,
           price_formula: (body['price_formula'] as string | null) ?? null,
           tracks_stock: (body['tracks_stock'] as boolean | undefined) ?? true,
+          is_sold_by_weight: (body['is_sold_by_weight'] as boolean | undefined) ?? false,
           taxes: taxes.filter((tax) => (body['tax_ids'] as number[] | undefined)?.includes(tax.id)),
         };
         categories.push(created);
@@ -249,12 +261,28 @@ describe('CategoriesPage', () => {
       {
         name: 'Lácteos',
         tracks_stock: true,
+        is_sold_by_weight: false,
         margin_rate: null,
         margin_amount: null,
         price_formula: null,
         tax_ids: [],
       },
     ]);
+  });
+
+  it('marks a product category to ask for grams in the POS', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.type(screen.getByPlaceholderText('Nombre de la categoría'), 'Charcutería');
+    await userEvent.click(screen.getByRole('checkbox', { name: /Vender al peso en el TPV/ }));
+    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
+
+    expect(backend.createCategoryCalls[0]).toMatchObject({
+      name: 'Charcutería',
+      is_sold_by_weight: true,
+    });
   });
 
   it('creates a product category with all its initial defaults', async () => {
@@ -275,6 +303,7 @@ describe('CategoriesPage', () => {
       {
         name: 'Congelados',
         tracks_stock: false,
+        is_sold_by_weight: false,
         margin_rate: '25',
         margin_amount: '0.25',
         price_formula: 'cost * 2',
@@ -366,7 +395,9 @@ describe('CategoriesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(await screen.findByText('Refrescos')).toBeInTheDocument();
-    expect(backend.updateCategoryCalls).toEqual([{ id: 1, name: 'Refrescos', tracks_stock: true }]);
+    expect(backend.updateCategoryCalls).toEqual([
+      { id: 1, name: 'Refrescos', tracks_stock: true, is_sold_by_weight: false },
+    ]);
   });
 
   it('sets a fixed amount and a formula that its products inherit', async () => {
@@ -409,7 +440,7 @@ describe('CategoriesPage', () => {
 
     await waitFor(() => {
       expect(backend.updateCategoryCalls).toEqual([
-        { id: 1, name: 'Bebidas', tracks_stock: false },
+        { id: 1, name: 'Bebidas', tracks_stock: false, is_sold_by_weight: false },
       ]);
     });
   });

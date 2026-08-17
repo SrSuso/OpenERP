@@ -86,6 +86,11 @@ class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: Si sus productos llevan control de existencias. Por defecto sí; un
     #: producto suyo puede decir lo contrario (ver `Product.tracks_stock`).
     tracks_stock: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    #: Los productos de esta categoría se venden introduciendo su peso en el
+    #: POS. El precio del producto sigue siendo por unidad base (normalmente
+    #: €/KG); la caja convierte los gramos introducidos a esa unidad antes de
+    #: crear la línea de venta.
+    is_sold_by_weight: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     taxes: Mapped[list[Tax]] = relationship(
         secondary="category_taxes", order_by="Tax.name", viewonly=False
     )

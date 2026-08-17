@@ -118,7 +118,11 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
     if existing is not None:
         raise ConflictError("A category with this name already exists.")
 
-    category = ProductCategory(name=payload.name, tracks_stock=payload.tracks_stock)
+    category = ProductCategory(
+        name=payload.name,
+        tracks_stock=payload.tracks_stock,
+        is_sold_by_weight=payload.is_sold_by_weight,
+    )
     session.add(category)
     await session.flush()
     await audit.record(
@@ -126,7 +130,11 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
         action="created",
         entity_type="product_category",
         entity_id=category.id,
-        after={"name": category.name, "tracks_stock": category.tracks_stock},
+        after={
+            "name": category.name,
+            "tracks_stock": category.tracks_stock,
+            "is_sold_by_weight": category.is_sold_by_weight,
+        },
     )
     return await get_category(session, category.id)
 
@@ -139,7 +147,14 @@ async def update_category(
     existencias. Se renombra en el sitio, con el mismo id: los productos
     que la tienen asignada siguen apuntando a ella."""
     category = await get_category(session, category_id)
-    if category.name == payload.name and category.tracks_stock == payload.tracks_stock:
+    if (
+        category.name == payload.name
+        and category.tracks_stock == payload.tracks_stock
+        and (
+            payload.is_sold_by_weight is None
+            or category.is_sold_by_weight == payload.is_sold_by_weight
+        )
+    ):
         return category
 
     clash = (
@@ -152,9 +167,15 @@ async def update_category(
     if clash is not None:
         raise ConflictError("A category with this name already exists.")
 
-    before = {"name": category.name, "tracks_stock": category.tracks_stock}
+    before = {
+        "name": category.name,
+        "tracks_stock": category.tracks_stock,
+        "is_sold_by_weight": category.is_sold_by_weight,
+    }
     category.name = payload.name
     category.tracks_stock = payload.tracks_stock
+    if payload.is_sold_by_weight is not None:
+        category.is_sold_by_weight = payload.is_sold_by_weight
     await session.flush()
     await audit.record(
         session,
@@ -162,7 +183,11 @@ async def update_category(
         entity_type="product_category",
         entity_id=category_id,
         before=before,
-        after={"name": category.name, "tracks_stock": category.tracks_stock},
+        after={
+            "name": category.name,
+            "tracks_stock": category.tracks_stock,
+            "is_sold_by_weight": category.is_sold_by_weight,
+        },
     )
     return await get_category(session, category_id)
 

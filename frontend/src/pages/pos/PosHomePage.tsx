@@ -30,7 +30,6 @@ import {
   type Tender,
 } from '@/features/pos/api';
 import { usePosTerminal } from '@/features/pos/usePosTerminal';
-import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
 
 function describeError(error: unknown): string {
@@ -184,13 +183,6 @@ export function PosHomePage() {
     onError: (error) => setLineError(describeError(error)),
   });
 
-  // Los productos que se venden pesando (KG por defecto, ver el ajuste) no
-  // se pueden vender de un toque: nadie compra exactamente un kilo. Al
-  // pulsarlos se pregunta cuántos gramos, y esto es el que está esperando.
-  const weighedUnits = useShopSetting('pos.weighed_units', 'KG')
-    .split(',')
-    .map((unit) => unit.trim().toUpperCase())
-    .filter((unit) => unit !== '');
   const [weighing, setWeighing] = useState<{ product: Product; barcode?: string } | null>(null);
   const [openPrice, setOpenPrice] = useState<Product | null>(null);
 
@@ -205,7 +197,7 @@ export function PosHomePage() {
       setPendingQuantity('');
       return;
     }
-    if (weighedUnits.includes(product.base_unit_name.toUpperCase())) {
+    if (product.is_sold_by_weight) {
       // Lo que se pesa lleva su propia cantidad, en gramos.
       setWeighing({ product });
       return;
@@ -244,7 +236,7 @@ export function PosHomePage() {
     onSuccess: (product, code) => {
       setLineError(null);
       setBarcode('');
-      if (weighedUnits.includes(product.base_unit_name.toUpperCase())) {
+      if (product.is_sold_by_weight) {
         setWeighing({ product, barcode: code });
         return;
       }

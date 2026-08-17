@@ -32,13 +32,14 @@ const POS_CATEGORY = {
   display_order: 0,
   is_active: true,
 };
-/** Se vende pesando: un toque no puede venderlo, tiene que preguntar. */
+/** Su categoría lo vende pesando: un toque no puede venderlo, tiene que preguntar. */
 const TOMATO = {
   id: 2,
   sku: 'TOMATE',
   name: 'Tomate',
   pos_category_id: 1,
   pos_category_name: 'Bebidas',
+  is_sold_by_weight: true,
   base_unit_name: 'KG',
   list_price: '1.680000',
   tax_rate: '4.000000',
@@ -59,6 +60,7 @@ const MILK = {
   name: 'Leche entera 1L',
   pos_category_id: 1,
   pos_category_name: 'Bebidas',
+  is_sold_by_weight: false,
   base_unit_name: 'UNIT',
   list_price: '1.200000',
   tax_rate: '10.000000',
@@ -87,6 +89,7 @@ const DELI_TOTAL = {
   pos_category_id: 1,
   pos_category_name: 'Bebidas',
   is_open_price: true,
+  is_sold_by_weight: false,
   base_unit_name: 'UNIDAD',
   list_price: '0.000000',
   tax_rate: '10.000000',

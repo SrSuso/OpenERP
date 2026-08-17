@@ -32,6 +32,10 @@ export const productCategorySchema = z.object({
   // Si sus productos llevan control de existencias, salvo que el producto
   // diga lo contrario.
   tracks_stock: z.boolean(),
+  // Los productos de esta categoría preguntan sus gramos en el POS.
+  // Durante un despliegue escalonado puede llegar una respuesta del backend
+  // anterior a la migración; ausente equivale al comportamiento histórico.
+  is_sold_by_weight: z.boolean().optional(),
   taxes: z.array(productTaxSchema),
 });
 export type ProductCategory = z.infer<typeof productCategorySchema>;
@@ -48,6 +52,7 @@ export const productCategoriesQuery = queryOptions({
 export interface ProductCategoryCreate {
   name: string;
   tracks_stock: boolean;
+  is_sold_by_weight: boolean;
   margin_rate: string | null;
   margin_amount: string | null;
   price_formula: string | null;
@@ -68,7 +73,7 @@ export async function createProductCategory(
  * tienen asignada la conservan. */
 export async function updateProductCategory(
   id: number,
-  payload: { name: string; tracks_stock: boolean },
+  payload: { name: string; tracks_stock: boolean; is_sold_by_weight: boolean },
 ): Promise<ProductCategory> {
   return apiFetch(`${API_V1}/product-categories/${id}`, {
     method: 'PATCH',
@@ -225,6 +230,7 @@ export const productSchema = z.object({
   pos_category_name: z.string().nullable(),
   pos_display_order: z.number(),
   is_open_price: z.boolean().optional(),
+  is_sold_by_weight: z.boolean().optional(),
   base_unit_name: z.string(),
   cost: z.string(),
   list_price: z.string(),

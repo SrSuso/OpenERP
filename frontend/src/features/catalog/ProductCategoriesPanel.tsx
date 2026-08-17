@@ -30,6 +30,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [tracksStock, setTracksStock] = useState(true);
+  const [isSoldByWeight, setIsSoldByWeight] = useState(false);
   const [marginInput, setMarginInput] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [formulaInput, setFormulaInput] = useState('');
@@ -62,6 +63,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
       invalidate();
       setName('');
       setTracksStock(true);
+      setIsSoldByWeight(false);
       setMarginInput('');
       setAmountInput('');
       setFormulaInput('');
@@ -83,6 +85,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
     createMutation.mutate({
       name: name.trim(),
       tracks_stock: tracksStock,
+      is_sold_by_weight: isSoldByWeight,
       margin_rate: marginInput.trim() === '' ? null : marginInput,
       margin_amount: amountInput.trim() === '' ? null : amountInput,
       price_formula: formulaInput.trim() === '' ? null : formulaInput.trim(),
@@ -196,6 +199,22 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
             </span>
           </label>
 
+          <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={isSoldByWeight}
+              onChange={(event) => setIsSoldByWeight(event.target.checked)}
+            />
+            <span>
+              Vender al peso en el TPV
+              <span className="mt-0.5 block text-slate-400">
+                Al pulsar un producto de esta categoría, la caja pedirá sus gramos y calculará el
+                importe con su precio por unidad base.
+              </span>
+            </span>
+          </label>
+
           <div className="mt-3 text-xs text-slate-600">
             <label htmlFor={createFormulaFieldId}>Fórmula por defecto</label>
             <input
@@ -253,6 +272,7 @@ function CategoryEditor({
 }) {
   const [name, setName] = useState(category.name);
   const [tracksStock, setTracksStock] = useState(category.tracks_stock);
+  const [isSoldByWeight, setIsSoldByWeight] = useState(category.is_sold_by_weight ?? false);
   const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
   const [amountInput, setAmountInput] = useState(category.margin_amount ?? '');
   const [formulaInput, setFormulaInput] = useState(category.price_formula ?? '');
@@ -264,6 +284,7 @@ function CategoryEditor({
   const isDirty =
     name !== category.name ||
     tracksStock !== category.tracks_stock ||
+    isSoldByWeight !== (category.is_sold_by_weight ?? false) ||
     marginInput !== (category.margin_rate ?? '') ||
     amountInput !== (category.margin_amount ?? '') ||
     formulaInput !== (category.price_formula ?? '') ||
@@ -276,10 +297,15 @@ function CategoryEditor({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (name.trim() !== category.name || tracksStock !== category.tracks_stock) {
+      if (
+        name.trim() !== category.name ||
+        tracksStock !== category.tracks_stock ||
+        isSoldByWeight !== (category.is_sold_by_weight ?? false)
+      ) {
         await updateProductCategory(category.id, {
           name: name.trim(),
           tracks_stock: tracksStock,
+          is_sold_by_weight: isSoldByWeight,
         });
       }
       await setCategoryPricing(category.id, {
@@ -398,6 +424,22 @@ function CategoryEditor({
           <span className="mt-0.5 block text-slate-400">
             Apagado, sus productos no se agotan: se venden sin comprobar ni descontar stock. Para lo
             que se repone del saco sin contarlo. Un producto suyo puede decir lo contrario.
+          </span>
+        </span>
+      </label>
+
+      <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={isSoldByWeight}
+          onChange={(event) => setIsSoldByWeight(event.target.checked)}
+        />
+        <span>
+          Vender al peso en el TPV
+          <span className="mt-0.5 block text-slate-400">
+            La caja pedirá los gramos al añadir sus productos y calculará el importe con el precio
+            por unidad base.
           </span>
         </span>
       </label>
