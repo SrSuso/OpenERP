@@ -50,6 +50,7 @@ const CATEGORIES: ProductCategory[] = [
     margin_amount: null,
     price_formula: null,
     tracks_stock: true,
+    default_unit_name: 'KG',
     taxes: [TAXES[0]!],
   },
 ];
@@ -343,6 +344,17 @@ describe('ProductsPage', () => {
     // Sigue heredando: no hay PATCH .../pricing de más, igual que si no
     // hubiese categoría con impuestos.
     expect(backend.pricingCalls).toEqual([]);
+  });
+
+  it('uses the category default unit when that category is selected', async () => {
+    stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.selectOptions(screen.getByLabelText('Categoría (estantería)'), '1');
+
+    expect(screen.getByLabelText('Unidad base')).toHaveValue('KG');
   });
 
   it('assigns a product to a POS category from the list itself', async () => {

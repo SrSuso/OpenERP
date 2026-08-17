@@ -139,6 +139,13 @@ export function CreateProductForm({
   const categoryId = watch('category_id');
   const [estimatedPrice, setEstimatedPrice] = useState<string | null>(null);
 
+  useEffect(() => {
+    const defaultUnit = categories.find(
+      (category) => String(category.id) === categoryId,
+    )?.default_unit_name;
+    if (defaultUnit) setValue('base_unit_name', defaultUnit);
+  }, [categories, categoryId, setValue]);
+
   const previewMutation = useMutation({
     mutationFn: (input: {
       cost: string;

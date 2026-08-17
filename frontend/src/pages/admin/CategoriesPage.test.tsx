@@ -44,6 +44,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
       price_formula: null,
       tracks_stock: true,
       is_sold_by_weight: false,
+      default_unit_name: null,
       taxes: [],
     },
   ];
@@ -62,6 +63,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
     name: string;
     tracks_stock: boolean;
     is_sold_by_weight: boolean;
+    default_unit_name: string | null;
   }[] = [];
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
@@ -87,13 +89,15 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
               name: string;
               tracks_stock: boolean;
               is_sold_by_weight: boolean;
+              default_unit_name: string | null;
             })
-          : { name: '', tracks_stock: true, is_sold_by_weight: false };
+          : { name: '', tracks_stock: true, is_sold_by_weight: false, default_unit_name: null };
         updateCategoryCalls.push({ id, ...body });
         const category = categories.find((c) => c.id === id)!;
         category.name = body.name;
         category.tracks_stock = body.tracks_stock;
         category.is_sold_by_weight = body.is_sold_by_weight;
+        category.default_unit_name = body.default_unit_name;
         return Promise.resolve(jsonResponse(category));
       }
       if (method === 'POST' && /\/product-categories\/(\d+)\/(de)?activate$/.test(url)) {
@@ -138,6 +142,7 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
           price_formula: (body['price_formula'] as string | null) ?? null,
           tracks_stock: (body['tracks_stock'] as boolean | undefined) ?? true,
           is_sold_by_weight: (body['is_sold_by_weight'] as boolean | undefined) ?? false,
+          default_unit_name: (body['default_unit_name'] as string | null | undefined) ?? null,
           taxes: taxes.filter((tax) => (body['tax_ids'] as number[] | undefined)?.includes(tax.id)),
         };
         categories.push(created);
@@ -245,7 +250,7 @@ describe('CategoriesPage', () => {
 
     expect(await screen.findByText('Bebidas')).toBeInTheDocument();
     expect(screen.getByText('Ofertas')).toBeInTheDocument();
-    expect(screen.getByText('UNIT')).toBeInTheDocument();
+    expect(screen.getAllByText('UNIT')).not.toHaveLength(0);
   });
 
   it('creates a product category', async () => {
@@ -262,6 +267,7 @@ describe('CategoriesPage', () => {
         name: 'Lácteos',
         tracks_stock: true,
         is_sold_by_weight: false,
+        default_unit_name: null,
         margin_rate: null,
         margin_amount: null,
         price_formula: null,
@@ -285,6 +291,24 @@ describe('CategoriesPage', () => {
     });
   });
 
+  it('chooses a category default unit from a dropdown', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Bebidas');
+
+    await userEvent.type(screen.getByPlaceholderText('Nombre de la categoría'), 'Charcutería');
+    await userEvent.selectOptions(
+      screen.getByLabelText('Unidad por defecto de sus productos'),
+      'UNIT',
+    );
+    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
+
+    expect(backend.createCategoryCalls[0]).toMatchObject({
+      name: 'Charcutería',
+      default_unit_name: 'UNIT',
+    });
+  });
+
   it('creates a product category with all its initial defaults', async () => {
     const backend = stubBackend();
     renderPage();
@@ -304,6 +328,7 @@ describe('CategoriesPage', () => {
         name: 'Congelados',
         tracks_stock: false,
         is_sold_by_weight: false,
+        default_unit_name: null,
         margin_rate: '25',
         margin_amount: '0.25',
         price_formula: 'cost * 2',
@@ -346,12 +371,13 @@ describe('CategoriesPage', () => {
   it('creates a unit', async () => {
     const backend = stubBackend();
     renderPage();
-    await screen.findByText('UNIT');
+    const unitsPanel = screen.getByRole('heading', { name: 'Unidades' }).parentElement!;
+    await within(unitsPanel).findByText('UNIT');
 
     await userEvent.type(screen.getByPlaceholderText('UNIT, KG, L…'), 'kg');
     await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[2]!);
 
-    expect(await screen.findByText('KG')).toBeInTheDocument();
+    expect(await within(unitsPanel).findByText('KG')).toBeInTheDocument();
     expect(backend.createUnitCalls).toEqual(['KG']);
   });
 
@@ -396,7 +422,13 @@ describe('CategoriesPage', () => {
 
     expect(await screen.findByText('Refrescos')).toBeInTheDocument();
     expect(backend.updateCategoryCalls).toEqual([
-      { id: 1, name: 'Refrescos', tracks_stock: true, is_sold_by_weight: false },
+      {
+        id: 1,
+        name: 'Refrescos',
+        tracks_stock: true,
+        is_sold_by_weight: false,
+        default_unit_name: null,
+      },
     ]);
   });
 
@@ -440,7 +472,13 @@ describe('CategoriesPage', () => {
 
     await waitFor(() => {
       expect(backend.updateCategoryCalls).toEqual([
-        { id: 1, name: 'Bebidas', tracks_stock: false, is_sold_by_weight: false },
+        {
+          id: 1,
+          name: 'Bebidas',
+          tracks_stock: false,
+          is_sold_by_weight: false,
+          default_unit_name: null,
+        },
       ]);
     });
   });
@@ -542,17 +580,12 @@ describe('CategoriesPage', () => {
     confirm.mockRestore();
   });
 
-  it('reorders units with the up/down buttons', async () => {
-    const backend = stubBackend();
+  it('lists units without presenting them as a priority order', async () => {
+    stubBackend();
     renderPage();
-    await screen.findByText('UNIT');
+    const unitsPanel = screen.getByRole('heading', { name: 'Unidades' }).parentElement!;
+    await within(unitsPanel).findByText('UNIT');
 
-    await userEvent.type(screen.getByPlaceholderText('UNIT, KG, L…'), 'kg');
-    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[2]!);
-    await screen.findByText('KG');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Subir KG' }));
-
-    expect(backend.moveUnitCalls).toEqual([{ id: 2, direction: 'up' }]);
+    expect(screen.queryByRole('button', { name: /Subir|Bajar/ })).not.toBeInTheDocument();
   });
 });

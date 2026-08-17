@@ -111,6 +111,16 @@ async def get_category(session: AsyncSession, category_id: int) -> ProductCatego
     return category
 
 
+async def _default_unit_or_422(session: AsyncSession, name: str | None) -> str | None:
+    """A category may only propose a unit from the managed dropdown."""
+    if name is None:
+        return None
+    unit = (await session.execute(select(Unit).where(Unit.name == name))).scalar_one_or_none()
+    if unit is None:
+        raise ValidationError(f"Unit {name!r} does not exist.")
+    return unit.name
+
+
 async def create_category(session: AsyncSession, payload: ProductCategoryCreate) -> ProductCategory:
     existing = (
         await session.execute(select(ProductCategory).where(ProductCategory.name == payload.name))
@@ -122,6 +132,7 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
         name=payload.name,
         tracks_stock=payload.tracks_stock,
         is_sold_by_weight=payload.is_sold_by_weight,
+        default_unit_name=await _default_unit_or_422(session, payload.default_unit_name),
     )
     session.add(category)
     await session.flush()
@@ -134,6 +145,7 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
             "name": category.name,
             "tracks_stock": category.tracks_stock,
             "is_sold_by_weight": category.is_sold_by_weight,
+            "default_unit_name": category.default_unit_name,
         },
     )
     return await get_category(session, category.id)
@@ -154,6 +166,10 @@ async def update_category(
             payload.is_sold_by_weight is None
             or category.is_sold_by_weight == payload.is_sold_by_weight
         )
+        and (
+            "default_unit_name" not in payload.model_fields_set
+            or category.default_unit_name == payload.default_unit_name
+        )
     ):
         return category
 
@@ -171,11 +187,14 @@ async def update_category(
         "name": category.name,
         "tracks_stock": category.tracks_stock,
         "is_sold_by_weight": category.is_sold_by_weight,
+        "default_unit_name": category.default_unit_name,
     }
     category.name = payload.name
     category.tracks_stock = payload.tracks_stock
     if payload.is_sold_by_weight is not None:
         category.is_sold_by_weight = payload.is_sold_by_weight
+    if "default_unit_name" in payload.model_fields_set:
+        category.default_unit_name = await _default_unit_or_422(session, payload.default_unit_name)
     await session.flush()
     await audit.record(
         session,
@@ -187,6 +206,7 @@ async def update_category(
             "name": category.name,
             "tracks_stock": category.tracks_stock,
             "is_sold_by_weight": category.is_sold_by_weight,
+            "default_unit_name": category.default_unit_name,
         },
     )
     return await get_category(session, category_id)

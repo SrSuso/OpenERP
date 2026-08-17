@@ -36,6 +36,7 @@ export const productCategorySchema = z.object({
   // Durante un despliegue escalonado puede llegar una respuesta del backend
   // anterior a la migración; ausente equivale al comportamiento histórico.
   is_sold_by_weight: z.boolean().optional(),
+  default_unit_name: z.string().nullable().optional(),
   taxes: z.array(productTaxSchema),
 });
 export type ProductCategory = z.infer<typeof productCategorySchema>;
@@ -53,6 +54,7 @@ export interface ProductCategoryCreate {
   name: string;
   tracks_stock: boolean;
   is_sold_by_weight: boolean;
+  default_unit_name: string | null;
   margin_rate: string | null;
   margin_amount: string | null;
   price_formula: string | null;
@@ -73,7 +75,12 @@ export async function createProductCategory(
  * tienen asignada la conservan. */
 export async function updateProductCategory(
   id: number,
-  payload: { name: string; tracks_stock: boolean; is_sold_by_weight: boolean },
+  payload: {
+    name: string;
+    tracks_stock: boolean;
+    is_sold_by_weight: boolean;
+    default_unit_name: string | null;
+  },
 ): Promise<ProductCategory> {
   return apiFetch(`${API_V1}/product-categories/${id}`, {
     method: 'PATCH',

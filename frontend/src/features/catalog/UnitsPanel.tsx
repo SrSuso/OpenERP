@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
-import { createUnit, moveUnit, unitsQuery } from '@/features/catalog/api';
+import { createUnit, unitsQuery } from '@/features/catalog/api';
 import { ApiError } from '@/lib/api';
 
-/** La lista de unidades que alimenta el desplegable "unidad base" al dar de
- * alta un producto — pedido explícitamente en vez del campo de texto
- * libre que había antes. El orden se puede cambiar (subir/bajar): es el
- * mismo orden en que aparecen las opciones del desplegable. */
+/** Catálogo de unidades que alimenta los desplegables de categorías y
+ * productos. La unidad por defecto se elige explícitamente en cada
+ * categoría; esta lista no expresa ninguna prioridad. */
 export function UnitsPanel({ canManage }: { canManage: boolean }) {
   const units = useQuery(unitsQuery);
   const queryClient = useQueryClient();
@@ -30,12 +29,6 @@ export function UnitsPanel({ canManage }: { canManage: boolean }) {
     },
   });
 
-  const moveMutation = useMutation({
-    mutationFn: ({ id, direction }: { id: number; direction: 'up' | 'down' }) =>
-      moveUnit(id, direction),
-    onSuccess: (reordered) => queryClient.setQueryData(unitsQuery.queryKey, reordered),
-  });
-
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) return;
@@ -51,34 +44,12 @@ export function UnitsPanel({ canManage }: { canManage: boolean }) {
       {units.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
 
       <ul className="mb-3 flex flex-col gap-1">
-        {list.map((unit, index) => (
+        {list.map((unit) => (
           <li
             key={unit.id}
             className="flex items-center justify-between rounded border border-slate-200 px-3 py-1.5 text-sm"
           >
             <span className="text-slate-700">{unit.name}</span>
-            {canManage && (
-              <span className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => moveMutation.mutate({ id: unit.id, direction: 'up' })}
-                  disabled={index === 0 || moveMutation.isPending}
-                  aria-label={`Subir ${unit.name}`}
-                  className="rounded px-1.5 text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveMutation.mutate({ id: unit.id, direction: 'down' })}
-                  disabled={index === list.length - 1 || moveMutation.isPending}
-                  aria-label={`Bajar ${unit.name}`}
-                  className="rounded px-1.5 text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  ↓
-                </button>
-              </span>
-            )}
           </li>
         ))}
         {list.length === 0 && !units.isPending && (

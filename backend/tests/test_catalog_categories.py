@@ -24,6 +24,28 @@ async def test_manager_can_create_and_list_categories(
     assert any(c["name"] == "Lácteos" for c in list_response.json())
 
 
+async def test_category_default_unit_is_selected_from_managed_units(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    assert (await client.post("/api/v1/units", json={"name": "KG"})).status_code == 201
+
+    created = await client.post(
+        "/api/v1/product-categories",
+        json={"name": "Charcutería", "default_unit_name": "KG"},
+    )
+    assert created.status_code == 201
+    category = created.json()
+    assert category["default_unit_name"] == "KG"
+
+    cleared = await client.patch(
+        f"/api/v1/product-categories/{category['id']}",
+        json={"name": "Charcutería", "default_unit_name": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["default_unit_name"] is None
+
+
 async def test_admin_can_create_category_with_stock_pricing_and_tax_defaults(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -7,6 +7,7 @@ import {
   deactivateProductCategory,
   deleteProductCategory,
   productCategoriesQuery,
+  unitsQuery,
   updateProductCategory,
   type ProductCategory,
 } from '@/features/catalog/api';
@@ -26,11 +27,13 @@ import { cancelWithConfirm, confirmDiscard, useUnsavedWarning } from '@/lib/unsa
  * pantalla ya era una pared de enlaces. */
 export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   const categories = useQuery(productCategoriesQuery);
+  const units = useQuery(unitsQuery);
   const taxes = useQuery(taxesQuery);
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [tracksStock, setTracksStock] = useState(true);
   const [isSoldByWeight, setIsSoldByWeight] = useState(false);
+  const [defaultUnitName, setDefaultUnitName] = useState('');
   const [marginInput, setMarginInput] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [formulaInput, setFormulaInput] = useState('');
@@ -64,6 +67,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
       setName('');
       setTracksStock(true);
       setIsSoldByWeight(false);
+      setDefaultUnitName('');
       setMarginInput('');
       setAmountInput('');
       setFormulaInput('');
@@ -86,6 +90,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
       name: name.trim(),
       tracks_stock: tracksStock,
       is_sold_by_weight: isSoldByWeight,
+      default_unit_name: defaultUnitName || null,
       margin_rate: marginInput.trim() === '' ? null : marginInput,
       margin_amount: amountInput.trim() === '' ? null : amountInput,
       price_formula: formulaInput.trim() === '' ? null : formulaInput.trim(),
@@ -127,6 +132,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
               <CategoryEditor
                 category={category}
                 taxes={taxes.data ?? []}
+                units={units.data ?? []}
                 onDone={() => {
                   setEditorDirty(false);
                   setEditingId(null);
@@ -215,6 +221,27 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
             </span>
           </label>
 
+          <label className="mt-3 block text-xs text-slate-600">
+            Unidad por defecto de sus productos
+            <select
+              aria-label="Unidad por defecto de sus productos"
+              value={defaultUnitName}
+              onChange={(event) => setDefaultUnitName(event.target.value)}
+              className="mt-1 block w-48 rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+            >
+              <option value="">Sin unidad por defecto</option>
+              {(units.data ?? []).map((unit) => (
+                <option key={unit.id} value={unit.name}>
+                  {unit.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-0.5 block text-slate-400">
+              Se propone al dar de alta un producto de esta categoría; se puede cambiar en el
+              producto sin modificar la categoría.
+            </span>
+          </label>
+
           <div className="mt-3 text-xs text-slate-600">
             <label htmlFor={createFormulaFieldId}>Fórmula por defecto</label>
             <input
@@ -258,6 +285,7 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
 function CategoryEditor({
   category,
   taxes,
+  units,
   onDone,
   onDirtyChange,
   onError,
@@ -265,6 +293,7 @@ function CategoryEditor({
 }: {
   category: ProductCategory;
   taxes: Tax[];
+  units: { id: number; name: string }[];
   onDone: () => void;
   onDirtyChange: (isDirty: boolean) => void;
   onError: (message: string | null) => void;
@@ -273,6 +302,7 @@ function CategoryEditor({
   const [name, setName] = useState(category.name);
   const [tracksStock, setTracksStock] = useState(category.tracks_stock);
   const [isSoldByWeight, setIsSoldByWeight] = useState(category.is_sold_by_weight ?? false);
+  const [defaultUnitName, setDefaultUnitName] = useState(category.default_unit_name ?? '');
   const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
   const [amountInput, setAmountInput] = useState(category.margin_amount ?? '');
   const [formulaInput, setFormulaInput] = useState(category.price_formula ?? '');
@@ -285,6 +315,7 @@ function CategoryEditor({
     name !== category.name ||
     tracksStock !== category.tracks_stock ||
     isSoldByWeight !== (category.is_sold_by_weight ?? false) ||
+    defaultUnitName !== (category.default_unit_name ?? '') ||
     marginInput !== (category.margin_rate ?? '') ||
     amountInput !== (category.margin_amount ?? '') ||
     formulaInput !== (category.price_formula ?? '') ||
@@ -300,12 +331,14 @@ function CategoryEditor({
       if (
         name.trim() !== category.name ||
         tracksStock !== category.tracks_stock ||
-        isSoldByWeight !== (category.is_sold_by_weight ?? false)
+        isSoldByWeight !== (category.is_sold_by_weight ?? false) ||
+        defaultUnitName !== (category.default_unit_name ?? '')
       ) {
         await updateProductCategory(category.id, {
           name: name.trim(),
           tracks_stock: tracksStock,
           is_sold_by_weight: isSoldByWeight,
+          default_unit_name: defaultUnitName || null,
         });
       }
       await setCategoryPricing(category.id, {
@@ -441,6 +474,26 @@ function CategoryEditor({
             La caja pedirá los gramos al añadir sus productos y calculará el importe con el precio
             por unidad base.
           </span>
+        </span>
+      </label>
+
+      <label className="mt-3 block text-xs text-slate-600">
+        Unidad por defecto de sus productos
+        <select
+          aria-label="Unidad por defecto de sus productos"
+          value={defaultUnitName}
+          onChange={(event) => setDefaultUnitName(event.target.value)}
+          className="mt-1 block w-48 rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+        >
+          <option value="">Sin unidad por defecto</option>
+          {units.map((unit) => (
+            <option key={unit.id} value={unit.name}>
+              {unit.name}
+            </option>
+          ))}
+        </select>
+        <span className="mt-0.5 block text-slate-400">
+          Se propone al crear nuevos productos de esta categoría.
         </span>
       </label>
 
