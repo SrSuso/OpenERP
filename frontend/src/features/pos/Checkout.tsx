@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { type PaymentMethod, type Sale, type Tender } from '@/features/pos/api';
+import { Keypad } from '@/features/pos/Keypad';
 import { useShopFlag, useShopSetting } from '@/features/settings/useShopSettings';
 import { formatMoney } from '@/lib/format';
 
@@ -38,6 +39,10 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
 
   const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
   const [tendered, setTendered] = useState(() => totalAsInput(sale));
+  // El total exacto se enseña de entrada para poder cobrarlo de un toque.
+  // Si el cliente entrega otra cantidad, el primer dígito del teclado lo
+  // sustituye, en lugar de convertir por ejemplo 12,50 € en 12,505 €.
+  const [tenderedIsDefault, setTenderedIsDefault] = useState(true);
 
   const total = Number(sale.total);
   const tenderedAmount = Number(tendered.replace(',', '.'));
@@ -50,6 +55,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
     // Sólo el efectivo admite entregar de más y devolver cambio.
     if (next !== 'CASH') {
       setTendered(totalAsInput(sale));
+      setTenderedIsDefault(true);
     }
   }
 
@@ -113,7 +119,10 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
             type="text"
             inputMode="decimal"
             value={tendered}
-            onChange={(event) => setTendered(event.target.value)}
+            onChange={(event) => {
+              setTendered(event.target.value);
+              setTenderedIsDefault(false);
+            }}
             disabled={isPending || method === 'CARD'}
             className="w-full rounded border border-slate-600 bg-slate-900 px-3 py-2 text-lg text-slate-50 disabled:opacity-60"
           />
@@ -121,6 +130,22 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
             <p className="mt-1 text-sm text-red-400">El importe no cubre el total.</p>
           )}
         </div>
+
+        {method === 'CASH' && (
+          <div aria-label="Teclado numérico para efectivo">
+            <p className="mb-2 text-sm text-slate-300">Importe entregado</p>
+            <Keypad
+              value={tendered}
+              onChange={(value) => {
+                setTendered(value);
+                setTenderedIsDefault(false);
+              }}
+              maxLength={8}
+              allowDecimal
+              clearOnFirstInput={tenderedIsDefault}
+            />
+          </div>
+        )}
 
         {method === 'CASH' && change > 0 && (
           <div className="rounded-lg bg-slate-800 p-3 text-center">

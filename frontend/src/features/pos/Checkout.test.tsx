@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -90,6 +90,20 @@ describe('Checkout', () => {
     await userEvent.type(input, '50');
 
     expect(screen.getByText(/cambio/i)).toBeInTheDocument();
+    expect(screen.getByText('30,00 €')).toBeInTheDocument();
+  });
+
+  it('lets the cashier enter cash with the auxiliary keypad', async () => {
+    renderCheckout();
+    const input = screen.getByLabelText(/importe recibido/i);
+    const keypad = screen.getByLabelText('Teclado numérico para efectivo');
+
+    // El primer toque sustituye el total precargado: no hay que borrar
+    // primero 20,00 € para cobrar 50 €.
+    await userEvent.click(within(keypad).getByRole('button', { name: '5' }));
+    await userEvent.click(within(keypad).getByRole('button', { name: '0' }));
+
+    expect(input).toHaveValue('50');
     expect(screen.getByText('30,00 €')).toBeInTheDocument();
   });
 

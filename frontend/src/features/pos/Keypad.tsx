@@ -7,6 +7,9 @@ interface KeypadProps {
   maxLength?: number;
   /** Amount prompts accept one decimal separator; quantities keep digits only. */
   allowDecimal?: boolean;
+  /** El primer toque sustituye el importe inicial en vez de añadirle un
+   * dígito. Útil cuando el efectivo empieza mostrando el total exacto. */
+  clearOnFirstInput?: boolean;
   /** Se dibuja en la última casilla, junto a «C» y «←». */
   action?: { label: string; onPress: () => void; disabled?: boolean };
 }
@@ -27,18 +30,21 @@ export function Keypad({
   onChange,
   maxLength = 6,
   allowDecimal = false,
+  clearOnFirstInput = false,
   action,
 }: KeypadProps) {
   function press(digit: string) {
     // Un cero a la izquierda no significa nada y confunde al leerlo.
-    const next = value === '0' ? digit : value + digit;
+    const current = clearOnFirstInput ? '' : value;
+    const next = current === '0' ? digit : current + digit;
     if (next.length > maxLength) return;
     onChange(next);
   }
 
   function pressDecimal() {
-    if (!allowDecimal || value.includes(',') || value.includes('.')) return;
-    onChange(value === '' ? '0,' : `${value},`);
+    const current = clearOnFirstInput ? '' : value;
+    if (!allowDecimal || current.includes(',') || current.includes('.')) return;
+    onChange(current === '' ? '0,' : `${current},`);
   }
 
   return (
