@@ -472,6 +472,23 @@ describe('ProductDetailPage', () => {
     expect(screen.queryByDisplayValue('Agua 1L')).not.toBeInTheDocument();
   });
 
+  it('shows the recalculated price from a cost or tax save before a slow reload', async () => {
+    // El PATCH responde con el PVP nuevo, pero la recarga de la ficha tarda:
+    // la pantalla no puede quedarse enseñando el anterior durante ese hueco.
+    const backend = stubBackend({ productFetchDelayMs: 300 });
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar precio' }));
+
+    await waitFor(() => expect(backend.pricingCalls).toHaveLength(1));
+    // No `findBy`: el valor viene en la respuesta del guardado, no se debe
+    // esperar a la petición lenta que invalida la ficha.
+    expect(screen.getByText('9,99 €')).toBeInTheDocument();
+  });
+
   it('does not claim there are unsaved changes when the number is the same', async () => {
     // Lo guardado es "0.300000" y quien repasa precios escribe "0,30": la
     // misma cantidad. Comparando el texto, salir preguntaba si querías

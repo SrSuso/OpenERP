@@ -135,11 +135,22 @@ export function ProductDetailPage() {
     onSuccess: invalidateProduct,
   });
 
+  const [savedPricing, setSavedPricing] = useState(0);
+
   const savePricingMutation = useMutation({
     mutationFn: (input: PricingOverrideInput & { cost?: string }) =>
       setProductPricing(productId, input),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // El PATCH de precios ya devuelve el coste, impuestos y PVP
+      // recalculado. Guardarlo primero evita que la ficha siga mostrando
+      // el precio anterior mientras una recarga lenta llega por detrás.
+      queryClient.setQueryData(productQuery(productId).queryKey, saved);
       invalidateProduct();
+      setPricingDirty(false);
+      // Coste/impuestos/márgenes son estado local del panel. Al volver a
+      // montarlo con la respuesta confirmada se ven las normalizaciones del
+      // backend (decimales, impuestos efectivos y PVP), no valores viejos.
+      setSavedPricing((count) => count + 1);
       setProposedPricing(null);
     },
     onError: () => setProposedPricing(null),
@@ -355,6 +366,7 @@ export function ProductDetailPage() {
       {tab === 'pricing' && canManagePricing && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <ProductPricingPanel
+            key={savedPricing}
             product={data}
             category={categories.data?.find((c) => c.id === data.category_id)}
             taxes={taxes.data ?? []}

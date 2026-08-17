@@ -60,6 +60,10 @@ export function ProductPricingPanel({
 
   const inheritsMargin = marginInput.trim() === '';
   const inheritsAmount = amountInput.trim() === '';
+  const savedTaxIds = new Set(product.taxes.map((tax) => tax.id));
+  const taxesChanged =
+    isOverride &&
+    (taxIds.size !== savedTaxIds.size || [...taxIds].some((taxId) => !savedTaxIds.has(taxId)));
 
   // Lo tecleado difiere de lo guardado: si se sale ahora, se pierde.
   //
@@ -70,7 +74,8 @@ export function ProductPricingPanel({
     differs(cost, product.cost) ||
     differs(marginInput, product.margin_rate) ||
     differs(amountInput, product.margin_amount) ||
-    isOverride !== hasOwnTaxes;
+    isOverride !== hasOwnTaxes ||
+    taxesChanged;
   useUnsavedWarning(isDirty);
   useEffect(() => {
     onDirtyChange?.(isDirty);
