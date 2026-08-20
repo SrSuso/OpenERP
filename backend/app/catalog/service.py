@@ -66,6 +66,10 @@ def _category_options() -> tuple[Any, ...]:
 
 
 def _snapshot(product: Product) -> dict[str, Any]:
+    base_package = next((package for package in product.packages if package.is_base), None)
+    base_barcode = (
+        base_package.barcodes[0].barcode if base_package and base_package.barcodes else None
+    )
     return {
         "sku": product.sku,
         "name": product.name,
@@ -74,6 +78,7 @@ def _snapshot(product: Product) -> dict[str, Any]:
         "pos_display_order": product.pos_display_order,
         "is_open_price": product.is_open_price,
         "base_unit_name": product.base_unit_name,
+        "base_barcode": base_barcode,
         "cost": str(product.cost),
         "list_price": str(product.list_price),
         "tax_rate": str(product.tax_rate),
@@ -715,6 +720,20 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
         product.pos_display_order = payload.pos_display_order
     if payload.is_open_price is not None:
         product.is_open_price = payload.is_open_price
+    if "base_barcode" in payload.model_fields_set:
+        base_package = next((package for package in product.packages if package.is_base), None)
+        if base_package is None:
+            raise ConflictError("El producto no tiene un formato base para su código de barras.")
+        primary_barcode = base_package.barcodes[0] if base_package.barcodes else None
+        if payload.base_barcode is None:
+            if primary_barcode is not None:
+                await session.delete(primary_barcode)
+        elif primary_barcode is None:
+            await _assert_barcode_free(session, payload.base_barcode)
+            session.add(ProductBarcode(package_id=base_package.id, barcode=payload.base_barcode))
+        elif primary_barcode.barcode != payload.base_barcode:
+            await _assert_barcode_free(session, payload.base_barcode)
+            primary_barcode.barcode = payload.base_barcode
     if payload.base_unit_name is not None and payload.base_unit_name != product.base_unit_name:
         unit_name = await _managed_unit_or_422(session, payload.base_unit_name)
         # The input above is non-null; this keeps the type contract explicit

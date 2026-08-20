@@ -214,6 +214,9 @@ class ProductUpdate(BaseModel):
     pos_category_id: int | None = None
     pos_display_order: int | None = Field(default=None, ge=0)
     is_open_price: bool | None = None
+    #: Código principal del formato base. ``null`` lo elimina; los códigos
+    #: adicionales siguen gestionándose desde Formatos.
+    base_barcode: str | None = Field(default=None, min_length=1, max_length=64)
     #: La unidad se puede corregir mientras el producto todavía no tenga
     #: historial ni formatos derivados. El servicio protege esa condición
     #: para que un cambio no reinterprete cantidades ya guardadas.

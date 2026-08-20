@@ -23,6 +23,7 @@ const editProductSchema = z.object({
   pos_category_id: z.string(),
   pos_display_order: z.coerce.number().int().min(0),
   is_open_price: z.boolean(),
+  base_barcode: z.string().max(64).optional(),
   base_unit_name: z.string().min(1, 'Elige una unidad base.'),
   min_stock: decimalString({ min: 0 }),
   track_lots: z.boolean(),
@@ -56,6 +57,8 @@ export function EditProductForm({
   submitError,
   onDirtyChange,
 }: EditProductFormProps) {
+  const basePackage = product.packages.find((item) => item.is_base);
+  const baseBarcode = basePackage?.barcodes[0]?.barcode ?? '';
   // Para poder decir en el desplegable qué se hereda exactamente.
   const inheritedTracksStock =
     categories.find((category) => category.id === product.category_id)?.tracks_stock ?? null;
@@ -73,6 +76,7 @@ export function EditProductForm({
       pos_category_id: product.pos_category_id === null ? '' : String(product.pos_category_id),
       pos_display_order: product.pos_display_order,
       is_open_price: product.is_open_price ?? false,
+      base_barcode: baseBarcode,
       base_unit_name: product.base_unit_name,
       min_stock: product.min_stock,
       track_lots: product.track_lots,
@@ -97,6 +101,7 @@ export function EditProductForm({
       pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
       pos_display_order: values.pos_display_order,
       is_open_price: values.is_open_price,
+      base_barcode: values.base_barcode?.trim() || null,
       base_unit_name: values.base_unit_name,
       min_stock: values.min_stock,
       track_lots: values.track_lots,
@@ -146,6 +151,24 @@ export function EditProductForm({
             {...register('description')}
           />
         </label>
+
+        <div className="text-sm text-slate-600">
+          <label>
+            Código de barras
+            <input
+              type="text"
+              inputMode="numeric"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('base_barcode')}
+            />
+          </label>
+          <span className="mt-1 block text-xs text-slate-400">
+            Código principal del formato base. Los adicionales se gestionan en Formatos.
+          </span>
+          {errors.base_barcode && (
+            <p className="mt-1 text-sm text-red-600">{errors.base_barcode.message}</p>
+          )}
+        </div>
 
         <label className="text-sm text-slate-600">
           Categoría

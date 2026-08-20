@@ -51,6 +51,25 @@ async def test_admin_can_create_a_product_with_its_base_package(
     assert [b["barcode"] for b in base["barcodes"]] == ["111111"]
 
 
+async def test_admin_can_edit_or_clear_the_base_barcode_from_the_product(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+
+    changed = await client.patch(
+        f"/api/v1/products/{product['id']}", json={"base_barcode": "222222"}
+    )
+    assert changed.status_code == 200
+    base = next(package for package in changed.json()["packages"] if package["is_base"])
+    assert [barcode["barcode"] for barcode in base["barcodes"]] == ["222222"]
+
+    cleared = await client.patch(f"/api/v1/products/{product['id']}", json={"base_barcode": None})
+    assert cleared.status_code == 200
+    base = next(package for package in cleared.json()["packages"] if package["is_base"])
+    assert base["barcodes"] == []
+
+
 async def test_adding_a_box_package_with_factor_6(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

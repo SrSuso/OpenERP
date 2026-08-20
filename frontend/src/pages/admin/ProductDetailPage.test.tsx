@@ -339,9 +339,15 @@ describe('ProductDetailPage', () => {
     const nameInput = screen.getByDisplayValue('Agua 1L');
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, 'Agua mineral 1L');
+    const barcodeInput = screen.getByLabelText('Código de barras');
+    await userEvent.clear(barcodeInput);
+    await userEvent.type(barcodeInput, '8410000000099');
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
     expect(await screen.findAllByText(/Agua mineral 1L/)).not.toHaveLength(0);
-    expect(backend.updateCalls[0]).toMatchObject({ name: 'Agua mineral 1L' });
+    expect(backend.updateCalls[0]).toMatchObject({
+      name: 'Agua mineral 1L',
+      base_barcode: '8410000000099',
+    });
 
     // Precios
     await userEvent.click(screen.getByRole('button', { name: 'Precios' }));

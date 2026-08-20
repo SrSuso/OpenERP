@@ -343,6 +343,8 @@ export interface ProductUpdateInput {
   pos_category_id?: number | null;
   pos_display_order?: number;
   is_open_price?: boolean;
+  /** Código del formato base; `null` retira sólo el principal. */
+  base_barcode?: string | null;
   /** Corrección segura de la unidad base antes de que exista historial. */
   base_unit_name?: string;
   min_stock?: string;
