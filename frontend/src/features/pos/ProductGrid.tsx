@@ -70,21 +70,23 @@ function ProductButton({
       type="button"
       disabled={disabled}
       onClick={() => onPick(product)}
-      className="flex h-24 flex-col justify-between overflow-hidden rounded-lg bg-slate-800 text-left shadow transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex h-32 flex-col overflow-hidden rounded-lg bg-slate-800 text-left shadow transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {version !== undefined && (
         <img
           src={imageUrl('product', product.id, version)}
           alt=""
-          className="h-10 w-full shrink-0 object-cover"
+          className="h-20 w-full shrink-0 object-cover"
         />
       )}
-      <span className="line-clamp-2 px-2 pt-1.5 text-xs font-medium text-slate-50">
-        {product.name}
-      </span>
-      <span className="px-2 pb-2 text-sm font-semibold text-emerald-400">
-        {product.is_open_price ? 'Precio libre' : formatMoney(product.list_price)}
-      </span>
+      <div className="flex min-h-0 flex-1 items-center gap-2 px-2 py-1.5">
+        <span className="line-clamp-2 min-w-0 flex-1 text-xs font-medium text-slate-50">
+          {product.name}
+        </span>
+        <span className="shrink-0 whitespace-nowrap text-sm font-semibold text-emerald-400">
+          {product.is_open_price ? 'Precio libre' : formatMoney(product.list_price)}
+        </span>
+      </div>
     </button>
   );
 }
