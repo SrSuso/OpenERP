@@ -11,26 +11,33 @@ interface OpenPricePromptProps {
   isPending: boolean;
 }
 
-function normalise(value: string): string {
-  return value.replace(',', '.');
+/** The POS keypad receives cents, not a locale-formatted decimal. Keeping the
+ * raw digits separately means four taps (`1250`) always mean €12.50. */
+function centsToAmount(cents: string): string {
+  return (Number(cents || '0') / 100).toFixed(2);
 }
 
 /** Price entry for a deliberately configured open-price product. The amount
  * is the final amount the customer pays, never a client-side override for a
  * normal catalogue product. */
 export function OpenPricePrompt({ product, onCancel, onConfirm, isPending }: OpenPricePromptProps) {
-  const [value, setValue] = useState('');
-  const parsed = Number(normalise(value));
-  const isValid = /^\d+(?:[,.]\d{1,2})?$/.test(value) && Number.isFinite(parsed) && parsed > 0;
+  const [cents, setRawCents] = useState('');
+  const amount = centsToAmount(cents);
+  const isValid = /^\d+$/.test(cents) && Number(cents) > 0;
 
-  function setAmount(next: string) {
-    const cleaned = next.replace('.', ',').replace(/[^0-9,]/g, '');
-    if (cleaned.split(',').length <= 2) setValue(cleaned);
+  function setCentsInput(next: string) {
+    const digits = next.replace(/\D/g, '');
+    if (digits.length <= 8) setRawCents(digits);
   }
 
   function confirm() {
     if (!isValid || isPending) return;
-    onConfirm(parsed.toFixed(2));
+    onConfirm(amount);
+  }
+
+  function handleKeyDown(key: string) {
+    if (/^\d$/.test(key)) setCentsInput(cents + key);
+    if (key === 'Backspace') setRawCents(cents.slice(0, -1));
   }
 
   return (
@@ -42,35 +49,41 @@ export function OpenPricePrompt({ product, onCancel, onConfirm, isPending }: Ope
     >
       <div className="w-full max-w-sm rounded-lg bg-slate-800 p-5 shadow-xl">
         <h2 className="text-lg font-semibold text-slate-50">{product.name}</h2>
-        <p className="mt-1 text-sm text-slate-400">Introduce el total indicado por el mostrador.</p>
+        <p className="mt-1 text-sm text-slate-400">
+          Introduce los céntimos sin coma: 1250 equivale a 12,50 €.
+        </p>
         <label className="mt-4 block text-sm text-slate-300">
           Importe total
           <input
             type="text"
-            inputMode="decimal"
+            inputMode="numeric"
             autoFocus
-            value={value}
-            onChange={(event) => setAmount(event.target.value)}
+            readOnly
+            value={formatMoney(amount)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') confirm();
               if (event.key === 'Escape') onCancel();
+              if (/^\d$/.test(event.key) || event.key === 'Backspace') {
+                event.preventDefault();
+                handleKeyDown(event.key);
+              }
             }}
-            placeholder="0,00"
+            aria-describedby="open-price-cents-help"
             className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-3 py-3 text-right text-3xl font-semibold text-slate-50"
           />
         </label>
+        <p id="open-price-cents-help" className="mt-1 text-right text-xs text-slate-400">
+          {cents || '0'} céntimos
+        </p>
         <p className="mt-2 text-right text-sm text-slate-300">
           Se añadirá:{' '}
-          <span className="text-lg font-semibold text-emerald-400">
-            {formatMoney(isValid ? parsed.toFixed(2) : '0')}
-          </span>
+          <span className="text-lg font-semibold text-emerald-400">{formatMoney(amount)}</span>
         </p>
         <div className="mt-4">
           <Keypad
-            value={value}
-            onChange={setAmount}
+            value={cents}
+            onChange={setCentsInput}
             maxLength={8}
-            allowDecimal
             action={{
               label: isPending ? 'Añadiendo…' : 'Añadir al carrito',
               onPress: confirm,
