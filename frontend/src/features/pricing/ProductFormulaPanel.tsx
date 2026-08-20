@@ -5,6 +5,7 @@ import { type Product, type ProductCategory } from '@/features/catalog/api';
 import {
   clearProductFormula,
   previewFormula,
+  productPriceCalculationQuery,
   productPriceHistoryQuery,
   setProductFormula,
   type Tax,
@@ -52,6 +53,9 @@ export function ProductFormulaPanel({
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'product', product.id] });
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+    void queryClient.invalidateQueries({
+      queryKey: productPriceCalculationQuery(product.id).queryKey,
+    });
     void queryClient.invalidateQueries({ queryKey: productPriceHistoryQuery(product.id).queryKey });
   };
 

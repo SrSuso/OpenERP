@@ -26,7 +26,12 @@ import { CreateLotForm } from '@/features/lots/CreateLotForm';
 import { LotBalancesPanel } from '@/features/lots/LotBalancesPanel';
 import { LotsTable } from '@/features/lots/LotsTable';
 import { createLot, lotsQuery, type LotCreateInput } from '@/features/lots/api';
-import { setProductPricing, taxesQuery, type PricingOverrideInput } from '@/features/pricing/api';
+import {
+  productPriceCalculationQuery,
+  setProductPricing,
+  taxesQuery,
+  type PricingOverrideInput,
+} from '@/features/pricing/api';
 import { ProductFormulaPanel } from '@/features/pricing/ProductFormulaPanel';
 import { PriceChangeDialog } from '@/features/pricing/PriceChangeDialog';
 import { ProductPricingPanel } from '@/features/pricing/ProductPricingPanel';
@@ -98,6 +103,9 @@ export function ProductDetailPage() {
   const invalidateProduct = () => {
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'product', productId] });
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+    void queryClient.invalidateQueries({
+      queryKey: productPriceCalculationQuery(productId).queryKey,
+    });
   };
 
   // Cuántas veces se ha guardado la ficha. Va como `key` del formulario:

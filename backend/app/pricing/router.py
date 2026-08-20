@@ -22,6 +22,7 @@ from app.pricing.schemas import (
     PriceHistoryEntryRead,
     PricingSettingsRead,
     PricingSettingsUpdate,
+    ProductPriceCalculationRead,
     SetFormulaRequest,
     SetManualPriceRequest,
     SetPricingInputsRequest,
@@ -78,6 +79,21 @@ async def preview_formula(payload: FormulaPreviewRequest) -> FormulaPreviewRespo
 async def get_price_history(product_id: int, session: SessionDep) -> list[PriceHistoryEntryRead]:
     entries = await service.list_price_history(session, product_id)
     return [_history_to_read(e) for e in entries]
+
+
+@router.get(
+    "/products/{product_id}/pricing/calculation",
+    response_model=ProductPriceCalculationRead,
+    dependencies=[_require_read],
+)
+async def get_product_price_calculation(
+    product_id: int, session: SessionDep
+) -> ProductPriceCalculationRead:
+    calculated_price, rounded_price = await service.product_price_calculation(session, product_id)
+    return ProductPriceCalculationRead(
+        calculated_price=calculated_price,
+        rounded_price=rounded_price,
+    )
 
 
 @router.patch(

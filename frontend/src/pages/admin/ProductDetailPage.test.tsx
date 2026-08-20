@@ -189,6 +189,11 @@ function stubBackend(
       if (method === 'GET' && /\/products\/1\/purchase-history$/.test(url)) {
         return Promise.resolve(jsonResponse(purchaseHistory));
       }
+      if (method === 'GET' && /\/products\/1\/pricing\/calculation$/.test(url)) {
+        return Promise.resolve(
+          jsonResponse({ calculated_price: '0.580000', rounded_price: '0.600000' }),
+        );
+      }
       if (method === 'GET' && /\/stock-balance\?/.test(url)) {
         return Promise.resolve(jsonResponse(stockBalances));
       }
@@ -351,6 +356,10 @@ describe('ProductDetailPage', () => {
 
     // Precios
     await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
+    expect(await screen.findByText('PVP calculado (sin redondear)')).toBeInTheDocument();
+    expect(screen.getByText('PVP de venta (redondeado)')).toBeInTheDocument();
+    expect(screen.getByText('0,58 €')).toBeInTheDocument();
+    expect(screen.getByText('0,60 €')).toBeInTheDocument();
     const marginInput = screen.getByPlaceholderText('heredado: 30%');
     await userEvent.type(marginInput, '15');
     await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));

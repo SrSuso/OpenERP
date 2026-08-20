@@ -146,6 +146,18 @@ def _quantize_price(value: Decimal) -> Decimal:
     )
 
 
+def _calculate_automatic_price(product: Product, settings: PricingSettings) -> Decimal:
+    """Return the exact formula result before the commercial rounding step."""
+    text = effective_formula(product, settings)
+    try:
+        result = formula.evaluate(text, _variables(product))
+    except FormulaError as exc:
+        raise ValidationError(str(exc)) from exc
+    # Igual que al guardar: el margen fijo queda fuera de la fórmula y se
+    # suma una única vez al resultado.
+    return result + effective_margin_amount(product)
+
+
 def preview(payload: FormulaPreviewRequest) -> Decimal:
     """Validate and evaluate a formula against arbitrary sample inputs —
     never touches the database. Rounded the same way a real save would be,
@@ -242,6 +254,20 @@ async def list_price_history(session: AsyncSession, product_id: int) -> list[Pro
     return list((await session.execute(stmt)).scalars())
 
 
+async def product_price_calculation(
+    session: AsyncSession, product_id: int
+) -> tuple[Decimal, Decimal]:
+    """Expose the exact automatic calculation and its selling-price rounding.
+
+    This deliberately does not mutate ``product.list_price``.  The latter
+    remains authoritative for a manually fixed PVP, while this endpoint lets
+    the product form explain the automatic calculation transparently.
+    """
+    product = await _product_or_404(session, product_id)
+    calculated_price = _calculate_automatic_price(product, await get_settings(session))
+    return calculated_price, _quantize_price(calculated_price)
+
+
 async def _taxes_by_id(session: AsyncSession, tax_ids: list[int]) -> list[Tax]:
     if not tax_ids:
         return []
@@ -264,12 +290,7 @@ def _recompute_with(product: Product, settings: PricingSettings) -> None:
     salvo que la fórmula los mencionara — ver `app.pricing.formula`.
 
     Result is always rounded up to the next 5 cents — see `_quantize_price`."""
-    text = effective_formula(product, settings)
-    try:
-        result = formula.evaluate(text, _variables(product))
-    except FormulaError as exc:
-        raise ValidationError(str(exc)) from exc
-    product.list_price = _quantize_price(result + effective_margin_amount(product))
+    product.list_price = _quantize_price(_calculate_automatic_price(product, settings))
 
 
 async def set_pricing_inputs(

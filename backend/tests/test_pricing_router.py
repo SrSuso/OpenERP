@@ -129,6 +129,22 @@ async def test_automatic_prices_are_rounded_up_to_five_cent_steps(
     assert Decimal(manual.json()["list_price"]) == Decimal("2.16")
 
 
+async def test_product_price_calculation_exposes_raw_and_rounded_prices(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client, cost="1.53")
+    await client.put(
+        f"/api/v1/products/{product_id}/pricing/formula", json={"price_formula": "cost"}
+    )
+
+    response = await client.get(f"/api/v1/products/{product_id}/pricing/calculation")
+
+    assert response.status_code == 200
+    assert Decimal(response.json()["calculated_price"]) == Decimal("1.53")
+    assert Decimal(response.json()["rounded_price"]) == Decimal("1.55")
+
+
 async def test_manual_price_clears_the_formula(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

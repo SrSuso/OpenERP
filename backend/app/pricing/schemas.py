@@ -24,6 +24,18 @@ class FormulaPreviewResponse(BaseModel):
     result: Decimal
 
 
+class ProductPriceCalculationRead(BaseModel):
+    """Los dos pasos del precio automático de un producto.
+
+    ``calculated_price`` conserva el resultado exacto de fórmula y márgenes;
+    ``rounded_price`` es el importe de venta automático, redondeado al alza
+    al escalón comercial de cinco céntimos.
+    """
+
+    calculated_price: Decimal
+    rounded_price: Decimal
+
+
 class SetPricingInputsRequest(BaseModel):
     """Updates whichever pricing inputs are given (a field simply absent
     from the JSON body is left untouched). Any of them recomputes the

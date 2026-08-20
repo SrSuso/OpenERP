@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { type Product, type ProductCategory } from '@/features/catalog/api';
 import {
   productPriceHistoryQuery,
+  productPriceCalculationQuery,
   setManualPrice,
   type PricingOverrideInput,
   type Tax,
@@ -21,6 +22,16 @@ function differs(typed: string, saved: string | null): boolean {
   if (isEmpty || saved === null) return isEmpty !== (saved === null);
   const typedNumber = Number(typed.replace(',', '.'));
   return Number.isNaN(typedNumber) || typedNumber !== Number(saved);
+}
+
+/** El resultado previo al redondeo puede tener fracciones de céntimo. Se
+ * muestran hasta seis decimales, igual que los importes que guarda la base
+ * de datos, para que el recuadro de cálculo no esconda la diferencia. */
+function formatCalculatedMoney(value: string): string {
+  return `${new Intl.NumberFormat('es-ES', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(Number(value))} €`;
 }
 
 interface ProductPricingPanelProps {
@@ -49,6 +60,7 @@ export function ProductPricingPanel({
   onDirtyChange,
 }: ProductPricingPanelProps) {
   const queryClient = useQueryClient();
+  const calculation = useQuery(productPriceCalculationQuery(product.id));
   const [cost, setCost] = useState(product.cost);
   const [costError, setCostError] = useState<string | null>(null);
   const [marginInput, setMarginInput] = useState(product.margin_rate ?? '');
@@ -72,6 +84,9 @@ export function ProductPricingPanel({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['catalog', 'product', product.id] });
       void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      void queryClient.invalidateQueries({
+        queryKey: productPriceCalculationQuery(product.id).queryKey,
+      });
       void queryClient.invalidateQueries({
         queryKey: productPriceHistoryQuery(product.id).queryKey,
       });
@@ -186,10 +201,23 @@ export function ProductPricingPanel({
         </label>
 
         <div className="text-xs text-slate-600">
-          <span className="block">PVP actual</span>
+          <span className="block">PVP calculado (sin redondear)</span>
           <p className="mt-1 rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800">
+            {calculation.data ? formatCalculatedMoney(calculation.data.calculated_price) : '—'}
+          </p>
+          <span className="mt-1 block text-xs text-slate-400">Antes del redondeo comercial.</span>
+        </div>
+
+        <div className="text-xs text-slate-600">
+          <span className="block">PVP de venta (redondeado)</span>
+          <p className="mt-1 rounded border border-brand-200 bg-brand-50 px-2 py-1 text-sm font-medium text-slate-800">
             {formatMoney(product.list_price)}
           </p>
+          <span className="mt-1 block text-xs text-slate-400">
+            {calculation.data && calculation.data.rounded_price !== product.list_price
+              ? 'Precio manual: se respeta tal cual.'
+              : 'Redondeado al alza a cinco céntimos.'}
+          </span>
 
           <div className="mt-3 border-t border-slate-200 pt-3">
             <p className="mb-1 text-xs font-medium text-slate-600">Precio manual</p>

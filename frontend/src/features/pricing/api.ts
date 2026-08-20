@@ -99,6 +99,23 @@ export interface FormulaPreviewInput {
 
 const formulaPreviewResponseSchema = z.object({ result: z.string() });
 
+const productPriceCalculationSchema = z.object({
+  calculated_price: z.string(),
+  rounded_price: z.string(),
+});
+export type ProductPriceCalculation = z.infer<typeof productPriceCalculationSchema>;
+
+export function productPriceCalculationQuery(productId: number) {
+  return queryOptions({
+    queryKey: ['pricing', 'product-calculation', productId] as const,
+    queryFn: ({ signal }) =>
+      apiFetch(`${API_V1}/products/${productId}/pricing/calculation`, {
+        schema: productPriceCalculationSchema,
+        signal,
+      }),
+  });
+}
+
 /** Nunca toca un producto real — para el "PVP en vivo" del formulario de
  * alta y del editor de fórmula. */
 export async function previewFormula(input: FormulaPreviewInput): Promise<string> {
