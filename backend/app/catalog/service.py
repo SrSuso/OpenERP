@@ -31,6 +31,7 @@ from app.catalog.schemas import (
     ProductUpdate,
     UnitCreate,
     UnitMoveDirection,
+    UnitUpdate,
 )
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.settings import store as settings_store
@@ -272,6 +273,11 @@ async def delete_category(session: AsyncSession, category_id: int) -> None:
 # --- units ---------------------------------------------------------------------
 
 
+# El usuario pidió que estas tres opciones estén siempre disponibles al dar
+# productos de alta. Se pueden ordenar, pero no renombrar ni borrar.
+_REQUIRED_UNIT_NAMES = frozenset({"KG", "L", "UDS"})
+
+
 async def list_units(session: AsyncSession) -> list[Unit]:
     stmt = select(Unit).order_by(Unit.display_order, Unit.name)
     return list((await session.execute(stmt)).scalars())
@@ -295,6 +301,102 @@ async def create_unit(session: AsyncSession, payload: UnitCreate) -> Unit:
         session, action="created", entity_type="unit", entity_id=unit.id, after={"name": unit.name}
     )
     return unit
+
+
+async def _unit_or_404(session: AsyncSession, unit_id: int) -> Unit:
+    unit = (await session.execute(select(Unit).where(Unit.id == unit_id))).scalar_one_or_none()
+    if unit is None:
+        raise NotFoundError(f"Unit {unit_id} not found.")
+    return unit
+
+
+async def _assert_unit_is_unused(session: AsyncSession, unit: Unit) -> None:
+    """A unit name is copied into products/categories, not referenced by FK.
+
+    Changing or deleting it while it is used would leave an invalid picker
+    value behind and, worse, could reinterpret a historical base unit.  The
+    safe operation is therefore limited to unused custom units.
+    """
+    product_count = (
+        await session.execute(
+            select(func.count()).select_from(Product).where(Product.base_unit_name == unit.name)
+        )
+    ).scalar_one()
+    category_count = (
+        await session.execute(
+            select(func.count())
+            .select_from(ProductCategory)
+            .where(ProductCategory.default_unit_name == unit.name)
+        )
+    ).scalar_one()
+    if product_count or category_count:
+        references: list[str] = []
+        if product_count:
+            references.append(f"{product_count} producto(s)")
+        if category_count:
+            references.append(f"{category_count} categoría(s)")
+        raise ConflictError(
+            f"No se puede modificar ni borrar la unidad «{unit.name}»: la usan "
+            + " y ".join(references)
+            + "."
+        )
+
+
+def _assert_unit_is_custom(unit: Unit) -> None:
+    if unit.name in _REQUIRED_UNIT_NAMES:
+        raise ConflictError(
+            f"La unidad «{unit.name}» es estándar y debe conservarse. "
+            "Puedes crear una unidad personalizada distinta."
+        )
+
+
+async def update_unit(session: AsyncSession, unit_id: int, payload: UnitUpdate) -> Unit:
+    unit = await _unit_or_404(session, unit_id)
+    _assert_unit_is_custom(unit)
+    if unit.name == payload.name:
+        return unit
+
+    duplicate = (
+        await session.execute(select(Unit).where(Unit.name == payload.name, Unit.id != unit_id))
+    ).scalar_one_or_none()
+    if duplicate is not None:
+        raise ConflictError("A unit with this name already exists.")
+
+    await _assert_unit_is_unused(session, unit)
+    before = {"name": unit.name}
+    unit.name = payload.name
+    await session.flush()
+    await audit.record(
+        session,
+        action="updated",
+        entity_type="unit",
+        entity_id=unit.id,
+        before=before,
+        after={"name": unit.name},
+    )
+    return unit
+
+
+async def delete_unit(session: AsyncSession, unit_id: int) -> None:
+    unit = await _unit_or_404(session, unit_id)
+    _assert_unit_is_custom(unit)
+    await _assert_unit_is_unused(session, unit)
+    before = {"name": unit.name}
+    await session.delete(unit)
+    await session.flush()
+
+    # Al quitar una fila, el orden que ve el desplegable sigue siendo
+    # compacto y determinista.
+    for index, remaining in enumerate(await list_units(session)):
+        remaining.display_order = index
+    await session.flush()
+    await audit.record(
+        session,
+        action="deleted",
+        entity_type="unit",
+        entity_id=unit_id,
+        before=before,
+    )
 
 
 async def move_unit(

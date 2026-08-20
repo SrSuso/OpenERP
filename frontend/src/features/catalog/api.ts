@@ -131,6 +131,18 @@ export async function createUnit(name: string): Promise<Unit> {
   return apiFetch(`${API_V1}/units`, { method: 'POST', schema: unitSchema, body: { name } });
 }
 
+export async function updateUnit(id: number, name: string): Promise<Unit> {
+  return apiFetch(`${API_V1}/units/${id}`, {
+    method: 'PATCH',
+    schema: unitSchema,
+    body: { name },
+  });
+}
+
+export async function deleteUnit(id: number): Promise<void> {
+  await apiFetch(`${API_V1}/units/${id}`, { method: 'DELETE', schema: z.null() });
+}
+
 export async function moveUnit(id: number, direction: 'up' | 'down'): Promise<Unit[]> {
   return apiFetch(`${API_V1}/units/${id}/move`, {
     method: 'POST',

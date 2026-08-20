@@ -51,6 +51,45 @@ async def test_duplicate_unit_name_is_a_conflict(
     assert response.status_code == 409
 
 
+async def test_unused_custom_unit_can_be_renamed_and_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    created = await client.post("/api/v1/units", json={"name": "CAJA"})
+    unit_id = created.json()["id"]
+
+    renamed = await client.patch(f"/api/v1/units/{unit_id}", json={"name": "BANDEJA"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "BANDEJA"
+
+    deleted = await client.delete(f"/api/v1/units/{unit_id}")
+    assert deleted.status_code == 204
+    assert "BANDEJA" not in {unit["name"] for unit in (await client.get("/api/v1/units")).json()}
+
+
+async def test_required_or_used_unit_cannot_be_renamed_or_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    kg = next(unit for unit in (await client.get("/api/v1/units")).json() if unit["name"] == "KG")
+    assert (
+        await client.patch(f"/api/v1/units/{kg['id']}", json={"name": "KILOS"})
+    ).status_code == 409
+    assert (await client.delete(f"/api/v1/units/{kg['id']}")).status_code == 409
+
+    created = await client.post("/api/v1/units", json={"name": "CAJA"})
+    category = await client.post(
+        "/api/v1/product-categories",
+        json={"name": "Con cajas", "default_unit_name": "CAJA"},
+    )
+    assert category.status_code == 201
+    unit_id = created.json()["id"]
+    assert (
+        await client.patch(f"/api/v1/units/{unit_id}", json={"name": "BANDEJA"})
+    ).status_code == 409
+    assert (await client.delete(f"/api/v1/units/{unit_id}")).status_code == 409
+
+
 async def test_creating_a_product_without_a_sku_autogenerates_one(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

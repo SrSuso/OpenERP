@@ -94,6 +94,10 @@ class UnitCreate(BaseModel):
     name: str = Field(min_length=1, max_length=20)
 
 
+class UnitUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+
+
 class UnitRead(BaseModel):
     id: int
     name: str

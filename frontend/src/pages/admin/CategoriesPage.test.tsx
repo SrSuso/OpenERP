@@ -68,6 +68,8 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
   const createPosCategoryCalls: Record<string, unknown>[] = [];
   const deactivatePosCategoryCalls: number[] = [];
   const createUnitCalls: string[] = [];
+  const updateUnitCalls: { id: number; name: string }[] = [];
+  const deleteUnitCalls: number[] = [];
   const moveUnitCalls: { id: number; direction: string }[] = [];
   const categoryPricingCalls: { id: number; body: Record<string, unknown> }[] = [];
 
@@ -199,6 +201,25 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
         units.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
+      if (method === 'PATCH' && /\/units\/(\d+)$/.test(url)) {
+        const id = Number(/\/units\/(\d+)$/.exec(url)![1]);
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { name: string })
+          : { name: '' };
+        updateUnitCalls.push({ id, name: body.name });
+        const unit = units.find((item) => item.id === id)!;
+        unit.name = body.name;
+        return Promise.resolve(jsonResponse(unit));
+      }
+      if (method === 'DELETE' && /\/units\/(\d+)$/.test(url)) {
+        const id = Number(/\/units\/(\d+)$/.exec(url)![1]);
+        deleteUnitCalls.push(id);
+        units.splice(
+          units.findIndex((item) => item.id === id),
+          1,
+        );
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
       if (method === 'POST' && /\/units\/(\d+)\/move$/.test(url)) {
         const id = Number(/\/units\/(\d+)\/move$/.exec(url)![1]);
         const body = init?.body
@@ -227,6 +248,8 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
     createPosCategoryCalls,
     deactivatePosCategoryCalls,
     createUnitCalls,
+    updateUnitCalls,
+    deleteUnitCalls,
     moveUnitCalls,
     categoryPricingCalls,
   };
@@ -379,6 +402,28 @@ describe('CategoriesPage', () => {
 
     expect(await within(unitsPanel).findByText('KG')).toBeInTheDocument();
     expect(backend.createUnitCalls).toEqual(['KG']);
+  });
+
+  it('renames and deletes an unused custom unit', async () => {
+    const backend = stubBackend();
+    renderPage();
+    const unitsPanel = screen.getByRole('heading', { name: 'Unidades' }).parentElement!;
+    await within(unitsPanel).findByText('UNIT');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar unidad «UNIT»' }));
+    const nameInput = screen.getByLabelText('Nombre de la unidad «UNIT»');
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'caja');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(await within(unitsPanel).findByText('CAJA')).toBeInTheDocument();
+    expect(backend.updateUnitCalls).toEqual([{ id: 1, name: 'CAJA' }]);
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Borrar unidad «CAJA»' }));
+    expect(await within(unitsPanel).findByText('Todavía no hay ninguna.')).toBeInTheDocument();
+    expect(backend.deleteUnitCalls).toEqual([1]);
+    confirmSpy.mockRestore();
   });
 
   it('sets a category default margin and taxes', async () => {

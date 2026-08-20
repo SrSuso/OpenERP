@@ -34,6 +34,7 @@ from app.catalog.schemas import (
     UnitCreate,
     UnitMoveRequest,
     UnitRead,
+    UnitUpdate,
 )
 from app.catalog.version import catalog_version
 from app.rbac.dependencies import check_permission, require_permission
@@ -220,6 +221,16 @@ async def list_units(session: SessionDep) -> list[UnitRead]:
 @router.post("/units", response_model=UnitRead, status_code=201, dependencies=[_require_manage])
 async def create_unit(payload: UnitCreate, session: SessionDep) -> UnitRead:
     return _unit_to_read(await service.create_unit(session, payload))
+
+
+@router.patch("/units/{unit_id}", response_model=UnitRead, dependencies=[_require_manage])
+async def update_unit(unit_id: int, payload: UnitUpdate, session: SessionDep) -> UnitRead:
+    return _unit_to_read(await service.update_unit(session, unit_id, payload))
+
+
+@router.delete("/units/{unit_id}", status_code=204, dependencies=[_require_manage])
+async def delete_unit(unit_id: int, session: SessionDep) -> None:
+    await service.delete_unit(session, unit_id)
 
 
 @router.post("/units/{unit_id}/move", response_model=list[UnitRead], dependencies=[_require_manage])
