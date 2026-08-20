@@ -54,52 +54,64 @@ function renderCheckout(overrides: Partial<Parameters<typeof Checkout>[0]> = {})
 }
 
 describe('Checkout', () => {
-  it('defaults the tendered amount to the sale total, selected as cash', () => {
-    renderCheckout();
+  it('opens the optional cash amount prompt after choosing cash', async () => {
+    const onConfirm = vi.fn();
+    renderCheckout({ onConfirm });
 
-    expect(screen.getByLabelText(/importe recibido/i)).toHaveValue('20.00');
-    expect(screen.getByRole('button', { name: /confirmar cobro/i })).toBeEnabled();
+    expect(screen.queryByRole('dialog', { name: 'Importe recibido' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
+    expect(within(dialog).getByLabelText('Importe recibido')).toHaveValue('');
+    // Vacío equivale explícitamente a que el cliente entrega el importe exacto.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar efectivo' }));
+
+    expect(onConfirm).toHaveBeenCalledWith([{ method: 'CASH', amount: '20.00' }]);
   });
 
-  it('selecting "Tarjeta" locks the amount to the exact total', async () => {
-    renderCheckout();
+  it('selecting "Tarjeta" does not ask for an amount and charges the exact total', async () => {
+    const onConfirm = vi.fn();
+    renderCheckout({ onConfirm });
 
     await userEvent.click(screen.getByRole('button', { name: /^tarjeta$/i }));
+    expect(screen.queryByRole('dialog', { name: 'Importe recibido' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
 
-    const input = screen.getByLabelText(/^importe$/i);
-    expect(input).toHaveValue('20.00');
-    expect(input).toBeDisabled();
+    expect(onConfirm).toHaveBeenCalledWith([{ method: 'CARD', amount: '20.00' }]);
   });
 
   it('disables confirming and warns when the amount does not cover the total', async () => {
     renderCheckout();
-    const input = screen.getByLabelText(/importe recibido/i);
+    await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
+    const input = within(dialog).getByLabelText('Importe recibido');
 
-    await userEvent.clear(input);
     await userEvent.type(input, '5');
 
-    expect(screen.getByText(/no cubre el total/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /confirmar cobro/i })).toBeDisabled();
+    expect(within(dialog).getByText(/no cubre el total/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Confirmar efectivo' })).toBeDisabled();
   });
 
   it('previews the change for a cash overpayment', async () => {
     renderCheckout();
-    const input = screen.getByLabelText(/importe recibido/i);
+    await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
+    const input = within(dialog).getByLabelText('Importe recibido');
 
-    await userEvent.clear(input);
     await userEvent.type(input, '50');
 
-    expect(screen.getByText(/cambio/i)).toBeInTheDocument();
-    expect(screen.getByText('30,00 €')).toBeInTheDocument();
+    expect(within(dialog).getByText(/cambio/i)).toBeInTheDocument();
+    expect(within(dialog).getByText('30,00 €')).toBeInTheDocument();
   });
 
   it('lets the cashier enter cash with the auxiliary keypad', async () => {
     renderCheckout();
-    const input = screen.getByLabelText(/importe recibido/i);
-    const keypad = screen.getByLabelText('Teclado numérico para efectivo');
+    await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
+    const input = within(dialog).getByLabelText('Importe recibido');
+    const keypad = within(dialog).getByLabelText('Teclado numérico para efectivo');
 
-    // El primer toque sustituye el total precargado: no hay que borrar
-    // primero 20,00 € para cobrar 50 €.
+    // No hay un total precargado que borrar: el teclado empieza vacío.
     await userEvent.click(within(keypad).getByRole('button', { name: '5' }));
     await userEvent.click(within(keypad).getByRole('button', { name: '0' }));
 
@@ -110,11 +122,12 @@ describe('Checkout', () => {
   it('confirms with the method and tendered amount', async () => {
     const onConfirm = vi.fn();
     renderCheckout({ onConfirm });
-    const input = screen.getByLabelText(/importe recibido/i);
-    await userEvent.clear(input);
+    await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
+    const input = within(dialog).getByLabelText('Importe recibido');
     await userEvent.type(input, '50');
 
-    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar efectivo' }));
 
     expect(onConfirm).toHaveBeenCalledWith([{ method: 'CASH', amount: '50.00' }]);
   });
@@ -150,8 +163,9 @@ describe('Checkout', () => {
 
     expect(screen.getByRole('button', { name: 'Metálico' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Bizum' })).toBeInTheDocument();
-    // Arranca en tarjeta, así que el importe queda clavado al total.
-    expect(screen.getByLabelText('Importe')).toHaveValue('20.00');
+    // Arranca en tarjeta, así que no hace falta pedir importe recibido.
+    expect(screen.getByRole('button', { name: 'Tarjeta' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('dialog', { name: 'Importe recibido' })).not.toBeInTheDocument();
   });
 
   it('hides the third payment button unless the shop turns it on', () => {

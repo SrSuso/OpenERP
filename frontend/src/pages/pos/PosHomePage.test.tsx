@@ -812,9 +812,10 @@ describe('PosHomePage', () => {
     await screen.findAllByText('Leche entera 1L');
 
     await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
-    const tendered = await screen.findByLabelText(/importe recibido/i);
-    expect(tendered).toHaveValue('1.32');
     await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    const cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
+    expect(within(cashPrompt).getByLabelText('Importe recibido')).toHaveValue('');
+    await userEvent.click(within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' }));
 
     await screen.findByText(/venta cobrada/i);
     expect(screen.getByText('Efectivo')).toBeInTheDocument();
@@ -831,9 +832,11 @@ describe('PosHomePage', () => {
     await screen.findAllByText('Leche entera 1L');
 
     await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /confirmar cobro/i }));
-    await screen.findByRole('alert');
     await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    const cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
+    await userEvent.click(within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar efectivo' }));
 
     await screen.findByText(/venta cobrada/i);
     expect(backend.checkoutKeys).toHaveLength(2);
@@ -847,11 +850,18 @@ describe('PosHomePage', () => {
     await screen.findAllByText('Leche entera 1L');
 
     await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /confirmar cobro/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    let cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
+    await userEvent.click(within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' }));
     await screen.findByRole('alert');
+    // Primero cierra el recuadro de efectivo y luego abandona realmente el
+    // checkout: el intento siguiente debe generar otra idempotency key.
+    await userEvent.click(screen.getByRole('button', { name: /volver/i }));
     await userEvent.click(screen.getByRole('button', { name: /volver/i }));
     await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /confirmar cobro/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
+    await userEvent.click(within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' }));
     await screen.findByRole('alert');
 
     expect(backend.checkoutKeys).toHaveLength(2);
@@ -864,12 +874,14 @@ describe('PosHomePage', () => {
     await screen.findAllByText('Leche entera 1L');
 
     await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
-    const confirm = await screen.findByRole('button', { name: /confirmar cobro/i });
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    const cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
+    const confirm = within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' });
     await userEvent.dblClick(confirm);
 
     await waitFor(() => expect(backend.checkoutKeys).toHaveLength(1));
     expect(backend.checkoutKeys[0]).not.toBe('');
-    expect(screen.getByRole('button', { name: /cobrando/i })).toBeDisabled();
+    expect(within(cashPrompt).getByRole('button', { name: /cobrando/i })).toBeDisabled();
   });
 
   it('"Volver" from checkout returns to the cart without charging', async () => {
@@ -878,7 +890,6 @@ describe('PosHomePage', () => {
     await screen.findAllByText('Leche entera 1L');
 
     await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
-    await screen.findByLabelText(/importe recibido/i);
     await userEvent.click(screen.getByRole('button', { name: /volver/i }));
 
     expect(await screen.findAllByText('Leche entera 1L')).toHaveLength(2);

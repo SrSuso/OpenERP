@@ -13,19 +13,10 @@ interface CheckoutProps {
   onBack: () => void;
 }
 
-/** `sale.total` as a plain editable decimal string (`"36.30"`), not the
- * localised `formatMoney` output — this is what the cashier edits and what
- * gets sent back to the API. */
-function totalAsInput(sale: Sale): string {
-  return Number(sale.total).toFixed(2);
-}
-
 /**
- * The payment step (phase 13): pick cash or card, confirm (or edit, for
- * cash) the amount tendered, and check out — the same `DRAFT` sale phase
- * 11/12 built. A card tender is always exact (no change on a card); cash
- * can be typed as whatever the customer handed over, and change is
- * previewed live from it.
+ * The payment step: choose the method first. Cash then opens its own
+ * amount prompt, where an empty amount deliberately means exact payment;
+ * card and other methods are always exact and need no numeric entry.
  */
 export function Checkout({ sale, isPending, error, onConfirm, onBack }: CheckoutProps) {
   // Configurables por la tienda (app.settings.registry): con qué forma de
@@ -38,41 +29,56 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
   const otherLabel = useShopSetting('ticket.label_other', 'Otro');
 
   const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
-  const [tendered, setTendered] = useState(() => totalAsInput(sale));
-  // El total exacto se enseña de entrada para poder cobrarlo de un toque.
-  // Si el cliente entrega otra cantidad, el primer dígito del teclado lo
-  // sustituye, en lugar de convertir por ejemplo 12,50 € en 12,505 €.
-  const [tenderedIsDefault, setTenderedIsDefault] = useState(true);
+  const [cashPromptOpen, setCashPromptOpen] = useState(false);
+  // Vacío significa «el cliente da el importe justo». No se precarga el
+  // total para que la persona que cobra no tenga que borrarlo nunca.
+  const [tendered, setTendered] = useState('');
 
   const total = Number(sale.total);
-  const tenderedAmount = Number(tendered.replace(',', '.'));
-  const isTenderedValid = Number.isFinite(tenderedAmount) && tenderedAmount > 0;
-  const change = isTenderedValid ? Math.max(0, tenderedAmount - total) : 0;
+  const tenderedIsEmpty = tendered.trim() === '';
+  const enteredTenderedAmount = Number(tendered.replace(',', '.'));
+  const isTenderedValid =
+    tenderedIsEmpty || (Number.isFinite(enteredTenderedAmount) && enteredTenderedAmount > 0);
+  const tenderedAmount = tenderedIsEmpty ? total : enteredTenderedAmount;
+  const change = !tenderedIsEmpty && isTenderedValid ? Math.max(0, tenderedAmount - total) : 0;
   const coversTotal = isTenderedValid && tenderedAmount >= total;
 
   function selectMethod(next: PaymentMethod) {
     setMethod(next);
-    // Sólo el efectivo admite entregar de más y devolver cambio.
-    if (next !== 'CASH') {
-      setTendered(totalAsInput(sale));
-      setTenderedIsDefault(true);
+    if (next === 'CASH') {
+      setTendered('');
+      setCashPromptOpen(true);
+    } else {
+      setCashPromptOpen(false);
     }
   }
 
   function handleConfirm() {
-    if (!coversTotal) {
+    if (method === 'CASH') {
+      setCashPromptOpen(true);
       return;
     }
-    onConfirm([{ method, amount: tenderedAmount.toFixed(2) }]);
+    onConfirm([{ method, amount: total.toFixed(2) }]);
+  }
+
+  function confirmCash() {
+    if (!coversTotal) return;
+    onConfirm([{ method: 'CASH', amount: tenderedAmount.toFixed(2) }]);
   }
 
   return (
-    <div className="flex h-full w-full max-w-sm flex-col border-l border-slate-700 bg-slate-800/50">
+    <div className="relative flex h-full w-full max-w-sm flex-col border-l border-slate-700 bg-slate-800/50">
       <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
         <h2 className="text-lg font-semibold">Cobrar</h2>
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => {
+            if (cashPromptOpen) {
+              setCashPromptOpen(false);
+              return;
+            }
+            onBack();
+          }}
           disabled={isPending}
           className="rounded px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -99,6 +105,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
               type="button"
               onClick={() => selectMethod(value)}
               disabled={isPending}
+              aria-pressed={method === value}
               className={`rounded-lg py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 method === value
                   ? 'bg-till-600 text-white'
@@ -109,50 +116,6 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
             </button>
           ))}
         </div>
-
-        <div>
-          <label htmlFor="tendered-amount" className="mb-1 block text-sm text-slate-300">
-            {method === 'CASH' ? 'Importe recibido' : 'Importe'}
-          </label>
-          <input
-            id="tendered-amount"
-            type="text"
-            inputMode="decimal"
-            value={tendered}
-            onChange={(event) => {
-              setTendered(event.target.value);
-              setTenderedIsDefault(false);
-            }}
-            disabled={isPending || method === 'CARD'}
-            className="w-full rounded border border-slate-600 bg-slate-900 px-3 py-2 text-lg text-slate-50 disabled:opacity-60"
-          />
-          {!coversTotal && (
-            <p className="mt-1 text-sm text-red-400">El importe no cubre el total.</p>
-          )}
-        </div>
-
-        {method === 'CASH' && (
-          <div aria-label="Teclado numérico para efectivo">
-            <p className="mb-2 text-sm text-slate-300">Importe entregado</p>
-            <Keypad
-              value={tendered}
-              onChange={(value) => {
-                setTendered(value);
-                setTenderedIsDefault(false);
-              }}
-              maxLength={8}
-              allowDecimal
-              clearOnFirstInput={tenderedIsDefault}
-            />
-          </div>
-        )}
-
-        {method === 'CASH' && change > 0 && (
-          <div className="rounded-lg bg-slate-800 p-3 text-center">
-            <p className="text-sm text-slate-400">Cambio</p>
-            <p className="text-xl font-semibold text-slate-50">{formatMoney(change.toFixed(6))}</p>
-          </div>
-        )}
 
         {error && (
           <p role="alert" className="text-sm text-red-400">
@@ -165,12 +128,77 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={isPending || !coversTotal}
+          disabled={isPending}
           className="w-full rounded-lg bg-till-600 py-3 text-base font-semibold text-white transition hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isPending ? 'Cobrando…' : 'Confirmar cobro'}
         </button>
       </div>
+
+      {cashPromptOpen && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/75 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cash-prompt-title"
+            className="w-full max-w-sm rounded-xl border border-slate-600 bg-slate-800 p-4 shadow-2xl"
+          >
+            <h3 id="cash-prompt-title" className="text-lg font-semibold text-slate-50">
+              Importe recibido
+            </h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Déjalo vacío si el cliente entrega justo {formatMoney(sale.total)}.
+            </p>
+            <input
+              id="tendered-amount"
+              aria-label="Importe recibido"
+              type="text"
+              inputMode="decimal"
+              autoFocus
+              value={tendered}
+              onChange={(event) => setTendered(event.target.value)}
+              placeholder={Number(sale.total).toFixed(2)}
+              disabled={isPending}
+              className="mt-4 w-full rounded border border-slate-600 bg-slate-900 px-3 py-2 text-lg text-slate-50 disabled:opacity-60"
+            />
+            {!coversTotal && (
+              <p className="mt-1 text-sm text-red-400">El importe no cubre el total.</p>
+            )}
+
+            <div className="mt-4" aria-label="Teclado numérico para efectivo">
+              <Keypad value={tendered} onChange={setTendered} maxLength={8} allowDecimal />
+            </div>
+
+            {change > 0 && (
+              <div className="mt-4 rounded-lg bg-slate-700 p-3 text-center">
+                <p className="text-sm text-slate-300">Cambio</p>
+                <p className="text-xl font-semibold text-slate-50">
+                  {formatMoney(change.toFixed(6))}
+                </p>
+              </div>
+            )}
+
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCashPromptOpen(false)}
+                disabled={isPending}
+                className="flex-1 rounded border border-slate-500 py-2.5 text-sm font-medium text-slate-100 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmCash}
+                disabled={isPending || !coversTotal}
+                className="flex-1 rounded bg-till-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {isPending ? 'Cobrando…' : 'Confirmar efectivo'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
