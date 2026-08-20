@@ -9,9 +9,13 @@ export function CategoriesPage() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <ProductCategoriesPanel canManage={canManage} />
-      <PosCategoriesPanel canManage={hasPermission('pos_category.manage')} />
-      <UnitsPanel canManage={canManage} />
+      <div data-testid="product-categories-column" className="min-w-0">
+        <ProductCategoriesPanel canManage={canManage} />
+      </div>
+      <div data-testid="catalog-settings-column" className="min-w-0 space-y-4">
+        <PosCategoriesPanel canManage={hasPermission('pos_category.manage')} />
+        <UnitsPanel canManage={canManage} />
+      </div>
     </div>
   );
 }

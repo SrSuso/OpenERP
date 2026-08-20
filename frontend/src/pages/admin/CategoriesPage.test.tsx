@@ -276,6 +276,23 @@ describe('CategoriesPage', () => {
     expect(screen.getAllByText('UNIT')).not.toHaveLength(0);
   });
 
+  it('keeps product categories in one half and POS categories with units in the other', async () => {
+    stubBackend();
+    renderPage();
+
+    await screen.findByText('Bebidas');
+    expect(
+      within(screen.getByTestId('product-categories-column')).getByRole('heading', {
+        name: 'Categorías de producto',
+      }),
+    ).toBeInTheDocument();
+    const settingsColumn = screen.getByTestId('catalog-settings-column');
+    expect(
+      within(settingsColumn).getByRole('heading', { name: 'Categorías POS' }),
+    ).toBeInTheDocument();
+    expect(within(settingsColumn).getByRole('heading', { name: 'Unidades' })).toBeInTheDocument();
+  });
+
   it('creates a product category', async () => {
     const backend = stubBackend();
     renderPage();
