@@ -2,12 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { warehousesQuery } from '@/features/inventory/api';
+import { useAuth } from '@/features/auth/useAuth';
 import {
   createPosTerminal,
   posTerminalsQuery,
   updatePosTerminal,
   type PosTerminal,
 } from '@/features/pos/api';
+import {
+  POS_TERMINAL_SETTING_KEYS,
+  SettingsOptionsPanel,
+} from '@/features/settings/SettingsOptionsPanel';
 
 function TerminalRow({ terminal }: { terminal: PosTerminal }) {
   const queryClient = useQueryClient();
@@ -74,6 +79,7 @@ function TerminalRow({ terminal }: { terminal: PosTerminal }) {
 
 /** Minimal registry only: no shifts, sessions, till balances or peripherals. */
 export function PosTerminalsPage() {
+  const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const terminals = useQuery(posTerminalsQuery(false));
   const warehouses = useQuery(warehousesQuery);
@@ -165,6 +171,20 @@ export function PosTerminalsPage() {
           Añadir terminal
         </button>
       </form>
+
+      {hasPermission('settings.read') && (
+        <section className="border-t border-slate-200 pt-6">
+          <h2 className="text-lg font-semibold text-slate-900">Pantalla y botones del TPV</h2>
+          <p className="mb-4 mt-1 text-sm text-slate-600">
+            Estos ajustes se aplican a todas las cajas de la tienda. El buscador táctil se activa
+            individualmente en cada terminal, en la tabla de arriba.
+          </p>
+          <SettingsOptionsPanel
+            canManage={hasPermission('settings.manage')}
+            includeKeys={POS_TERMINAL_SETTING_KEYS}
+          />
+        </section>
+      )}
     </div>
   );
 }

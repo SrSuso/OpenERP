@@ -47,7 +47,8 @@ function applyRamp(
 }
 
 /**
- * Aplica los colores de botón elegidos en Configuración → Pantalla.
+ * Aplica los colores de botón elegidos en Configuración y, para la caja,
+ * en Terminales POS.
  *
  * Igual que el tamaño de letra: se cambian las variables de color en la
  * raíz, así que valen a la vez para todos los botones sin tocar ni una

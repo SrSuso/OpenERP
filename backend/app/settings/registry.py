@@ -208,6 +208,30 @@ SETTINGS: tuple[SettingDef, ...] = (
         type=SettingType.BOOL,
         default=False,
     ),
+    SettingDef(
+        key="pos.surface_color",
+        group=GROUP_POS,
+        label="Color de fondo del TPV",
+        help=(
+            "El fondo principal de la pantalla de venta. Elige preferiblemente un color oscuro "
+            "para conservar el contraste de los importes y los controles táctiles."
+        ),
+        type=SettingType.COLOR,
+        default="#0f172a",
+    ),
+    SettingDef(
+        key="pos.font_size_px",
+        group=GROUP_POS,
+        label="Tamaño de letra del TPV",
+        help=(
+            "En píxeles. Aumenta a la vez el texto, los botones y los recuadros de la caja "
+            "para que se lea mejor desde el mostrador."
+        ),
+        type=SettingType.INT,
+        default=18,
+        minimum=Decimal(14),
+        maximum=Decimal(28),
+    ),
     # --- ventas ------------------------------------------------------------
     SettingDef(
         key="sales.allow_negative_stock",
@@ -305,7 +329,7 @@ SETTINGS: tuple[SettingDef, ...] = (
     ),
     SettingDef(
         key="ui.pos_button_color",
-        group=GROUP_UI,
+        group=GROUP_POS,
         label="Color de los botones de cobrar (caja)",
         help=(
             "El de los botones que rematan una acción en el TPV: cobrar, añadir al "

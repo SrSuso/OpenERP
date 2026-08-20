@@ -39,14 +39,43 @@ function normaliseForBackend(definition: SettingDefinition, value: string): stri
  * pintados enteramente a partir del JSON del API: grupos, etiquetas, tipos
  * de campo, ayudas y avisos vienen de allí, así que una opción nueva sale
  * en esta pantalla sin tocar el frontend. */
-export function SettingsOptionsPanel({ canManage }: { canManage: boolean }) {
+export const POS_TERMINAL_SETTING_KEYS = [
+  'pos.print_ticket_on_checkout',
+  'pos.catalog_refresh_seconds',
+  'pos.default_payment_method',
+  'pos.show_other_payment',
+  'pos.surface_color',
+  'pos.font_size_px',
+  'ui.pos_button_color',
+] as const;
+
+interface SettingsOptionsPanelProps {
+  canManage: boolean;
+  /** Muestra sólo estas opciones: útil cuando una pantalla concreta es su
+   * hogar natural, como los ajustes de la caja dentro de Terminales POS. */
+  includeKeys?: readonly string[];
+  /** Evita duplicar en Configuración general lo que ya se edita en su
+   * pantalla específica. */
+  excludeKeys?: readonly string[];
+}
+
+export function SettingsOptionsPanel({
+  canManage,
+  includeKeys,
+  excludeKeys,
+}: SettingsOptionsPanelProps) {
   const options = useQuery(settingsOptionsQuery);
   const [search, setSearch] = useState('');
   /** Sólo las claves que se han tocado. El resto se lee del servidor, así
    * que un guardado de otra tarjeta no pisa lo que se esté escribiendo. */
   const [draft, setDraft] = useState<Record<string, string>>({});
 
-  const edited = (options.data?.settings ?? []).filter((definition) => {
+  const selectedSettings = (options.data?.settings ?? []).filter((definition) => {
+    if (includeKeys && !includeKeys.includes(definition.key)) return false;
+    return !excludeKeys?.includes(definition.key);
+  });
+
+  const edited = selectedSettings.filter((definition) => {
     const drafted = draft[definition.key];
     return drafted !== undefined && drafted !== definition.value;
   });
@@ -60,13 +89,13 @@ export function SettingsOptionsPanel({ canManage }: { canManage: boolean }) {
     return <p className="text-sm text-red-600">No se han podido cargar las opciones.</p>;
   }
 
-  const { groups, settings } = options.data;
+  const { groups } = options.data;
   const visibleGroups = groups
     .map((group) => ({
       group,
       // Un campo editado y sin guardar no se esconde nunca: filtrar no
       // puede hacerle perder a nadie un cambio a medio hacer.
-      fields: settings.filter(
+      fields: selectedSettings.filter(
         (definition) =>
           definition.group === group &&
           (matchesSearch(definition, search) || editedKeys.has(definition.key)),

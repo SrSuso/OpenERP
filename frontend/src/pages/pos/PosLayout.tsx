@@ -7,6 +7,8 @@ import { PosTerminalProvider } from '@/features/pos/PosTerminalProvider';
 import { TerminalSelection } from '@/features/pos/TerminalSelection';
 import { useLiveCatalog } from '@/features/pos/useLiveCatalog';
 import { usePosTerminal } from '@/features/pos/usePosTerminal';
+import { usePosAppearance } from '@/features/pos/usePosAppearance';
+import { useButtonColors } from '@/features/settings/useButtonColors';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 
 /**
@@ -26,6 +28,10 @@ export function PosLayout() {
 
 function PosLayoutContent() {
   const { user, logout } = usePosAuth();
+  const { surfaceColor } = usePosAppearance();
+  // El TPV tiene su propia familia de color para acciones de cobro. Este
+  // hook ya conserva el contraste al convertir el color elegido en escala.
+  useButtonColors();
   // Lo que se cambie en el panel se ve aquí sin recargar la caja.
   useLiveCatalog();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
@@ -38,7 +44,10 @@ function PosLayoutContent() {
   if (selectionOpen) return <TerminalSelection />;
 
   return (
-    <div className="pos-surface flex h-full flex-col bg-slate-900 text-slate-50">
+    <div
+      className="pos-surface flex h-full flex-col text-slate-50"
+      style={{ backgroundColor: surfaceColor }}
+    >
       <header className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
         <span className="text-xl font-semibold">{shopName} · TPV</span>
         <div className="flex items-center gap-4 text-sm">

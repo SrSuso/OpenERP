@@ -1,5 +1,8 @@
 import { useAuth } from '@/features/auth/useAuth';
-import { SettingsOptionsPanel } from '@/features/settings/SettingsOptionsPanel';
+import {
+  POS_TERMINAL_SETTING_KEYS,
+  SettingsOptionsPanel,
+} from '@/features/settings/SettingsOptionsPanel';
 
 /** `/admin/settings` — gated por `settings.read`/`settings.manage`
  * (`ADMIN` únicamente, ver la migración de la fase 21). Contiene sólo
@@ -17,7 +20,7 @@ export function SettingsPage() {
         esa tarjeta.
       </p>
 
-      <SettingsOptionsPanel canManage={canManage} />
+      <SettingsOptionsPanel canManage={canManage} excludeKeys={POS_TERMINAL_SETTING_KEYS} />
     </section>
   );
 }

@@ -16,9 +16,9 @@
   --color-brand-700: oklch(0.44 0.14 250);
 
   /* Los botones de acción de la caja (cobrar, añadir): otra familia, para
-     que se distingan de un vistazo de los del panel. Ambas se pueden
-     cambiar desde Configuración → Pantalla, que las reescribe aquí mismo
-     (ver features/settings/useButtonColors.ts). */
+     que se distingan de un vistazo de los del panel. El de la caja se
+     cambia desde Terminales POS y se reescribe aquí mismo (ver
+     features/settings/useButtonColors.ts). */
   --color-till-500: oklch(0.7 0.17 162.5);
   --color-till-600: oklch(0.6 0.145 163.2);
 

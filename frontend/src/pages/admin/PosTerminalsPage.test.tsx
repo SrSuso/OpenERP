@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PosTerminalsPage } from './PosTerminalsPage';
+import { AuthContext, type AuthContextValue } from '@/features/auth/AuthContext';
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -25,6 +26,36 @@ function stubBackend() {
     },
   ];
   const writes: Record<string, unknown>[] = [];
+  const posSettings = [
+    {
+      key: 'pos.surface_color',
+      group: 'Caja (TPV)',
+      label: 'Color de fondo del TPV',
+      help: 'El fondo principal de la pantalla de venta.',
+      type: 'COLOR',
+      value: '#0f172a',
+      is_set: false,
+      default: '#0f172a',
+      choices: [],
+      minimum: null,
+      maximum: null,
+      caution: null,
+    },
+    {
+      key: 'pos.font_size_px',
+      group: 'Caja (TPV)',
+      label: 'Tamaño de letra del TPV',
+      help: 'Aumenta el texto y los controles táctiles de la caja.',
+      type: 'INT',
+      value: '18',
+      is_set: false,
+      default: '18',
+      choices: [],
+      minimum: '14',
+      maximum: '28',
+      caution: null,
+    },
+  ];
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -37,6 +68,13 @@ function stubBackend() {
       }
       if (method === 'GET' && url.includes('/warehouses')) {
         return Promise.resolve(jsonResponse([{ id: 1, name: 'Tienda', is_active: true }]));
+      }
+      if (method === 'GET' && url.includes('/settings/options')) {
+        return Promise.resolve(jsonResponse({ groups: ['Caja (TPV)'], settings: posSettings }));
+      }
+      if (method === 'PUT' && url.includes('/settings/options')) {
+        writes.push(body);
+        return Promise.resolve(jsonResponse({ groups: ['Caja (TPV)'], settings: posSettings }));
       }
       if (method === 'POST' && /\/pos-terminals$/.test(url)) {
         writes.push(body);
@@ -67,11 +105,22 @@ function stubBackend() {
   return { writes };
 }
 
-function renderPage() {
+function renderPage({ canManageSettings = false }: { canManageSettings?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const auth: AuthContextValue = {
+    user: null,
+    isLoading: false,
+    hasPermission: (permission) =>
+      permission === 'settings.read' || (canManageSettings && permission === 'settings.manage'),
+    login: vi.fn(),
+    logout: vi.fn(),
+    markPasswordChanged: vi.fn(),
+  };
   return render(
     <QueryClientProvider client={queryClient}>
-      <PosTerminalsPage />
+      <AuthContext.Provider value={auth}>
+        <PosTerminalsPage />
+      </AuthContext.Provider>
     </QueryClientProvider>,
   );
 }
@@ -99,5 +148,21 @@ describe('PosTerminalsPage', () => {
 
     expect(screen.queryByRole('button', { name: /eliminar/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/cambiar almacén/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the POS appearance and action buttons in the terminal configuration', async () => {
+    const backend = stubBackend();
+    renderPage({ canManageSettings: true });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Pantalla y botones del TPV' }),
+    ).toBeInTheDocument();
+    const surface = await screen.findByLabelText('Color de fondo del TPV');
+    fireEvent.change(surface, { target: { value: '#123456' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios de Caja (TPV)' }));
+
+    await waitFor(() =>
+      expect(backend.writes).toContainEqual({ values: { 'pos.surface_color': '#123456' } }),
+    );
   });
 });
