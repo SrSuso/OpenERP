@@ -29,6 +29,10 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 POS_SURFACE_HEADER = "X-OpenERP-Session-Surface"
+# Las etiquetas HTML ``<img>`` no pueden llevar una cabecera personalizada.
+# Sólo las rutas de imágenes aceptan este indicador en la URL para elegir la
+# cookie POS; sigue siendo necesaria una cookie POS válida para autenticarse.
+POS_IMAGE_SURFACE_QUERY = "session_surface"
 
 
 async def _load_session(session: AsyncSession, token: str, *, surface: str) -> AuthSession | None:
@@ -98,7 +102,11 @@ async def _current_auth_session(
 async def get_current_auth_session(
     request: Request, response: Response, session: SessionDep, settings: SettingsDep
 ) -> AuthSession:
-    surface = "POS" if request.headers.get(POS_SURFACE_HEADER) == "pos" else "ADMIN"
+    is_pos_image = (
+        request.url.path.startswith(f"{settings.api_v1_prefix}/images/")
+        and request.query_params.get(POS_IMAGE_SURFACE_QUERY) == "pos"
+    )
+    surface = "POS" if request.headers.get(POS_SURFACE_HEADER) == "pos" or is_pos_image else "ADMIN"
     return await _current_auth_session(request, response, session, settings, surface=surface)
 
 

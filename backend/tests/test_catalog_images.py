@@ -13,6 +13,9 @@ from typing import Any
 
 from httpx import AsyncClient
 
+from app.auth.security import hash_password
+from app.users.models import User
+
 #: Un PNG de 1x1 de verdad — el endpoint devuelve estos mismos bytes.
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -165,3 +168,41 @@ async def test_a_cashier_can_see_photos_but_not_change_them(
         await client.put(f"/api/v1/images/product/{product_id}", json={"data_url": PNG_DATA_URL})
     ).status_code == 403
     assert (await client.delete(f"/api/v1/images/product/{product_id}")).status_code == 403
+
+
+async def test_pos_cookie_can_serve_an_image_without_an_admin_session(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    """El navegador no puede añadir la cabecera que selecciona sesión POS a
+    un ``<img>``; la URL de imagen del TPV usa su parámetro limitado a esta
+    ruta para que se elija la cookie correcta."""
+    await login(role_name="ADMIN")
+    product_id = await _a_product(client)
+    await client.put(f"/api/v1/images/product/{product_id}", json={"data_url": PNG_DATA_URL})
+
+    cashier = await make_user(email="pos-images@example.com", role_name="CASHIER")
+    cashier.pos_username = "caja-imagenes"
+    cashier.pos_pin_hash = hash_password("1234")
+    cashier.pos_access_enabled = True
+    assert (
+        await client.post(
+            "/api/v1/auth/pos/login", json={"username": "caja-imagenes", "pin": "1234"}
+        )
+    ).status_code == 200
+    pos_cookie = client.cookies.get("openerp_pos_session")
+    assert pos_cookie is not None
+
+    # Simula la petición autónoma del navegador: sólo llega la cookie POS,
+    # sin la cabecera que sí puede añadir fetch().
+    image_headers = {"Cookie": f"openerp_pos_session={pos_cookie}"}
+    assert (
+        await client.get(f"/api/v1/images/product/{product_id}", headers=image_headers)
+    ).status_code == 401
+    served = await client.get(
+        f"/api/v1/images/product/{product_id}?v=1&session_surface=pos",
+        headers=image_headers,
+    )
+    assert served.status_code == 200
+    assert served.content == PNG_1X1

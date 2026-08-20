@@ -26,7 +26,14 @@ export function imageVersionsQuery(ownerType: ImageOwnerType) {
  * contenido, así que el navegador puede guardarla, y al reemplazarla la
  * versión sube y con ella la URL. */
 export function imageUrl(ownerType: ImageOwnerType, id: number, version: number): string {
-  return `${API_V1}/images/${ownerType}/${id}?v=${version}`;
+  // Una etiqueta <img> no puede enviar `X-OpenERP-Session-Surface`; por eso
+  // la URL del TPV selecciona expresamente su cookie POS. El backend sólo
+  // honra este parámetro en rutas de imagen y sigue verificando permisos.
+  const posSurface =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/pos')
+      ? '&session_surface=pos'
+      : '';
+  return `${API_V1}/images/${ownerType}/${id}?v=${version}${posSurface}`;
 }
 
 export const imageReadSchema = z.object({ entity_id: z.number(), version: z.number() });
