@@ -122,9 +122,6 @@ function stubBackend(options: { products?: Product[] } = {}) {
           ]),
         );
       }
-      if (method === 'GET' && url.includes('/settings/values')) {
-        return Promise.resolve(jsonResponse({ 'catalog.quick_price_units': 'KG' }));
-      }
       if (method === 'GET' && url.includes('/units')) {
         return Promise.resolve(jsonResponse(UNITS));
       }
@@ -423,28 +420,35 @@ describe('ProductsPage', () => {
     // Se puede seguir mirando la ficha, que es de sólo lectura sin permisos.
     expect(screen.getByRole('link', { name: 'Agua 1L' })).toBeInTheDocument();
     // Sin pricing.manage el precio se ve, pero no se teclea.
-    expect(screen.queryByLabelText('Precio de Agua 1L')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('PVP de venta de Agua 1L')).not.toBeInTheDocument();
     // Y el coste no se ve siquiera: lo que cuesta el género es cosa de
     // quien pone los precios, no de quien sólo mira el catálogo.
     expect(screen.queryByText('Coste (por unidad base)')).not.toBeInTheDocument();
     expect(screen.queryByText('0,30 €')).not.toBeInTheDocument();
   });
 
-  it('only the products sold by weight get the price editable in the row', async () => {
+  it('only products marked as sold by weight get their selling PVP editable in the row', async () => {
     const backend = stubBackend({
       products: [
         baseProduct(),
-        { ...baseProduct(), id: 2, sku: 'P000002', name: 'Tomate', base_unit_name: 'KG' },
+        {
+          ...baseProduct(),
+          id: 2,
+          sku: 'P000002',
+          name: 'Tomate',
+          base_unit_name: 'KG',
+          is_sold_by_weight: true,
+        },
       ],
     });
     renderPage();
     await screen.findByText('Tomate');
 
     // "Agua 1L" se vende por unidades: su precio se ve, no se teclea.
-    expect(screen.queryByLabelText('Precio de Agua 1L')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('PVP de venta de Agua 1L')).not.toBeInTheDocument();
     expect(screen.getByText('0,60 €')).toBeInTheDocument();
 
-    const price = screen.getByLabelText('Precio de Tomate');
+    const price = screen.getByLabelText('PVP de venta de Tomate');
     await userEvent.clear(price);
     await userEvent.type(price, '1,68{Enter}');
 
@@ -463,7 +467,14 @@ describe('ProductsPage', () => {
   it('typing a new cost in the row recomputes the price from the margin', async () => {
     const backend = stubBackend({
       products: [
-        { ...baseProduct(), id: 2, name: 'Tomate', base_unit_name: 'KG', cost: '1.000000' },
+        {
+          ...baseProduct(),
+          id: 2,
+          name: 'Tomate',
+          base_unit_name: 'KG',
+          cost: '1.000000',
+          is_sold_by_weight: true,
+        },
       ],
     });
     renderPage();
@@ -512,7 +523,14 @@ describe('ProductsPage', () => {
     stubBackend({
       products: [
         baseProduct(),
-        { ...baseProduct(), id: 2, sku: 'P000002', name: 'Tomate', base_unit_name: 'KG' },
+        {
+          ...baseProduct(),
+          id: 2,
+          sku: 'P000002',
+          name: 'Tomate',
+          base_unit_name: 'KG',
+          is_sold_by_weight: true,
+        },
       ],
     });
     renderPage();
@@ -521,18 +539,20 @@ describe('ProductsPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Unidad'), 'KG');
 
     expect(screen.queryByText('Agua 1L')).not.toBeInTheDocument();
-    // Coste y PVP, los dos tecleables en la fila y los dos en €/KG.
+    // Coste y PVP, los dos tecleables en la fila para un producto al peso.
     expect(screen.getAllByText('€/KG')).toHaveLength(2);
   });
 
   it('does not save a price that has not really changed', async () => {
     const backend = stubBackend({
-      products: [{ ...baseProduct(), name: 'Tomate', base_unit_name: 'KG' }],
+      products: [
+        { ...baseProduct(), name: 'Tomate', base_unit_name: 'KG', is_sold_by_weight: true },
+      ],
     });
     renderPage();
     await screen.findByText('Tomate');
 
-    const price = screen.getByLabelText('Precio de Tomate');
+    const price = screen.getByLabelText('PVP de venta de Tomate');
     await userEvent.clear(price);
     // "0,60" es lo mismo que el "0.600000" guardado: no hay nada que guardar,
     // y una entrada de más en el histórico de precios sería ruido.

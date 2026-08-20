@@ -8,9 +8,6 @@ import { formatMoney, formatQuantity } from '@/lib/format';
 interface ProductsTableProps {
   products: Product[];
   canManagePricing: boolean;
-  /** Unidades base cuyo precio se teclea en la propia fila (el resto sólo
-   * lo muestra) — ver el ajuste `catalog.quick_price_units`. */
-  quickPriceUnits: string[];
   /** Cuánto hay de cada producto, por id. Ausente = todavía cargando, o
    * sin permiso para verlo (`inventory.read`). */
   stockByProduct: Map<number, string> | null;
@@ -41,7 +38,6 @@ interface ProductsTableProps {
 export function ProductsTable({
   products,
   canManagePricing,
-  quickPriceUnits,
   stockByProduct,
   onSetPrice,
   savingPriceId,
@@ -63,7 +59,7 @@ export function ProductsTable({
                 el rol de caja tiene `product.read` y llegaría a ver esta
                 lista, pero no tiene por qué saber el margen de la tienda. */}
             {canManagePricing && <th className="px-4 py-2 font-medium">Coste (por unidad base)</th>}
-            <th className="px-4 py-2 font-medium">Precio (por unidad base)</th>
+            <th className="px-4 py-2 font-medium">PVP de venta (por unidad base)</th>
             <th className="px-4 py-2 font-medium">Estado</th>
           </tr>
         </thead>
@@ -100,7 +96,7 @@ export function ProductsTable({
               </td>
               {canManagePricing && (
                 <td className="px-4 py-2">
-                  {quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (
+                  {product.is_sold_by_weight ? (
                     <MoneyCell
                       // Se remonta cuando el servidor devuelve otro coste.
                       key={product.cost}
@@ -120,14 +116,13 @@ export function ProductsTable({
                 </td>
               )}
               <td className="px-4 py-2">
-                {canManagePricing &&
-                quickPriceUnits.includes(product.base_unit_name.toUpperCase()) ? (
+                {canManagePricing && product.is_sold_by_weight ? (
                   <MoneyCell
                     // Se remonta cuando el servidor devuelve otro precio, así
                     // el recuadro parte siempre de lo que hay guardado.
                     key={product.list_price}
                     product={product}
-                    label={`Precio de ${product.name}`}
+                    label={`PVP de venta de ${product.name}`}
                     value={product.list_price}
                     onSave={onSetPrice}
                     isSaving={savingPriceId === product.id}
@@ -159,9 +154,9 @@ export function ProductsTable({
   );
 }
 
-/** Un importe tecleado en la propia fila, para repasar los precios del día
- * de un tirón (la fruta y la carne cambian a diario): Intro o salir del
- * recuadro guarda, Escape deshace.
+/** Un importe tecleado en la propia fila para los productos que se venden
+ * al peso: permite repasar el PVP del día de fruta, carne o charcutería de
+ * un tirón. Intro o salir del recuadro guarda; Escape deshace.
  *
  * Sirve para las dos columnas que se editan aquí. El PVP se fija tal cual,
  * sin pasar por el margen ni la fórmula (eso es `setManualPrice`); el coste,
