@@ -312,11 +312,11 @@ async def _unit_or_404(session: AsyncSession, unit_id: int) -> Unit:
 
 
 async def _assert_unit_is_unused(session: AsyncSession, unit: Unit) -> None:
-    """A unit name is copied into products/categories, not referenced by FK.
+    """Sólo un nombre sin usar se puede renombrar.
 
-    Changing or deleting it while it is used would leave an invalid picker
-    value behind and, worse, could reinterpret a historical base unit.  The
-    safe operation is therefore limited to unused custom units.
+    Los productos guardan la unidad base como texto histórico; renombrarla
+    cambiaría el significado de cantidades ya registradas. Borrarla es
+    distinto: desaparece del selector, pero no reinterpreta esos datos.
     """
     product_count = (
         await session.execute(
@@ -381,8 +381,31 @@ async def update_unit(session: AsyncSession, unit_id: int, payload: UnitUpdate) 
 async def delete_unit(session: AsyncSession, unit_id: int) -> None:
     unit = await _unit_or_404(session, unit_id)
     _assert_unit_is_custom(unit)
-    await _assert_unit_is_unused(session, unit)
     before = {"name": unit.name}
+
+    # Una categoría no debe seguir proponiendo una unidad que ya no existe.
+    # Los productos, en cambio, conservan su texto histórico: sus cantidades
+    # ya están expresadas en esa unidad y el formulario sabe mostrarla aunque
+    # no esté disponible para altas nuevas.
+    affected_categories = list(
+        (
+            await session.execute(
+                select(ProductCategory).where(ProductCategory.default_unit_name == unit.name)
+            )
+        ).scalars()
+    )
+    for category in affected_categories:
+        category_before = {"default_unit_name": category.default_unit_name}
+        category.default_unit_name = None
+        await audit.record(
+            session,
+            action="updated",
+            entity_type="product_category",
+            entity_id=category.id,
+            before=category_before,
+            after={"default_unit_name": None},
+        )
+
     await session.delete(unit)
     await session.flush()
 

@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
-import { createUnit, deleteUnit, unitsQuery, updateUnit, type Unit } from '@/features/catalog/api';
+import {
+  createUnit,
+  deleteUnit,
+  productCategoriesQuery,
+  unitsQuery,
+  updateUnit,
+  type Unit,
+} from '@/features/catalog/api';
 import { ApiError } from '@/lib/api';
 
 /** Catálogo de unidades que alimenta los desplegables de categorías y
@@ -49,6 +56,10 @@ export function UnitsPanel({ canManage }: { canManage: boolean }) {
     mutationFn: deleteUnit,
     onSuccess: () => {
       refresh();
+      // Borrar una unidad limpia el valor por defecto de las categorías que
+      // la proponían; refrescarlas evita que la pantalla conserve ese valor
+      // antiguo en caché.
+      void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
       setError(null);
     },
     onError: (err: unknown) =>
@@ -138,7 +149,11 @@ export function UnitsPanel({ canManage }: { canManage: boolean }) {
                       disabled={busy}
                       aria-label={`Borrar unidad «${unit.name}»`}
                       onClick={() => {
-                        if (window.confirm(`¿Borrar la unidad «${unit.name}»?`)) {
+                        if (
+                          window.confirm(
+                            `¿Borrar la unidad «${unit.name}»? Las categorías dejarán de usarla por defecto; los productos existentes conservarán su unidad histórica.`,
+                          )
+                        ) {
                           deleteMutation.mutate(unit.id);
                         }
                       }}

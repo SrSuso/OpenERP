@@ -67,7 +67,7 @@ async def test_unused_custom_unit_can_be_renamed_and_deleted(
     assert "BANDEJA" not in {unit["name"] for unit in (await client.get("/api/v1/units")).json()}
 
 
-async def test_required_or_used_unit_cannot_be_renamed_or_deleted(
+async def test_required_unit_cannot_be_deleted_but_used_custom_unit_can(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
@@ -83,11 +83,29 @@ async def test_required_or_used_unit_cannot_be_renamed_or_deleted(
         json={"name": "Con cajas", "default_unit_name": "CAJA"},
     )
     assert category.status_code == 201
+    product = await client.post("/api/v1/products", json=_product_payload(base_unit_name="CAJA"))
+    assert product.status_code == 201
     unit_id = created.json()["id"]
+    # Renombrar sigue bloqueado: cambiaría el significado de cantidades
+    # históricas que ya se expresan como CAJA.
     assert (
         await client.patch(f"/api/v1/units/{unit_id}", json={"name": "BANDEJA"})
     ).status_code == 409
-    assert (await client.delete(f"/api/v1/units/{unit_id}")).status_code == 409
+
+    # Borrar sí es seguro: la unidad deja de ser seleccionable para altas
+    # nuevas, se limpia el valor por defecto de categorías, y los productos
+    # existentes preservan el texto de su unidad base.
+    assert (await client.delete(f"/api/v1/units/{unit_id}")).status_code == 204
+    assert "CAJA" not in {unit["name"] for unit in (await client.get("/api/v1/units")).json()}
+    updated_category = next(
+        item
+        for item in (await client.get("/api/v1/product-categories")).json()
+        if item["id"] == category.json()["id"]
+    )
+    assert updated_category["default_unit_name"] is None
+    assert (await client.get(f"/api/v1/products/{product.json()['id']}")).json()[
+        "base_unit_name"
+    ] == "CAJA"
 
 
 async def test_creating_a_product_without_a_sku_autogenerates_one(
