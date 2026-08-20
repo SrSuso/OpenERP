@@ -8,7 +8,7 @@ in the same transaction, so the history can never miss one.
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -127,13 +127,23 @@ def _snapshot(product: Product) -> dict[str, Any]:
     }
 
 
+_RETAIL_PRICE_STEP = Decimal("0.05")
+
+
 def _quantize_price(value: Decimal) -> Decimal:
-    """A PVP is money — always settled to 2 decimals, however many the
-    formula's arithmetic (percentages, divisions...) produced along the
-    way. Same rounding unit/mode as ticket rendering
-    (``app.tickets.render``), just shared here via ``MONEY_QUANTUM``
-    instead of a second local constant."""
-    return value.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+    """Round an automatic PVP up to the next 5-cent retail price.
+
+    A cost/formula calculation must never leave a lower shelf price through
+    ordinary rounding: ``1.53`` becomes ``1.55`` and ``2.16`` becomes
+    ``2.20``. Manual prices deliberately bypass this function — the owner
+    entered those exact cents on purpose.
+    """
+    return (
+        (value / _RETAIL_PRICE_STEP)
+        .to_integral_value(rounding=ROUND_CEILING)
+        .fma(_RETAIL_PRICE_STEP, Decimal(0))
+        .quantize(MONEY_QUANTUM)
+    )
 
 
 def preview(payload: FormulaPreviewRequest) -> Decimal:
@@ -253,7 +263,7 @@ def _recompute_with(product: Product, settings: PricingSettings) -> None:
     era una variable más, poner 25 céntimos en una categoría no hacía nada
     salvo que la fórmula los mencionara — ver `app.pricing.formula`.
 
-    Result is always rounded to 2 decimals — see `_quantize_price`."""
+    Result is always rounded up to the next 5 cents — see `_quantize_price`."""
     text = effective_formula(product, settings)
     try:
         result = formula.evaluate(text, _variables(product))

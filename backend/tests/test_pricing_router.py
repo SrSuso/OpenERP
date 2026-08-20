@@ -53,7 +53,7 @@ async def test_preview_computes_without_touching_a_product(
     )
 
     assert response.status_code == 200
-    assert Decimal(response.json()["result"]) == Decimal("15.12")
+    assert Decimal(response.json()["result"]) == Decimal("15.15")
 
 
 async def test_preview_rejects_an_unsafe_formula(
@@ -81,7 +81,7 @@ async def test_setting_a_formula_recomputes_the_list_price(
     assert response.status_code == 200
     body = response.json()
     assert body["price_formula"] == SPEC_FORMULA
-    assert body["list_price"] == "15.120000"
+    assert body["list_price"] == "15.150000"
 
 
 async def test_changing_cost_recomputes_price_from_the_existing_formula(
@@ -99,8 +99,34 @@ async def test_changing_cost_recomputes_price_from_the_existing_formula(
 
     assert response.status_code == 200
     body = response.json()
-    # Same formula, double the cost -> double the price: 30.24.
-    assert body["list_price"] == "30.240000"
+    # Same formula, double the cost -> 30.24, rounded up to 30.25.
+    assert body["list_price"] == "30.250000"
+
+
+async def test_automatic_prices_are_rounded_up_to_five_cent_steps(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+
+    preview = await client.post(
+        "/api/v1/pricing/preview",
+        json={"formula": "cost", "cost": "1.53"},
+    )
+    assert preview.status_code == 200
+    assert Decimal(preview.json()["result"]) == Decimal("1.55")
+
+    product_id = await _create_product(client, cost="2.16")
+    response = await client.put(
+        f"/api/v1/products/{product_id}/pricing/formula", json={"price_formula": "cost"}
+    )
+    assert response.status_code == 200
+    assert Decimal(response.json()["list_price"]) == Decimal("2.20")
+
+    manual = await client.put(
+        f"/api/v1/products/{product_id}/pricing/manual-price", json={"list_price": "2.16"}
+    )
+    assert manual.status_code == 200
+    assert Decimal(manual.json()["list_price"]) == Decimal("2.16")
 
 
 async def test_manual_price_clears_the_formula(

@@ -147,8 +147,8 @@ async def test_product_with_no_explicit_pricing_inherits_the_categorys(
     product = (await client.get(f"/api/v1/products/{product_id}")).json()
     assert product["margin_rate"] is None  # sigue sin valor propio: hereda
     assert product["taxes"] == []  # tampoco tiene impuestos propios
-    # (10 + 10*21/100) * (1 + 20/100) = 12.1 * 1.2 = 14.52
-    assert Decimal(product["list_price"]) == Decimal("14.520000")
+    # (10 + 10*21/100) * (1 + 20/100) = 12.1 * 1.2 = 14.52 -> 14.55.
+    assert Decimal(product["list_price"]) == Decimal("14.550000")
 
 
 async def test_products_own_margin_and_taxes_override_the_categorys(
@@ -210,7 +210,7 @@ async def test_clearing_a_products_override_reverts_to_the_categorys(
     body = response.json()
     assert body["margin_rate"] is None
     # De vuelta al margen/impuesto de la categoría: 14.52 (ver test anterior).
-    assert Decimal(body["list_price"]) == Decimal("14.520000")
+    assert Decimal(body["list_price"]) == Decimal("14.550000")
 
 
 async def test_several_taxes_on_the_same_product_stack_additively(
@@ -230,7 +230,7 @@ async def test_several_taxes_on_the_same_product_stack_additively(
 
     assert response.status_code == 200
     # (10 + 10*26.2/100) * 1 = 12.62 — 21% + 5.2% sumados, no sólo uno.
-    assert Decimal(response.json()["list_price"]) == Decimal("12.620000")
+    assert Decimal(response.json()["list_price"]) == Decimal("12.650000")
 
 
 async def test_updating_the_store_formula_recomputes_products_without_their_own(
@@ -328,7 +328,7 @@ async def test_recargo_de_equivalencia_end_to_end(
         ).json()
 
         # (10 + 10*21% + 10*5,2%) * 1,20 = 12,62 * 1,20 = 15,14
-        assert Decimal(product["list_price"]) == Decimal("15.140000")
+        assert Decimal(product["list_price"]) == Decimal("15.150000")
 
         # En caja se cobra la etiqueta, sin volver a sumar IVA.
         warehouses = (await client.get("/api/v1/warehouses")).json()
@@ -359,7 +359,7 @@ async def test_recargo_de_equivalencia_end_to_end(
             )
         ).json()
 
-        assert Decimal(sale["total"]) == Decimal("15.140000")
+        assert Decimal(sale["total"]) == Decimal("15.150000")
         line = sale["lines"][0]
         # La línea guarda el IVA efectivo (21), no el recargo: el recargo es
         # coste de compra, nunca se le repercute al cliente.
@@ -419,7 +419,7 @@ async def test_a_price_built_with_tax_in_the_formula_is_charged_as_the_shelf_pri
         )
     ).json()
     shelf_price = Decimal(product["list_price"])
-    assert shelf_price == Decimal("15.140000")
+    assert shelf_price == Decimal("15.150000")
 
     warehouses = (await client.get("/api/v1/warehouses")).json()
     wh = next(w for w in warehouses if w["name"] == "Tienda principal")
@@ -602,7 +602,7 @@ async def test_the_fixed_amount_is_charged_on_top_of_taxes_and_percentage(
 
     assert response.status_code == 200
     # (10 + 10*21/100) * 1,20 + 0,25 = 14,52 + 0,25
-    assert Decimal(response.json()["list_price"]) == Decimal("14.770000")
+    assert Decimal(response.json()["list_price"]) == Decimal("14.800000")
 
 
 async def test_the_category_lends_its_fixed_amount_to_its_products(
