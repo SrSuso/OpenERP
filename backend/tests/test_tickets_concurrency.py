@@ -425,7 +425,7 @@ async def test_generation_waits_for_activation_and_uses_one_complete_template_st
 
     monkeypatch.setattr(ticket_service, "_lock_template_scope", observed_lock)
 
-    async def generate() -> tuple[int, int, str]:
+    async def generate() -> tuple[int, int | None, str]:
         async with committing_sessionmaker() as session:
             ticket = await ticket_service.generate_ticket(session, sale_id)
             await session.commit()

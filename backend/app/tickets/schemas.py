@@ -115,7 +115,7 @@ class TicketTemplateRead(BaseModel):
 class TicketRead(BaseModel):
     id: int
     sale_id: int
-    template_id: int
+    template_id: int | None
     printable_width_mm: int
     font_family: TicketFontFamily
     font_size_px: int

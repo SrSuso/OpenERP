@@ -236,20 +236,16 @@ async def activate_template(session: AsyncSession, template_id: int) -> TicketTe
 
 
 async def delete_template(session: AsyncSession, template_id: int) -> None:
-    """Delete a configuration mistake that has never rendered a ticket.
+    """Delete a template, including one that was used in past tickets.
 
-    A generated receipt keeps a foreign key to its exact template version;
-    those rows are historical evidence and can never be deleted. An unused
-    active template is safe to remove: the store simply has no active layout
-    until an administrator creates or activates another one.
+    A receipt stores its rendered text and full print profile itself. The
+    database therefore clears only its optional link when PostgreSQL deletes
+    the template (``ON DELETE SET NULL``); it never changes historical ticket
+    content. An active deletion simply leaves the shop without an active
+    layout until another one is created or activated.
     """
     await _lock_template_scope(session)
     template = await get_template(session, template_id)
-    ticket_id = await session.scalar(
-        select(Ticket.id).where(Ticket.template_id == template.id).limit(1)
-    )
-    if ticket_id is not None:
-        raise ConflictError("A ticket template that has generated tickets cannot be deleted.")
 
     before = {
         "name": template.name,

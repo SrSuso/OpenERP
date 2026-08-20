@@ -278,7 +278,7 @@ async def test_generating_a_ticket_twice_is_idempotent_and_frozen(
     assert "Cabecera nueva" not in second_body["rendered_text"]
 
 
-async def test_a_template_used_by_a_ticket_cannot_be_deleted(
+async def test_a_template_used_by_a_ticket_can_be_deleted_without_changing_the_receipt(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
@@ -287,10 +287,14 @@ async def test_a_template_used_by_a_ticket_cannot_be_deleted(
     sale = await _completed_sale(client, product=product)
     assert (await client.post(f"/api/v1/sales/{sale['id']}/tickets")).status_code == 201
 
+    original = (await client.post(f"/api/v1/sales/{sale['id']}/tickets")).json()
     response = await client.delete(f"/api/v1/ticket-templates/{template['id']}")
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "conflict"
+    assert response.status_code == 204
+    ticket = (await client.get(f"/api/v1/sales/{sale['id']}/ticket")).json()
+    assert ticket["template_id"] is None
+    assert ticket["rendered_text"] == original["rendered_text"]
+    assert ticket["printable_width_mm"] == original["printable_width_mm"]
 
 
 async def test_cannot_generate_a_ticket_for_a_draft_sale(

@@ -155,7 +155,14 @@ class Ticket(IntPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("sale_id", name="uq_tickets_sale_id"),)
 
     sale_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sales.id"), index=True)
-    template_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ticket_templates.id"))
+    # El ticket es un snapshot completo; si se elimina una plantilla creada
+    # por error, el recibo emitido sigue siendo íntegro aunque ya no haya una
+    # configuración viva a la que apuntar.
+    template_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("ticket_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     #: Snapshot of the physical print profile. The template row is versioned
     #: too, but keeping the values here makes an old ticket self-contained.
     printable_width_mm: Mapped[int] = mapped_column(Integer)
@@ -170,4 +177,4 @@ class Ticket(IntPrimaryKeyMixin, TimestampMixin, Base):
     rendered_text: Mapped[str] = mapped_column(Text)
 
     sale: Mapped[Sale] = relationship()
-    template: Mapped[TicketTemplate] = relationship()
+    template: Mapped[TicketTemplate | None] = relationship()
