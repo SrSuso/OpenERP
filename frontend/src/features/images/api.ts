@@ -3,10 +3,10 @@ import { z } from 'zod';
 
 import { API_V1, apiFetch } from '@/lib/api';
 
-/** Los tres que pueden llevar foto — la misma lista cerrada que
+/** Los dos que pueden llevar foto — la misma lista cerrada que
  * `app.catalog.images.IMAGE_OWNERS` en el backend, que es quien decide
  * además qué permiso hace falta para cambiarla. */
-export type ImageOwnerType = 'product' | 'product_category' | 'pos_category';
+export type ImageOwnerType = 'product' | 'pos_category';
 
 /** Qué dueños de ese tipo tienen foto, y por qué versión van. Se pide una
  * vez por pantalla: así sólo se pinta `<img>` donde hay algo que enseñar,

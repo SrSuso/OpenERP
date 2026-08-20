@@ -11,7 +11,6 @@ import {
   updateProductCategory,
   type ProductCategory,
 } from '@/features/catalog/api';
-import { ImagePicker } from '@/features/images/ImagePicker';
 import { setCategoryPricing, taxesQuery, type Tax } from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
 import { ApiError } from '@/lib/api';
@@ -21,7 +20,7 @@ import { cancelWithConfirm, confirmDiscard, useUnsavedWarning } from '@/lib/unsa
  * — ver `PosCategoriesPanel`).
  *
  * Una fila por categoría, con un único botón «Editar» que abre todo lo que
- * se puede hacer con ella: el nombre, la foto, el margen y los impuestos
+ * se puede hacer con ella: el nombre, el margen y los impuestos
  * que heredan sus productos, y las acciones de ocultarla o borrarla. Antes
  * era un botón por acción en la propia fila, y con cuatro categorías la
  * pantalla ya era una pared de enlaces. */
@@ -268,9 +267,6 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
             >
               {createMutation.isPending ? 'Creando…' : 'Añadir'}
             </button>
-            <span className="text-xs text-slate-400">
-              La foto se añade después: necesita el identificador de la categoría recién creada.
-            </span>
           </div>
         </form>
       )}
@@ -279,8 +275,8 @@ export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
   );
 }
 
-/** Todo lo que se puede hacer con una categoría, en un sitio: su nombre, su
- * foto, el margen y los impuestos por defecto que heredan sus productos, y
+/** Todo lo que se puede hacer con una categoría, en un sitio: su nombre,
+ * el margen y los impuestos por defecto que heredan sus productos, y
  * las acciones que cuesta deshacer, apartadas abajo y con confirmación. */
 function CategoryEditor({
   category,
@@ -431,18 +427,6 @@ function CategoryEditor({
             className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
           />
         </label>
-
-        <div className="text-xs text-slate-600">
-          <span className="block">Foto</span>
-          <div className="mt-1">
-            <ImagePicker
-              ownerType="product_category"
-              ownerId={category.id}
-              ownerName={category.name}
-              canManage
-            />
-          </div>
-        </div>
       </div>
 
       <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">

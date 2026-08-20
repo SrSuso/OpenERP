@@ -1,4 +1,4 @@
-"""Fotos de productos y categorías.
+"""Fotos de productos y categorías del TPV.
 
 Lo que importa aquí: que sólo se puedan colgar de un dueño conocido, que
 cada tipo de dueño pida su propio permiso, y que reemplazar una foto suba
@@ -86,27 +86,27 @@ async def test_a_photo_can_be_removed(
     assert (await client.get("/api/v1/images/product")).json() == {}
 
 
-async def test_categories_of_both_kinds_can_have_a_photo(
+async def test_only_pos_categories_can_have_a_photo(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
     category = (await client.post("/api/v1/product-categories", json={"name": "Fruta"})).json()
     pos_category = (await client.post("/api/v1/pos-categories", json={"name": "Ofertas"})).json()
 
+    # Las categorías generales controlan stock, unidad, impuestos y precios;
+    # no son botones visuales de caja. La foto pertenece sólo a la categoría
+    # POS, que es la que se presenta en el TPV.
     assert (
         await client.put(
             f"/api/v1/images/product_category/{category['id']}", json={"data_url": PNG_DATA_URL}
         )
-    ).status_code == 200
+    ).status_code == 404
     assert (
         await client.put(
             f"/api/v1/images/pos_category/{pos_category['id']}", json={"data_url": PNG_DATA_URL}
         )
     ).status_code == 200
 
-    # Cada tipo lleva su propio índice: son cosas distintas con ids que se
-    # solapan.
-    assert (await client.get("/api/v1/images/product_category")).json() == {str(category["id"]): 1}
     assert (await client.get("/api/v1/images/pos_category")).json() == {str(pos_category["id"]): 1}
 
 

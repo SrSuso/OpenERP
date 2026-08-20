@@ -22,9 +22,9 @@ interface ImagePickerProps {
 
 const BOX = { sm: 'h-12 w-12', lg: 'h-32 w-32' } as const;
 
-/** Poner, cambiar o quitar la foto de un producto o de una categoría, en
- * el sitio donde se gestiona esa cosa. La foto se recorta en el navegador
- * antes de subirla (ver `resize.ts`).
+/** Poner, cambiar o quitar la foto de un producto o de una categoría del
+ * TPV, en el sitio donde se gestiona esa cosa. La foto se recorta en el
+ * navegador antes de subirla (ver `resize.ts`).
  *
  * Quien no pueda gestionarla ve la foto y nada más; el botón escondido no
  * es la seguridad, el backend comprueba el permiso igual (regla 11). */

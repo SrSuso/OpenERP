@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
-from app.catalog.models import EntityImage, PosCategory, Product, ProductCategory
+from app.catalog.models import EntityImage, PosCategory, Product
 from app.core.errors import NotFoundError, ValidationError
 from app.db.base import Base
 from app.rbac.permissions import POS_CATEGORY_MANAGE, PRODUCT_MANAGE
@@ -49,7 +49,6 @@ class ImageOwner:
 
 IMAGE_OWNERS: dict[str, ImageOwner] = {
     "product": ImageOwner(Product, PRODUCT_MANAGE, "producto"),
-    "product_category": ImageOwner(ProductCategory, PRODUCT_MANAGE, "categoría de producto"),
     "pos_category": ImageOwner(PosCategory, POS_CATEGORY_MANAGE, "categoría del TPV"),
 }
 
