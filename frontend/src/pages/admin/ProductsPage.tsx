@@ -5,7 +5,6 @@ import { useAuth } from '@/features/auth/useAuth';
 import {
   createProduct,
   posCategoriesQuery,
-  updateProduct,
   productCategoriesQuery,
   productsQuery,
   unitsQuery,
@@ -89,12 +88,6 @@ export function ProductsPage() {
           : 'No se ha podido crear el producto.',
       );
     },
-  });
-
-  const posCategoryMutation = useMutation({
-    mutationFn: ({ product, posCategoryId }: { product: Product; posCategoryId: number | null }) =>
-      updateProduct(product.id, { pos_category_id: posCategoryId }),
-    onSuccess: invalidateProducts,
   });
 
   const [savedPriceId, setSavedPriceId] = useState<number | null>(null);
@@ -320,14 +313,6 @@ export function ProductsPage() {
           canManagePricing={canManagePricing}
           quickPriceUnits={quickPriceUnits}
           stockByProduct={stockByProduct}
-          posCategories={posCategories.data ?? []}
-          canManage={canManage}
-          onSetPosCategory={(product, posCategoryId) =>
-            posCategoryMutation.mutate({ product, posCategoryId })
-          }
-          savingPosCategoryId={
-            posCategoryMutation.isPending ? posCategoryMutation.variables.product.id : null
-          }
           onSetPrice={(product, listPrice) => setProposedPrice({ product, listPrice })}
           savingPriceId={priceMutation.isPending ? priceMutation.variables.id : null}
           savedPriceId={savedPriceId}
