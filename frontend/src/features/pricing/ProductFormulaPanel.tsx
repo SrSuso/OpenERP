@@ -6,14 +6,12 @@ import {
   clearProductFormula,
   previewFormula,
   productPriceHistoryQuery,
-  setManualPrice,
   setProductFormula,
   type Tax,
 } from '@/features/pricing/api';
 import { FormulaHelp } from '@/features/pricing/FormulaHelp';
 import { ProductPriceHistoryTable } from '@/features/pricing/ProductPriceHistoryTable';
 import { ApiError } from '@/lib/api';
-import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
 
 interface ProductFormulaPanelProps {
@@ -47,8 +45,6 @@ export function ProductFormulaPanel({
 
   const [formulaInput, setFormulaInput] = useState(product.price_formula ?? '');
   const [formulaError, setFormulaError] = useState<string | null>(null);
-  const [manualPriceInput, setManualPriceInput] = useState('');
-  const [manualPriceError, setManualPriceError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
   const history = useQuery({ ...productPriceHistoryQuery(product.id), enabled: showHistory });
@@ -94,38 +90,16 @@ export function ProductFormulaPanel({
     },
   });
 
-  const manualPriceMutation = useMutation({
-    mutationFn: (price: string) => setManualPrice(product.id, price),
-    onSuccess: () => {
-      invalidate();
-      setManualPriceInput('');
-      setManualPriceError(null);
-    },
-    onError: () => setManualPriceError('No se ha podido fijar el precio.'),
-  });
-
-  function submitManualPrice() {
-    const parsed = decimalString({ min: 0 }).safeParse(manualPriceInput);
-    if (!parsed.success) {
-      setManualPriceError(parsed.error.issues[0]?.message ?? 'Precio no válido.');
-      return;
-    }
-    setManualPriceError(null);
-    manualPriceMutation.mutate(parsed.data);
-  }
-
   return (
     <div className="mt-4 border-t border-slate-100 pt-4">
-      <h4 className="mb-1 text-xs font-semibold uppercase text-slate-500">
-        Fórmula propia / precio manual
-      </h4>
+      <h4 className="mb-1 text-xs font-semibold uppercase text-slate-500">Fórmula propia</h4>
       <p className="mb-3 text-xs text-slate-500">
         {product.price_formula
           ? 'Este producto tiene su propia fórmula — pisa a la de la tienda.'
-          : 'Sin fórmula propia: usa la de la tienda, o el PVP se dejó fijo a mano.'}
+          : 'Sin fórmula propia: usa la fórmula general de la tienda.'}
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div>
         <div>
           <p className="mb-1 text-xs font-medium text-slate-600">Fórmula propia</p>
           <FormulaHelp />
@@ -182,34 +156,6 @@ export function ProductFormulaPanel({
           )}
           {formulaError && <p className="mt-1 text-xs text-red-600">{formulaError}</p>}
         </div>
-
-        {canManage && (
-          <div>
-            <p className="mb-1 text-xs font-medium text-slate-600">Precio manual</p>
-            <p className="mb-2 text-xs text-slate-500">
-              Fija un PVP exacto, saltándose cualquier fórmula. Quita la fórmula propia si la había.
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                inputMode="decimal"
-                value={manualPriceInput}
-                onChange={(event) => setManualPriceInput(event.target.value)}
-                placeholder={product.list_price}
-                className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
-              />
-              <button
-                type="button"
-                onClick={submitManualPrice}
-                disabled={manualPriceMutation.isPending || !manualPriceInput.trim()}
-                className="rounded bg-brand-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-              >
-                {manualPriceMutation.isPending ? 'Guardando…' : 'Fijar precio manual'}
-              </button>
-            </div>
-            {manualPriceError && <p className="mt-1 text-xs text-red-600">{manualPriceError}</p>}
-          </div>
-        )}
       </div>
 
       <div className="mt-4">

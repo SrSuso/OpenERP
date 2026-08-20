@@ -1,7 +1,13 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { type Product, type ProductCategory } from '@/features/catalog/api';
-import { type PricingOverrideInput, type Tax } from '@/features/pricing/api';
+import {
+  productPriceHistoryQuery,
+  setManualPrice,
+  type PricingOverrideInput,
+  type Tax,
+} from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
 import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
@@ -42,6 +48,7 @@ export function ProductPricingPanel({
   isSaving,
   onDirtyChange,
 }: ProductPricingPanelProps) {
+  const queryClient = useQueryClient();
   const [cost, setCost] = useState(product.cost);
   const [costError, setCostError] = useState<string | null>(null);
   const [marginInput, setMarginInput] = useState(product.margin_rate ?? '');
@@ -57,6 +64,22 @@ export function ProductPricingPanel({
   const [taxIds, setTaxIds] = useState<Set<number>>(
     new Set((hasOwnTaxes ? product.taxes : (category?.taxes ?? [])).map((t) => t.id)),
   );
+  const [manualPriceInput, setManualPriceInput] = useState('');
+  const [manualPriceError, setManualPriceError] = useState<string | null>(null);
+
+  const manualPriceMutation = useMutation({
+    mutationFn: (price: string) => setManualPrice(product.id, price),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'product', product.id] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      void queryClient.invalidateQueries({
+        queryKey: productPriceHistoryQuery(product.id).queryKey,
+      });
+      setManualPriceInput('');
+      setManualPriceError(null);
+    },
+    onError: () => setManualPriceError('No se ha podido fijar el precio.'),
+  });
 
   const inheritsMargin = marginInput.trim() === '';
   const inheritsAmount = amountInput.trim() === '';
@@ -102,6 +125,16 @@ export function ProductPricingPanel({
       // si fuera una elección propia sin que el usuario haya interactuado.
       tax_ids: isOverride ? [...taxIds] : [],
     });
+  }
+
+  function submitManualPrice() {
+    const parsed = decimalString({ min: 0 }).safeParse(manualPriceInput);
+    if (!parsed.success) {
+      setManualPriceError(parsed.error.issues[0]?.message ?? 'Precio no válido.');
+      return;
+    }
+    setManualPriceError(null);
+    manualPriceMutation.mutate(parsed.data);
   }
 
   return (
@@ -157,6 +190,32 @@ export function ProductPricingPanel({
           <p className="mt-1 rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800">
             {formatMoney(product.list_price)}
           </p>
+
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <p className="mb-1 text-xs font-medium text-slate-600">Precio manual</p>
+            <p className="mb-2 text-xs text-slate-500">
+              Fija un PVP exacto, saltándose cualquier fórmula. Quita la fórmula propia si la había.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={manualPriceInput}
+                onChange={(event) => setManualPriceInput(event.target.value)}
+                placeholder={product.list_price}
+                className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
+              />
+              <button
+                type="button"
+                onClick={submitManualPrice}
+                disabled={manualPriceMutation.isPending || !manualPriceInput.trim()}
+                className="rounded bg-brand-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {manualPriceMutation.isPending ? 'Guardando…' : 'Fijar precio manual'}
+              </button>
+            </div>
+            {manualPriceError && <p className="mt-1 text-xs text-red-600">{manualPriceError}</p>}
+          </div>
         </div>
 
         <div className="text-xs text-slate-600 sm:col-span-4">
