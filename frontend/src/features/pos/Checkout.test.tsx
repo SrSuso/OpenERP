@@ -62,7 +62,8 @@ describe('Checkout', () => {
     await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
 
     const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
-    expect(within(dialog).getByLabelText('Importe recibido')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Importe recibido')).toHaveValue('0,00 €');
+    expect(within(dialog).getByText('0 céntimos')).toBeInTheDocument();
     // Vacío equivale explícitamente a que el cliente entrega el importe exacto.
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar efectivo' }));
 
@@ -84,9 +85,9 @@ describe('Checkout', () => {
     renderCheckout();
     await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
-    const input = within(dialog).getByLabelText('Importe recibido');
+    const keypad = within(dialog).getByLabelText('Teclado numérico para efectivo');
 
-    await userEvent.type(input, '5');
+    await userEvent.click(within(keypad).getByRole('button', { name: '5' }));
 
     expect(within(dialog).getByText(/no cubre el total/i)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Confirmar efectivo' })).toBeDisabled();
@@ -96,9 +97,11 @@ describe('Checkout', () => {
     renderCheckout();
     await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
-    const input = within(dialog).getByLabelText('Importe recibido');
+    const keypad = within(dialog).getByLabelText('Teclado numérico para efectivo');
 
-    await userEvent.type(input, '50');
+    for (const digit of ['5', '0', '0', '0']) {
+      await userEvent.click(within(keypad).getByRole('button', { name: digit }));
+    }
 
     expect(within(dialog).getByText(/cambio/i)).toBeInTheDocument();
     expect(within(dialog).getByText('30,00 €')).toBeInTheDocument();
@@ -111,12 +114,12 @@ describe('Checkout', () => {
     const input = within(dialog).getByLabelText('Importe recibido');
     const keypad = within(dialog).getByLabelText('Teclado numérico para efectivo');
 
-    // No hay un total precargado que borrar: el teclado empieza vacío.
+    // No hay un total precargado que borrar: el teclado empieza vacío y recibe céntimos.
     await userEvent.click(within(keypad).getByRole('button', { name: '5' }));
     await userEvent.click(within(keypad).getByRole('button', { name: '0' }));
 
-    expect(input).toHaveValue('50');
-    expect(screen.getByText('30,00 €')).toBeInTheDocument();
+    expect(input).toHaveValue('0,50 €');
+    expect(within(dialog).getByText('50 céntimos')).toBeInTheDocument();
   });
 
   it('confirms with the method and tendered amount', async () => {
@@ -124,8 +127,10 @@ describe('Checkout', () => {
     renderCheckout({ onConfirm });
     await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
-    const input = within(dialog).getByLabelText('Importe recibido');
-    await userEvent.type(input, '50');
+    const keypad = within(dialog).getByLabelText('Teclado numérico para efectivo');
+    for (const digit of ['5', '0', '0', '0']) {
+      await userEvent.click(within(keypad).getByRole('button', { name: digit }));
+    }
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar efectivo' }));
 

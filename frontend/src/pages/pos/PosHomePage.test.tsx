@@ -814,7 +814,7 @@ describe('PosHomePage', () => {
     await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
     await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
     const cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
-    expect(within(cashPrompt).getByLabelText('Importe recibido')).toHaveValue('');
+    expect(within(cashPrompt).getByLabelText('Importe recibido')).toHaveValue('0,00 €');
     await userEvent.click(within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' }));
 
     await screen.findByText(/venta cobrada/i);

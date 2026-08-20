@@ -30,15 +30,16 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
 
   const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
   const [cashPromptOpen, setCashPromptOpen] = useState(false);
-  // Vacío significa «el cliente da el importe justo». No se precarga el
-  // total para que la persona que cobra no tenga que borrarlo nunca.
-  const [tendered, setTendered] = useState('');
+  // El teclado recibe céntimos: 1250 siempre significa 12,50 €, sin tener
+  // que buscar una coma en una pantalla táctil. Vacío sigue significando
+  // «el cliente da el importe justo».
+  const [tenderedCents, setTenderedCents] = useState('');
 
   const total = Number(sale.total);
-  const tenderedIsEmpty = tendered.trim() === '';
-  const enteredTenderedAmount = Number(tendered.replace(',', '.'));
+  const tenderedIsEmpty = tenderedCents === '';
+  const enteredTenderedAmount = Number(tenderedCents) / 100;
   const isTenderedValid =
-    tenderedIsEmpty || (Number.isFinite(enteredTenderedAmount) && enteredTenderedAmount > 0);
+    tenderedIsEmpty || (Number.isFinite(enteredTenderedAmount) && Number(tenderedCents) > 0);
   const tenderedAmount = tenderedIsEmpty ? total : enteredTenderedAmount;
   const change = !tenderedIsEmpty && isTenderedValid ? Math.max(0, tenderedAmount - total) : 0;
   const coversTotal = isTenderedValid && tenderedAmount >= total;
@@ -46,7 +47,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
   function selectMethod(next: PaymentMethod) {
     setMethod(next);
     if (next === 'CASH') {
-      setTendered('');
+      setTenderedCents('');
       setCashPromptOpen(true);
     } else {
       setCashPromptOpen(false);
@@ -64,6 +65,16 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
   function confirmCash() {
     if (!coversTotal) return;
     onConfirm([{ method: 'CASH', amount: tenderedAmount.toFixed(2) }]);
+  }
+
+  function setCentsInput(next: string) {
+    const digits = next.replace(/\D/g, '');
+    if (digits.length <= 8) setTenderedCents(digits);
+  }
+
+  function handleTenderedKey(key: string) {
+    if (/^\d$/.test(key)) setCentsInput(tenderedCents + key);
+    if (key === 'Backspace') setTenderedCents(tenderedCents.slice(0, -1));
   }
 
   return (
@@ -147,26 +158,40 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
               Importe recibido
             </h3>
             <p className="mt-1 text-sm text-slate-400">
-              Déjalo vacío si el cliente entrega justo {formatMoney(sale.total)}.
+              Introduce céntimos sin coma: 1250 equivale a 12,50 €. Déjalo vacío si el cliente
+              entrega justo {formatMoney(sale.total)}.
             </p>
             <input
               id="tendered-amount"
               aria-label="Importe recibido"
               type="text"
-              inputMode="decimal"
+              inputMode="numeric"
               autoFocus
-              value={tendered}
-              onChange={(event) => setTendered(event.target.value)}
-              placeholder={Number(sale.total).toFixed(2)}
+              readOnly
+              value={formatMoney(tenderedIsEmpty ? '0' : tenderedAmount.toFixed(2))}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setCashPromptOpen(false);
+                  return;
+                }
+                if (/^\d$/.test(event.key) || event.key === 'Backspace') {
+                  event.preventDefault();
+                  handleTenderedKey(event.key);
+                }
+              }}
+              aria-describedby="tendered-cents-help"
               disabled={isPending}
-              className="mt-4 w-full rounded border border-slate-600 bg-slate-900 px-3 py-2 text-lg text-slate-50 disabled:opacity-60"
+              className="mt-4 w-full rounded border border-slate-600 bg-slate-900 px-3 py-2 text-right text-3xl font-semibold text-slate-50 disabled:opacity-60"
             />
+            <p id="tendered-cents-help" className="mt-1 text-right text-xs text-slate-400">
+              {tenderedCents || '0'} céntimos
+            </p>
             {!coversTotal && (
               <p className="mt-1 text-sm text-red-400">El importe no cubre el total.</p>
             )}
 
             <div className="mt-4" aria-label="Teclado numérico para efectivo">
-              <Keypad value={tendered} onChange={setTendered} maxLength={8} allowDecimal />
+              <Keypad value={tenderedCents} onChange={setCentsInput} maxLength={8} />
             </div>
 
             {change > 0 && (
