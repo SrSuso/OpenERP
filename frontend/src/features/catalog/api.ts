@@ -377,6 +377,13 @@ export async function updateProduct(id: number, payload: ProductUpdateInput): Pr
   });
 }
 
+/** Borra sólo un producto sin ventas, compras, devoluciones, stock ni
+ * lotes. Si ya tiene historial, el backend exige desactivarlo para no
+ * romper documentos ya emitidos. */
+export async function deleteProduct(id: number): Promise<void> {
+  await apiFetch(`${API_V1}/products/${id}`, { method: 'DELETE', schema: z.null() });
+}
+
 export async function deactivateProduct(id: number): Promise<Product> {
   return apiFetch(`${API_V1}/products/${id}/deactivate`, {
     method: 'POST',
@@ -384,9 +391,8 @@ export async function deactivateProduct(id: number): Promise<Product> {
   });
 }
 
-/** El otro lado de la regla 14 ("se desactiva, nunca se borra"): un
- * producto desactivado por error, o que vuelve a venderse, se puede
- * reactivar sin perder su SKU/historial. */
+/** Un producto retirado por error, o que vuelve a venderse, se puede
+ * reactivar sin perder su SKU ni su historial. */
 export async function activateProduct(id: number): Promise<Product> {
   return apiFetch(`${API_V1}/products/${id}/activate`, {
     method: 'POST',

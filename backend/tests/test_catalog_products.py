@@ -286,6 +286,55 @@ async def test_update_product_and_deactivate(
     assert product_id in {p["id"] for p in active_list_again.json()}
 
 
+async def test_admin_can_delete_an_unused_product_but_not_one_in_a_sale(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    unused = (await client.post("/api/v1/products", json=_product_payload())).json()
+
+    deleted = await client.delete(f"/api/v1/products/{unused['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/api/v1/products/{unused['id']}")).status_code == 404
+
+    used = (
+        await client.post(
+            "/api/v1/products",
+            json=_product_payload(sku="PRODUCT-WITH-SALE", base_barcode="333333"),
+        )
+    ).json()
+    warehouse = next(
+        item
+        for item in (await client.get("/api/v1/warehouses")).json()
+        if item["name"] == "Tienda principal"
+    )
+    location = next(
+        item
+        for item in (await client.get(f"/api/v1/warehouses/{warehouse['id']}/locations")).json()
+        if item["name"] == "Almacén"
+    )
+    sale = (
+        await client.post(
+            "/api/v1/sales", json={"warehouse_id": warehouse["id"], "location_id": location["id"]}
+        )
+    ).json()
+    base_package = next(package for package in used["packages"] if package["is_base"])
+    assert (
+        await client.post(
+            f"/api/v1/sales/{sale['id']}/lines",
+            json={
+                "product_id": used["id"],
+                "package_id": base_package["id"],
+                "quantity_packages": "1",
+            },
+        )
+    ).status_code == 201
+
+    blocked = await client.delete(f"/api/v1/products/{used['id']}")
+    assert blocked.status_code == 409
+    assert "ventas" in blocked.json()["error"]["message"]
+    assert (await client.get(f"/api/v1/products/{used['id']}")).status_code == 200
+
+
 async def test_cashier_can_read_but_not_manage_products(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

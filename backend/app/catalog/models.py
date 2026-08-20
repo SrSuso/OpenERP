@@ -201,7 +201,8 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     min_stock: Mapped[Quantity]
     track_lots: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     track_expiration: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    #: Rule 14: deactivated, never deleted, once it has any history.
+    #: Los productos con historia se desactivan para conservar los documentos;
+    #: un alta sin uso puede eliminarse desde catálogo.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     category: Mapped[ProductCategory | None] = relationship()

@@ -345,6 +345,11 @@ async def update_product(
     return _to_read(await service.update_product(session, product_id, payload))
 
 
+@router.delete("/products/{product_id}", status_code=204, dependencies=[_require_manage])
+async def delete_product(product_id: int, session: SessionDep) -> None:
+    await service.delete_product(session, product_id)
+
+
 @router.post(
     "/products/{product_id}/deactivate", response_model=ProductRead, dependencies=[_require_manage]
 )

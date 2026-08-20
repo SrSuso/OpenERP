@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 
 import { useAuth } from '@/features/auth/useAuth';
 import {
@@ -9,6 +9,7 @@ import {
   addPackage,
   deactivateProduct,
   deleteBarcode,
+  deleteProduct,
   posCategoriesQuery,
   productCategoriesQuery,
   productQuery,
@@ -62,6 +63,7 @@ const tabClassName = (active: boolean) =>
 export function ProductDetailPage() {
   const { productId: productIdParam } = useParams<{ productId: string }>();
   const productId = Number(productIdParam);
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
   const canManageProduct = hasPermission('product.manage');
@@ -83,6 +85,7 @@ export function ProductDetailPage() {
     setTab(next);
   };
   const [editError, setEditError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [createLotError, setCreateLotError] = useState<string | null>(null);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
 
@@ -144,6 +147,18 @@ export function ProductDetailPage() {
   const activateMutation = useMutation({
     mutationFn: () => activateProduct(productId),
     onSuccess: invalidateProduct,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteProduct(productId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      void navigate('/admin/inventory/products');
+    },
+    onError: (err: unknown) =>
+      setDeleteError(
+        err instanceof ApiError ? err.message : 'No se ha podido eliminar el producto.',
+      ),
   });
 
   const [savedPricing, setSavedPricing] = useState(0);
@@ -298,7 +313,32 @@ export function ProductDetailPage() {
             Reactivar
           </button>
         )}
+        {canManageProduct && (
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                window.confirm(
+                  `¿Eliminar definitivamente «${data.name}»? Sólo es posible si aún no tiene ventas, compras, stock, devoluciones ni lotes.`,
+                )
+              ) {
+                setDeleteError(null);
+                deleteMutation.mutate();
+              }
+            }}
+            disabled={deleteMutation.isPending}
+            className={dangerAction}
+          >
+            Eliminar
+          </button>
+        )}
       </div>
+
+      {deleteError && (
+        <p role="alert" className="mb-4 text-sm text-red-600">
+          {deleteError}
+        </p>
+      )}
 
       <nav
         className="mb-6 flex flex-wrap gap-2 border-b border-slate-200"

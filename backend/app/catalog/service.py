@@ -6,12 +6,13 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
 from app.catalog.models import (
+    EntityImage,
     PosCategory,
     Product,
     ProductBarcode,
@@ -875,7 +876,7 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
 
 
 async def deactivate_product(session: AsyncSession, product_id: int) -> Product:
-    """Rule 14: products are never deleted, only deactivated."""
+    """Retira un producto de la venta sin borrar su trazabilidad."""
     product = await get_product(session, product_id)
     before = _snapshot(product)
     product.is_active = False
@@ -891,11 +892,76 @@ async def deactivate_product(session: AsyncSession, product_id: int) -> Product:
     return product
 
 
+async def delete_product(session: AsyncSession, product_id: int) -> None:
+    """Borra un alta equivocada que todavía no tiene historia operativa.
+
+    Las ventas, compras, devoluciones, lotes y movimientos de stock son
+    documentos/ledger históricos y conservan una FK al producto y a su
+    formato. No se pueden borrar sin falsear esos documentos. En cambio, un
+    producto creado por error y aún sin uso se elimina completo, incluyendo
+    sus formatos, códigos, foto, precios provisionales y enlaces a
+    proveedores.
+    """
+    product = await get_product(session, product_id)
+
+    # Imports locales: los dominios que forman el historial dependen de
+    # catálogo y no queremos invertir esa dependencia al cargar la app.
+    from app.inventory.models import StockBalance, StockMovement
+    from app.lots.models import Lot
+    from app.pricing.models import ProductPriceHistory, product_taxes
+    from app.purchasing.models import PurchaseOrderLine
+    from app.returns.models import ReturnLine
+    from app.sales.models import SaleLine
+    from app.suppliers.models import ProductSupplier
+
+    history_checks = (
+        ("ventas", select(SaleLine.id).where(SaleLine.product_id == product_id)),
+        ("compras", select(PurchaseOrderLine.id).where(PurchaseOrderLine.product_id == product_id)),
+        ("devoluciones", select(ReturnLine.id).where(ReturnLine.product_id == product_id)),
+        (
+            "movimientos de stock",
+            select(StockMovement.id).where(StockMovement.product_id == product_id),
+        ),
+        ("stock existente", select(StockBalance.id).where(StockBalance.product_id == product_id)),
+        ("lotes", select(Lot.id).where(Lot.product_id == product_id)),
+    )
+    used_by = [
+        label
+        for label, statement in history_checks
+        if (await session.execute(statement.limit(1))).scalar_one_or_none() is not None
+    ]
+    if used_by:
+        raise ConflictError(
+            f"No se puede eliminar «{product.name}» porque tiene {', '.join(used_by)}. "
+            "Desactívalo para conservar el histórico."
+        )
+
+    before = _snapshot(product)
+    # Estas relaciones no son histórico comercial: se eliminan con el alta
+    # equivocada. Los formatos y sus códigos son delete-orphan del modelo.
+    await session.execute(
+        delete(ProductPriceHistory).where(ProductPriceHistory.product_id == product_id)
+    )
+    await session.execute(delete(ProductSupplier).where(ProductSupplier.product_id == product_id))
+    await session.execute(delete(product_taxes).where(product_taxes.c.product_id == product_id))
+    await session.execute(
+        delete(EntityImage).where(
+            EntityImage.entity_type == "product", EntityImage.entity_id == product_id
+        )
+    )
+    await session.delete(product)
+    await session.flush()
+    await audit.record(
+        session,
+        action="deleted",
+        entity_type="product",
+        entity_id=product_id,
+        before=before,
+    )
+
+
 async def activate_product(session: AsyncSession, product_id: int) -> Product:
-    """The other half of rule 14's "deactivated, never deleted": a product
-    stopped selling by mistake, or one that comes back into the catalogue,
-    can be switched active again — it never lost its id/SKU/history while
-    inactive, so this is just flipping the flag back."""
+    """Vuelve a vender un producto desactivado sin tocar su historial."""
     product = await get_product(session, product_id)
     before = _snapshot(product)
     product.is_active = True

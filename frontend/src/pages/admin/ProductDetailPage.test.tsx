@@ -166,6 +166,7 @@ function stubBackend(
   const deleteBarcodeCalls: number[] = [];
   const deactivateCalls: number[] = [];
   const activateCalls: number[] = [];
+  const deleteProductCalls: number[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -297,6 +298,10 @@ function stubBackend(
         product.is_active = true;
         return Promise.resolve(jsonResponse(product));
       }
+      if (method === 'DELETE' && /\/products\/1$/.test(url)) {
+        deleteProductCalls.push(1);
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
@@ -313,6 +318,7 @@ function stubBackend(
     deleteBarcodeCalls,
     deactivateCalls,
     activateCalls,
+    deleteProductCalls,
   };
 }
 
@@ -324,6 +330,7 @@ function renderPage() {
         <MemoryRouter initialEntries={['/admin/inventory/products/1']}>
           <Routes>
             <Route path="/admin/inventory/products/:productId" element={<ProductDetailPage />} />
+            <Route path="/admin/inventory/products" element={<p>Listado de productos</p>} />
           </Routes>
         </MemoryRouter>
       </AuthProvider>
@@ -614,6 +621,20 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
     expect(backend.activateCalls).toEqual([1]);
     await screen.findByText(/Activo/);
+  });
+
+  it('deletes a product that has no operating history', async () => {
+    const backend = stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      '¿Eliminar definitivamente «Agua 1L»? Sólo es posible si aún no tiene ventas, compras, stock, devoluciones ni lotes.',
+    );
+    await waitFor(() => expect(backend.deleteProductCalls).toEqual([1]));
   });
 
   it('sets a per-product formula, previews it, then switches to a manual price and checks the history', async () => {
