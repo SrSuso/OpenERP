@@ -32,7 +32,7 @@ export function NotificationsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('notification.manage');
 
-  const [tab, setTab] = useState<'rules' | 'incidents'>('rules');
+  const [tab, setTab] = useState<'rules' | 'incidents'>('incidents');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('OPEN');
@@ -78,17 +78,17 @@ export function NotificationsPage() {
       <nav className="mb-6 flex gap-2 border-b border-slate-200" aria-label="Notificaciones">
         <button
           type="button"
-          onClick={() => setTab('rules')}
-          className={tabClassName(tab === 'rules')}
-        >
-          Reglas
-        </button>
-        <button
-          type="button"
           onClick={() => setTab('incidents')}
           className={tabClassName(tab === 'incidents')}
         >
           Incidencias
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('rules')}
+          className={tabClassName(tab === 'rules')}
+        >
+          Reglas
         </button>
       </nav>
 

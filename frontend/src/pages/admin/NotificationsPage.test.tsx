@@ -142,6 +142,9 @@ describe('NotificationsPage', () => {
     const backend = stubBackend();
     renderPage();
 
+    // La prioridad operativa es atender primero lo que ya está ocurriendo.
+    expect(await screen.findByText('No hay incidencias con estos filtros.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Reglas' }));
     await screen.findByText('Todavía no hay ninguna regla.');
     await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
 
@@ -176,6 +179,7 @@ describe('NotificationsPage', () => {
   it('builds a rule from the fields and comparators the backend offers', async () => {
     const backend = stubBackend();
     renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Reglas' }));
     await screen.findByRole('button', { name: 'Nueva regla' });
     await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
 

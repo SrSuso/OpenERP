@@ -32,9 +32,8 @@ const SECTIONS: NavSection[] = [
   {
     title: null,
     entries: [
-      { to: '/admin', label: 'Inicio', permissions: [] },
-      // Los avisos abiertos deben quedar a la vista nada más entrar: el
-      // contador y la criticidad ya se resaltan abajo en el enlace.
+      // Los avisos abiertos son la primera acción visible del panel: el
+      // contador y la criticidad permiten priorizarlos sin abrir la pantalla.
       { to: '/admin/notifications', label: 'Avisos', permissions: ['notification.read'] },
       {
         to: '/admin/inventory',

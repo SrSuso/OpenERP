@@ -70,7 +70,7 @@ function renderLayout() {
 }
 
 describe('AdminLayout', () => {
-  it('places alerts between Inicio and Inventario and makes open alerts visible', async () => {
+  it('places alerts first, before inventory, and makes open alerts visible', async () => {
     renderLayout();
 
     const alerts = await screen.findByRole('link', { name: /Avisos/ });
@@ -81,11 +81,8 @@ describe('AdminLayout', () => {
       .getAllByRole('link')
       .map((link) => new URL(link.getAttribute('href')!, 'http://test').pathname);
 
-    expect(destinations.slice(0, 3)).toEqual([
-      '/admin',
-      '/admin/notifications',
-      '/admin/inventory',
-    ]);
+    expect(destinations.slice(0, 2)).toEqual(['/admin/notifications', '/admin/inventory']);
+    expect(destinations).not.toContain('/admin');
     expect(badge).toHaveClass('bg-red-100', 'animate-pulse');
   });
 });
