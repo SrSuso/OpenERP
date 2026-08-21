@@ -493,11 +493,11 @@ describe('PosHomePage', () => {
     expect(screen.queryByRole('dialog', { name: 'Buscar productos' })).not.toBeInTheDocument();
   });
 
-  it('opens the touch keyboard directly when the search box is touched', async () => {
+  it('opens the touch keyboard directly when the search box is clicked', async () => {
     stubBackend();
     renderPage();
 
-    fireEvent.touchStart(
+    await userEvent.click(
       await screen.findByPlaceholderText('Escanear o introducir código de barras'),
     );
 
@@ -763,8 +763,10 @@ describe('PosHomePage', () => {
     renderPage();
     const input = await screen.findByPlaceholderText('Escanear o introducir código de barras');
 
-    await userEvent.type(input, 'NO-EXISTE');
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+    // Esta vía se conserva para teclado físico; un clic en el campo abre el
+    // buscador táctil, que es el flujo principal de pantalla.
+    fireEvent.change(input, { target: { value: 'NO-EXISTE' } });
+    fireEvent.submit(input.closest('form')!);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'El código NO-EXISTE no está dado de alta en ningún producto.',
