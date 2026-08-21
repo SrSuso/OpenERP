@@ -474,6 +474,11 @@ export function PosHomePage() {
                           </p>
                         )}
 
+                        {/* La cantidad se decide antes de elegir el artículo:
+                          arriba del catálogo queda al alcance y se ve cuál
+                          será el siguiente toque, sin buscarla al final de
+                          la cuadrícula. */}
+                        <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
                         <CategoryTabs
                           categories={categories.data ?? []}
                           selectedId={selectedCategoryId}
@@ -486,9 +491,6 @@ export function PosHomePage() {
                           onPick={pickProduct}
                           disabled={sale === null || busy}
                         />
-                        {/* Debajo de la cuadrícula, que es lo que se pulsa
-                          justo después de teclear la cantidad. */}
-                        <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
                       </div>
 
                       <Cart

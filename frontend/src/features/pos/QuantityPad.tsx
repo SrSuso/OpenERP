@@ -17,7 +17,7 @@ export function QuantityPad({ value, onChange }: QuantityPadProps) {
   const quantity = value === '' ? 1 : Number(value);
 
   return (
-    <div className="w-56 shrink-0 border-t border-slate-700 p-3">
+    <div className="w-56 shrink-0 border-b border-slate-700 p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <span className="text-xs uppercase tracking-wide text-slate-400">
           Cantidad para el siguiente
