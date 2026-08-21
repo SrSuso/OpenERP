@@ -5,6 +5,11 @@ No requiere Swagger, comandos ni conocimiento de la base de datos. Las
 opciones que ve cada persona dependen de sus permisos; que un enlace no
 aparezca no significa que la función no exista.
 
+Antes de seguir una tarea, consulta el manual correspondiente a tu perfil:
+[cajero](roles/CASHIER.md), [encargado](roles/MANAGER.md) o
+[administrador](roles/ADMIN.md). La referencia de los tres perfiles y de los
+roles personalizados está en [Manuales por rol](roles/README.md).
+
 Para instalar, actualizar o recuperar el servidor, consulta
 [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md).
 

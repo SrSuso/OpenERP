@@ -36,6 +36,7 @@ La documentación normativa se divide por audiencia:
 | Documento | Finalidad |
 | --- | --- |
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Tareas que cajeros, encargados y administradores realizan en la UI. |
+| [`docs/roles/`](docs/roles/README.md) | Manuales separados para cajero, encargado y administrador. |
 | [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) | Administración funcional, despliegue, upgrade, backup, restore y rollback. |
 | [`docs/USAGE.md`](docs/USAGE.md) | Preparación del entorno local de desarrollo. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Diseño técnico y límites del sistema actual. |

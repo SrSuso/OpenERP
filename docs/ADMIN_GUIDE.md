@@ -504,6 +504,12 @@ el menú lateral, con una pestaña **Usuarios** y otra **Roles** dentro
 soportada de administración; Swagger no existe en producción y no se requieren
 llamadas HTTP manuales.
 
+Los procedimientos de interfaz están separados por perfil en los
+[manuales por rol](roles/README.md):
+[cajero](roles/CASHIER.md), [encargado](roles/MANAGER.md) y
+[administrador](roles/ADMIN.md). Úsalos para asignar una cuenta a cada puesto;
+este capítulo explica cómo se conceden esas capacidades.
+
 ### 5.1. Roles de partida
 
 | Rol | Permisos por defecto | Pensado para |
