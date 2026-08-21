@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router';
+import { Link, Outlet } from 'react-router';
 
 import { usePosAuth } from '@/features/auth/usePosAuth';
 import { CloseTillDialog } from '@/features/pos/CloseTillDialog';
@@ -31,7 +31,7 @@ export function PosLayout() {
 }
 
 function PosLayoutContent() {
-  const { user, logout } = usePosAuth();
+  const { user, logout, hasPermission } = usePosAuth();
   const { surfaceColor } = usePosAppearance();
   // El TPV tiene su propia familia de color para acciones de cobro. Este
   // hook ya conserva el contraste al convertir el color elegido en escala.
@@ -65,6 +65,14 @@ function PosLayoutContent() {
             >
               Nueva venta
             </button>
+          )}
+          {hasPermission('return.manage') && (
+            <Link
+              to="/pos/returns"
+              className="rounded bg-slate-700 px-3 py-2 text-sm font-medium hover:bg-slate-600"
+            >
+              Devolución
+            </Link>
           )}
         </div>
         <div className="flex items-center gap-4 text-sm">

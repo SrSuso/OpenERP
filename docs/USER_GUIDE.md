@@ -147,8 +147,13 @@ instantáneas históricas y no cambian si después se registra otra operación.
 
 ## 4. Devoluciones económicas y físicas
 
-La pantalla **Devoluciones** requiere `return.read`; registrar una requiere
-`return.manage`. Busca una venta cobrada por su número y, para cada línea,
+La pantalla **Devoluciones** del panel requiere `return.read`; registrar una
+requiere `return.manage`. Un usuario que inicie sesión en el TPV y tenga
+`return.manage` verá también **Devolución** en la cabecera de la caja: es el
+mismo flujo supervisado, con la sesión POS actual. Los cajeros sin ese permiso
+no ven el acceso y el backend también rechaza cualquier intento directo.
+
+Busca una venta cobrada por su número y, para cada línea,
 indica dos cantidades independientes:
 
 - **Cantidad a reembolsar**: lo que se devuelve económicamente al cliente.
