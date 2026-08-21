@@ -53,15 +53,15 @@ function PosLayoutContent() {
       className="pos-surface flex h-full flex-col text-slate-50"
       style={{ backgroundColor: surfaceColor }}
     >
-      <header className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <span className="text-xl font-semibold">{shopName} · TPV</span>
+      <header className="flex items-center justify-between border-b border-slate-700 px-6 py-5">
+        <div className="flex items-center gap-4">
+          <span className="text-2xl font-semibold">{shopName} · TPV</span>
           {newSaleAction && (
             <button
               type="button"
               disabled={newSaleAction.disabled}
               onClick={newSaleAction.onPress}
-              className="rounded bg-slate-700 px-3 py-2 text-sm font-medium hover:bg-slate-600 disabled:opacity-50"
+              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600 disabled:opacity-50"
             >
               Nueva venta
             </button>
@@ -69,19 +69,19 @@ function PosLayoutContent() {
           {hasPermission('return.manage') && (
             <Link
               to="/pos/returns"
-              className="rounded bg-slate-700 px-3 py-2 text-sm font-medium hover:bg-slate-600"
+              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600"
             >
               Devolución
             </Link>
           )}
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-4 text-base">
           {user && <span>{user.full_name}</span>}
           {selectedTerminal && (
             <button
               type="button"
               onClick={requestTerminalChange}
-              className="rounded border border-slate-600 px-3 py-2 hover:bg-slate-700"
+              className="min-h-14 rounded border border-slate-600 px-4 py-3 hover:bg-slate-700"
             >
               {selectedTerminal.name}
             </button>
@@ -89,7 +89,7 @@ function PosLayoutContent() {
           <button
             type="button"
             onClick={() => setClosingTill(true)}
-            className="rounded bg-slate-700 px-4 py-2 font-medium hover:bg-slate-600"
+            className="min-h-14 rounded bg-slate-700 px-5 py-3 font-medium hover:bg-slate-600"
           >
             Cerrar sesión
           </button>
