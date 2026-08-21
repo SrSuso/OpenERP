@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type Sale, type Tender } from '@/features/pos/api';
+import { PosHeaderActionsProvider } from '@/features/pos/PosHeaderActions';
+import { usePosHeaderActions } from '@/features/pos/PosHeaderActionsContext';
 import { POS_TERMINAL_STORAGE_KEY, PosTerminalProvider } from '@/features/pos/PosTerminalProvider';
 
 import { PosHomePage } from './PosHomePage';
@@ -392,9 +394,25 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <PosTerminalProvider>
-        <PosHomePage />
+        <PosHeaderActionsProvider>
+          <HeaderNewSaleButton />
+          <PosHomePage />
+        </PosHeaderActionsProvider>
       </PosTerminalProvider>
     </QueryClientProvider>,
+  );
+}
+
+/** El layout real coloca esta acción junto al nombre del TPV. En esta prueba
+ * de la pantalla aislada basta con exponer el mismo registro para probar que
+ * abrir otra venta conserva los borradores existentes. */
+function HeaderNewSaleButton() {
+  const { newSaleAction } = usePosHeaderActions();
+  if (!newSaleAction) return null;
+  return (
+    <button type="button" disabled={newSaleAction.disabled} onClick={newSaleAction.onPress}>
+      Nueva venta
+    </button>
   );
 }
 
@@ -599,7 +617,7 @@ describe('PosHomePage', () => {
     await screen.findAllByText('Leche entera 1L');
     expect(backend.postSalesCalls.count).toBe(0);
 
-    await userEvent.click(screen.getByRole('button', { name: '+ Venta nueva' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Nueva venta' }));
 
     expect(backend.postSalesCalls.count).toBe(1);
     // Las dos siguen abiertas y se puede volver a la primera.
@@ -619,7 +637,7 @@ describe('PosHomePage', () => {
     renderPage();
     await screen.findByRole('button', { name: /cancelar venta/i });
 
-    await userEvent.click(screen.getByRole('button', { name: '+ Venta nueva' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Nueva venta' }));
     const first = await screen.findByRole('button', { name: /Venta 1/ });
 
     // Se le mete un producto a la segunda…

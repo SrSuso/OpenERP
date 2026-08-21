@@ -3,6 +3,8 @@ import { Outlet } from 'react-router';
 
 import { usePosAuth } from '@/features/auth/usePosAuth';
 import { CloseTillDialog } from '@/features/pos/CloseTillDialog';
+import { PosHeaderActionsProvider } from '@/features/pos/PosHeaderActions';
+import { usePosHeaderActions } from '@/features/pos/PosHeaderActionsContext';
 import { PosTerminalProvider } from '@/features/pos/PosTerminalProvider';
 import { TerminalSelection } from '@/features/pos/TerminalSelection';
 import { useLiveCatalog } from '@/features/pos/useLiveCatalog';
@@ -21,7 +23,9 @@ import { useShopSetting } from '@/features/settings/useShopSettings';
 export function PosLayout() {
   return (
     <PosTerminalProvider>
-      <PosLayoutContent />
+      <PosHeaderActionsProvider>
+        <PosLayoutContent />
+      </PosHeaderActionsProvider>
     </PosTerminalProvider>
   );
 }
@@ -39,6 +43,7 @@ function PosLayoutContent() {
   // desde ahí —con la Z ya guardada— se cierra la sesión.
   const [closingTill, setClosingTill] = useState(false);
   const { selectedTerminal, selectionOpen, requestTerminalChange } = usePosTerminal();
+  const { newSaleAction } = usePosHeaderActions();
   const warehouseId = selectedTerminal?.warehouse_id ?? null;
 
   if (selectionOpen) return <TerminalSelection />;
@@ -49,7 +54,19 @@ function PosLayoutContent() {
       style={{ backgroundColor: surfaceColor }}
     >
       <header className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
-        <span className="text-xl font-semibold">{shopName} · TPV</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xl font-semibold">{shopName} · TPV</span>
+          {newSaleAction && (
+            <button
+              type="button"
+              disabled={newSaleAction.disabled}
+              onClick={newSaleAction.onPress}
+              className="rounded bg-slate-700 px-3 py-2 text-sm font-medium hover:bg-slate-600 disabled:opacity-50"
+            >
+              Nueva venta
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-4 text-sm">
           {user && <span>{user.full_name}</span>}
           {selectedTerminal && (

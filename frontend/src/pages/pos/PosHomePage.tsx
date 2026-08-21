@@ -6,6 +6,7 @@ import { CategoryTabs } from '@/features/pos/CategoryTabs';
 import { Checkout } from '@/features/pos/Checkout';
 import { OpenSalesBar } from '@/features/pos/OpenSalesBar';
 import { OpenPricePrompt } from '@/features/pos/OpenPricePrompt';
+import { usePosHeaderActions } from '@/features/pos/PosHeaderActionsContext';
 import { ProductGrid } from '@/features/pos/ProductGrid';
 import { ProductSearchDialog } from '@/features/pos/ProductSearchDialog';
 import { QuantityPad } from '@/features/pos/QuantityPad';
@@ -45,6 +46,7 @@ function describeError(error: unknown): string {
  * of the very same `DRAFT` sale this screen builds.
  */
 export function PosHomePage() {
+  const { registerNewSaleAction } = usePosHeaderActions();
   const { selectedTerminal } = usePosTerminal();
   const terminalId = selectedTerminal?.id ?? null;
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
@@ -316,6 +318,16 @@ export function PosHomePage() {
     removeLineMutation.isPending ||
     cancelMutation.isPending;
 
+  useEffect(() => {
+    // El recibo ya tiene su propia acción «Nueva venta», y durante el
+    // cobro no se debe abrir otro carrito por error desde el encabezado.
+    if (sale === null || view !== 'cart' || receipt !== null) return;
+    return registerNewSaleAction({
+      onPress: () => openSale(),
+      disabled: busy || isOpeningSale,
+    });
+  }, [registerNewSaleAction, sale, view, receipt, busy, isOpeningSale, openSale]);
+
   // El lector, sin tener que pinchar antes en ningún recuadro: escanear es
   // el gesto más repetido de una caja y no puede pedir un clic previo.
   // Mientras el foco esté en un campo (teclear un código a mano, los gramos
@@ -408,8 +420,6 @@ export function PosHomePage() {
                         setSale(picked);
                         setLineError(null);
                       }}
-                      onOpenNew={() => openSale()}
-                      disabled={busy || isOpeningSale}
                     />
                     <div className="flex min-h-0 flex-1">
                       <div className="flex min-w-0 flex-1 flex-col">
