@@ -386,7 +386,7 @@ autorización real depende de permisos, no del nombre del rol.
 
 ### 10.1. Terminales
 
-Con `inventory.manage`, **Configuración de la tienda → Terminales POS** permite
+Con `pos_terminal.manage`, **Configuración de la tienda → Terminales POS** permite
 crear, renombrar, activar y desactivar terminales, y activar o desactivar el
 buscador táctil de cada uno. El almacén se elige al crearlos y queda fijo para
 no reinterpretar ventas históricas. En esta misma pantalla se ajustan el fondo,

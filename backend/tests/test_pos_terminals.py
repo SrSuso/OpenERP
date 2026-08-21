@@ -359,6 +359,17 @@ async def test_terminal_administration_renames_and_deactivates_but_never_moves_o
     )
     assert forbidden.status_code == 403
 
+    await login(role_name="MANAGER")
+    manager_create = await client.post(
+        "/api/v1/pos-terminals",
+        json={"name": "Manager cannot create", "warehouse_id": warehouse_id},
+    )
+    assert manager_create.status_code == 403
+    manager_update = await client.patch(
+        f"/api/v1/pos-terminals/{terminal['id']}", json={"name": "Manager cannot rename"}
+    )
+    assert manager_update.status_code == 403
+
 
 async def test_concurrent_tabs_merge_delta_commands_without_lost_updates(
     committing_sessionmaker: async_sessionmaker[AsyncSession],

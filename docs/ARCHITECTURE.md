@@ -244,7 +244,7 @@ bootstrap, rate limit ni claves `server.*`.
 | `/admin/inventory/balances` | Saldos/ajustes/transferencias | `inventory.read` |
 | `/admin/inventory/movements` | Movimientos | `inventory.read` |
 | `/admin/inventory/warehouses` | Almacenes/ubicaciones | `inventory.read` |
-| `/admin/pos-terminals` | Terminales y ajustes específicos del TPV | `inventory.manage` |
+| `/admin/pos-terminals` | Terminales y ajustes específicos del TPV | `pos_terminal.manage` |
 | `/admin/pricing` | Impuestos y fórmula | `pricing.manage` |
 | `/admin/suppliers` | Proveedores | `supplier.read` |
 | `/admin/purchasing` | Compras y recepciones | `purchase.read` |

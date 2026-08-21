@@ -515,7 +515,7 @@ este capítulo explica cómo se conceden esas capacidades.
 | Rol | Permisos por defecto | Pensado para |
 | --- | --- | --- |
 | `ADMIN` | todos | Dueño/gerencia con acceso total. |
-| `MANAGER` | `admin.access`, `users.manage` y gestión ordinaria de catálogo, precios, proveedores, compras/recepciones, inventario/lotes, ventas, devoluciones, tickets, dashboards, avisos, outbox e informes | Encargado de tienda. Por defecto no gestiona roles, auditoría ni configuración funcional global. |
+| `MANAGER` | `admin.access`, `users.manage` y gestión ordinaria de catálogo, precios, proveedores, compras/recepciones, inventario/lotes, ventas, devoluciones, dashboards, avisos, outbox e informes | Encargado de tienda. Por defecto no gestiona roles, auditoría, configuración funcional, terminales POS ni plantillas de ticket. |
 | `CASHIER` | `pos.access`, lectura de producto/inventario/lotes y lectura/gestión de ventas | Cajero: opera el TPV y dispone de las lecturas que éste necesita, sin acceso al panel. |
 
 No son una lista cerrada: en **Roles** (requiere `roles.manage`, concedido por
@@ -526,7 +526,7 @@ de esta guía incluye, entre otras:
 `product.read`/`product.manage`, `pricing.manage`, `supplier.read`/`.manage`,
 `purchase.read`/`.manage`, `receiving.read`/`.manage`, `inventory.read`/`.manage`,
 `lot.read`/`.manage`, `sale.read`/`.manage`, `return.read`/`.manage`,
-`ticket.manage`, `pos_category.manage`, `dashboard.read`/`.manage`,
+`ticket.manage`, `pos_terminal.manage`, `pos_category.manage`, `dashboard.read`/`.manage`,
 `notification.read`/`.manage`, `job.read`/`.manage`) también se ve en la
 propia pantalla **Roles** al crear/editar uno.
 

@@ -21,7 +21,14 @@ async def test_admin_can_log_in_and_has_full_permissions(
     admin = await login(role_name="ADMIN")
 
     assert admin["role"] == "ADMIN"
-    for key in ("admin.access", "pos.access", "users.manage", "roles.manage"):
+    for key in (
+        "admin.access",
+        "pos.access",
+        "users.manage",
+        "roles.manage",
+        "ticket.manage",
+        "pos_terminal.manage",
+    ):
         assert key in admin["permissions"]
 
 
@@ -76,6 +83,15 @@ async def test_manager_can_manage_users_and_read_roles_but_not_write_them(
     # regardless of whether role id 1 exists in this test's database.
     grant_response = await client.patch("/api/v1/roles/1/permissions", json={"permission_keys": []})
     assert grant_response.status_code == 403
+
+
+async def test_manager_cannot_manage_ticket_templates_or_pos_terminals(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    manager = await login(role_name="MANAGER")
+
+    assert "ticket.manage" not in manager["permissions"]
+    assert "pos_terminal.manage" not in manager["permissions"]
 
 
 async def test_unauthenticated_request_is_401_not_403(client: AsyncClient) -> None:

@@ -9,12 +9,12 @@ from app.pos import service
 from app.pos.models import PosTerminal
 from app.pos.schemas import PosTerminalCreate, PosTerminalRead, PosTerminalUpdate
 from app.rbac.dependencies import require_any_permission, require_permission
-from app.rbac.permissions import INVENTORY_MANAGE, SALE_READ
+from app.rbac.permissions import POS_TERMINAL_MANAGE, SALE_READ
 
 router = APIRouter(tags=["pos-terminals"])
 
-_require_terminal_read = Depends(require_any_permission(SALE_READ, INVENTORY_MANAGE))
-_require_manage = Depends(require_permission(INVENTORY_MANAGE))
+_require_terminal_read = Depends(require_any_permission(SALE_READ, POS_TERMINAL_MANAGE))
+_require_manage = Depends(require_permission(POS_TERMINAL_MANAGE))
 
 
 def _to_read(terminal: PosTerminal) -> PosTerminalRead:

@@ -61,7 +61,7 @@ const SECTIONS: NavSection[] = [
       {
         to: '/admin/pos-terminals',
         label: 'Terminales POS',
-        permissions: ['inventory.manage'],
+        permissions: ['pos_terminal.manage'],
       },
       { to: '/admin/pricing', label: 'Precios e impuestos', permissions: ['pricing.manage'] },
       {

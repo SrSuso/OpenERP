@@ -1,6 +1,6 @@
 """Ticket endpoints.
 
-Managing templates needs ``ticket.manage`` (``ADMIN``/``MANAGER``) — back-
+Managing templates needs ``ticket.manage`` (``ADMIN`` by default) — back-
 office configuration, no POS use case for it. Generating/reading a sale's
 ticket reuses ``sale.read`` (``CASHIER`` already has it since phase 11) —
 printing a receipt is just rendering a sale the cashier can already see,

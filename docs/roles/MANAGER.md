@@ -14,8 +14,7 @@ global por defecto.
 - Gestionar proveedores, compras, recepciones, almacenes, ubicaciones, lotes,
   FEFO, saldos, ajustes y transferencias.
 - Consultar y gestionar ventas, cierres Z y devoluciones económicas y físicas.
-- Configurar terminales POS, plantillas de ticket, dashboards, avisos, outbox
-  e informes operativos.
+- Gestionar dashboards, avisos, outbox e informes operativos.
 
 Las instrucciones concretas están agrupadas en la
 [guía de usuario](../USER_GUIDE.md): inventario y catálogo, compras,
@@ -35,6 +34,8 @@ incluya. Entonces aparecerá **Devolución** en la cabecera del TPV.
 - No puede consultar la auditoría (`audit.read`).
 - No puede ver ni cambiar **Configuración** funcional (`settings.read` y
   `settings.manage`).
+- No puede abrir ni gestionar **Terminales POS** (`pos_terminal.manage`) ni
+  **Plantillas de ticket** (`ticket.manage`).
 - No gestiona secretos, base de datos, SMTP, despliegues, copias ni restores:
   son operación de infraestructura, no permisos del panel.
 

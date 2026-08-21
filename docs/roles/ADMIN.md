@@ -16,6 +16,8 @@ caja cotidiana.
   recuperación.
 - Consultar la auditoría y configurar los ajustes funcionales de la tienda:
   nombre, zona horaria, reglas comerciales, avisos y preferencias del TPV.
+- Crear y configurar terminales POS, además de crear, revisar, activar y
+  eliminar plantillas de ticket.
 - Acceder a todas las áreas operativas: catálogo, precios, compras,
   inventario, ventas, devoluciones, cierres, tickets, dashboards, informes,
   avisos y outbox.

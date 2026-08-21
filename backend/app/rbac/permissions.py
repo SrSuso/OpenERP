@@ -328,6 +328,20 @@ PHASE_21_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "ADMIN": (SETTINGS_READ, SETTINGS_MANAGE),
 }
 
+# --- phase 26: access to POS terminal administration -----------------------
+POS_TERMINAL_MANAGE = "pos_terminal.manage"
+
+PHASE_26_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(POS_TERMINAL_MANAGE, "Create and configure POS terminals."),
+)
+
+# Terminal configuration changes the physical cash-register setup and its
+# behaviour. It is deliberately ADMIN-only by default; inventory management
+# remains available to MANAGER without granting access to this surface.
+PHASE_26_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (POS_TERMINAL_MANAGE,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -350,4 +364,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_18_PERMISSIONS
     + PHASE_19_PERMISSIONS
     + PHASE_21_PERMISSIONS
+    + PHASE_26_PERMISSIONS
 )

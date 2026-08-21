@@ -110,6 +110,26 @@ async def test_creating_a_template_activates_it_and_deactivates_the_previous_one
     assert active["id"] == second["id"]
 
 
+async def test_manager_cannot_manage_ticket_templates(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="MANAGER")
+
+    assert (await client.get("/api/v1/ticket-templates")).status_code == 403
+    assert (
+        await client.post(
+            "/api/v1/ticket-templates",
+            json={
+                "name": "Manager cannot create",
+                "printable_width_mm": 48,
+                "header_text": "",
+                "footer_text": "",
+                "tax_display": "BREAKDOWN",
+            },
+        )
+    ).status_code == 403
+
+
 async def test_revising_the_active_template_creates_a_new_version(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

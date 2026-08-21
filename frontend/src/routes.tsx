@@ -162,7 +162,7 @@ export const routes: RouteObject[] = [
               },
               {
                 path: 'pos-terminals',
-                element: <RequirePermission permission="inventory.manage" />,
+                element: <RequirePermission permission="pos_terminal.manage" />,
                 children: [{ index: true, element: <PosTerminalsPage /> }],
               },
               // Enlaces viejos de antes de la reorganización — siguen
