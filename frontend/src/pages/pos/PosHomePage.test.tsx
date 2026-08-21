@@ -478,7 +478,9 @@ describe('PosHomePage', () => {
     const backend = stubBackend();
     renderPage();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Buscar producto' }));
+    await userEvent.click(
+      await screen.findByPlaceholderText('Escanear o introducir código de barras'),
+    );
     const dialog = await screen.findByRole('dialog', { name: 'Buscar productos' });
     await userEvent.type(within(dialog).getByLabelText('Nombre, referencia o código'), 'Leche');
     await userEvent.click(await within(dialog).findByRole('button', { name: /Leche entera 1L/ }));
@@ -510,7 +512,8 @@ describe('PosHomePage', () => {
     renderPage();
 
     await waitForScannerReady();
-    expect(screen.queryByRole('button', { name: 'Buscar producto' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByPlaceholderText('Escanear o introducir código de barras'));
+    expect(screen.queryByRole('dialog', { name: 'Buscar productos' })).not.toBeInTheDocument();
   });
 
   it('asks how many grams before selling something that goes by weight', async () => {

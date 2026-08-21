@@ -453,16 +453,6 @@ export function PosHomePage() {
                           >
                             Añadir
                           </button>
-                          {showProductSearch && (
-                            <button
-                              type="button"
-                              onClick={() => setProductSearchOpen(true)}
-                              disabled={sale === null || busy}
-                              className="rounded bg-till-600 px-4 py-2 text-sm font-semibold text-white hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Buscar producto
-                            </button>
-                          )}
                         </form>
 
                         {lineError && (
