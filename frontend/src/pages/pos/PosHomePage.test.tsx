@@ -577,14 +577,14 @@ describe('PosHomePage', () => {
     expect(backend.mutationTerminalHeaders).toEqual([String(TERMINAL.id)]);
   });
 
-  it('sells several units at once with the keypad', async () => {
+  it('sells several units at once with the multiplier row', async () => {
     const backend = stubBackend();
     renderPage();
     await screen.findByRole('button', { name: /leche entera 1l/i });
 
-    // Se teclea 3 y se pulsa el producto: una línea de tres, sin pulsarlo
+    // Se elige ×3 y se pulsa el producto: una línea de tres, sin pulsarlo
     // tres veces.
-    await userEvent.click(screen.getByRole('button', { name: '3' }));
+    await userEvent.click(screen.getByRole('button', { name: '×3' }));
     expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×3');
 
     await userEvent.click(screen.getByRole('button', { name: /leche entera 1l/i }));
@@ -730,7 +730,7 @@ describe('PosHomePage', () => {
     renderPage();
     await waitForScannerReady();
 
-    await userEvent.click(screen.getByRole('button', { name: '3' }));
+    await userEvent.click(screen.getByRole('button', { name: '×3' }));
     scan('8410000000010', { terminator: 'Enter' });
 
     await waitFor(() =>

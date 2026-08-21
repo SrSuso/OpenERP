@@ -11,12 +11,16 @@ function QuantityPadHarness() {
 }
 
 describe('QuantityPad', () => {
-  it('uses the available control strip for clear quantity presets', async () => {
+  it('uses one compact row of consecutive multipliers', async () => {
     render(<QuantityPadHarness />);
 
     expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×1');
-    await userEvent.click(screen.getByRole('button', { name: '×5' }));
-    expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×5');
+    expect(screen.getAllByRole('button')).toHaveLength(10);
+    await userEvent.click(screen.getByRole('button', { name: '×4' }));
+    expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×4');
+
+    await userEvent.click(screen.getByRole('button', { name: '×10' }));
+    expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×10');
 
     await userEvent.click(screen.getByRole('button', { name: '×1' }));
     expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×1');
