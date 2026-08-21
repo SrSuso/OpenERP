@@ -80,6 +80,13 @@ El comando solicita email y contraseña sin imprimir la contraseña. Es
 idempotente para el mismo email. Los demás usuarios se crean después desde
 **Panel → Usuarios y roles**.
 
+Para probar el TPV local, crea desde esa pantalla un usuario con rol que tenga
+`pos.access`, **Usuario TPV**, PIN de 4 a 12 dígitos y acceso TPV habilitado.
+Después crea un terminal en **Configuración de la tienda → Terminales POS**;
+ahí también se activa el buscador táctil y se ajusta la apariencia propia de la
+caja. El TPV se abre en <http://127.0.0.1:5173/pos/login>, con su sesión
+independiente del panel.
+
 ## 6. Arrancar la aplicación
 
 En terminales separadas:

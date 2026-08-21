@@ -293,16 +293,31 @@ explícito `http://localhost:5173`. La sesión mantiene cookie
 `Secure`, `HttpOnly`, `SameSite=Lax`; el POST cross-site normal no recibe esa
 cookie y no se añadió una capa CSRF innecesaria para esta topología same-origin.
 
-## 3.3. Registrar los terminales POS
+## 3.3. Registrar terminales y configurar el TPV
 
-Antes de abrir el TPV por primera vez, entra en **Inventario → Terminales
-POS** y crea cada puesto físico (Caja 1, Caja 2…) asignándolo a su almacén.
+Antes de abrir el TPV por primera vez, entra en **Configuración de la tienda →
+Terminales POS** y crea cada puesto físico (Caja 1, Caja 2…) asignándolo a su
+almacén.
 El almacén no se puede cambiar después: las ventas conservan el ID del
 terminal como histórico. Se puede renombrar o desactivar, pero no borrar.
+
+En esa misma pantalla se concentra lo propio de la caja: fondo, tamaño de
+letra, color de los botones de cobro, método de pago inicial, actualización del
+catálogo e impresión automática. El interruptor **Buscar productos** es por
+terminal: al activarlo, tocar el recuadro superior de búsqueda del TPV abre el
+catálogo con teclado táctil; al desactivarlo queda disponible el lector de
+códigos y la rejilla de productos.
 
 El navegador pide uno de los terminales activos y guarda la elección
 localmente. Cambiar de usuario no cambia de caja. Para elegir otra, pulsa el
 nombre del terminal en la cabecera del TPV.
+
+El acceso al TPV es independiente del de administración. En
+**Administración → Usuarios y roles → Usuarios**, asigna al cajero un rol con
+`pos.access`, configura su **Usuario TPV** y PIN de 4 a 12 dígitos y pulsa
+**Dar acceso TPV**. Sólo los usuarios habilitados aparecen en `/pos/login`;
+allí se elige el usuario y se escribe el PIN en la pantalla. Deshabilitar el
+acceso lo retira inmediatamente sin borrar ventas, cierres ni auditoría.
 
 Si se rompe una caja con un borrador pendiente, **no la borres ni esperes que
 el borrador se mueva solo**. Desactiva el terminal para impedir más operación
@@ -364,12 +379,28 @@ En el equipo de la caja, antes:
 
 1. Pon la impresora de tickets como **predeterminada del sistema**. Es la
    que se usará: el modo caja no pregunta, y por eso no elige.
-2. En su controlador, deja configurado el ancho del rollo (58 u 80 mm).
-   Los márgenes los quita ya la aplicación (`@page { margin: 0 }`), que es
-   lo que evita que el ticket salga partido.
+2. En su controlador, deja configurado el ancho físico del rollo (normalmente
+   80 mm). En **Plantillas de ticket** configura aparte el ancho **imprimible**:
+   en una impresora de 80 mm, 72 mm es un buen punto de partida para evitar que
+   el área no imprimible lateral monte texto. Ajusta esa medida, fuente,
+   tamaño, interlineado y márgenes con un ticket de prueba. El largo es
+   automático; fijar una altura puede cortar líneas o desperdiciar papel.
 
 Para que arranque solo al encender, añade el script a las aplicaciones de
 inicio de sesión del escritorio.
+
+### 3.5. Mantener las plantillas de ticket
+
+En **Configuración de la tienda → Plantillas de ticket**, crea o revisa la
+plantilla que imprime la caja. La vista previa permite ajustar ancho imprimible,
+fuente, tamaño, grosor, interlineado, márgenes, cabecera, pie, datos fiscales,
+fecha, textos y líneas que se muestran. Sólo una plantilla está activa; usa
+**Usar esta** para cambiarla sin editar otra por error.
+
+Las revisiones no cambian tickets ya emitidos. También se pueden eliminar
+plantillas equivocadas, incluso usadas: el ticket ya generado conserva el texto
+y perfil que se imprimieron. Si se elimina la activa, crea o activa otra antes
+de volver a cobrar para que la caja tenga plantilla disponible.
 
 ---
 
@@ -499,11 +530,18 @@ puede desactivar o degradar al último usuario activo capaz de gestionar tanto
 usuarios como roles; esa protección evita dejar la instalación sin una vía de
 recuperación administrativa.
 
-### 5.2. Dar de alta un usuario
+### 5.2. Dar de alta un usuario y habilitarlo para TPV
 
 En **Usuarios** → **Nuevo usuario**: email, nombre, contraseña provisional
-y rol (desplegable con los roles existentes). La persona debería cambiar
-esa contraseña provisional desde **Mi cuenta**. Comunícala por un canal seguro:
+y rol (desplegable con los roles existentes). Si la persona va a cobrar,
+rellena también **Usuario TPV** y **PIN TPV** (4–12 dígitos): al crearla queda
+habilitada para TPV. Para una cuenta ya existente, usa **Configurar TPV** y
+después **Dar acceso TPV** en su fila. El usuario TPV no lo determina React ni
+el terminal: el backend lo obtiene de esa cuenta habilitada y exige además que
+su rol tenga `pos.access`.
+
+La persona debería cambiar esa contraseña provisional desde **Mi cuenta**.
+Comunícala por un canal seguro:
 la creación inicial no fuerza automáticamente el cambio en la versión actual.
 
 **Restablecer contraseña** es distinto: establece una clave temporal de al

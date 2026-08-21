@@ -113,10 +113,13 @@ compiten por el mismo agregado.
 reconstruible que se actualiza en la misma transacción. Nunca se corrige un
 saldo sin crear el movimiento correspondiente.
 
-Todas las cantidades se convierten a unidad base. Un producto puede heredar de
-su categoría si controla existencias; los productos sin control no comprueban
-ni mueven stock en venta/devolución. Los productos trazados conservan control
-de lotes y una salida automática usa FEFO.
+Todas las cantidades se convierten a unidad base. Corregir después el nombre
+de esa unidad cambia únicamente la etiqueta actual del producto y de su formato
+base: no reescribe ni convierte el ledger, saldos, líneas comerciales, precios
+o snapshots históricos. Un producto puede heredar de su categoría si controla
+existencias; los productos sin control no comprueban ni mueven stock en
+venta/devolución. Los productos trazados conservan control de lotes y una
+salida automática usa FEFO.
 
 Las invariantes de no negatividad se validan bajo lock. La opción funcional
 `sales.allow_negative_stock` sólo relaja productos sin lotes.
@@ -137,9 +140,10 @@ Sólo una cantidad económica crea un `Refund COMPLETED`; sólo una cantidad
 física controlada crea movimiento de entrada. El importe procede del snapshot
 de la venta.
 
-Los tickets se renderizan una vez y conservan `rendered_text`. Reimprimir no
-vuelve a consultar la plantilla activa. Sólo puede existir una plantilla
-activa globalmente y editar crea una revisión nueva.
+Los tickets se renderizan una vez y conservan `rendered_text` y su perfil de
+impresión. Reimprimir no vuelve a consultar la plantilla activa. Sólo puede
+existir una plantilla activa globalmente y editar crea una revisión nueva; una
+plantilla se puede borrar sin afectar tickets ya renderizados.
 
 ### 2.6. Hora comercial
 
@@ -152,9 +156,16 @@ fecha comercial de operaciones cercanas a medianoche.
 
 ### 2.7. Autenticación y permisos
 
-La sesión es server-side y revocable. La cookie contiene un token opaco cuyo
-hash se guarda en PostgreSQL. Las sesiones pueden revocarse individualmente y
-se revocan al desactivar una cuenta o restablecer su contraseña.
+La sesión de administración es server-side y revocable. La cookie contiene un
+token opaco cuyo hash se guarda en PostgreSQL. Las sesiones pueden revocarse
+individualmente y se revocan al desactivar una cuenta o restablecer su
+contraseña.
+
+El TPV usa una sesión independiente: el backend autentica un usuario TPV
+habilitado mediante su nombre de usuario y PIN, y la interfaz nunca acepta que
+un terminal o el cliente decidan la identidad del cajero. La habilitación TPV
+requiere credenciales configuradas y el permiso `pos.access`; deshabilitarla
+impide nuevos accesos sin alterar el histórico.
 
 RBAC sigue `usuario → rol → permisos`. El frontend oculta rutas por comodidad,
 pero todos los endpoints vuelven a exigir permisos. Las políticas impiden:
@@ -221,7 +232,8 @@ bootstrap, rate limit ni claves `server.*`.
 | --- | --- | --- |
 | `/login` | Inicio de sesión | público |
 | `/change-password` | Cambio obligatorio | autenticado y marcado |
-| `/pos` | TPV | `pos.access` |
+| `/pos/login` | Acceso TPV con usuario/PIN | público; sólo admite cuentas TPV habilitadas |
+| `/pos` | TPV | sesión TPV + `pos.access` |
 | `/admin` | Dashboard propio | `admin.access` + permisos dashboard para datos |
 | `/admin/account` | Contraseña y sesiones propias | `admin.access` |
 | `/admin/access/users` | Usuarios | `users.manage` |
@@ -232,7 +244,7 @@ bootstrap, rate limit ni claves `server.*`.
 | `/admin/inventory/balances` | Saldos/ajustes/transferencias | `inventory.read` |
 | `/admin/inventory/movements` | Movimientos | `inventory.read` |
 | `/admin/inventory/warehouses` | Almacenes/ubicaciones | `inventory.read` |
-| `/admin/inventory/terminals` | Terminales POS | `inventory.manage` |
+| `/admin/pos-terminals` | Terminales y ajustes específicos del TPV | `inventory.manage` |
 | `/admin/pricing` | Impuestos y fórmula | `pricing.manage` |
 | `/admin/suppliers` | Proveedores | `supplier.read` |
 | `/admin/purchasing` | Compras y recepciones | `purchase.read` |
@@ -253,10 +265,12 @@ TanStack Query gestiona el estado remoto. React Hook Form y Zod adelantan
 validaciones, pero el backend sigue siendo autoritativo. Los importes y
 cantidades `NUMERIC` viajan como strings para no introducir `float`.
 
-El TPV persiste sólo la identidad del terminal en `localStorage`; usuario,
-borradores y operaciones viven en el servidor. El catálogo se actualiza por
-una versión ligera periódica, cambio de foco y `BroadcastChannel`, sin alterar
-el borrador activo.
+El TPV persiste sólo la identidad del terminal en `localStorage`; su sesión de
+cajero, borradores y operaciones viven en el servidor. El catálogo se actualiza
+por una versión ligera periódica, cambio de foco y `BroadcastChannel`, sin
+alterar el borrador activo. Cada terminal puede habilitar el buscador táctil;
+al tocar su recuadro se abre un diálogo con teclado en pantalla, mientras el
+lector de códigos sigue escuchando globalmente.
 
 ## 5. API y perímetro
 

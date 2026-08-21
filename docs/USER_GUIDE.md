@@ -12,14 +12,18 @@ Para instalar, actualizar o recuperar el servidor, consulta
 
 ## 1. Entrar, salir y proteger la cuenta
 
-Abre la dirección HTTPS facilitada por el administrador e introduce el correo
-y la contraseña. No existe registro público ni recuperación autónoma por
-email: las cuentas y los restablecimientos los gestiona una persona con
-`users.manage`.
+El panel de administración se abre por la dirección HTTPS facilitada por el
+administrador e inicia sesión con correo y contraseña. El TPV tiene su propia
+pantalla de acceso, `/pos/login`: se elige un usuario TPV habilitado y se
+introduce su PIN en el teclado numérico de la pantalla. No existe registro
+público ni recuperación autónoma por email: las cuentas, PIN y
+restablecimientos los gestiona una persona con `users.manage`.
 
 - Con `admin.access` se puede entrar al panel `/admin`.
-- Con `pos.access` se puede entrar al TPV `/pos`.
-- Si se tienen ambos permisos, la página inicial prioriza el panel.
+- Con `pos.access`, un usuario TPV, PIN y habilitación expresa se puede entrar
+  al TPV `/pos/login`.
+- Si se tienen ambos permisos, el acceso administrativo normal prioriza el
+  panel; el TPV siempre mantiene una sesión independiente.
 
 Cuando un administrador restablece una contraseña, se cierran las sesiones de
 esa cuenta. En el siguiente acceso sólo se muestra **Cambiar contraseña** y no
@@ -37,9 +41,9 @@ compartido.
 
 ### 2.1. Terminal y cajero son identidades distintas
 
-La primera vez que se abre `/pos`, el navegador pide seleccionar un terminal
-activo, como «Caja 1». La selección queda guardada en ese navegador aunque
-cambie la persona que inicia sesión.
+Tras el acceso al TPV, el navegador pide seleccionar un terminal activo, como
+«Caja 1». La selección queda guardada en ese navegador aunque cambie la
+persona que inicia sesión.
 
 - **Terminal**: puesto físico y almacén desde el que sale la mercancía.
 - **Cajero**: usuario autenticado que confirma el cobro.
@@ -58,8 +62,9 @@ cajas.
 ### 2.2. Ventas abiertas y aparcadas
 
 El TPV recupera los borradores del terminal seleccionado. Puede haber varios a
-la vez: pulsa **+ Venta nueva** para aparcar el actual y atender a otra persona,
-y usa la barra superior para volver a cualquiera de ellos.
+la vez: pulsa **Nueva venta**, junto al nombre de la tienda en la cabecera,
+para aparcar el actual y atender a otra persona. Si hay más de un borrador,
+usa la barra de ventas abiertas para volver a cualquiera de ellos.
 
 Los borradores se guardan en el servidor y sobreviven a una recarga o al cierre
 del navegador. No se mezclan con los borradores de otro terminal. No existe una
@@ -69,11 +74,13 @@ transferencia supervisada de borradores entre terminales.
 
 - Toca un botón del catálogo para añadir su presentación base.
 - Usa el multiplicador antes de tocar el producto si necesitas varias unidades.
-- Para unidades configuradas como pesables, el TPV pide la cantidad antes de
-  añadir la línea.
-- Escanea un código de barras sin enfocar ningún campo, o escríbelo y pulsa
-  **Añadir**. El código identifica la presentación exacta —unidad, caja de seis,
-  etc.— y conserva su factor y nombre en la venta.
+- Para categorías configuradas para vender al peso, el TPV pide los gramos
+  antes de añadir la línea y calcula el importe con el PVP por unidad base.
+- Escanea un código de barras sin enfocar ningún campo. Para buscar a mano,
+  toca o haz clic directamente en el recuadro **Escanear o introducir código
+  de barras**: se abre el buscador de catálogo con teclado táctil. Busca por
+  nombre, SKU o código de barras y toca el resultado. El administrador puede
+  desactivar este buscador para cada terminal.
 - Las pestañas de colores filtran las categorías POS.
 
 **Cancelar venta** anula el borrador completo. Para quitar sólo una línea, usa
@@ -83,7 +90,10 @@ el control de esa línea.
 
 Pulsa **Cobrar**, elige el método disponible y confirma:
 
-- **Efectivo**: permite escribir el importe recibido y calcula el cambio.
+- **Efectivo**: al seleccionarlo se abre después el recuadro **Importe
+  recibido**. El teclado recibe céntimos, sin coma: `1250` equivale a `12,50
+  €`. Puede dejarse vacío cuando el cliente entrega el importe exacto; el TPV
+  calcula el cambio cuando corresponde.
 - **Tarjeta**: usa el total exacto.
 - **Otro**: sólo aparece si la tienda lo habilitó; puede llamarse Bizum, vale u
   otro nombre configurado.
@@ -176,28 +186,45 @@ regresa.
 ## 5. Inventario y catálogo
 
 El apartado **Inventario** agrupa productos, categorías, lotes, saldos,
-movimientos, almacenes y terminales. Cada pestaña se muestra según los permisos
-de lectura correspondientes.
+movimientos y almacenes. Los terminales POS se configuran fuera de inventario,
+en **Configuración de la tienda → Terminales POS**. Cada pestaña se muestra
+según los permisos de lectura correspondientes.
 
 ### 5.1. Productos, presentaciones y códigos
 
 Con `product.read` se puede buscar y consultar productos. Con
 `product.manage` se pueden crear, editar, desactivar y configurar:
 
-- nombre, descripción, unidad base y stock mínimo;
+- nombre, descripción, código de barras base, unidad base y stock mínimo;
 - categorías de producto y categoría POS;
 - control de existencias y seguimiento por lotes;
 - imagen;
 - presentaciones, como unidad, bandeja o caja, con su factor de equivalencia;
 - uno o más códigos de barras por presentación.
 
-El SKU se genera automáticamente. Desactivar conserva todo el histórico. En la
-ficha también aparecen el precio, sus cambios y el histórico de compra cuando
-los permisos lo permiten.
+El SKU se genera automáticamente. La unidad base se puede corregir aunque el
+producto ya tenga movimientos: es una corrección de etiqueta, por lo que no
+convierte cantidades, precios ni movimientos históricos. Si hay que convertir
+una magnitud real, se necesita una regularización comercial/inventariable, no
+usar este selector como conversor.
 
-**Categorías** gestiona categorías de producto, categorías de botones del TPV y
-la lista ordenada de unidades. Las acciones requieren `product.manage` o
-`pos_category.manage`, según el bloque.
+Desactivar conserva todo el histórico. Se puede eliminar definitivamente un
+alta equivocada sólo mientras no tenga ventas, compras, devoluciones, lotes,
+stock ni movimientos; si ya los tiene, se desactiva. En la ficha también
+aparecen el precio, sus cambios y el histórico de compra cuando los permisos lo
+permiten.
+
+**Categorías** divide la pantalla entre categorías de producto y, al otro lado,
+categorías POS y unidades. Las categorías de producto pueden fijar de una vez
+control de stock, venta al peso, unidad por defecto, margen, margen fijo,
+fórmula e impuestos. Las categorías POS controlan los botones del TPV (nombre,
+color, orden e imagen), sin confundirse con la categoría de estantería.
+
+La lista de unidades incluye siempre `KG`, `L` y `UDS`; se pueden añadir,
+editar y borrar unidades personalizadas. Borrar una personalizada deja de
+proponerla en categorías nuevas y limpia ese valor por defecto, pero los
+productos existentes conservan su texto histórico. Las tres unidades estándar
+están protegidas para que sigan disponibles.
 
 ### 5.2. Saldos, movimientos, ajustes y transferencias
 
@@ -274,13 +301,16 @@ La pantalla **Precios e impuestos** requiere `pricing.manage`.
 - Cambiar coste, impuestos, margen o fórmula recalcula el precio y registra el
   cambio. También se puede fijar un PVP manual.
 
-El margen fijo se suma al resultado de la fórmula. El precio calculado se
-redondea a céntimos. Cambiar el precio actual nunca modifica ventas, compras o
-tickets históricos.
+El margen fijo se suma al resultado de la fórmula y puede combinarse con el
+margen porcentual. La ficha de producto muestra el **PVP calculado (sin
+redondear)** y el **PVP de venta (redondeado)**: los precios automáticos se
+redondean siempre al alza al siguiente múltiplo de cinco céntimos (`1,53 →
+1,55`; `2,16 → 2,20`). Un PVP manual se respeta exactamente. Cambiar el precio
+actual nunca modifica ventas, compras o tickets históricos.
 
-Para unidades configuradas como edición rápida, coste y PVP pueden cambiarse
-desde la lista de productos. Cambiar el coste recalcula el PVP; cambiar el PVP
-lo fija manualmente.
+Desde la ficha del producto, en la pestaña **Precios**, se pueden cambiar
+coste, impuestos y márgenes y revisar ambos PVP. Cambiar el coste recalcula el
+PVP automático; fijar un PVP manual lo conserva como precio exacto.
 
 ---
 
@@ -315,9 +345,13 @@ para volver a ejecutarlas.
 **Usuarios y roles** muestra cada pestaña sólo si se tiene `users.manage` o
 `roles.manage`.
 
-Con `users.manage` se puede crear un usuario, asignarle un rol permitido,
-activarlo, desactivarlo y restablecer su contraseña. Una persona nunca puede
-asignar un rol que contenga permisos que ella misma no posee. Tampoco puede
+Con `users.manage` se puede crear y editar un usuario, asignarle un rol
+permitido, activarlo, desactivarlo, restablecer su contraseña y configurar su
+acceso TPV. Para que aparezca en el desplegable de `/pos/login`, debe tener un
+rol con `pos.access`, un **Usuario TPV** y un PIN de 4 a 12 dígitos, y estar
+marcado como habilitado para TPV. Quitar esa habilitación lo retira del
+desplegable sin borrar su histórico. Una persona nunca puede asignar un rol que
+contenga permisos que ella misma no posee. Tampoco puede
 desactivarse a sí misma ni dejar la instalación sin al menos un administrador
 activo capaz de gestionar usuarios y roles.
 
@@ -342,16 +376,26 @@ autorización real depende de permisos, no del nombre del rol.
 
 ### 10.1. Terminales
 
-Con `inventory.manage`, **Inventario → Terminales POS** permite crear,
-renombrar, activar y desactivar terminales. El almacén se elige al crearlos y
-queda fijo para no reinterpretar ventas históricas.
+Con `inventory.manage`, **Configuración de la tienda → Terminales POS** permite
+crear, renombrar, activar y desactivar terminales, y activar o desactivar el
+buscador táctil de cada uno. El almacén se elige al crearlos y queda fijo para
+no reinterpretar ventas históricas. En esta misma pantalla se ajustan el fondo,
+tamaño de letra, botones de cobro, método de pago inicial, refresco de catálogo
+e impresión automática del TPV.
 
 ### 10.2. Plantillas de ticket
 
-Con `ticket.manage` se crean y revisan plantillas de 58/80 mm. Sólo una
-plantilla está activa globalmente. Editar crea una nueva revisión y activar una
-desactiva la anterior. Los tickets ya generados quedan congelados y la
-reimpresión usa ese histórico.
+Con `ticket.manage` se crean, revisan, activan y eliminan plantillas. Sólo una
+plantilla está activa globalmente. La plantilla define el **ancho imprimible**
+(no necesariamente el ancho físico del rollo), fuente, tamaño, interlineado,
+márgenes superior/inferior, cabecera, pie, datos de tienda, fecha, textos y
+campos visibles. En papel estándar de 80 mm se suele empezar con 72 mm de
+ancho imprimible y ajustar tras una prueba real.
+
+Editar crea una nueva revisión y activar una desactiva la anterior. El largo se
+calcula automáticamente; no se fija una altura para no cortar líneas. Una
+plantilla se puede eliminar incluso si generó tickets: cada ticket guarda su
+texto y perfil de impresión congelados, por lo que las reimpresiones no cambian.
 
 ### 10.3. Avisos y correo
 
@@ -377,11 +421,16 @@ La pantalla **Configuración** requiere `settings.read`; guardar requiere
 PostgreSQL, entre ellas:
 
 - nombre visible de la tienda y `business.timezone`;
-- impresión, actualización del catálogo, unidades pesables y métodos del TPV;
+- reglas de venta, actualización del catálogo y métodos del TPV;
 - stock negativo y descuento máximo;
-- prefijo SKU, stock mínimo y unidades de precio rápido;
+- prefijo SKU y stock mínimo por defecto;
 - textos de avisos;
-- tamaño de letra y colores.
+- tamaño de letra y colores del panel.
+
+Los ajustes específicamente de caja (pantalla, botones de cobro, buscador por
+terminal e impresión automática) viven en **Terminales POS**. Los datos y el
+perfil de impresión del ticket viven en **Plantillas de ticket**. Esta
+separación evita que una misma opción aparezca en varios sitios.
 
 `business.timezone` es la zona horaria comercial usada para mostrar, filtrar y
 agrupar ventas, recepciones, devoluciones, auditoría, tickets, dashboards e

@@ -16,13 +16,20 @@ base PostgreSQL; un worker independiente entrega el correo encolado.
 
 La interfaz incluye:
 
-- POS por terminal, varios borradores aparcados, presentaciones/códigos de
-  barras, cobro y tickets;
-- productos, categorías, precios, impuestos, proveedores y compras;
+- POS por terminal, acceso propio con usuario/PIN, varios borradores
+  aparcados, buscador táctil, presentaciones/códigos de barras, cobro y
+  tickets;
+- productos, categorías de producto/POS, unidades, precios, impuestos,
+  proveedores y compras;
 - recepciones, almacenes, ubicaciones, lotes, FEFO, saldos y movimientos;
 - ventas, devoluciones económicas/físicas, cierres Z e informes;
 - dashboards privados, avisos, outbox y auditoría;
 - usuarios, roles, permisos y configuración funcional de tienda.
+
+Las opciones específicas de una caja (terminal, buscador táctil, pantalla,
+botones, cobro e impresión automática) están en **Configuración de la tienda
+→ Terminales POS**. El perfil de impresión —ancho imprimible, fuente,
+márgenes, textos y datos fiscales— se gestiona en **Plantillas de ticket**.
 
 La documentación normativa se divide por audiencia:
 
