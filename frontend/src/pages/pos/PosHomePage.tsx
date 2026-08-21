@@ -435,6 +435,14 @@ export function PosHomePage() {
                             type="text"
                             value={barcode}
                             onChange={(event) => setBarcode(event.target.value)}
+                            onTouchStart={(event) => {
+                              if (!showProductSearch || sale === null || busy) return;
+                              // En una pantalla táctil este recuadro es la entrada
+                              // natural para buscar: abrir directamente el diálogo
+                              // evita depender de un segundo botón o del teclado del SO.
+                              event.preventDefault();
+                              setProductSearchOpen(true);
+                            }}
                             placeholder="Escanear o introducir código de barras"
                             disabled={sale === null || busy}
                             className="flex-1 rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 disabled:opacity-50"

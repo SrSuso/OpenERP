@@ -164,7 +164,7 @@ async def test_base_unit_can_be_corrected_before_the_product_has_history(
     assert base_package["name"] == "UDS"
 
 
-async def test_base_unit_cannot_change_after_a_stock_movement(
+async def test_base_unit_can_be_corrected_after_a_stock_movement_without_changing_quantities(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
@@ -192,12 +192,23 @@ async def test_base_unit_cannot_change_after_a_stock_movement(
     )
     assert movement.status_code == 201
 
-    rejected = await client.patch(
+    corrected = await client.patch(
         f"/api/v1/products/{product['id']}", json={"base_unit_name": "KG"}
     )
 
-    assert rejected.status_code == 409
-    assert "unidad base" in rejected.json()["error"]["message"]
+    assert corrected.status_code == 200
+    assert corrected.json()["base_unit_name"] == "KG"
+    base_package = next(package for package in corrected.json()["packages"] if package["is_base"])
+    assert base_package["name"] == "KG"
+
+    # Corregir la etiqueta de la unidad no reescribe el libro mayor ni la
+    # proyección de stock ya contabilizados.
+    movements = await client.get(f"/api/v1/stock-movements?product_id={product['id']}")
+    assert movements.status_code == 200
+    assert [item["quantity"] for item in movements.json()] == ["1.000000"]
+    balances = await client.get(f"/api/v1/stock-balance?product_id={product['id']}")
+    assert balances.status_code == 200
+    assert [item["quantity"] for item in balances.json()] == ["1.000000"]
 
 
 async def test_new_units_are_appended_to_the_end_of_the_order(

@@ -357,7 +357,7 @@ export interface ProductUpdateInput {
   is_open_price?: boolean;
   /** Código del formato base; `null` retira sólo el principal. */
   base_barcode?: string | null;
-  /** Corrección segura de la unidad base antes de que exista historial. */
+  /** Corrige la etiqueta de unidad actual; no convierte datos históricos. */
   base_unit_name?: string;
   min_stock?: string;
   track_lots?: boolean;

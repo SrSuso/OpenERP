@@ -786,48 +786,6 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
     return created
 
 
-async def _assert_base_unit_can_change(session: AsyncSession, product_id: int) -> None:
-    """Reject a unit correction once an old base quantity has any meaning.
-
-    Product quantities deliberately have no unit foreign key: a ledger row,
-    sale line or purchase line is expressed in the product's base unit at the
-    time it was created. Renaming that unit afterwards would silently turn,
-    for example, kilograms into units. A correction is therefore limited to a
-    newly created product with no derived package or business history.
-    """
-    # These are local imports because the domain model is intentionally not a
-    # dependency of catalog at import time (several of these modules already
-    # reference Product). They are loaded before the first request.
-    from app.inventory.models import StockBalance, StockMovement
-    from app.lots.models import Lot
-    from app.pricing.models import ProductPriceHistory
-    from app.purchasing.models import GoodsReceiptLine, PurchaseOrderLine
-    from app.returns.models import ReturnLine
-    from app.sales.models import SaleLine
-
-    checks = (
-        select(ProductPackage.id).where(
-            ProductPackage.product_id == product_id, ProductPackage.is_base.is_(False)
-        ),
-        select(StockMovement.id).where(StockMovement.product_id == product_id),
-        select(StockBalance.id).where(StockBalance.product_id == product_id),
-        select(Lot.id).where(Lot.product_id == product_id),
-        select(SaleLine.id).where(SaleLine.product_id == product_id),
-        select(PurchaseOrderLine.id).where(PurchaseOrderLine.product_id == product_id),
-        select(GoodsReceiptLine.id)
-        .join(PurchaseOrderLine, GoodsReceiptLine.purchase_order_line_id == PurchaseOrderLine.id)
-        .where(PurchaseOrderLine.product_id == product_id),
-        select(ReturnLine.id).where(ReturnLine.product_id == product_id),
-        select(ProductPriceHistory.id).where(ProductPriceHistory.product_id == product_id),
-    )
-    for statement in checks:
-        if (await session.execute(statement.limit(1))).scalar_one_or_none() is not None:
-            raise ConflictError(
-                "No se puede cambiar la unidad base: el producto ya tiene movimientos, "
-                "historial o formatos. Crea un producto nuevo para conservar las cantidades."
-            )
-
-
 async def update_product(session: AsyncSession, product_id: int, payload: ProductUpdate) -> Product:
     product = await get_product(session, product_id)
     before = _snapshot(product)
@@ -866,7 +824,6 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
         # should `_managed_unit_or_422` ever be reused differently.
         if unit_name is None:
             raise ValidationError("A base unit is required.")
-        await _assert_base_unit_can_change(session, product_id)
         base_package = next((package for package in product.packages if package.is_base), None)
         if base_package is None:
             raise ConflictError("El producto no tiene un formato base que se pueda corregir.")

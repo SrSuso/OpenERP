@@ -239,7 +239,8 @@ export function EditProductForm({
             </select>
           </label>
           <span className="mt-1 block text-xs text-slate-400">
-            Puedes corregirla antes de tener stock, ventas, compras, lotes o formatos adicionales.
+            Puedes corregirla aunque ya tenga historial. Es una corrección de etiqueta: no convierte
+            cantidades, precios ni movimientos ya registrados.
           </span>
           {errors.base_unit_name && (
             <p className="mt-1 text-sm text-red-600">{errors.base_unit_name.message}</p>

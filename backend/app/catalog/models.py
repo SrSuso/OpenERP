@@ -4,7 +4,8 @@ Stock (from phase 7 onward) is always held in a product's base unit — rule
 3. A package's ``factor`` is how many base units it is worth (rule 4); the
 base presentation itself is just the package with ``factor == 1`` and
 ``is_base == True``, created automatically alongside the product so every
-product always has exactly one.
+product always has exactly one. Correcting the base-unit label later never
+rewrites ledger quantities or their package/price snapshots.
 """
 
 from __future__ import annotations

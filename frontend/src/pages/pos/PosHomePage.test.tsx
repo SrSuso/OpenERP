@@ -493,6 +493,18 @@ describe('PosHomePage', () => {
     expect(screen.queryByRole('dialog', { name: 'Buscar productos' })).not.toBeInTheDocument();
   });
 
+  it('opens the touch keyboard directly when the search box is touched', async () => {
+    stubBackend();
+    renderPage();
+
+    fireEvent.touchStart(
+      await screen.findByPlaceholderText('Escanear o introducir código de barras'),
+    );
+
+    const dialog = await screen.findByRole('dialog', { name: 'Buscar productos' });
+    expect(within(dialog).getByLabelText('Teclado para buscar productos')).toBeInTheDocument();
+  });
+
   it('hides the touch search when that terminal has it disabled', async () => {
     stubBackend({ showProductSearch: false });
     renderPage();
