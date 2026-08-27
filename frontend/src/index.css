@@ -81,6 +81,14 @@
     visibility: hidden;
   }
 
+  /* Un ticket cancelado conserva su vista en pantalla para poder cerrarla,
+     pero no puede participar en el flujo impreso. `visibility: hidden` no
+     basta: conserva su alto y cada intento anterior se convertía en una
+     hoja en blanco antes del ticket vigente. */
+  .ticket-print-root:not([data-print-active='true']) {
+    display: none !important;
+  }
+
   .ticket-print-root[data-print-active='true'],
   .ticket-print-root[data-print-active='true'] * {
     visibility: visible;
@@ -120,7 +128,7 @@
     max-width: var(--ticket-printable-width) !important;
     height: auto !important;
     min-height: 0 !important;
-    margin: var(--ticket-margin-top) auto var(--ticket-margin-bottom) !important;
+    margin: var(--ticket-margin-top) 0 var(--ticket-margin-bottom) !important;
     padding: 0 !important;
     box-sizing: border-box !important;
   }

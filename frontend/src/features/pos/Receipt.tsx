@@ -7,6 +7,7 @@ import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfi
 import {
   printActiveDocument,
   useExclusivePrintDocument,
+  usePrintPageStyle,
 } from '@/features/tickets/useExclusivePrintDocument';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
@@ -40,6 +41,11 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   const printOnCheckout = useSettledShopFlag('pos.print_ticket_on_checkout', true);
   const deactivatePrint = useCallback(() => setPrintActive(false), []);
   const activatePrint = useExclusivePrintDocument(deactivatePrint);
+  const pageStyle =
+    ticket !== null && isPrintActive
+      ? ticketPageStyle(ticket, ticket.rendered_text.split('\n').length)
+      : null;
+  usePrintPageStyle(pageStyle);
 
   const printMutation = useMutation({
     mutationFn: () => generateTicket(sale.id),
@@ -90,11 +96,6 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
         data-ticket-width={ticket.printable_width_mm}
         style={ticketPrintStyle(ticket)}
       >
-        {isPrintActive && (
-          <style media="print">
-            {ticketPageStyle(ticket, ticket.rendered_text.split('\n').length)}
-          </style>
-        )}
         <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
           {ticket.rendered_text}
         </pre>

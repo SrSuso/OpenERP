@@ -53,7 +53,9 @@ describe('TicketReprintButton', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 101' }));
     await waitFor(() => expect(activeDocumentCounts).toEqual([1]));
-    expect(document.querySelector('style')?.textContent).toContain('@page { size: 80mm');
+    expect(document.head.querySelector('[data-ticket-page-style="active"]')?.textContent).toContain(
+      '@page { size: 80mm',
+    );
 
     // El evento se dispara tanto al imprimir como al cancelar el diálogo.
     // Por eso el documento anterior deja de existir antes del siguiente.
