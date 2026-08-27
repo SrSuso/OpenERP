@@ -15,9 +15,11 @@ from app.auth.dependencies import SessionDep
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import SALE_READ, TICKET_MANAGE
 from app.tickets import service
+from app.tickets.presenters import template_to_print_profile as _template_to_print_profile
 from app.tickets.presenters import template_to_read as _template_to_read
 from app.tickets.presenters import ticket_to_read as _ticket_to_read
 from app.tickets.schemas import (
+    TicketPrintProfileRead,
     TicketRead,
     TicketTemplateCreate,
     TicketTemplateRead,
@@ -54,6 +56,21 @@ async def create_template(payload: TicketTemplateCreate, session: SessionDep) ->
 )
 async def get_active_template(session: SessionDep) -> TicketTemplateRead:
     return _template_to_read(await service.get_active_template(session))
+
+
+@router.get(
+    "/ticket-templates/active/print-profile",
+    response_model=TicketPrintProfileRead,
+    dependencies=[_require_sale_read],
+)
+async def get_active_print_profile(session: SessionDep) -> TicketPrintProfileRead:
+    """The active ticket's physical profile for POS documents such as Z.
+
+    This is intentionally narrower than the template-management endpoint so
+    a cashier can print correctly without being able to inspect or edit
+    template configuration.
+    """
+    return _template_to_print_profile(await service.get_active_template(session))
 
 
 @router.put(

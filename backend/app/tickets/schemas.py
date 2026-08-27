@@ -79,6 +79,23 @@ class TicketTemplateRead(BaseModel):
     is_active: bool
 
 
+class TicketPrintProfileRead(BaseModel):
+    """Safe layout fields needed by a POS document at print time.
+
+    Cashiers may read this small profile to print a Z with the same physical
+    layout as a sale ticket. It deliberately excludes template-management
+    fields and store/editor content.
+    """
+
+    printable_width_mm: int
+    font_family: TicketFontFamily
+    font_size_px: int
+    line_height_px: int
+    font_weight: TicketFontWeight
+    margin_top_mm: int
+    margin_bottom_mm: int
+
+
 class TicketRead(BaseModel):
     id: int
     sale_id: int

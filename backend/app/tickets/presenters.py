@@ -9,7 +9,7 @@ from app.tickets.models import (
     TicketTaxDisplay,
     TicketTemplate,
 )
-from app.tickets.schemas import TicketRead, TicketTemplateRead
+from app.tickets.schemas import TicketPrintProfileRead, TicketRead, TicketTemplateRead
 
 
 def template_to_read(template: TicketTemplate) -> TicketTemplateRead:
@@ -43,6 +43,18 @@ def template_to_read(template: TicketTemplate) -> TicketTemplateRead:
         label_discount=template.label_discount,
         tax_note=template.tax_note,
         is_active=template.is_active,
+    )
+
+
+def template_to_print_profile(template: TicketTemplate) -> TicketPrintProfileRead:
+    return TicketPrintProfileRead(
+        printable_width_mm=template.printable_width_mm,
+        font_family=TicketFontFamily(template.font_family),
+        font_size_px=template.font_size_px,
+        line_height_px=template.line_height_px,
+        font_weight=TicketFontWeight(template.font_weight),
+        margin_top_mm=template.margin_top_mm,
+        margin_bottom_mm=template.margin_bottom_mm,
     )
 
 

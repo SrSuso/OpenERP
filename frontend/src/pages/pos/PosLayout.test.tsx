@@ -48,6 +48,16 @@ const PREVIEW = {
   open_sales: [],
 };
 
+const PRINT_PROFILE = {
+  printable_width_mm: 64,
+  font_family: 'LIBERATION_MONO',
+  font_size_px: 10,
+  line_height_px: 14,
+  font_weight: 'BOLD',
+  margin_top_mm: 2,
+  margin_bottom_mm: 3,
+};
+
 function stubBackend(
   options: {
     openSales?: { id: number; lines_count: number; total: string }[];
@@ -77,6 +87,9 @@ function stubBackend(
         return Promise.resolve(new Response(null, { status: 204 }));
       }
       if (url.includes('/settings/values')) return Promise.resolve(jsonResponse({}));
+      if (url.includes('/ticket-templates/active/print-profile')) {
+        return Promise.resolve(jsonResponse(PRINT_PROFILE));
+      }
       if (url.includes('/pos-terminals')) {
         if (options.failTerminals) {
           return Promise.reject(new TypeError('Terminal registry unavailable'));
@@ -248,6 +261,14 @@ describe('PosLayout', () => {
     expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
     expect(backend.closeCalls).toHaveLength(1);
     expect(backend.logoutCalls).toEqual([]);
+    const printRoot = screen.getByText('Cierre Z nº 7').closest('[data-ticket-width]');
+    expect(printRoot).toHaveAttribute('data-ticket-width', '64');
+    expect(printRoot).toHaveStyle({
+      '--ticket-font-size': '10px',
+      '--ticket-line-height': '14px',
+      '--ticket-margin-top': '2mm',
+      '--ticket-margin-bottom': '3mm',
+    });
 
     await userEvent.click(screen.getByRole('button', { name: 'Volver al TPV' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

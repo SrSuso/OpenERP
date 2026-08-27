@@ -2,6 +2,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
 import { closeZReport, zReportPreviewQuery, type ZReport } from '@/features/pos/api';
+import { ticketPrintStyle } from '@/features/tickets/printProfile';
+import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
@@ -35,6 +37,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
  */
 export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDialogProps) {
   const preview = useQuery(zReportPreviewQuery(warehouseId));
+  const printProfile = useQuery(activeTicketPrintProfileQuery);
   const [closed, setClosed] = useState<ZReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const closeAttemptRef = useRef<string | null>(null);
@@ -50,11 +53,11 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
       setError(err instanceof ApiError ? err.message : 'No se ha podido cerrar la caja.'),
   });
 
-  // Con la Z ya guardada, se manda a imprimir: es el papel con el que se
-  // cuadra el cajón.
+  // Con la Z ya guardada y el mismo perfil físico que usa una venta, se
+  // manda a imprimir: es el papel con el que se cuadra el cajón.
   useEffect(() => {
-    if (closed !== null) window.print();
-  }, [closed]);
+    if (closed !== null && printProfile.data !== undefined) window.print();
+  }, [closed, printProfile.data]);
 
   const totals = closed ?? preview.data;
   const openSales = preview.data?.open_sales ?? [];
@@ -66,7 +69,11 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
       aria-label="Cierre de caja"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
     >
-      <div className="ticket-print-root w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl">
+      <div
+        className="ticket-print-root w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl"
+        data-ticket-width={printProfile.data?.printable_width_mm}
+        style={printProfile.data ? ticketPrintStyle(printProfile.data) : undefined}
+      >
         <h2 className="text-xl font-semibold text-slate-50">
           {closed ? `Cierre Z nº ${closed.number}` : 'Cierre de caja (Z)'}
         </h2>
@@ -118,6 +125,12 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
         )}
 
         {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+        {closed !== null && printProfile.isError && (
+          <p role="alert" className="mt-4 text-sm text-red-300">
+            No se ha podido cargar el perfil de impresión del ticket. Vuelve a intentarlo antes de
+            imprimir la Z.
+          </p>
+        )}
 
         <div className="mt-6 flex gap-2 print:hidden">
           {closed ? (
@@ -131,8 +144,11 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+                disabled={printProfile.data === undefined}
+                onClick={() => {
+                  if (printProfile.data !== undefined) window.print();
+                }}
+                className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
               >
                 Imprimir otra vez
               </button>

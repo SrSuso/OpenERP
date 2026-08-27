@@ -87,6 +87,29 @@ export const activeTicketTemplateQuery = queryOptions({
     apiFetch(`${API_V1}/ticket-templates/active`, { schema: ticketTemplateSchema, signal }),
 });
 
+/** Only the physical layout, exposed to cashiers so the Z uses exactly the
+ * same printable width, font and margins as a sale ticket. Template editing
+ * remains an admin-only operation. */
+export const ticketPrintProfileSchema = ticketTemplateSchema.pick({
+  printable_width_mm: true,
+  font_family: true,
+  font_size_px: true,
+  line_height_px: true,
+  font_weight: true,
+  margin_top_mm: true,
+  margin_bottom_mm: true,
+});
+export type TicketPrintProfile = z.infer<typeof ticketPrintProfileSchema>;
+
+export const activeTicketPrintProfileQuery = queryOptions({
+  queryKey: ['tickets', 'templates', 'active', 'print-profile'] as const,
+  queryFn: ({ signal }) =>
+    apiFetch(`${API_V1}/ticket-templates/active/print-profile`, {
+      schema: ticketPrintProfileSchema,
+      signal,
+    }),
+});
+
 export interface TemplateFields {
   printable_width_mm: number;
   font_family: TicketFontFamily;

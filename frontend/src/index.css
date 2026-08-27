@@ -140,4 +140,15 @@
     font-variant-ligatures: none;
     line-height: var(--ticket-line-height) !important;
   }
+
+  /* La Z no se renderiza como un bloque <pre>, pero debe salir por la misma
+     impresora con el mismo ancho útil, fuente, tamaño, interlineado y peso
+     configurados para los tickets de venta. */
+  .ticket-print-root[data-ticket-width],
+  .ticket-print-root[data-ticket-width] * {
+    font-family: var(--ticket-font-family) !important;
+    font-size: var(--ticket-font-size) !important;
+    font-weight: var(--ticket-font-weight) !important;
+    line-height: var(--ticket-line-height) !important;
+  }
 }

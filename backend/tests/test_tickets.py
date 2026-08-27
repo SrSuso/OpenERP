@@ -134,6 +134,37 @@ async def test_manager_cannot_manage_ticket_templates(
     ).status_code == 403
 
 
+async def test_cashier_can_read_only_the_active_ticket_print_profile(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    await _create_template(
+        client,
+        printable_width_mm=64,
+        font_family="LIBERATION_MONO",
+        font_size_px=10,
+        line_height_px=14,
+        font_weight="BOLD",
+        margin_top_mm=2,
+        margin_bottom_mm=3,
+    )
+
+    await login(role_name="CASHIER")
+    profile = await client.get("/api/v1/ticket-templates/active/print-profile")
+
+    assert profile.status_code == 200
+    assert profile.json() == {
+        "printable_width_mm": 64,
+        "font_family": "LIBERATION_MONO",
+        "font_size_px": 10,
+        "line_height_px": 14,
+        "font_weight": "BOLD",
+        "margin_top_mm": 2,
+        "margin_bottom_mm": 3,
+    }
+    assert (await client.get("/api/v1/ticket-templates/active")).status_code == 403
+
+
 async def test_updating_the_active_template_changes_it_in_place(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
