@@ -1,14 +1,7 @@
-"""Versioned receipt templates and the immutable tickets rendered from them.
+"""Saved receipt templates and the immutable tickets rendered from them.
 
-"Versioned" is not cosmetic: editing a template never mutates the row a
-past ticket was rendered with (same append-only philosophy as
-``product_price_history``/``audit_log``) — ``revise_template`` retires the
-current version (``is_active=False``) and inserts a new row with
-``version + 1`` under the same ``name``, so a ticket printed last month
-still points at the exact header/footer it was actually printed with, even
-if today's store policy text has changed.
-
-A ``Ticket`` itself is generated once per sale and never re-rendered:
+A template is edited directly. A ``Ticket`` itself is generated once per
+sale and never re-rendered:
 ``rendered_text`` is a snapshot (rule 6/7's philosophy, applied to
 receipts) — the layout the customer's copy actually had, frozen at
 generation time, regardless of any template edits or reprints afterwards.
@@ -64,6 +57,8 @@ class TicketFontWeight(StrEnum):
 class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "ticket_templates"
     __table_args__ = (
+        # Kept for existing installations that previously stored revisions.
+        # New templates are unique by name at the service boundary.
         UniqueConstraint("name", "version", name="uq_ticket_templates_name_version"),
         # There is one receipt layout for the whole store, not one per name,
         # warehouse or document type. PostgreSQL protects that global scope
@@ -77,6 +72,8 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     name: Mapped[str] = mapped_column(String(100), index=True)
+    # Legacy storage detail from the former revision system. It is no longer
+    # exposed or incremented; templates are updated in place.
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     #: The real printable width, rather than the nominal width of the paper
     #: roll. An 80mm thermal printer commonly exposes about 72mm to ink.
@@ -114,8 +111,7 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     # plantilla y la pantalla de ajustes hacía que los datos de la tienda
     # salieran impresos dos veces —una desde cada lado— y que nadie supiera
     # cuál de los dos mandaba. Además, siendo columnas de la plantilla,
-    # quedan versionadas con ella: una plantilla vieja sigue diciendo cómo
-    # se imprimía entonces.
+    # quedan junto con ella; el ticket generado guarda su propio snapshot.
     store_name: Mapped[str] = mapped_column(Text, default="", server_default="")
     store_tax_id: Mapped[str] = mapped_column(Text, default="", server_default="")
     store_address: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -145,8 +141,8 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     #: At most one template is active store-wide — the one new tickets render
-    #: with. A store may have none before initial setup. Retired versions stay
-    #: forever, still readable through whichever ``Ticket`` rows reference them.
+    #: with. A store may have none before initial setup; the others remain as
+    #: alternatives that can be activated later.
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
 
@@ -163,8 +159,8 @@ class Ticket(IntPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("ticket_templates.id", ondelete="SET NULL"),
         nullable=True,
     )
-    #: Snapshot of the physical print profile. The template row is versioned
-    #: too, but keeping the values here makes an old ticket self-contained.
+    #: Snapshot of the physical print profile, keeping an old ticket
+    #: self-contained even after its source template is edited or deleted.
     printable_width_mm: Mapped[int] = mapped_column(Integer)
     font_family: Mapped[str] = mapped_column(String(30))
     font_size_px: Mapped[int] = mapped_column(Integer)

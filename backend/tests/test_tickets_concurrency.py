@@ -156,7 +156,7 @@ async def test_concurrent_duplicate_template_creation_is_a_semantic_conflict(
     settings: Settings,
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
-    """A concurrent duplicate version is a 409, never a flush-time 500."""
+    """A concurrent duplicate name is a 409, never a flush-time 500."""
     tag = uuid.uuid4().hex[:10]
     async with committing_sessionmaker() as setup:
         admin = await _setup_admin(setup, tag)
@@ -180,53 +180,56 @@ async def test_concurrent_duplicate_template_creation_is_a_semantic_conflict(
 
     assert sorted(response.status_code for response in responses) == [201, 409]
     async with committing_sessionmaker() as verification:
-        versions = list(
+        ids = list(
             (
                 await verification.execute(
-                    select(TicketTemplate.version).where(TicketTemplate.name == payload["name"])
+                    select(TicketTemplate.id).where(TicketTemplate.name == payload["name"])
                 )
             ).scalars()
         )
-    assert versions == [1]
+    assert len(ids) == 1
 
 
-async def test_concurrent_revision_of_the_same_version_is_a_semantic_conflict(
+async def test_concurrent_updates_keep_one_template_row(
     settings: Settings,
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Only one successor version is created; the stale request gets 409."""
+    """Editing is serialized but never creates a second template row."""
     tag = uuid.uuid4().hex[:10]
     async with committing_sessionmaker() as setup:
         admin = await _setup_admin(setup, tag)
         original = await ticket_service.create_template(
-            setup, _template_payload(f"revision-{tag}", "Original")
+            setup, _template_payload(f"update-{tag}", "Original")
         )
         await setup.commit()
         email, original_id = admin.email, original.id
 
     app, client_a, client_b = await _request_clients(settings, committing_sessionmaker, email)
-    payload = {"printable_width_mm": 72, "header_text": "Concurrent revision", "footer_text": ""}
+    payload = {
+        "name": f"update-{tag}",
+        "printable_width_mm": 72,
+        "header_text": "Concurrent update",
+        "footer_text": "",
+    }
     try:
         responses = await asyncio.gather(
-            client_a.post(f"/api/v1/ticket-templates/{original_id}/revise", json=payload),
-            client_b.post(f"/api/v1/ticket-templates/{original_id}/revise", json=payload),
+            client_a.put(f"/api/v1/ticket-templates/{original_id}", json=payload),
+            client_b.put(f"/api/v1/ticket-templates/{original_id}", json=payload),
         )
     finally:
         await _close_clients(app, client_a, client_b)
 
-    assert sorted(response.status_code for response in responses) == [200, 409]
+    assert [response.status_code for response in responses] == [200, 200]
     async with committing_sessionmaker() as verification:
         templates = list(
             (
                 await verification.execute(
-                    select(TicketTemplate)
-                    .where(TicketTemplate.name == f"revision-{tag}")
-                    .order_by(TicketTemplate.version)
+                    select(TicketTemplate).where(TicketTemplate.name == f"update-{tag}")
                 )
             ).scalars()
         )
-    assert [template.version for template in templates] == [1, 2]
-    assert [template.version for template in templates if template.is_active] == [2]
+    assert [template.id for template in templates] == [original_id]
+    assert templates[0].header_text == "Concurrent update"
 
 
 async def test_waiting_activation_reloads_state_and_wins_last(
@@ -290,11 +293,18 @@ async def test_activating_the_active_template_is_an_unaudited_noop(
     """A4: state idempotency does not claim a transition that did not occur."""
     tag = uuid.uuid4().hex[:10]
     async with committing_sessionmaker() as setup:
-        active = await ticket_service.create_template(
+        template = await ticket_service.create_template(
             setup, _template_payload(f"noop-{tag}", "No-op")
         )
         await setup.commit()
-        template_id = active.id
+        template_id = template.id
+
+    # The suite can already have another active template. Put this saved
+    # alternative in use once, then verify that repeating that exact action
+    # does not add another audit event.
+    async with committing_sessionmaker() as session:
+        await ticket_service.activate_template(session, template_id)
+        await session.commit()
 
     async with committing_sessionmaker() as session:
         returned = await ticket_service.activate_template(session, template_id)
@@ -310,7 +320,7 @@ async def test_activating_the_active_template_is_an_unaudited_noop(
         )
     assert returned.id == template_id
     assert returned.is_active is True
-    assert audit_count == 0
+    assert audit_count == 1
 
 
 async def test_postgresql_rejects_two_active_templates_directly(
@@ -482,6 +492,7 @@ async def test_old_ticket_stays_frozen_and_new_sale_uses_new_template(
         first_template = await ticket_service.create_template(
             session, _template_payload(f"history-A-{tag}", "Historical A")
         )
+        await ticket_service.activate_template(session, first_template.id)
         first_sale = await _setup_completed_sale(session)
         first_ticket = await ticket_service.generate_ticket(session, first_sale.id)
         await session.commit()
@@ -491,6 +502,7 @@ async def test_old_ticket_stays_frozen_and_new_sale_uses_new_template(
         second_template = await ticket_service.create_template(
             session, _template_payload(f"history-B-{tag}", "Current B")
         )
+        await ticket_service.activate_template(session, second_template.id)
         second_sale = await _setup_completed_sale(session)
         replay = await ticket_service.generate_ticket(session, first_sale.id)
         new_ticket = await ticket_service.generate_ticket(session, second_sale.id)

@@ -43,46 +43,13 @@ class TicketTemplateCreate(BaseModel):
     tax_note: str = Field(default="IVA incluido", max_length=200)
 
 
-class TicketTemplateRevise(BaseModel):
-    """Every field is required — a revision is a whole new version, not a
-    partial patch of the one it retires (see the model's docstring)."""
-
-    printable_width_mm: int = Field(default=72, ge=25, le=80)
-    font_family: TicketFontFamily = TicketFontFamily.COURIER_NEW
-    font_size_px: int = Field(default=9, ge=6, le=16)
-    line_height_px: int = Field(default=12, ge=8, le=24)
-    font_weight: TicketFontWeight = TicketFontWeight.NORMAL
-    margin_top_mm: int = Field(default=0, ge=0, le=20)
-    margin_bottom_mm: int = Field(default=0, ge=0, le=20)
-    header_text: str = Field(default="", max_length=2000)
-    footer_text: str = Field(default="", max_length=2000)
-    tax_display: TicketTaxDisplay = TicketTaxDisplay.BREAKDOWN
-    show_line_discounts: bool = False
-    #: Los datos de la tienda tal y como se imprimen, arriba del todo. Aquí
-    #: y no en Configuración: el ticket se edita en un solo sitio (ver
-    #: `app.tickets.models.TicketTemplate`).
-    store_name: str = Field(default="", max_length=500)
-    store_tax_id: str = Field(default="", max_length=500)
-    store_address: str = Field(default="", max_length=1000)
-    store_phone: str = Field(default="", max_length=200)
-    sale_number_prefix: str = Field(default="Venta #", max_length=50)
-    #: Patrón de `strftime`.
-    date_format: str = Field(default="%Y-%m-%d %H:%M", max_length=50)
-    show_unit_price: bool = True
-    show_cashier: bool = False
-    label_total: str = Field(default="TOTAL", max_length=50)
-    label_change: str = Field(default="Cambio", max_length=50)
-    label_cash: str = Field(default="Efectivo", max_length=50)
-    label_card: str = Field(default="Tarjeta", max_length=50)
-    label_other: str = Field(default="Otros", max_length=50)
-    label_discount: str = Field(default="Dto.", max_length=50)
-    tax_note: str = Field(default="IVA incluido", max_length=200)
+class TicketTemplateUpdate(TicketTemplateCreate):
+    """The saved template is updated directly; it does not create a version."""
 
 
 class TicketTemplateRead(BaseModel):
     id: int
     name: str
-    version: int
     printable_width_mm: int
     font_family: TicketFontFamily
     font_size_px: int

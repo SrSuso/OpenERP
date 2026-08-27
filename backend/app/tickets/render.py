@@ -142,7 +142,7 @@ def render_ticket(
     imprimían desde allí *y* desde la cabecera de la plantilla, así que
     salían dos veces y no había forma de saber cuál mandaba. Ahora el
     ticket se edita en un único sitio, su plantilla, y de paso queda
-    versionado con ella."""
+    guardado en ella."""
     width = printable_characters(template)
     rows: list[str] = []
 

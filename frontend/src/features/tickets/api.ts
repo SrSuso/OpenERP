@@ -3,9 +3,8 @@ import { z } from 'zod';
 
 import { API_V1, apiFetch } from '@/lib/api';
 
-// Mirrors backend/app/tickets/schemas.py. Sólo hay una plantilla activa a
-// la vez en toda la tienda (app.tickets.service's docstring) — revisarla
-// crea una nueva versión bajo el mismo nombre, nunca muta la anterior.
+// Mirrors backend/app/tickets/schemas.py. Puede haber varias plantillas
+// guardadas, pero sólo una se usa en la caja a la vez.
 
 /** Cómo indica el ticket el IVA que lleva dentro — ver
  * backend/app/tickets/models.py's `TicketTaxDisplay`. Una factura
@@ -44,7 +43,6 @@ export const TAX_DISPLAY_LABELS: Record<TicketTaxDisplay, string> = {
 export const ticketTemplateSchema = z.object({
   id: z.number(),
   name: z.string(),
-  version: z.number(),
   printable_width_mm: z.number().int().min(25).max(80),
   font_family: ticketFontFamilySchema,
   font_size_px: z.number().int().min(6).max(16),
@@ -147,12 +145,12 @@ export async function activateTemplate(templateId: number): Promise<TicketTempla
   });
 }
 
-export async function reviseTemplate(
+export async function updateTemplate(
   templateId: number,
-  payload: TemplateFields,
+  payload: TemplateFields & { name: string },
 ): Promise<TicketTemplate> {
-  return apiFetch(`${API_V1}/ticket-templates/${templateId}/revise`, {
-    method: 'POST',
+  return apiFetch(`${API_V1}/ticket-templates/${templateId}`, {
+    method: 'PUT',
     schema: ticketTemplateSchema,
     body: payload,
   });

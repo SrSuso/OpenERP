@@ -7,10 +7,9 @@ template transition through one transaction advisory lock. New ticket
 generation takes the shared form of that same lock, so many independent sales
 can render concurrently while a template switch has a clear before/after cut.
 
-``revise_template`` is the only way to change what a *new* ticket looks
-like; it never mutates a past version (see ``app.tickets.models`` for
-why), and revising one that is not in use leaves it that way, so an
-alternative can be corrected without changing what the till prints.
+``update_template`` changes one saved template in place. Tickets already
+generated remain immutable snapshots, so editing a layout affects only
+future receipts.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from app.sales.models import Sale, SaleStatus
 from app.settings.business_time import get_business_timezone
 from app.tickets.models import Ticket, TicketTemplate
 from app.tickets.render import render_ticket
-from app.tickets.schemas import TicketTemplateCreate, TicketTemplateRevise
+from app.tickets.schemas import TicketTemplateCreate, TicketTemplateUpdate
 
 _SALE_OPTIONS = (
     selectinload(Sale.lines),
@@ -45,7 +44,7 @@ _LOCK_TEMPLATE_SCOPE_SHARED = text("SELECT pg_advisory_xact_lock_shared(:namespa
 async def _lock_template_scope(session: AsyncSession, *, shared: bool = False) -> None:
     """Lock the store-wide active-template scope until transaction end.
 
-    Exclusive locks protect create/revise/activate. Ticket generation uses a
+    Exclusive locks protect create/update/activate. Ticket generation uses a
     shared lock after locking its completed Sale, allowing unrelated tickets
     to render together but never across the middle of an activation.
     """
@@ -56,7 +55,7 @@ async def _lock_template_scope(session: AsyncSession, *, shared: bool = False) -
 
 
 async def list_templates(session: AsyncSession) -> list[TicketTemplate]:
-    stmt = select(TicketTemplate).order_by(TicketTemplate.name, TicketTemplate.version.desc())
+    stmt = select(TicketTemplate).order_by(TicketTemplate.name, TicketTemplate.id)
     return list((await session.execute(stmt)).scalars())
 
 
@@ -74,59 +73,23 @@ async def _deactivate_all(session: AsyncSession) -> None:
     await session.execute(update(TicketTemplate).values(is_active=False))
 
 
-async def _ensure_template_version_is_new(
-    session: AsyncSession, *, name: str, version: int
+async def _ensure_template_name_is_available(
+    session: AsyncSession, *, name: str, excluding_id: int | None = None
 ) -> None:
-    existing_id = await session.scalar(
-        select(TicketTemplate.id).where(
-            TicketTemplate.name == name,
-            TicketTemplate.version == version,
-        )
-    )
-    if existing_id is not None:
-        raise ConflictError(
-            f"Ticket template {name!r} version {version} already exists; "
-            "reload the template history before retrying."
-        )
+    existing_id = await session.scalar(select(TicketTemplate.id).where(TicketTemplate.name == name))
+    if existing_id is not None and existing_id != excluding_id:
+        raise ConflictError(f"Ticket template {name!r} already exists.")
 
 
 async def create_template(session: AsyncSession, payload: TicketTemplateCreate) -> TicketTemplate:
     await _lock_template_scope(session)
-    # The scope lock turns a concurrent duplicate name/version into a stable
-    # semantic conflict instead of letting the subsequent flush escape as 500.
-    await _ensure_template_version_is_new(session, name=payload.name, version=1)
-    await _deactivate_all(session)
-    template = TicketTemplate(
-        name=payload.name,
-        version=1,
-        printable_width_mm=payload.printable_width_mm,
-        font_family=payload.font_family,
-        font_size_px=payload.font_size_px,
-        line_height_px=payload.line_height_px,
-        font_weight=payload.font_weight,
-        margin_top_mm=payload.margin_top_mm,
-        margin_bottom_mm=payload.margin_bottom_mm,
-        header_text=payload.header_text,
-        footer_text=payload.footer_text,
-        tax_display=payload.tax_display,
-        show_line_discounts=payload.show_line_discounts,
-        store_name=payload.store_name,
-        store_tax_id=payload.store_tax_id,
-        store_address=payload.store_address,
-        store_phone=payload.store_phone,
-        sale_number_prefix=payload.sale_number_prefix,
-        date_format=payload.date_format,
-        show_unit_price=payload.show_unit_price,
-        show_cashier=payload.show_cashier,
-        label_total=payload.label_total,
-        label_change=payload.label_change,
-        label_cash=payload.label_cash,
-        label_card=payload.label_card,
-        label_other=payload.label_other,
-        label_discount=payload.label_discount,
-        tax_note=payload.tax_note,
-        is_active=True,
-    )
+    await _ensure_template_name_is_available(session, name=payload.name)
+    has_active_template = (
+        await session.scalar(select(TicketTemplate.id).where(TicketTemplate.is_active.is_(True)))
+    ) is not None
+    # Creating an alternative must not unexpectedly change what the till
+    # prints. The first saved template is the one exception: it becomes active.
+    template = TicketTemplate(**payload.model_dump(), is_active=not has_active_template)
     session.add(template)
     await session.flush()
     await audit.record(
@@ -136,7 +99,6 @@ async def create_template(session: AsyncSession, payload: TicketTemplateCreate) 
         entity_id=template.id,
         after={
             "name": template.name,
-            "version": template.version,
             "printable_width_mm": template.printable_width_mm,
         },
     )
@@ -150,65 +112,25 @@ async def get_template(session: AsyncSession, template_id: int) -> TicketTemplat
     return template
 
 
-async def revise_template(
-    session: AsyncSession, template_id: int, payload: TicketTemplateRevise
+async def update_template(
+    session: AsyncSession, template_id: int, payload: TicketTemplateUpdate
 ) -> TicketTemplate:
     await _lock_template_scope(session)
-    current = await get_template(session, template_id)
-    await _ensure_template_version_is_new(
-        session,
-        name=current.name,
-        version=current.version + 1,
-    )
-    was_active = current.is_active
-    current.is_active = False
-    await session.flush()
-
-    revised = TicketTemplate(
-        name=current.name,
-        version=current.version + 1,
-        printable_width_mm=payload.printable_width_mm,
-        font_family=payload.font_family,
-        font_size_px=payload.font_size_px,
-        line_height_px=payload.line_height_px,
-        font_weight=payload.font_weight,
-        margin_top_mm=payload.margin_top_mm,
-        margin_bottom_mm=payload.margin_bottom_mm,
-        header_text=payload.header_text,
-        footer_text=payload.footer_text,
-        tax_display=payload.tax_display,
-        show_line_discounts=payload.show_line_discounts,
-        store_name=payload.store_name,
-        store_tax_id=payload.store_tax_id,
-        store_address=payload.store_address,
-        store_phone=payload.store_phone,
-        sale_number_prefix=payload.sale_number_prefix,
-        date_format=payload.date_format,
-        show_unit_price=payload.show_unit_price,
-        show_cashier=payload.show_cashier,
-        label_total=payload.label_total,
-        label_change=payload.label_change,
-        label_cash=payload.label_cash,
-        label_card=payload.label_card,
-        label_other=payload.label_other,
-        label_discount=payload.label_discount,
-        tax_note=payload.tax_note,
-        # Editar una plantilla que no estaba en uso no cambia con cuál se
-        # imprime: se corrige una alternativa guardada sin tocar la caja.
-        # Para cambiar de plantilla está `activate_template`.
-        is_active=was_active,
-    )
-    session.add(revised)
+    template = await get_template(session, template_id)
+    await _ensure_template_name_is_available(session, name=payload.name, excluding_id=template_id)
+    before = {"name": template.name, "printable_width_mm": template.printable_width_mm}
+    for field, value in payload.model_dump().items():
+        setattr(template, field, value)
     await session.flush()
     await audit.record(
         session,
-        action="revised",
+        action="updated",
         entity_type="ticket_template",
-        entity_id=revised.id,
-        before={"template_id": current.id, "version": current.version},
-        after={"template_id": revised.id, "version": revised.version},
+        entity_id=template.id,
+        before=before,
+        after={"name": template.name, "printable_width_mm": template.printable_width_mm},
     )
-    return revised
+    return template
 
 
 async def activate_template(session: AsyncSession, template_id: int) -> TicketTemplate:
@@ -230,7 +152,7 @@ async def activate_template(session: AsyncSession, template_id: int) -> TicketTe
         action="activated",
         entity_type="ticket_template",
         entity_id=template_id,
-        after={"name": template.name, "version": template.version},
+        after={"name": template.name},
     )
     return template
 
@@ -249,7 +171,6 @@ async def delete_template(session: AsyncSession, template_id: int) -> None:
 
     before = {
         "name": template.name,
-        "version": template.version,
         "is_active": template.is_active,
     }
     await session.delete(template)

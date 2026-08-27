@@ -11,6 +11,7 @@ import {
   ticketFontWeightSchema,
   ticketTaxDisplaySchema,
   type TemplateFields,
+  type TicketTemplate,
   type TicketTaxDisplay,
 } from '@/features/tickets/api';
 import { useBusinessTimezone } from '@/features/settings/useShopSettings';
@@ -57,9 +58,9 @@ function previewNumber(value: unknown, fallback: number, minimum = 0): number {
 }
 
 interface TemplateFieldsFormProps {
-  mode: 'create' | 'revise';
-  defaults?: TemplateFields;
-  onSubmit: (payload: TemplateFields & { name?: string }) => void;
+  mode: 'create' | 'edit';
+  defaults?: TicketTemplate;
+  onSubmit: (payload: TemplateFields & { name: string }) => void;
   onCancel: () => void;
   isPending: boolean;
   submitError: string | null;
@@ -69,9 +70,7 @@ interface TemplateFieldsFormProps {
   pricesIncludeTax: boolean;
 }
 
-/** Alta de una plantilla (nueva familia, con nombre) o revisión de la
- * activa (mismos campos salvo el nombre, que no cambia — ver
- * backend/app/tickets/schemas.py's `TicketTemplateRevise`). */
+/** Alta o edición directa de una plantilla guardada. */
 export function TemplateFieldsForm({
   mode,
   defaults,
@@ -91,6 +90,7 @@ export function TemplateFieldsForm({
   } = useForm<TemplateFormValues>({
     resolver: zodResolver(fieldsSchema),
     defaultValues: {
+      name: defaults?.name ?? '',
       printable_width_mm: defaults?.printable_width_mm ?? 72,
       font_family: defaults?.font_family ?? 'COURIER_NEW',
       font_size_px: defaults?.font_size_px ?? 9,
@@ -157,12 +157,12 @@ export function TemplateFieldsForm({
   });
 
   const submit = handleSubmit((values) => {
-    if (mode === 'create' && !values.name?.trim()) {
+    if (!values.name?.trim()) {
       setError('name', { message: 'Introduce un nombre.' });
       return;
     }
     onSubmit({
-      ...(mode === 'create' ? { name: values.name!.trim() } : {}),
+      name: values.name.trim(),
       printable_width_mm: values.printable_width_mm,
       font_family: values.font_family,
       font_size_px: values.font_size_px,
@@ -199,22 +199,20 @@ export function TemplateFieldsForm({
       className="mb-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
     >
       <h3 className="mb-3 text-sm font-semibold text-slate-700">
-        {mode === 'create' ? 'Nueva plantilla' : 'Revisar plantilla activa'}
+        {mode === 'create' ? 'Nueva plantilla' : 'Editar plantilla'}
       </h3>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <div className="grid flex-1 gap-3 sm:grid-cols-2">
-          {mode === 'create' && (
-            <label className="text-sm text-slate-600 sm:col-span-2">
-              Nombre
-              <input
-                type="text"
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                {...register('name')}
-              />
-              {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
-            </label>
-          )}
+          <label className="text-sm text-slate-600 sm:col-span-2">
+            Nombre
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('name')}
+            />
+            {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
+          </label>
 
           <label className="text-sm text-slate-600">
             Ancho imprimible (mm)
@@ -516,7 +514,7 @@ export function TemplateFieldsForm({
           disabled={isPending}
           className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {isPending ? 'Guardando…' : mode === 'create' ? 'Crear' : 'Guardar nueva versión'}
+          {isPending ? 'Guardando…' : mode === 'create' ? 'Crear' : 'Guardar cambios'}
         </button>
         <button
           type="button"

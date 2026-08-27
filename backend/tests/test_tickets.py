@@ -96,23 +96,22 @@ async def _completed_sale(
     return result
 
 
-async def test_creating_a_template_activates_it_and_deactivates_the_previous_one(
+async def test_creating_multiple_templates_keeps_the_current_one_active(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
     first = await _create_template(client, name="Recibo A")
     assert first["is_active"] is True
-    assert first["version"] == 1
 
     second = await _create_template(client, name="Recibo B")
-    assert second["is_active"] is True
+    assert second["is_active"] is False
 
     templates = (await client.get("/api/v1/ticket-templates")).json()
     first_now = next(t for t in templates if t["id"] == first["id"])
-    assert first_now["is_active"] is False
+    assert first_now["is_active"] is True
 
     active = (await client.get("/api/v1/ticket-templates/active")).json()
-    assert active["id"] == second["id"]
+    assert active["id"] == first["id"]
 
 
 async def test_manager_cannot_manage_ticket_templates(
@@ -135,15 +134,16 @@ async def test_manager_cannot_manage_ticket_templates(
     ).status_code == 403
 
 
-async def test_revising_the_active_template_creates_a_new_version(
+async def test_updating_the_active_template_changes_it_in_place(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
     template = await _create_template(client)
 
-    response = await client.post(
-        f"/api/v1/ticket-templates/{template['id']}/revise",
+    response = await client.put(
+        f"/api/v1/ticket-templates/{template['id']}",
         json={
+            "name": "Corregida",
             "printable_width_mm": 72,
             "header_text": "Nuevo header",
             "footer_text": "Nuevo footer",
@@ -151,35 +151,40 @@ async def test_revising_the_active_template_creates_a_new_version(
     )
 
     assert response.status_code == 200
-    revised = response.json()
-    assert revised["version"] == 2
-    assert revised["printable_width_mm"] == 72
-    assert revised["is_active"] is True
+    updated = response.json()
+    assert updated["id"] == template["id"]
+    assert updated["name"] == "Corregida"
+    assert updated["printable_width_mm"] == 72
+    assert updated["is_active"] is True
 
     templates = (await client.get("/api/v1/ticket-templates")).json()
-    original_now = next(t for t in templates if t["id"] == template["id"])
-    assert original_now["is_active"] is False
+    assert [item["id"] for item in templates] == [template["id"]]
 
 
-async def test_revising_a_template_that_is_not_in_use_leaves_it_out_of_use(
+async def test_updating_a_saved_template_leaves_it_out_of_use(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     """Se puede corregir una plantilla guardada sin cambiar con cuál
     imprime la caja — para cambiarla está `activate`."""
     await login(role_name="ADMIN")
-    retired = await _create_template(client, name="Antigua")
     in_use = await _create_template(client, name="En uso")
+    saved = await _create_template(client, name="Alternativa")
 
-    response = await client.post(
-        f"/api/v1/ticket-templates/{retired['id']}/revise",
-        json={"printable_width_mm": 72, "header_text": "Corregida", "footer_text": ""},
+    response = await client.put(
+        f"/api/v1/ticket-templates/{saved['id']}",
+        json={
+            "name": "Alternativa corregida",
+            "printable_width_mm": 72,
+            "header_text": "Corregida",
+            "footer_text": "",
+        },
     )
 
     assert response.status_code == 200
-    revised = response.json()
-    assert revised["version"] == 2
-    assert revised["header_text"] == "Corregida"
-    assert revised["is_active"] is False
+    updated = response.json()
+    assert updated["id"] == saved["id"]
+    assert updated["header_text"] == "Corregida"
+    assert updated["is_active"] is False
     # La que estaba en uso sigue estándolo.
     assert (await client.get("/api/v1/ticket-templates/active")).json()["id"] == in_use["id"]
 
@@ -189,8 +194,8 @@ async def test_activating_a_template_switches_which_one_the_till_prints(
 ) -> None:
     await login(role_name="ADMIN")
     first = await _create_template(client, name="Recibo A")
-    second = await _create_template(client, name="Recibo B")
-    assert (await client.get("/api/v1/ticket-templates/active")).json()["id"] == second["id"]
+    await _create_template(client, name="Recibo B")
+    assert (await client.get("/api/v1/ticket-templates/active")).json()["id"] == first["id"]
 
     response = await client.post(f"/api/v1/ticket-templates/{first['id']}/activate")
 

@@ -16,7 +16,6 @@ def template_to_read(template: TicketTemplate) -> TicketTemplateRead:
     return TicketTemplateRead(
         id=template.id,
         name=template.name,
-        version=template.version,
         printable_width_mm=template.printable_width_mm,
         font_family=TicketFontFamily(template.font_family),
         font_size_px=template.font_size_px,

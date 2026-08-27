@@ -10,7 +10,7 @@ import {
   activeTicketTemplateQuery,
   createTemplate,
   deleteTemplate,
-  reviseTemplate,
+  updateTemplate,
   ticketTemplatesQuery,
   type TemplateFields,
   type TicketTemplate,
@@ -23,11 +23,10 @@ import { primaryAction } from './pageActions';
  * desde el TPV (backend/app/tickets/router.py).
  *
  * Se pueden tener varias guardadas y elegir con cuál imprime la caja
- * ("Usar esta"), pero sólo una está en uso a la vez. Editar cualquiera de
- * ellas crea una versión nueva sin tocar la que ya imprimió tickets, y
- * editar una que no está en uso no cambia con cuál se imprime. */
+ * ("Usar esta"), pero sólo una está en uso a la vez. Editar una alternativa
+ * no cambia con cuál imprime la caja. */
 export function TicketTemplatesPage() {
-  const [mode, setMode] = useState<'none' | 'create' | 'revise'>('none');
+  const [mode, setMode] = useState<'none' | 'create' | 'edit'>('none');
   // Cuál se está editando. Puede ser una que no está en uso: corregir una
   // alternativa guardada no cambia con cuál imprime la caja.
   const [editing, setEditing] = useState<TicketTemplate | null>(null);
@@ -69,15 +68,21 @@ export function TicketTemplatesPage() {
     onError: () => setError('No se ha podido cambiar la plantilla en uso.'),
   });
 
-  const reviseMutation = useMutation({
-    mutationFn: (payload: TemplateFields) => reviseTemplate(editing!.id, payload),
+  const updateMutation = useMutation({
+    mutationFn: (payload: TemplateFields & { name: string }) =>
+      updateTemplate(editing!.id, payload),
     onSuccess: () => {
       invalidate();
       setMode('none');
       setEditing(null);
       setError(null);
     },
-    onError: () => setError('No se ha podido guardar la nueva versión.'),
+    onError: (err: unknown) =>
+      setError(
+        err instanceof ApiError && err.code === 'conflict'
+          ? 'Ya existe una plantilla con ese nombre.'
+          : 'No se han podido guardar los cambios.',
+      ),
   });
 
   const deleteMutation = useMutation({
@@ -106,8 +111,7 @@ export function TicketTemplatesPage() {
       {active.data && mode === 'none' && (
         <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-sm font-semibold text-slate-700">
-            Activa: {active.data.name} · v{active.data.version} · {active.data.printable_width_mm}{' '}
-            mm
+            Activa: {active.data.name} · {active.data.printable_width_mm} mm
           </p>
           <pre className="mt-2 max-w-xs whitespace-pre-wrap rounded bg-slate-50 p-2 text-xs text-slate-600">
             {active.data.header_text || '(sin cabecera)'}
@@ -123,18 +127,18 @@ export function TicketTemplatesPage() {
               type="button"
               onClick={() => {
                 setEditing(active.data);
-                setMode('revise');
+                setMode('edit');
               }}
               className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
             >
-              Revisar
+              Editar plantilla activa
             </button>
             <button
               type="button"
               onClick={() => setMode('create')}
               className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
             >
-              Nueva plantilla (otro nombre)
+              Nueva plantilla
             </button>
           </div>
         </div>
@@ -156,25 +160,23 @@ export function TicketTemplatesPage() {
             setMode('none');
             setError(null);
           }}
-          onSubmit={(payload) =>
-            createMutation.mutate(payload as TemplateFields & { name: string })
-          }
+          onSubmit={(payload) => createMutation.mutate(payload)}
         />
       )}
 
-      {mode === 'revise' && editing && (
+      {mode === 'edit' && editing && (
         <TemplateFieldsForm
-          mode="revise"
+          mode="edit"
           defaults={editing}
           pricesIncludeTax={pricesIncludeTax}
-          isPending={reviseMutation.isPending}
+          isPending={updateMutation.isPending}
           submitError={error}
           onCancel={() => {
             setMode('none');
             setEditing(null);
             setError(null);
           }}
-          onSubmit={(payload) => reviseMutation.mutate(payload)}
+          onSubmit={(payload) => updateMutation.mutate(payload)}
         />
       )}
 
@@ -187,17 +189,13 @@ export function TicketTemplatesPage() {
           onActivate={(template) => activateMutation.mutate(template)}
           onEdit={(template) => {
             setEditing(template);
-            setMode('revise');
+            setMode('edit');
           }}
           onDelete={(template) => {
             const activeWarning = template.is_active
               ? ' La caja se quedará sin plantilla activa hasta que crees o actives otra.'
               : '';
-            if (
-              window.confirm(
-                `¿Eliminar la plantilla “${template.name}” v${template.version}?${activeWarning}`,
-              )
-            ) {
+            if (window.confirm(`¿Eliminar la plantilla “${template.name}”?${activeWarning}`)) {
               deleteMutation.mutate(template);
             }
           }}

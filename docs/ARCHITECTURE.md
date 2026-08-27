@@ -59,7 +59,7 @@ Dominios actuales:
 | `inventory`, `lots` | Ledger, saldos, almacenes, ubicaciones, lotes y FEFO. |
 | `pos`, `sales` | Terminales, borradores, checkout, pagos y cierres Z. |
 | `returns` | Reembolso y retorno físico independientes. |
-| `tickets` | Plantillas versionadas y tickets congelados. |
+| `tickets` | Plantillas editables y tickets congelados. |
 | `dashboards`, `reports` | Métricas y consultas desde listas blancas. |
 | `notifications`, `jobs` | Reglas, incidencias y outbox SMTP. |
 | `settings` | Registro de configuración funcional de tienda. |

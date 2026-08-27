@@ -238,7 +238,7 @@ PHASE_14_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
 TICKET_MANAGE = "ticket.manage"
 
 PHASE_15_PERMISSIONS: tuple[PermissionDef, ...] = (
-    PermissionDef(TICKET_MANAGE, "Create and revise receipt (ticket) templates."),
+    PermissionDef(TICKET_MANAGE, "Create and manage receipt (ticket) templates."),
 )
 
 #: Frozen grants for the phase 15 migration only. Generating/reading a

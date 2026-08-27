@@ -36,7 +36,7 @@ const PRINT_PROFILE = {
 function stubBackend() {
   let templates: TicketTemplate[] = [];
   const createCalls: Record<string, unknown>[] = [];
-  const reviseCalls: { id: number; body: Record<string, unknown> }[] = [];
+  const updateCalls: { id: number; body: Record<string, unknown> }[] = [];
   const deleteCalls: number[] = [];
 
   vi.stubGlobal(
@@ -74,11 +74,9 @@ function stubBackend() {
       if (method === 'POST' && /\/ticket-templates$/.test(url)) {
         const b = body();
         createCalls.push(b);
-        templates = templates.map((t) => ({ ...t, is_active: false }));
         const created: TicketTemplate = {
           id: templates.length + 1,
           name: b['name'] as string,
-          version: 1,
           ...PRINT_PROFILE,
           printable_width_mm: b['printable_width_mm'] as number,
           font_family: b['font_family'] as TicketTemplate['font_family'],
@@ -106,7 +104,7 @@ function stubBackend() {
           label_other: (b['label_other'] as string) ?? 'Otros',
           label_discount: (b['label_discount'] as string) ?? 'Dto.',
           tax_note: (b['tax_note'] as string) ?? 'IVA incluido',
-          is_active: true,
+          is_active: !templates.some((template) => template.is_active),
         };
         templates.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
@@ -117,50 +115,15 @@ function stubBackend() {
         templates = templates.map((t) => ({ ...t, is_active: t.id === id }));
         return Promise.resolve(jsonResponse(templates.find((t) => t.id === id)!));
       }
-      const reviseMatch = /\/ticket-templates\/(\d+)\/revise$/.exec(url);
-      if (method === 'POST' && reviseMatch) {
-        const id = Number(reviseMatch[1]);
+      const updateMatch = /\/ticket-templates\/(\d+)$/.exec(url);
+      if (method === 'PUT' && updateMatch) {
+        const id = Number(updateMatch[1]);
         const b = body();
-        reviseCalls.push({ id, body: b });
+        updateCalls.push({ id, body: b });
         const current = templates.find((t) => t.id === id)!;
-        const wasActive = current.is_active;
-        current.is_active = false;
-        const revised: TicketTemplate = {
-          id: templates.length + 1,
-          name: current.name,
-          version: current.version + 1,
-          ...PRINT_PROFILE,
-          printable_width_mm: b['printable_width_mm'] as number,
-          font_family: b['font_family'] as TicketTemplate['font_family'],
-          font_size_px: b['font_size_px'] as number,
-          line_height_px: b['line_height_px'] as number,
-          font_weight: b['font_weight'] as TicketTemplate['font_weight'],
-          margin_top_mm: b['margin_top_mm'] as number,
-          margin_bottom_mm: b['margin_bottom_mm'] as number,
-          header_text: (b['header_text'] as string) ?? '',
-          footer_text: (b['footer_text'] as string) ?? '',
-          tax_display: b['tax_display'] as TicketTemplate['tax_display'],
-          show_line_discounts: b['show_line_discounts'] as boolean,
-          store_name: (b['store_name'] as string) ?? '',
-          store_tax_id: (b['store_tax_id'] as string) ?? '',
-          store_address: (b['store_address'] as string) ?? '',
-          store_phone: (b['store_phone'] as string) ?? '',
-          sale_number_prefix: (b['sale_number_prefix'] as string) ?? 'Venta #',
-          date_format: (b['date_format'] as string) ?? '%d/%m/%Y %H:%M',
-          show_unit_price: (b['show_unit_price'] as boolean) ?? true,
-          show_cashier: (b['show_cashier'] as boolean) ?? false,
-          label_total: (b['label_total'] as string) ?? 'TOTAL',
-          label_change: (b['label_change'] as string) ?? 'Cambio',
-          label_cash: (b['label_cash'] as string) ?? 'Efectivo',
-          label_card: (b['label_card'] as string) ?? 'Tarjeta',
-          label_other: (b['label_other'] as string) ?? 'Otros',
-          label_discount: (b['label_discount'] as string) ?? 'Dto.',
-          tax_note: (b['tax_note'] as string) ?? 'IVA incluido',
-          // El backend conserva si estaba en uso o no.
-          is_active: wasActive,
-        };
-        templates.push(revised);
-        return Promise.resolve(jsonResponse(revised));
+        const updated: TicketTemplate = { ...current, ...b };
+        templates = templates.map((template) => (template.id === id ? updated : template));
+        return Promise.resolve(jsonResponse(updated));
       }
       const deleteMatch = /\/ticket-templates\/(\d+)$/.exec(url);
       if (method === 'DELETE' && deleteMatch) {
@@ -174,7 +137,7 @@ function stubBackend() {
     }),
   );
 
-  return { createCalls, reviseCalls, deleteCalls };
+  return { createCalls, updateCalls, deleteCalls };
 }
 
 function renderPage() {
@@ -189,7 +152,7 @@ function renderPage() {
 }
 
 describe('TicketTemplatesPage', () => {
-  it('creates the first template, then revises it into a new version', async () => {
+  it('creates the first template, then updates it in place', async () => {
     const backend = stubBackend();
     renderPage();
 
@@ -214,7 +177,7 @@ describe('TicketTemplatesPage', () => {
     expect(screen.getByText(/Gracias por su compra/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
-    await screen.findByText(/Activa: Tienda principal · v1 · 48 mm/);
+    await screen.findByText(/Activa: Tienda principal · 48 mm/);
     expect(backend.createCalls).toEqual([
       {
         name: 'Tienda principal',
@@ -247,17 +210,18 @@ describe('TicketTemplatesPage', () => {
       },
     ]);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Revisar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Editar plantilla activa' }));
     const footerInput = screen.getByLabelText('Pie');
     await userEvent.type(footerInput, 'Vuelva pronto');
     expect(screen.getByText(/Vuelva pronto/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar nueva versión' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
-    await screen.findByText(/Activa: Tienda principal · v2 · 48 mm/);
-    expect(backend.reviseCalls).toEqual([
+    await screen.findByText(/Activa: Tienda principal · 48 mm/);
+    expect(backend.updateCalls).toEqual([
       {
         id: 1,
         body: {
+          name: 'Tienda principal',
           printable_width_mm: 48,
           font_family: 'LIBERATION_MONO',
           font_size_px: 10,
@@ -325,13 +289,9 @@ describe('TicketTemplatesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
     await screen.findByText(/Activa: Antigua/);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Nueva plantilla (otro nombre)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva plantilla' }));
     await userEvent.type(screen.getByLabelText('Nombre'), 'Nueva');
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
-    await screen.findByText(/Activa: Nueva/);
-
-    // Volver a la primera desde la lista.
-    await userEvent.click(screen.getAllByRole('button', { name: 'Usar esta' })[0]!);
     await screen.findByText(/Activa: Antigua/);
 
     // Y editar la que NO está en uso no cambia con cuál se imprime.
@@ -339,10 +299,10 @@ describe('TicketTemplatesPage', () => {
     const notInUse = rows.find((row) => row.textContent?.includes('Nueva'))!;
     await userEvent.click(within(notInUse).getByRole('button', { name: 'Editar' }));
     await userEvent.type(screen.getByLabelText('Pie'), 'Corregido');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar nueva versión' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     await screen.findByText(/Activa: Antigua/);
-    expect(backend.reviseCalls).toHaveLength(1);
+    expect(backend.updateCalls).toHaveLength(1);
   });
 
   it('deletes a template that was created by mistake', async () => {

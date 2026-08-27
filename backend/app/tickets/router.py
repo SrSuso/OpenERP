@@ -21,7 +21,7 @@ from app.tickets.schemas import (
     TicketRead,
     TicketTemplateCreate,
     TicketTemplateRead,
-    TicketTemplateRevise,
+    TicketTemplateUpdate,
 )
 
 router = APIRouter(tags=["tickets"])
@@ -56,15 +56,15 @@ async def get_active_template(session: SessionDep) -> TicketTemplateRead:
     return _template_to_read(await service.get_active_template(session))
 
 
-@router.post(
-    "/ticket-templates/{template_id}/revise",
+@router.put(
+    "/ticket-templates/{template_id}",
     response_model=TicketTemplateRead,
     dependencies=[_require_manage],
 )
-async def revise_template(
-    template_id: int, payload: TicketTemplateRevise, session: SessionDep
+async def update_template(
+    template_id: int, payload: TicketTemplateUpdate, session: SessionDep
 ) -> TicketTemplateRead:
-    return _template_to_read(await service.revise_template(session, template_id, payload))
+    return _template_to_read(await service.update_template(session, template_id, payload))
 
 
 @router.post(

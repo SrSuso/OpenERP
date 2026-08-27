@@ -1555,22 +1555,17 @@ Deuda técnica conocida:
 
 **Objetivo:** el recibo imprimible de una venta cobrada, en texto
 monoespaciado para rollo térmico de 58/80mm, a partir de una plantilla
-*versionada* — editar la plantilla nunca reescribe un ticket ya impreso
-(regla 6/7 aplicada al propio recibo). Vive en `app.tickets`, el paquete
-que la fase 0 ya reservaba ("Versioned receipt templates for 58mm/80mm
-printing"). Botón **Imprimir ticket** en el TPV, sobre la venta ya cobrada
-que la fase 13 dejó lista.
+editable. Cada ticket emitido conserva su propio contenido, por lo que
+editar una plantilla nunca reescribe un ticket ya impreso. Vive en
+`app.tickets`. Botón **Imprimir ticket** en el TPV, sobre la venta ya
+cobrada que la fase 13 dejó lista.
 
 Entregado:
 
-- **`ticket_templates`**: sólo una plantilla activa a la vez en toda la
-  tienda (no varias familias en paralelo — un TPV imprime un único
-  formato). Crear una nueva desactiva la anterior; **`revise_template`**
-  es la única forma de cambiar qué imprime una plantilla ya usada — nunca
-  muta la fila existente, la retira (`is_active=False`) y crea una versión
-  nueva (`version + 1`) bajo el mismo `name`, así que revisar la plantilla
-  activa (409 si se intenta revisar una ya retirada) nunca reescribe lo
-  que un ticket antiguo señala.
+- **`ticket_templates`**: se pueden guardar varias plantillas y elegir cuál
+  usa la caja; sólo una está activa a la vez. Crear una alternativa no cambia
+  la activa y editarla actualiza esa misma plantilla. Para cambiar qué
+  imprime el TPV se usa `activate_template`.
 - **`tickets`**: uno por venta como máximo (`UniqueConstraint`), generado
   una única vez — `generate_ticket` es idempotente: la segunda llamada
   devuelve la misma fila, con el mismo `rendered_text` ya congelado, sin
