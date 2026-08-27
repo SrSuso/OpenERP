@@ -498,7 +498,7 @@ export function TemplateFieldsForm({
             Vista previa (con datos de ejemplo)
           </p>
           <pre
-            className="overflow-x-auto rounded border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-700"
+            className="overflow-hidden rounded border border-dashed border-slate-300 bg-slate-50 p-0 text-slate-700"
             style={{ ...ticketPrintStyle(printProfile), ...ticketPreviewStyle(printProfile) }}
           >
             {preview}

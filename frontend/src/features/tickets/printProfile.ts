@@ -43,6 +43,7 @@ export function ticketPreviewStyle(profile: TicketPrintProfile): CSSProperties {
   return {
     width: `${profile.printable_width_mm}mm`,
     maxWidth: '100%',
+    boxSizing: 'border-box',
     marginTop: `${profile.margin_top_mm}mm`,
     marginBottom: `${profile.margin_bottom_mm}mm`,
     fontFamily: FONT_STACKS[profile.font_family],

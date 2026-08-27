@@ -175,6 +175,10 @@ describe('TicketTemplatesPage', () => {
     await userEvent.type(screen.getByLabelText('Cabecera'), 'Gracias por su compra');
     // La vista previa se actualiza en vivo mientras se escribe, antes de guardar nada.
     expect(screen.getByText(/Gracias por su compra/)).toBeInTheDocument();
+    expect(screen.getByText(/Gracias por su compra/).closest('pre')).toHaveClass(
+      'overflow-hidden',
+      'p-0',
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
     await screen.findByText(/Activa: Tienda principal · 48 mm/);
