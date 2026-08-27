@@ -8,6 +8,8 @@ import { ApiError } from '@/lib/api';
 
 interface TicketReprintButtonProps {
   saleId: number;
+  label?: string;
+  className?: string;
 }
 
 /** Reimprime el ticket de una venta ya cobrada, fuera del TPV (p.ej. desde
@@ -17,7 +19,11 @@ interface TicketReprintButtonProps {
  * devuelve el mismo `rendered_text` congelado que se imprimió la primera
  * vez, aunque la plantilla haya cambiado desde entonces. Reutiliza el
  * mismo overlay de impresión que `features/pos/Receipt.tsx`. */
-export function TicketReprintButton({ saleId }: TicketReprintButtonProps) {
+export function TicketReprintButton({
+  saleId,
+  label = 'Reimprimir ticket',
+  className = 'rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50',
+}: TicketReprintButtonProps) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
 
   const mutation = useMutation({
@@ -71,9 +77,9 @@ export function TicketReprintButton({ saleId }: TicketReprintButtonProps) {
         type="button"
         onClick={() => mutation.mutate()}
         disabled={mutation.isPending}
-        className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+        className={className}
       >
-        {mutation.isPending ? 'Generando…' : 'Reimprimir ticket'}
+        {mutation.isPending ? 'Generando…' : label}
       </button>
       {mutation.isError && (
         <p className="mt-1 text-sm text-red-600">

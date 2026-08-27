@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type Sale, type Tender } from '@/features/pos/api';
 import { PosHeaderActionsProvider } from '@/features/pos/PosHeaderActions';
@@ -441,6 +441,8 @@ function renderPage() {
     </QueryClientProvider>,
   );
 }
+
+beforeEach(() => window.localStorage.clear());
 
 /** El layout real coloca esta acción junto al nombre del TPV. En esta prueba
  * de la pantalla aislada basta con exponer el mismo registro para probar que
@@ -947,6 +949,7 @@ describe('PosHomePage', () => {
 
     await screen.findByText(/venta cobrada/i);
     expect(screen.getByText('Efectivo')).toBeInTheDocument();
+    expect(window.localStorage.getItem('openerp.pos.lastTicketSaleId.7')).toBe('42');
 
     await userEvent.click(screen.getByRole('button', { name: /nueva venta/i }));
 

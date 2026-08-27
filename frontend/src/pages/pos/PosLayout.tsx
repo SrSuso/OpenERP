@@ -12,6 +12,7 @@ import { usePosTerminal } from '@/features/pos/usePosTerminal';
 import { usePosAppearance } from '@/features/pos/usePosAppearance';
 import { useButtonColors } from '@/features/settings/useButtonColors';
 import { useShopSetting } from '@/features/settings/useShopSettings';
+import { TicketReprintButton } from '@/features/tickets/TicketReprintButton';
 
 /**
  * Shell for `/pos`.
@@ -41,7 +42,7 @@ function PosLayoutContent() {
   const shopName = useShopSetting('app.display_name', 'OpenERP');
   const [closingTill, setClosingTill] = useState(false);
   const { selectedTerminal, selectionOpen, requestTerminalChange } = usePosTerminal();
-  const { newSaleAction } = usePosHeaderActions();
+  const { newSaleAction, lastTicketSaleId } = usePosHeaderActions();
   const warehouseId = selectedTerminal?.warehouse_id ?? null;
 
   if (selectionOpen) return <TerminalSelection />;
@@ -71,6 +72,13 @@ function PosLayoutContent() {
             >
               Devolución
             </Link>
+          )}
+          {lastTicketSaleId !== null && (
+            <TicketReprintButton
+              saleId={lastTicketSaleId}
+              label="Reimprimir último ticket"
+              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600 disabled:opacity-50"
+            />
           )}
         </div>
         <div className="flex items-center gap-4 text-base">

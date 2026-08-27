@@ -49,7 +49,7 @@ function describeError(error: unknown): string {
  * of the very same `DRAFT` sale this screen builds.
  */
 export function PosHomePage() {
-  const { registerNewSaleAction } = usePosHeaderActions();
+  const { registerNewSaleAction, rememberLastTicket } = usePosHeaderActions();
   const { selectedTerminal } = usePosTerminal();
   const terminalId = selectedTerminal?.id ?? null;
   const coldDrinkSurcharge = useShopSetting('pos.cold_drink_surcharge_amount', '0');
@@ -341,6 +341,7 @@ export function PosHomePage() {
     onSuccess: (completed) => {
       checkoutAttemptRef.current = null;
       setCheckoutError(null);
+      rememberLastTicket(completed.id);
       setReceipt(completed);
       closeSale(completed.id);
       setView('cart');

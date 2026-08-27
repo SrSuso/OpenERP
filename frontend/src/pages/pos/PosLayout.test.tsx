@@ -59,6 +59,7 @@ function stubBackend(
   const closeCalls: string[] = [];
   const closeKeys: string[] = [];
   const logoutCalls: string[] = [];
+  const ticketCalls: string[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -90,6 +91,25 @@ function stubBackend(
       if (url.includes('/warehouses')) {
         return Promise.resolve(jsonResponse([{ id: 1, name: 'Tienda', is_active: true }]));
       }
+      if (method === 'POST' && /\/sales\/\d+\/tickets$/.test(url)) {
+        ticketCalls.push(url);
+        return Promise.resolve(
+          jsonResponse({
+            id: 12,
+            sale_id: 42,
+            template_id: 3,
+            printable_width_mm: 80,
+            font_family: 'COURIER_NEW',
+            font_size_px: 10,
+            line_height_px: 12,
+            font_weight: 'NORMAL',
+            margin_top_mm: 2,
+            margin_bottom_mm: 2,
+            rendered_text: 'TICKET ANTERIOR',
+            created_at: '2026-08-11T12:00:00Z',
+          }),
+        );
+      }
       if (url.includes('/z-reports/preview')) {
         return Promise.resolve(jsonResponse({ ...PREVIEW, open_sales: options.openSales ?? [] }));
       }
@@ -117,7 +137,7 @@ function stubBackend(
     }),
   );
 
-  return { closeCalls, closeKeys, logoutCalls };
+  return { closeCalls, closeKeys, logoutCalls, ticketCalls };
 }
 
 function renderLayout({ configured = true }: { configured?: boolean } = {}) {
@@ -180,6 +200,20 @@ describe('PosLayout', () => {
 
     expect(await screen.findByRole('button', { name: 'Caja 2' })).toBeInTheDocument();
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('8');
+  });
+
+  it('reprints the latest ticket saved for this terminal', async () => {
+    const backend = stubBackend();
+    const print = vi.fn();
+    vi.stubGlobal('print', print);
+    window.localStorage.setItem('openerp.pos.lastTicketSaleId.7', '42');
+    renderLayout();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reimprimir último ticket' }));
+
+    await waitFor(() => expect(backend.ticketCalls).toEqual(['/api/v1/sales/42/tickets']));
+    expect(await screen.findByText('TICKET ANTERIOR')).toBeInTheDocument();
+    expect(print).toHaveBeenCalledTimes(1);
   });
 
   it('signs out the cashier without closing the till or discarding its terminal', async () => {
