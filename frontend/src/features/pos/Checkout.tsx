@@ -161,6 +161,10 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
               Introduce céntimos sin coma: 1250 equivale a 12,50 €. Déjalo vacío si el cliente
               entrega justo {formatMoney(sale.total)}.
             </p>
+            <div className="mt-4 rounded-lg bg-slate-700 p-3 text-center">
+              <p className="text-sm text-slate-300">Total de la venta</p>
+              <p className="text-2xl font-bold text-emerald-400">{formatMoney(sale.total)}</p>
+            </div>
             <input
               id="tendered-amount"
               aria-label="Importe recibido"

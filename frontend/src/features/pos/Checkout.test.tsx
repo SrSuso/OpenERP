@@ -62,6 +62,8 @@ describe('Checkout', () => {
     await userEvent.click(screen.getByRole('button', { name: /^efectivo$/i }));
 
     const dialog = screen.getByRole('dialog', { name: 'Importe recibido' });
+    expect(within(dialog).getByText('Total de la venta')).toBeInTheDocument();
+    expect(within(dialog).getByText('20,00 €')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Importe recibido')).toHaveValue('0,00 €');
     expect(within(dialog).getByText('0 céntimos')).toBeInTheDocument();
     // Vacío equivale explícitamente a que el cliente entrega el importe exacto.
