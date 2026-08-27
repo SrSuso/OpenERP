@@ -61,6 +61,7 @@ export function PosHomePage() {
   const [sale, setSale] = useState<Sale | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
   const [coldDrinkNext, setColdDrinkNext] = useState(false);
+  const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -317,7 +318,10 @@ export function PosHomePage() {
 
   const cancelMutation = useMutation({
     mutationFn: (saleId: number) => cancelSale(saleId, terminalId as number),
-    onSuccess: (_result, saleId) => closeSale(saleId),
+    onSuccess: (_result, saleId) => {
+      setCancelConfirmationOpen(false);
+      closeSale(saleId);
+    },
     onError: (error) => setLineError(describeError(error)),
   });
 
@@ -565,7 +569,7 @@ export function PosHomePage() {
                         sale={sale}
                         disabled={busy}
                         onRemoveLine={(line) => removeLineMutation.mutate(line)}
-                        onCancelSale={() => cancelMutation.mutate(sale!.id)}
+                        onCancelSale={() => setCancelConfirmationOpen(true)}
                         stockError={stockError}
                         isCheckingStock={stockCheckMutation.isPending}
                         onCheckout={() => {
@@ -619,6 +623,42 @@ export function PosHomePage() {
             })
           }
         />
+      )}
+
+      {cancelConfirmationOpen && sale !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-sale-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+        >
+          <section className="w-full max-w-sm rounded-xl border border-red-900 bg-slate-800 p-5 shadow-2xl">
+            <h2 id="cancel-sale-title" className="text-lg font-semibold text-slate-50">
+              ¿Cancelar esta venta?
+            </h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Se eliminarán los artículos de este carrito. Esta acción no se puede deshacer.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCancelConfirmationOpen(false)}
+                disabled={cancelMutation.isPending}
+                className="flex-1 rounded border border-slate-500 py-2.5 text-sm font-medium text-slate-100 disabled:opacity-50"
+              >
+                Seguir editando
+              </button>
+              <button
+                type="button"
+                onClick={() => cancelMutation.mutate(sale.id)}
+                disabled={cancelMutation.isPending}
+                className="flex-1 rounded bg-red-700 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {cancelMutation.isPending ? 'Cancelando…' : 'Sí, cancelar venta'}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       {isProductSearchOpen && (

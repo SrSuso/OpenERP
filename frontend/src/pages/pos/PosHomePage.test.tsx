@@ -191,6 +191,7 @@ function stubBackend(
   const barcodeLineCalls: Record<string, unknown>[] = [];
   const barcodeCalls: string[] = [];
   const checkoutKeys: string[] = [];
+  const cancelSaleCalls = { count: 0 };
   const stockCheckCalls = { count: 0 };
   let remainingCheckoutFailures = options.checkoutFailures ?? 0;
   let remainingLineFailures = options.rejectLineOnce ? 1 : 0;
@@ -404,6 +405,7 @@ function stubBackend(
       }
       if (method === 'POST' && /\/sales\/\d+\/cancel$/.test(url)) {
         // Cancelar borra el carrito: no devuelve venta porque ya no la hay.
+        cancelSaleCalls.count += 1;
         sale = null;
         return Promise.resolve(new Response(null, { status: 204 }));
       }
@@ -419,6 +421,7 @@ function stubBackend(
     barcodeLineCalls,
     barcodeCalls,
     checkoutKeys,
+    cancelSaleCalls,
     stockCheckCalls,
     mutationTerminalHeaders,
   };
@@ -886,14 +889,33 @@ describe('PosHomePage', () => {
     await screen.findByText(/el carrito está vacío/i);
   });
 
-  it('cancelling the sale clears the cart and opens a fresh one', async () => {
+  it('asks for confirmation before cancelling and can keep the sale open', async () => {
+    const backend = stubBackend({ existingDraft: saleWithMilkLine(42) });
+    renderPage();
+
+    await screen.findAllByText('Leche entera 1L');
+    await userEvent.click(screen.getByRole('button', { name: /cancelar venta/i }));
+
+    const confirmation = await screen.findByRole('dialog', { name: /cancelar esta venta/i });
+    expect(backend.cancelSaleCalls.count).toBe(0);
+    await userEvent.click(within(confirmation).getByRole('button', { name: 'Seguir editando' }));
+
+    expect(screen.queryByRole('dialog', { name: /cancelar esta venta/i })).not.toBeInTheDocument();
+    expect(await screen.findAllByText('Leche entera 1L')).toHaveLength(2);
+    expect(backend.cancelSaleCalls.count).toBe(0);
+  });
+
+  it('cancelling the sale after confirmation clears the cart and opens a fresh one', async () => {
     const backend = stubBackend({ existingDraft: saleWithMilkLine(42) });
     renderPage();
 
     expect(await screen.findAllByText('Leche entera 1L')).toHaveLength(2);
     await userEvent.click(screen.getByRole('button', { name: /cancelar venta/i }));
+    const confirmation = await screen.findByRole('dialog', { name: /cancelar esta venta/i });
+    await userEvent.click(within(confirmation).getByRole('button', { name: 'Sí, cancelar venta' }));
 
     await screen.findByText(/el carrito está vacío/i);
+    expect(backend.cancelSaleCalls.count).toBe(1);
     expect(backend.postSalesCalls.count).toBe(1);
   });
 
