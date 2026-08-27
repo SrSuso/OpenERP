@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { closeZReport, zReportPreviewQuery, type ZReport } from '@/features/pos/api';
 import { ticketPrintStyle } from '@/features/tickets/printProfile';
+import { useExclusivePrintDocument } from '@/features/tickets/useExclusivePrintDocument';
 import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
@@ -39,13 +40,18 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   const preview = useQuery(zReportPreviewQuery(warehouseId));
   const printProfile = useQuery(activeTicketPrintProfileQuery);
   const [closed, setClosed] = useState<ZReport | null>(null);
+  const [isPrintActive, setPrintActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const closeAttemptRef = useRef<string | null>(null);
+  const deactivatePrint = useCallback(() => setPrintActive(false), []);
+  const activatePrint = useExclusivePrintDocument(deactivatePrint);
 
   const closeMutation = useMutation({
     mutationFn: (key: string) => closeZReport(warehouseId as number, key),
     onSuccess: (report) => {
       closeAttemptRef.current = null;
+      activatePrint();
+      setPrintActive(true);
       setClosed(report);
       setError(null);
     },
@@ -56,8 +62,10 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   // Con la Z ya guardada y el mismo perfil físico que usa una venta, se
   // manda a imprimir: es el papel con el que se cuadra el cajón.
   useEffect(() => {
-    if (closed !== null && printProfile.data !== undefined) window.print();
-  }, [closed, printProfile.data]);
+    if (closed === null || !isPrintActive || printProfile.data === undefined) return;
+    window.print();
+    deactivatePrint();
+  }, [closed, isPrintActive, printProfile.data, deactivatePrint]);
 
   const totals = closed ?? preview.data;
   const openSales = preview.data?.open_sales ?? [];
@@ -71,6 +79,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
     >
       <div
         className="ticket-print-root w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl"
+        data-print-active={closed !== null && isPrintActive ? 'true' : undefined}
         data-ticket-width={printProfile.data?.printable_width_mm}
         style={printProfile.data ? ticketPrintStyle(printProfile.data) : undefined}
       >
@@ -146,7 +155,10 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                 type="button"
                 disabled={printProfile.data === undefined}
                 onClick={() => {
-                  if (printProfile.data !== undefined) window.print();
+                  if (printProfile.data !== undefined) {
+                    activatePrint();
+                    setPrintActive(true);
+                  }
                 }}
                 className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
               >

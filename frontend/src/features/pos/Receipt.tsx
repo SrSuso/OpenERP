@@ -1,9 +1,10 @@
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { generateTicket, type Sale, type Ticket } from '@/features/pos/api';
 import { useSettledShopFlag } from '@/features/settings/useShopSettings';
 import { ticketPrintStyle } from '@/features/tickets/printProfile';
+import { useExclusivePrintDocument } from '@/features/tickets/useExclusivePrintDocument';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
@@ -32,11 +33,18 @@ function describeError(error: unknown): string {
  */
 export function Receipt({ sale, onDismiss }: ReceiptProps) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [isPrintActive, setPrintActive] = useState(false);
   const printOnCheckout = useSettledShopFlag('pos.print_ticket_on_checkout', true);
+  const deactivatePrint = useCallback(() => setPrintActive(false), []);
+  const activatePrint = useExclusivePrintDocument(deactivatePrint);
 
   const printMutation = useMutation({
     mutationFn: () => generateTicket(sale.id),
-    onSuccess: setTicket,
+    onSuccess: (generated) => {
+      activatePrint();
+      setPrintActive(true);
+      setTicket(generated);
+    },
   });
 
   // Una sola vez por venta: generar el ticket es idempotente, pero pedirlo
@@ -64,17 +72,19 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   // Sólo cuando el ticket ha salido solo: si se ha pedido a mano, es
   // porque alguien quería mirarlo, y ahí manda el botón de cerrar.
   useEffect(() => {
-    if (ticket === null) return;
+    if (ticket === null || !isPrintActive) return;
     // `window.print()` no vuelve hasta que el trabajo está mandado, así que
     // el texto sigue en pantalla mientras se imprime.
     window.print();
+    deactivatePrint();
     if (printOnCheckout === true) onDismiss();
-  }, [ticket, printOnCheckout, onDismiss]);
+  }, [ticket, isPrintActive, printOnCheckout, onDismiss, deactivatePrint]);
 
   if (ticket !== null) {
     return (
       <div
         className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
+        data-print-active={isPrintActive ? 'true' : undefined}
         data-ticket-width={ticket.printable_width_mm}
         style={ticketPrintStyle(ticket)}
       >
@@ -83,7 +93,10 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
         </pre>
         <button
           type="button"
-          onClick={() => setTicket(null)}
+          onClick={() => {
+            deactivatePrint();
+            setTicket(null);
+          }}
           className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
         >
           Cerrar

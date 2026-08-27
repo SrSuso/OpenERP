@@ -138,7 +138,10 @@ describe('SalesPage', () => {
 
     expect(backend.ticketCalls).toEqual([1043]);
     expect(await screen.findByText('TICKET DE PRUEBA')).toBeInTheDocument();
-    expect(document.body.classList).toContain('printing-ticket-reprint');
+    // El documento se desactiva después de que `window.print()` vuelve
+    // (también al cancelar el diálogo), para que no se sume a la siguiente
+    // reimpresión.
+    expect(document.body.classList).not.toContain('printing-ticket-reprint');
     expect(
       Array.from(document.body.children).some((element) =>
         element.classList.contains('ticket-print-root'),

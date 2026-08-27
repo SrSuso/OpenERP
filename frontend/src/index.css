@@ -81,12 +81,12 @@
     visibility: hidden;
   }
 
-  .ticket-print-root,
-  .ticket-print-root * {
+  .ticket-print-root[data-print-active='true'],
+  .ticket-print-root[data-print-active='true'] * {
     visibility: visible;
   }
 
-  .ticket-print-root {
+  .ticket-print-root[data-print-active='true'] {
     position: fixed;
     inset: 0;
     /* En negro sobre blanco pase lo que pase: el cierre de caja se pinta
@@ -98,7 +98,7 @@
     padding: 2mm;
   }
 
-  .ticket-print-root * {
+  .ticket-print-root[data-print-active='true'] * {
     background: transparent !important;
     color: #000 !important;
     box-shadow: none !important;
@@ -107,7 +107,7 @@
   /* Cada ticket congela su perfil de impresión: ancho útil, letra,
      interlineado y márgenes. El ancho es la zona que realmente se imprime,
      nunca el ancho nominal de la bobina. */
-  .ticket-print-root[data-ticket-width] {
+  .ticket-print-root[data-print-active='true'][data-ticket-width] {
     position: static !important;
     display: block !important;
     width: var(--ticket-printable-width) !important;
@@ -120,7 +120,7 @@
     box-sizing: border-box !important;
   }
 
-  .ticket-print-root[data-ticket-width] pre {
+  .ticket-print-root[data-print-active='true'][data-ticket-width] pre {
     display: block !important;
     width: 100% !important;
     max-width: none !important;
@@ -144,8 +144,8 @@
   /* La Z no se renderiza como un bloque <pre>, pero debe salir por la misma
      impresora con el mismo ancho útil, fuente, tamaño, interlineado y peso
      configurados para los tickets de venta. */
-  .ticket-print-root[data-ticket-width],
-  .ticket-print-root[data-ticket-width] * {
+  .ticket-print-root[data-print-active='true'][data-ticket-width],
+  .ticket-print-root[data-print-active='true'][data-ticket-width] * {
     font-family: var(--ticket-font-family) !important;
     font-size: var(--ticket-font-size) !important;
     font-weight: var(--ticket-font-weight) !important;
