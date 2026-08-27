@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { generateTicket, type Ticket } from '@/features/pos/api';
 import { ticketPrintStyle } from '@/features/tickets/printProfile';
@@ -24,6 +25,18 @@ export function TicketReprintButton({ saleId }: TicketReprintButtonProps) {
     onSuccess: setTicket,
   });
 
+  // Esta vista se monta mediante un portal directamente bajo <body>. Al
+  // imprimir desde Administración, dejarla dentro de una fila de la tabla
+  // ocultaba el panel pero conservaba toda su altura en el documento, y la
+  // impresora térmica avanzaba varias páginas en blanco antes del ticket.
+  // La clase permite retirar #root de la maquetación impresa sin afectar la
+  // impresión normal que se inicia desde el propio TPV.
+  useLayoutEffect(() => {
+    if (ticket === null) return;
+    document.body.classList.add('printing-ticket-reprint');
+    return () => document.body.classList.remove('printing-ticket-reprint');
+  }, [ticket]);
+
   useEffect(() => {
     if (ticket !== null) {
       window.print();
@@ -31,7 +44,7 @@ export function TicketReprintButton({ saleId }: TicketReprintButtonProps) {
   }, [ticket]);
 
   if (ticket !== null) {
-    return (
+    return createPortal(
       <div
         className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
         data-ticket-width={ticket.printable_width_mm}
@@ -47,7 +60,8 @@ export function TicketReprintButton({ saleId }: TicketReprintButtonProps) {
         >
           Cerrar
         </button>
-      </div>
+      </div>,
+      document.body,
     );
   }
 

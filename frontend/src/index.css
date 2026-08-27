@@ -52,6 +52,13 @@
  * `window.print()` never needs the rest of the till's chrome (or its dark
  * background) reproduced on paper. */
 @media print {
+  /* La reimpresión del panel administrativo se monta directamente bajo
+     <body>. Quitar #root del flujo impreso evita que sus tablas, menú y
+     alto de pantalla se conviertan en papel en blanco antes del ticket. */
+  body.printing-ticket-reprint #root {
+    display: none !important;
+  }
+
   /* La mayoría de impresoras de rollo de 80 mm sólo tienen unos 72 mm de
      cabeza imprimible. El ticket se compone con 48 caracteres para 80 mm,
      así que dejar que el navegador use sus rellenos de pantalla o refluya

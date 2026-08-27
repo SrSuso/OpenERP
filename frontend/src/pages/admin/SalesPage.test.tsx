@@ -138,6 +138,12 @@ describe('SalesPage', () => {
 
     expect(backend.ticketCalls).toEqual([1043]);
     expect(await screen.findByText('TICKET DE PRUEBA')).toBeInTheDocument();
+    expect(document.body.classList).toContain('printing-ticket-reprint');
+    expect(
+      Array.from(document.body.children).some((element) =>
+        element.classList.contains('ticket-print-root'),
+      ),
+    ).toBe(true);
   });
 
   it('asks the server again when the day or the status changes', async () => {
