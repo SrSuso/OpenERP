@@ -261,6 +261,8 @@ export interface SalesFilters {
   /** Día concreto, `YYYY-MM-DD`. */
   day?: string;
   status?: 'DRAFT' | 'COMPLETED';
+  /** Historial de la caja física: nunca se mezcla con otra terminal. */
+  terminalId?: number;
 }
 
 /** La venta que lleva ese número impreso, o `null` si no hay ninguna. Es
@@ -285,6 +287,7 @@ export function salesQuery(filters: SalesFilters) {
   const params = new URLSearchParams({ limit: '500' });
   if (filters.day) params.set('business_date', filters.day);
   if (filters.status) params.set('status', filters.status);
+  if (filters.terminalId !== undefined) params.set('terminal_id', String(filters.terminalId));
 
   return queryOptions({
     queryKey: ['sales', 'list', filters] as const,

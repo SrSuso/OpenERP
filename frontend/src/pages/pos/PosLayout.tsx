@@ -73,8 +73,17 @@ function PosLayoutContent() {
               Devolución
             </Link>
           )}
+          {hasPermission('sale.read') && (
+            <Link
+              to="/pos/tickets"
+              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600"
+            >
+              Tickets
+            </Link>
+          )}
           {lastTicketSaleId !== null && (
             <TicketReprintButton
+              key={lastTicketSaleId}
               saleId={lastTicketSaleId}
               label="Reimprimir último ticket"
               className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600 disabled:opacity-50"

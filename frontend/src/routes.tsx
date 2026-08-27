@@ -44,6 +44,7 @@ import { PosHomePage } from '@/pages/pos/PosHomePage';
 import { PosLayout } from '@/pages/pos/PosLayout';
 import { PosLoginPage } from '@/pages/pos/PosLoginPage';
 import { PosReturnsPage } from '@/pages/pos/PosReturnsPage';
+import { PosTicketsPage } from '@/pages/pos/PosTicketsPage';
 import { PosAuthProvider } from '@/features/auth/PosAuthProvider';
 
 /**
@@ -267,6 +268,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <PosHomePage /> },
           { path: 'returns', element: <PosReturnsPage /> },
+          { path: 'tickets', element: <PosTicketsPage /> },
         ],
       },
     ],

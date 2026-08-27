@@ -957,6 +957,32 @@ describe('PosHomePage', () => {
     expect(screen.queryByText(/venta cobrada/i)).not.toBeInTheDocument();
   });
 
+  it('remembers the newest completed sale for the terminal after consecutive checkouts', async () => {
+    stubBackend({ existingDraft: saleWithMilkLine(42) });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    let cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
+    await userEvent.click(within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' }));
+    await screen.findByText(/venta cobrada/i);
+    expect(window.localStorage.getItem('openerp.pos.lastTicketSaleId.7')).toBe('42');
+
+    await userEvent.click(screen.getByRole('button', { name: /nueva venta/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /leche entera 1l/i }));
+    await screen.findAllByText('Leche entera 1L');
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirmar cobro/i }));
+    cashPrompt = await screen.findByRole('dialog', { name: 'Importe recibido' });
+    await userEvent.click(within(cashPrompt).getByRole('button', { name: 'Confirmar efectivo' }));
+    await screen.findByText(/venta cobrada/i);
+
+    // La segunda venta creada por el stub tiene id 5: el acceso rápido no
+    // puede quedarse apuntando al ticket de la venta anterior.
+    expect(window.localStorage.getItem('openerp.pos.lastTicketSaleId.7')).toBe('5');
+  });
+
   it('reuses the same idempotency key after an uncertain checkout error', async () => {
     const backend = stubBackend({ existingDraft: saleWithMilkLine(42), checkoutFailures: 1 });
     renderPage();
