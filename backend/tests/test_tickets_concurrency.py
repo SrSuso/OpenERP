@@ -532,6 +532,8 @@ async def test_non_identity_integrity_error_is_not_treated_as_ticket_replay(
                 sale_id=sale_id,
                 template_id=9_999_999_999,
                 printable_width_mm=48,
+                margin_left_mm=16,
+                margin_right_mm=16,
                 font_family="COURIER_NEW",
                 font_size_px=9,
                 line_height_px=12,

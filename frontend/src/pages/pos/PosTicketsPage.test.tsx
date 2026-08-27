@@ -67,6 +67,8 @@ function stubBackend() {
             sale_id: 42,
             template_id: 3,
             printable_width_mm: 80,
+            margin_left_mm: 0,
+            margin_right_mm: 0,
             font_family: 'COURIER_NEW',
             font_size_px: 10,
             line_height_px: 12,

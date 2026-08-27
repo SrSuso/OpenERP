@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from app.core.business_time import to_business_time
 from app.sales.models import Sale, SaleLine
 from app.tickets.layout import render_layout_template
-from app.tickets.models import TicketFontWeight, TicketTaxDisplay, TicketTemplate
+from app.tickets.models import TicketFontWeight, TicketLayoutMode, TicketTaxDisplay, TicketTemplate
 
 #: Characters a standard monospace receipt font fits per line, for each
 #: supported roll width — the two off only because thermal printers only
@@ -234,7 +234,7 @@ def render_ticket(
     ticket se edita en un único sitio, su plantilla, y de paso queda
     guardado en ella."""
     width = printable_characters(template)
-    if (template.layout_template or "").strip():
+    if template.layout_mode == TicketLayoutMode.CUSTOM and (template.layout_template or "").strip():
         return render_layout_template(
             template.layout_template or "",
             _layout_context(

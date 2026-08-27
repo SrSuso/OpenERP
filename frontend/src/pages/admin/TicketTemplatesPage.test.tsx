@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -25,6 +25,8 @@ const ME = {
 
 const PRINT_PROFILE = {
   printable_width_mm: 72,
+  margin_left_mm: 4,
+  margin_right_mm: 4,
   font_family: 'COURIER_NEW' as const,
   font_size_px: 9,
   line_height_px: 12,
@@ -32,6 +34,7 @@ const PRINT_PROFILE = {
   margin_top_mm: 0,
   margin_bottom_mm: 0,
   layout_template: '',
+  layout_mode: 'STANDARD' as const,
 };
 
 function stubBackend() {
@@ -80,12 +83,16 @@ function stubBackend() {
           name: b['name'] as string,
           ...PRINT_PROFILE,
           printable_width_mm: b['printable_width_mm'] as number,
+          margin_left_mm: b['margin_left_mm'] as number,
+          margin_right_mm: b['margin_right_mm'] as number,
           font_family: b['font_family'] as TicketTemplate['font_family'],
           font_size_px: b['font_size_px'] as number,
           line_height_px: b['line_height_px'] as number,
           font_weight: b['font_weight'] as TicketTemplate['font_weight'],
           margin_top_mm: b['margin_top_mm'] as number,
           margin_bottom_mm: b['margin_bottom_mm'] as number,
+          layout_template: b['layout_template'] as string,
+          layout_mode: b['layout_mode'] as TicketTemplate['layout_mode'],
           header_text: (b['header_text'] as string) ?? '',
           footer_text: (b['footer_text'] as string) ?? '',
           tax_display: b['tax_display'] as TicketTemplate['tax_display'],
@@ -187,6 +194,8 @@ describe('TicketTemplatesPage', () => {
       {
         name: 'Tienda principal',
         printable_width_mm: 48,
+        margin_left_mm: 4,
+        margin_right_mm: 4,
         font_family: 'LIBERATION_MONO',
         font_size_px: 10,
         line_height_px: 14,
@@ -194,6 +203,7 @@ describe('TicketTemplatesPage', () => {
         margin_top_mm: 2,
         margin_bottom_mm: 3,
         layout_template: '',
+        layout_mode: 'STANDARD',
         header_text: 'Gracias por su compra',
         footer_text: '',
         tax_display: 'BREAKDOWN',
@@ -229,6 +239,8 @@ describe('TicketTemplatesPage', () => {
         body: {
           name: 'Tienda principal',
           printable_width_mm: 48,
+          margin_left_mm: 4,
+          margin_right_mm: 4,
           font_family: 'LIBERATION_MONO',
           font_size_px: 10,
           line_height_px: 14,
@@ -236,6 +248,7 @@ describe('TicketTemplatesPage', () => {
           margin_top_mm: 2,
           margin_bottom_mm: 3,
           layout_template: '',
+          layout_mode: 'STANDARD',
           header_text: 'Gracias por su compra',
           footer_text: 'Vuelva pronto',
           tax_display: 'BREAKDOWN',
@@ -258,6 +271,53 @@ describe('TicketTemplatesPage', () => {
         },
       },
     ]);
+  });
+
+  it('keeps an 80 mm paper preview while side margins move the printable area', async () => {
+    stubBackend();
+    const { container } = renderPage();
+
+    await screen.findByText('Todavía no hay ninguna plantilla activa.');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
+
+    const paper = container.querySelector('[data-ticket-paper-preview]');
+    const content = container.querySelector('[data-ticket-template-preview]');
+    expect(paper).toHaveStyle({ width: '80mm' });
+    expect(content).toHaveStyle({ width: '72mm', marginLeft: '4mm', marginRight: '4mm' });
+
+    await userEvent.clear(screen.getByLabelText('Margen izquierdo (mm)'));
+    await userEvent.type(screen.getByLabelText('Margen izquierdo (mm)'), '6');
+    await userEvent.clear(screen.getByLabelText('Margen derecho (mm)'));
+    await userEvent.type(screen.getByLabelText('Margen derecho (mm)'), '2');
+
+    expect(paper).toHaveStyle({ width: '80mm' });
+    expect(content).toHaveStyle({ width: '72mm', marginLeft: '6mm', marginRight: '2mm' });
+  });
+
+  it('switches between the standard and variable editors without losing custom source', async () => {
+    stubBackend();
+    const { container } = renderPage();
+    const preview = () =>
+      container.querySelector('[data-ticket-template-preview]')?.textContent ?? '';
+
+    await screen.findByText('Todavía no hay ninguna plantilla activa.');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
+    const editor = screen.getByRole('combobox', { name: 'Tipo de editor' });
+    await userEvent.selectOptions(editor, 'CUSTOM');
+
+    const layout = screen.getByLabelText('Diseño del ticket (plantilla segura)');
+    fireEvent.change(layout, { target: { value: 'MI DISEÑO: {{ totals.total }}' } });
+    expect(preview()).toContain('MI DISEÑO: 1.90');
+
+    await userEvent.selectOptions(editor, 'STANDARD');
+    expect(screen.queryByLabelText('Diseño del ticket (plantilla segura)')).not.toBeInTheDocument();
+    expect(preview()).not.toContain('MI DISEÑO');
+
+    await userEvent.selectOptions(editor, 'CUSTOM');
+    expect(screen.getByLabelText('Diseño del ticket (plantilla segura)')).toHaveValue(
+      'MI DISEÑO: {{ totals.total }}',
+    );
+    expect(preview()).toContain('MI DISEÑO: 1.90');
   });
 
   it('lets the shop switch the ticket from the full breakdown to just "IVA incluido"', async () => {

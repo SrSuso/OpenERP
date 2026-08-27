@@ -4,6 +4,8 @@ import { type TicketFontFamily, type TicketFontWeight } from '@/features/tickets
 
 export interface TicketPrintProfile {
   printable_width_mm: number;
+  margin_left_mm: number;
+  margin_right_mm: number;
   font_family: TicketFontFamily;
   font_size_px: number;
   line_height_px: number;
@@ -29,6 +31,8 @@ export const THERMAL_PAPER_WIDTH_MM = 80;
 export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
   return {
     '--ticket-printable-width': `${profile.printable_width_mm}mm`,
+    '--ticket-margin-left': `${profile.margin_left_mm}mm`,
+    '--ticket-margin-right': `${profile.margin_right_mm}mm`,
     '--ticket-font-family': FONT_STACKS[profile.font_family],
     '--ticket-font-size': `${profile.font_size_px}px`,
     '--ticket-line-height': `${profile.line_height_px}px`,
@@ -46,6 +50,8 @@ export function ticketPreviewStyle(profile: TicketPrintProfile): CSSProperties {
     boxSizing: 'border-box',
     marginTop: `${profile.margin_top_mm}mm`,
     marginBottom: `${profile.margin_bottom_mm}mm`,
+    marginLeft: `${profile.margin_left_mm}mm`,
+    marginRight: `${profile.margin_right_mm}mm`,
     fontFamily: FONT_STACKS[profile.font_family],
     fontSize: `${profile.font_size_px}px`,
     fontWeight: profile.font_weight === 'BOLD' ? 700 : 400,

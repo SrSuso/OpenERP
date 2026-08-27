@@ -9,6 +9,7 @@ import {
   TAX_DISPLAY_LABELS,
   ticketFontFamilySchema,
   ticketFontWeightSchema,
+  ticketLayoutModeSchema,
   ticketTaxDisplaySchema,
   type TemplateFields,
   type TicketTemplate,
@@ -20,41 +21,67 @@ import {
   renderTicketLayoutTemplate,
   ticketLayoutPreviewContext,
 } from '@/features/tickets/layoutTemplate';
-import { ticketPreviewStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import {
+  THERMAL_PAPER_WIDTH_MM,
+  ticketPreviewStyle,
+  ticketPrintStyle,
+} from '@/features/tickets/printProfile';
 import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 
-const fieldsSchema = z.object({
-  name: z.string().max(100).optional(),
-  printable_width_mm: z.coerce.number().int().min(25).max(80),
-  font_family: ticketFontFamilySchema,
-  font_size_px: z.coerce.number().int().min(6).max(16),
-  line_height_px: z.coerce.number().int().min(8).max(24),
-  font_weight: ticketFontWeightSchema,
-  margin_top_mm: z.coerce.number().int().min(0).max(20),
-  margin_bottom_mm: z.coerce.number().int().min(0).max(20),
-  layout_template: z.string().max(8000),
-  header_text: z.string().max(2000).optional(),
-  footer_text: z.string().max(2000).optional(),
-  tax_display: ticketTaxDisplaySchema,
-  show_line_discounts: z.boolean(),
-  // Lo que antes se rellenaba en Configuración y salía impreso desde allí:
-  // ahora vive aquí, que es donde se edita el ticket.
-  store_name: z.string().max(500).optional(),
-  store_tax_id: z.string().max(500).optional(),
-  store_address: z.string().max(1000).optional(),
-  store_phone: z.string().max(200).optional(),
-  sale_number_prefix: z.string().max(50).optional(),
-  date_format: z.string().max(50),
-  show_unit_price: z.boolean(),
-  show_cashier: z.boolean(),
-  label_total: z.string().max(50).optional(),
-  label_change: z.string().max(50).optional(),
-  label_cash: z.string().max(50).optional(),
-  label_card: z.string().max(50).optional(),
-  label_other: z.string().max(50).optional(),
-  label_discount: z.string().max(50).optional(),
-  tax_note: z.string().max(200).optional(),
-});
+const fieldsSchema = z
+  .object({
+    name: z.string().max(100).optional(),
+    printable_width_mm: z.coerce.number().int().min(25).max(80),
+    margin_left_mm: z.coerce.number().int().min(0).max(55),
+    margin_right_mm: z.coerce.number().int().min(0).max(55),
+    font_family: ticketFontFamilySchema,
+    font_size_px: z.coerce.number().int().min(6).max(16),
+    line_height_px: z.coerce.number().int().min(8).max(24),
+    font_weight: ticketFontWeightSchema,
+    margin_top_mm: z.coerce.number().int().min(0).max(20),
+    margin_bottom_mm: z.coerce.number().int().min(0).max(20),
+    layout_template: z.string().max(8000),
+    layout_mode: ticketLayoutModeSchema,
+    header_text: z.string().max(2000).optional(),
+    footer_text: z.string().max(2000).optional(),
+    tax_display: ticketTaxDisplaySchema,
+    show_line_discounts: z.boolean(),
+    // Lo que antes se rellenaba en Configuración y salía impreso desde allí:
+    // ahora vive aquí, que es donde se edita el ticket.
+    store_name: z.string().max(500).optional(),
+    store_tax_id: z.string().max(500).optional(),
+    store_address: z.string().max(1000).optional(),
+    store_phone: z.string().max(200).optional(),
+    sale_number_prefix: z.string().max(50).optional(),
+    date_format: z.string().max(50),
+    show_unit_price: z.boolean(),
+    show_cashier: z.boolean(),
+    label_total: z.string().max(50).optional(),
+    label_change: z.string().max(50).optional(),
+    label_cash: z.string().max(50).optional(),
+    label_card: z.string().max(50).optional(),
+    label_other: z.string().max(50).optional(),
+    label_discount: z.string().max(50).optional(),
+    tax_note: z.string().max(200).optional(),
+  })
+  .superRefine((values, context) => {
+    const occupiedWidth =
+      values.margin_left_mm + values.printable_width_mm + values.margin_right_mm;
+    if (occupiedWidth > THERMAL_PAPER_WIDTH_MM) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['printable_width_mm'],
+        message: `El área completa ocupa ${occupiedWidth} mm y el papel mide 80 mm.`,
+      });
+    }
+    if (values.layout_mode === 'CUSTOM' && !values.layout_template.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['layout_template'],
+        message: 'Escribe el diseño de la plantilla con variables.',
+      });
+    }
+  });
 
 type TemplateFormValues = z.infer<typeof fieldsSchema>;
 
@@ -98,6 +125,8 @@ export function TemplateFieldsForm({
     defaultValues: {
       name: defaults?.name ?? '',
       printable_width_mm: defaults?.printable_width_mm ?? 72,
+      margin_left_mm: defaults?.margin_left_mm ?? 4,
+      margin_right_mm: defaults?.margin_right_mm ?? 4,
       font_family: defaults?.font_family ?? 'COURIER_NEW',
       font_size_px: defaults?.font_size_px ?? 9,
       line_height_px: defaults?.line_height_px ?? 12,
@@ -105,6 +134,7 @@ export function TemplateFieldsForm({
       margin_top_mm: defaults?.margin_top_mm ?? 0,
       margin_bottom_mm: defaults?.margin_bottom_mm ?? 0,
       layout_template: defaults?.layout_template ?? '',
+      layout_mode: defaults?.layout_mode ?? 'STANDARD',
       header_text: defaults?.header_text ?? '',
       footer_text: defaults?.footer_text ?? '',
       tax_display: defaults?.tax_display ?? 'BREAKDOWN',
@@ -132,6 +162,8 @@ export function TemplateFieldsForm({
   // an invalid value when the form is submitted.
   const printProfile = {
     printable_width_mm: previewNumber(watch('printable_width_mm'), 72, 25),
+    margin_left_mm: previewNumber(watch('margin_left_mm'), 4),
+    margin_right_mm: previewNumber(watch('margin_right_mm'), 4),
     font_family: watch('font_family') ?? 'COURIER_NEW',
     font_size_px: previewNumber(watch('font_size_px'), 9, 6),
     line_height_px: previewNumber(watch('line_height_px'), 12, 8),
@@ -164,7 +196,8 @@ export function TemplateFieldsForm({
   });
   let layoutPreviewError: string | null = null;
   const layoutTemplate = watch('layout_template') ?? '';
-  if (layoutTemplate.trim()) {
+  const layoutMode = watch('layout_mode') ?? 'STANDARD';
+  if (layoutMode === 'CUSTOM' && layoutTemplate.trim()) {
     try {
       preview = renderTicketLayoutTemplate(
         layoutTemplate,
@@ -203,6 +236,8 @@ export function TemplateFieldsForm({
     onSubmit({
       name: values.name.trim(),
       printable_width_mm: values.printable_width_mm,
+      margin_left_mm: values.margin_left_mm,
+      margin_right_mm: values.margin_right_mm,
       font_family: values.font_family,
       font_size_px: values.font_size_px,
       line_height_px: values.line_height_px,
@@ -210,6 +245,7 @@ export function TemplateFieldsForm({
       margin_top_mm: values.margin_top_mm,
       margin_bottom_mm: values.margin_bottom_mm,
       layout_template: values.layout_template ?? '',
+      layout_mode: values.layout_mode,
       header_text: values.header_text ?? '',
       footer_text: values.footer_text ?? '',
       tax_display: values.tax_display,
@@ -254,19 +290,73 @@ export function TemplateFieldsForm({
             {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
           </label>
 
-          <label className="text-sm text-slate-600">
-            Ancho imprimible (mm)
-            <input
-              type="number"
-              min="25"
-              max="80"
-              className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
-              {...register('printable_width_mm')}
-            />
+          <div className="text-sm text-slate-600 sm:col-span-2">
+            <label htmlFor="ticket-layout-mode">Tipo de editor</label>
+            <select
+              id="ticket-layout-mode"
+              className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('layout_mode')}
+            >
+              <option value="STANDARD">Estándar — configurar mediante campos</option>
+              <option value="CUSTOM">Plantilla con variables — editor tipo LaTeX sencillo</option>
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              Puedes cambiar de modo sin perder el texto de la plantilla personalizada.
+            </span>
+          </div>
+
+          <fieldset className="grid gap-3 rounded border border-slate-200 p-3 sm:col-span-2 sm:grid-cols-3">
+            <legend className="px-1 text-sm font-medium text-slate-600">Papel y área útil</legend>
+            <label className="text-sm text-slate-600">
+              Margen izquierdo (mm)
+              <input
+                type="number"
+                min="0"
+                max="55"
+                className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+                {...register('margin_left_mm')}
+              />
+              {errors.margin_left_mm && (
+                <span className="mt-1 block text-sm text-red-600">
+                  {errors.margin_left_mm.message}
+                </span>
+              )}
+            </label>
+            <label className="text-sm text-slate-600">
+              Ancho imprimible (mm)
+              <input
+                type="number"
+                min="25"
+                max="80"
+                className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+                {...register('printable_width_mm')}
+              />
+            </label>
+            <label className="text-sm text-slate-600">
+              Margen derecho (mm)
+              <input
+                type="number"
+                min="0"
+                max="55"
+                className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+                {...register('margin_right_mm')}
+              />
+              {errors.margin_right_mm && (
+                <span className="mt-1 block text-sm text-red-600">
+                  {errors.margin_right_mm.message}
+                </span>
+              )}
+            </label>
             {errors.printable_width_mm && (
-              <p className="mt-1 text-sm text-red-600">{errors.printable_width_mm.message}</p>
+              <p className="text-sm text-red-600 sm:col-span-3">
+                {errors.printable_width_mm.message}
+              </p>
             )}
-          </label>
+            <p className="text-xs text-slate-500 sm:col-span-3">
+              La bobina siempre mide 80 mm. Los dos márgenes y el ancho imprimible deben sumar 80 mm
+              o menos.
+            </p>
+          </fieldset>
 
           <label className="text-sm text-slate-600">
             Tipo de letra
@@ -351,43 +441,44 @@ export function TemplateFieldsForm({
             Fijar una altura podría cortar líneas o dejar papel en blanco.
           </p>
 
-          <div className="sm:col-span-2">
-            <label className="text-sm text-slate-600">
-              Diseño del ticket (plantilla segura)
-              <textarea
-                rows={14}
-                spellCheck={false}
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
-                placeholder={
-                  '{{ store.name | center }}\n{{ separator }}\n{% for line in sale.lines %}\n{{ line.name | left:32 }}{{ line.total | right:16 }}\n{% endfor %}\n{{ labels.total | left:32 }}{{ totals.total | right:16 }}'
-                }
-                {...register('layout_template')}
-              />
-            </label>
-            {errors.layout_template && (
-              <p className="mt-1 text-sm text-red-600">{errors.layout_template.message}</p>
-            )}
-            <p className="mt-1 text-xs text-slate-500">
-              Déjalo vacío para usar el diseño guiado actual. Si escribes aquí, este diseño controla
-              todo el ticket y se valida al guardar; no ejecuta LaTeX, HTML ni código.
-            </p>
-            <details className="mt-2 rounded border border-slate-200 px-3 py-2 text-xs text-slate-600">
-              <summary className="cursor-pointer font-medium">
-                Variables y formato disponibles
-              </summary>
-              <p className="mt-2">
-                Tienda: <code>{'{{ store.name }}'}</code>, <code>{'{{ store.tax_id }}'}</code>,{' '}
-                <code>{'{{ store.address }}'}</code>, <code>{'{{ store.phone }}'}</code>. Venta:{' '}
-                <code>{'{{ sale.number }}'}</code>, <code>{'{{ sale.date }}'}</code>,{' '}
-                <code>{'{{ sale.cashier }}'}</code>. Totales: <code>{'{{ totals.total }}'}</code>,{' '}
-                <code>{'{{ totals.tax }}'}</code>, <code>{'{{ totals.change }}'}</code> y{' '}
-                <code>{'{{ separator }}'}</code>.
+          {layoutMode === 'CUSTOM' && (
+            <div className="sm:col-span-2">
+              <label className="text-sm text-slate-600">
+                Diseño del ticket (plantilla segura)
+                <textarea
+                  rows={14}
+                  spellCheck={false}
+                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
+                  placeholder={
+                    '{{ store.name | center }}\n{{ separator }}\n{% for line in sale.lines %}\n{{ line.name | left:32 }}{{ line.total | right:16 }}\n{% endfor %}\n{{ labels.total | left:32 }}{{ totals.total | right:16 }}'
+                  }
+                  {...register('layout_template')}
+                />
+              </label>
+              {errors.layout_template && (
+                <p className="mt-1 text-sm text-red-600">{errors.layout_template.message}</p>
+              )}
+              <p className="mt-1 text-xs text-slate-500">
+                Este diseño controla todo el contenido y se valida al guardar. Es una sintaxis
+                sencilla inspirada en plantillas, no ejecuta LaTeX, HTML ni código.
               </p>
-              <p className="mt-1">
-                Alinea con <code>{'{{ valor | left:32 }}'}</code>,{' '}
-                <code>{'{{ valor | right:16 }}'}</code> o <code>{'{{ valor | center }}'}</code>.
-              </p>
-              <pre className="mt-2 overflow-hidden rounded bg-slate-100 p-2 text-[11px] leading-4 text-slate-700">{`{% for line in sale.lines %}
+              <details className="mt-2 rounded border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                <summary className="cursor-pointer font-medium">
+                  Variables y formato disponibles
+                </summary>
+                <p className="mt-2">
+                  Tienda: <code>{'{{ store.name }}'}</code>, <code>{'{{ store.tax_id }}'}</code>,{' '}
+                  <code>{'{{ store.address }}'}</code>, <code>{'{{ store.phone }}'}</code>. Venta:{' '}
+                  <code>{'{{ sale.number }}'}</code>, <code>{'{{ sale.date }}'}</code>,{' '}
+                  <code>{'{{ sale.cashier }}'}</code>. Totales: <code>{'{{ totals.total }}'}</code>,{' '}
+                  <code>{'{{ totals.tax }}'}</code>, <code>{'{{ totals.change }}'}</code> y{' '}
+                  <code>{'{{ separator }}'}</code>.
+                </p>
+                <p className="mt-1">
+                  Alinea con <code>{'{{ valor | left:32 }}'}</code>,{' '}
+                  <code>{'{{ valor | right:16 }}'}</code> o <code>{'{{ valor | center }}'}</code>.
+                </p>
+                <pre className="mt-2 overflow-hidden rounded bg-slate-100 p-2 text-[11px] leading-4 text-slate-700">{`{% for line in sale.lines %}
 {{ line.name | left:32 }}{{ line.total | right:16 }}
 {{ line.quantity }} x {{ line.unit_price }}
 {% endfor %}
@@ -395,11 +486,12 @@ export function TemplateFieldsForm({
 {% for payment in sale.payments %}
 {{ payment.label | left:32 }}{{ payment.amount | right:16 }}
 {% endfor %}`}</pre>
-              <p className="mt-1">
-                También existe <code>tax</code> en <code>{'{% for tax in sale.taxes %}'}</code>.
-              </p>
-            </details>
-          </div>
+                <p className="mt-1">
+                  También existe <code>tax</code> en <code>{'{% for tax in sale.taxes %}'}</code>.
+                </p>
+              </details>
+            </div>
+          )}
 
           {/* Los datos de la tienda: aquí y no en Configuración, para que el
               ticket se edite en un solo sitio. */}
@@ -585,15 +677,21 @@ export function TemplateFieldsForm({
 
         <div className="lg:w-[26rem] lg:shrink-0">
           <p className="mb-1 text-xs font-semibold uppercase text-slate-500">
-            Vista previa (con datos de ejemplo)
+            Vista previa — papel de 80 mm (datos de ejemplo)
           </p>
-          <pre
-            data-ticket-template-preview
-            className="overflow-hidden rounded border border-dashed border-slate-300 bg-slate-50 p-0 text-slate-700"
-            style={{ ...ticketPrintStyle(printProfile), ...ticketPreviewStyle(printProfile) }}
+          <div
+            data-ticket-paper-preview
+            className="overflow-hidden rounded border border-slate-300 bg-white shadow-sm"
+            style={{ width: `${THERMAL_PAPER_WIDTH_MM}mm`, boxSizing: 'border-box' }}
           >
-            {preview}
-          </pre>
+            <pre
+              data-ticket-template-preview
+              className="overflow-hidden border-x border-dashed border-sky-300 bg-slate-50/60 p-0 text-slate-700"
+              style={{ ...ticketPrintStyle(printProfile), ...ticketPreviewStyle(printProfile) }}
+            >
+              {preview}
+            </pre>
+          </div>
           {layoutPreviewError && <p className="mt-2 text-sm text-red-600">{layoutPreviewError}</p>}
         </div>
       </div>

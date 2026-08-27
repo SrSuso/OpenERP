@@ -128,7 +128,8 @@
     max-width: var(--ticket-printable-width) !important;
     height: auto !important;
     min-height: 0 !important;
-    margin: var(--ticket-margin-top) 0 var(--ticket-margin-bottom) !important;
+    margin: var(--ticket-margin-top) var(--ticket-margin-right) var(--ticket-margin-bottom)
+      var(--ticket-margin-left) !important;
     padding: 0 !important;
     box-sizing: border-box !important;
   }

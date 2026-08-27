@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { ticketPageHeightMm, ticketPageStyle } from './printProfile';
+import {
+  ticketPageHeightMm,
+  ticketPageStyle,
+  ticketPreviewStyle,
+  ticketPrintStyle,
+} from './printProfile';
 
 const PROFILE = {
   printable_width_mm: 72,
+  margin_left_mm: 4,
+  margin_right_mm: 4,
   font_family: 'COURIER_NEW' as const,
   font_size_px: 9,
   line_height_px: 12,
@@ -17,6 +24,15 @@ describe('ticket print page profile', () => {
     expect(ticketPageStyle(PROFILE, 20)).toMatch(
       /^@page \{ size: 80mm \d+(?:\.\d+)?mm; margin: 0; \}$/,
     );
+    expect(ticketPreviewStyle(PROFILE)).toMatchObject({
+      width: '72mm',
+      marginLeft: '4mm',
+      marginRight: '4mm',
+    });
+    expect(ticketPrintStyle(PROFILE)).toMatchObject({
+      '--ticket-margin-left': '4mm',
+      '--ticket-margin-right': '4mm',
+    });
   });
 
   it('reserves configured margins and enough height for every printed line', () => {

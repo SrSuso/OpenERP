@@ -54,7 +54,11 @@ describe('renderTicketPreview', () => {
   });
 
   it('widens to 48 characters for a 72mm printable area', () => {
-    const preview = renderTicketPreview({ ...BASE_FIELDS, printable_width_mm: 72, header_text: 'X' });
+    const preview = renderTicketPreview({
+      ...BASE_FIELDS,
+      printable_width_mm: 72,
+      header_text: 'X',
+    });
     expect(preview.split('\n')[1]).toBe('-'.repeat(48));
   });
 

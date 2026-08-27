@@ -23,6 +23,9 @@ export type TicketFontFamily = z.infer<typeof ticketFontFamilySchema>;
 export const ticketFontWeightSchema = z.enum(['NORMAL', 'BOLD']);
 export type TicketFontWeight = z.infer<typeof ticketFontWeightSchema>;
 
+export const ticketLayoutModeSchema = z.enum(['STANDARD', 'CUSTOM']);
+export type TicketLayoutMode = z.infer<typeof ticketLayoutModeSchema>;
+
 export const TICKET_FONT_FAMILY_LABELS: Record<TicketFontFamily, string> = {
   COURIER_NEW: 'Courier New',
   LIBERATION_MONO: 'Liberation Mono',
@@ -44,6 +47,8 @@ export const ticketTemplateSchema = z.object({
   id: z.number(),
   name: z.string(),
   printable_width_mm: z.number().int().min(25).max(80),
+  margin_left_mm: z.number().int().min(0).max(55),
+  margin_right_mm: z.number().int().min(0).max(55),
   font_family: ticketFontFamilySchema,
   font_size_px: z.number().int().min(6).max(16),
   line_height_px: z.number().int().min(8).max(24),
@@ -51,6 +56,7 @@ export const ticketTemplateSchema = z.object({
   margin_top_mm: z.number().int().min(0).max(20),
   margin_bottom_mm: z.number().int().min(0).max(20),
   layout_template: z.string().max(8000),
+  layout_mode: ticketLayoutModeSchema,
   header_text: z.string(),
   footer_text: z.string(),
   tax_display: ticketTaxDisplaySchema,
@@ -93,6 +99,8 @@ export const activeTicketTemplateQuery = queryOptions({
  * remains an admin-only operation. */
 export const ticketPrintProfileSchema = ticketTemplateSchema.pick({
   printable_width_mm: true,
+  margin_left_mm: true,
+  margin_right_mm: true,
   font_family: true,
   font_size_px: true,
   line_height_px: true,
@@ -113,6 +121,8 @@ export const activeTicketPrintProfileQuery = queryOptions({
 
 export interface TemplateFields {
   printable_width_mm: number;
+  margin_left_mm: number;
+  margin_right_mm: number;
   font_family: TicketFontFamily;
   font_size_px: number;
   line_height_px: number;
@@ -120,6 +130,7 @@ export interface TemplateFields {
   margin_top_mm: number;
   margin_bottom_mm: number;
   layout_template: string;
+  layout_mode: TicketLayoutMode;
   header_text: string;
   footer_text: string;
   tax_display: TicketTaxDisplay;

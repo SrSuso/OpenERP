@@ -126,14 +126,40 @@ async def test_ticket_layout_source_is_saved_and_rejects_unsafe_syntax(
         "{{ labels.total | left:24 }}{{ totals.total | right:8 }}"
     )
 
-    template = await _create_template(client, layout_template=source)
+    template = await _create_template(client, layout_template=source, layout_mode="CUSTOM")
 
     assert template["layout_template"] == source
+    assert template["layout_mode"] == "CUSTOM"
     rejected = await client.post(
         "/api/v1/ticket-templates",
         json={"name": "No seguro", "layout_template": "{{ __import__.system }}"},
     )
     assert rejected.status_code == 422
+
+
+async def test_ticket_template_rejects_an_area_wider_than_the_80mm_roll_and_empty_custom_mode(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+
+    too_wide = await client.post(
+        "/api/v1/ticket-templates",
+        json={
+            "name": "No cabe",
+            "printable_width_mm": 72,
+            "margin_left_mm": 5,
+            "margin_right_mm": 4,
+        },
+    )
+    empty_custom = await client.post(
+        "/api/v1/ticket-templates",
+        json={"name": "Sin diseño", "layout_mode": "CUSTOM", "layout_template": "  "},
+    )
+
+    assert too_wide.status_code == 422
+    assert "80 mm" in too_wide.text
+    assert empty_custom.status_code == 422
+    assert "necesita un diseño" in empty_custom.text
 
 
 async def test_manager_cannot_manage_ticket_templates(
@@ -163,6 +189,8 @@ async def test_cashier_can_read_only_the_active_ticket_print_profile(
     await _create_template(
         client,
         printable_width_mm=64,
+        margin_left_mm=5,
+        margin_right_mm=11,
         font_family="LIBERATION_MONO",
         font_size_px=10,
         line_height_px=14,
@@ -177,6 +205,8 @@ async def test_cashier_can_read_only_the_active_ticket_print_profile(
     assert profile.status_code == 200
     assert profile.json() == {
         "printable_width_mm": 64,
+        "margin_left_mm": 5,
+        "margin_right_mm": 11,
         "font_family": "LIBERATION_MONO",
         "font_size_px": 10,
         "line_height_px": 14,
@@ -295,6 +325,8 @@ async def test_generating_a_ticket_for_a_completed_sale(
         client,
         header_text="Mi Tienda",
         printable_width_mm=64,
+        margin_left_mm=5,
+        margin_right_mm=11,
         font_family="LIBERATION_MONO",
         font_size_px=10,
         line_height_px=14,
@@ -315,6 +347,8 @@ async def test_generating_a_ticket_for_a_completed_sale(
         key: ticket[key]
         for key in (
             "printable_width_mm",
+            "margin_left_mm",
+            "margin_right_mm",
             "font_family",
             "font_size_px",
             "line_height_px",
@@ -324,6 +358,8 @@ async def test_generating_a_ticket_for_a_completed_sale(
         )
     } == {
         "printable_width_mm": 64,
+        "margin_left_mm": 5,
+        "margin_right_mm": 11,
         "font_family": "LIBERATION_MONO",
         "font_size_px": 10,
         "line_height_px": 14,

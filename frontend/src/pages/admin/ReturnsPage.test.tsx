@@ -103,6 +103,8 @@ function stubBackend(options: { failReturnOnce?: boolean } = {}) {
               sale_id: 42,
               template_id: 1,
               printable_width_mm: 48,
+              margin_left_mm: 16,
+              margin_right_mm: 16,
               font_family: 'COURIER_NEW',
               font_size_px: 9,
               line_height_px: 12,

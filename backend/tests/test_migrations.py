@@ -383,6 +383,54 @@ def test_single_active_ticket_template_migration_requires_explicit_reconciliatio
     engine.dispose()
 
 
+def test_ticket_editor_migration_centres_existing_layouts_and_preserves_custom_mode(
+    fresh_database: Callable[[], str],
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "d2e6f5a1c4b8")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO ticket_templates "
+                "(name, printable_width_mm, header_text, footer_text, tax_display, "
+                "is_active, layout_template) VALUES "
+                "('Personalizada anterior', 64, '', '', 'BREAKDOWN', true, "
+                "'{{ totals.total }}'), "
+                "('Estándar anterior', 72, '', '', 'BREAKDOWN', false, '')"
+            )
+        )
+
+    run_alembic(url, "upgrade", "e8b3c7d5a2f1")
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT name, margin_left_mm, margin_right_mm, layout_mode "
+                "FROM ticket_templates ORDER BY name"
+            )
+        ).all()
+
+    assert rows == [
+        ("Estándar anterior", 4, 4, "STANDARD"),
+        ("Personalizada anterior", 8, 8, "CUSTOM"),
+    ]
+
+    run_alembic(url, "downgrade", "d2e6f5a1c4b8")
+    with engine.begin() as connection:
+        assert (
+            connection.scalar(
+                text(
+                    "SELECT layout_template FROM ticket_templates "
+                    "WHERE name = 'Personalizada anterior'"
+                )
+            )
+            == "{{ totals.total }}"
+        )
+
+    run_alembic(url, "upgrade", "head")
+    engine.dispose()
+
+
 def test_return_quantity_migration_backfills_every_legacy_effect(
     fresh_database: Callable[[], str],
 ) -> None:

@@ -11,7 +11,17 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IntPrimaryKeyMixin, TimestampMixin
@@ -54,6 +64,11 @@ class TicketFontWeight(StrEnum):
     BOLD = "BOLD"
 
 
+class TicketLayoutMode(StrEnum):
+    STANDARD = "STANDARD"
+    CUSTOM = "CUSTOM"
+
+
 class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "ticket_templates"
     __table_args__ = (
@@ -69,6 +84,11 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
             unique=True,
             postgresql_where=text("is_active"),
         ),
+        CheckConstraint(
+            "margin_left_mm >= 0 AND margin_right_mm >= 0 "
+            "AND printable_width_mm + margin_left_mm + margin_right_mm <= 80",
+            name="ck_ticket_templates_print_area_within_80mm",
+        ),
     )
 
     name: Mapped[str] = mapped_column(String(100), index=True)
@@ -78,6 +98,8 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: The real printable width, rather than the nominal width of the paper
     #: roll. An 80mm thermal printer commonly exposes about 72mm to ink.
     printable_width_mm: Mapped[int] = mapped_column(Integer)
+    margin_left_mm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    margin_right_mm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     font_family: Mapped[str] = mapped_column(
         String(30),
         default=TicketFontFamily.COURIER_NEW,
@@ -96,6 +118,9 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: used by existing shops; a non-empty value is rendered once and frozen
     #: in ``Ticket.rendered_text`` when a sale is completed.
     layout_template: Mapped[str] = mapped_column(Text, default="", server_default="")
+    layout_mode: Mapped[str] = mapped_column(
+        String(10), default=TicketLayoutMode.STANDARD, server_default=TicketLayoutMode.STANDARD
+    )
     header_text: Mapped[str] = mapped_column(Text, default="")
     footer_text: Mapped[str] = mapped_column(Text, default="")
     #: How the receipt reports its tax — see ``TicketTaxDisplay`` and
@@ -152,7 +177,14 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
 
 class Ticket(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "tickets"
-    __table_args__ = (UniqueConstraint("sale_id", name="uq_tickets_sale_id"),)
+    __table_args__ = (
+        UniqueConstraint("sale_id", name="uq_tickets_sale_id"),
+        CheckConstraint(
+            "margin_left_mm >= 0 AND margin_right_mm >= 0 "
+            "AND printable_width_mm + margin_left_mm + margin_right_mm <= 80",
+            name="ck_tickets_print_area_within_80mm",
+        ),
+    )
 
     sale_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sales.id"), index=True)
     # El ticket es un snapshot completo; si se elimina una plantilla creada
@@ -166,6 +198,8 @@ class Ticket(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: Snapshot of the physical print profile, keeping an old ticket
     #: self-contained even after its source template is edited or deleted.
     printable_width_mm: Mapped[int] = mapped_column(Integer)
+    margin_left_mm: Mapped[int] = mapped_column(Integer, server_default="0")
+    margin_right_mm: Mapped[int] = mapped_column(Integer, server_default="0")
     # These server defaults have existed since the print-profile migration.
     # Keep the ORM declaration aligned so Alembic can reliably detect real
     # migration drift.

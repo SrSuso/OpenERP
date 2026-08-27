@@ -382,9 +382,10 @@ En el equipo de la caja, antes:
 2. En su controlador, deja configurado el ancho físico del rollo (normalmente
    80 mm). En **Plantillas de ticket** configura aparte el ancho **imprimible**:
    en una impresora de 80 mm, 72 mm es un buen punto de partida para evitar que
-   el área no imprimible lateral monte texto. Ajusta esa medida, fuente,
-   tamaño, interlineado y márgenes con un ticket de prueba. El largo es
-   automático; fijar una altura puede cortar líneas o desperdiciar papel.
+   el área no imprimible lateral monte texto. Ajusta los márgenes izquierdo y
+   derecho dentro de la vista fija de 80 mm, además de fuente, tamaño e
+   interlineado. El largo es automático; fijar una altura puede cortar líneas o
+   desperdiciar papel.
 
 Para que arranque solo al encender, añade el script a las aplicaciones de
 inicio de sesión del escritorio.
@@ -393,14 +394,16 @@ inicio de sesión del escritorio.
 
 En **Configuración de la tienda → Plantillas de ticket**, crea o revisa la
 plantilla que imprime la caja. La vista previa permite ajustar ancho imprimible,
-fuente, tamaño, grosor, interlineado, márgenes, cabecera, pie, datos fiscales,
-fecha, textos y líneas que se muestran. Sólo una plantilla está activa; usa
-**Usar esta** para cambiarla sin editar otra por error.
+fuente, tamaño, grosor, interlineado, márgenes laterales y verticales, cabecera,
+pie, datos fiscales, fecha, textos y líneas que se muestran. Se puede elegir el
+editor estándar o el editor seguro con variables documentado en
+[`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md). Sólo una plantilla
+está activa; usa **Usar esta** para cambiarla sin editar otra por error.
 
-Las revisiones no cambian tickets ya emitidos. También se pueden eliminar
-plantillas equivocadas, incluso usadas: el ticket ya generado conserva el texto
-y perfil que se imprimieron. Si se elimina la activa, crea o activa otra antes
-de volver a cobrar para que la caja tenga plantilla disponible.
+Los cambios no alteran tickets ya emitidos. También se pueden eliminar plantillas
+equivocadas, incluso usadas: el ticket ya generado conserva el texto y perfil
+que se imprimieron. Si se elimina la activa, crea o activa otra antes de volver
+a cobrar para que la caja tenga plantilla disponible.
 
 ---
 

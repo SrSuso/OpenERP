@@ -413,6 +413,8 @@ export const ticketSchema = z.object({
   sale_id: z.number(),
   template_id: z.number().nullable(),
   printable_width_mm: z.number(),
+  margin_left_mm: z.number(),
+  margin_right_mm: z.number(),
   font_family: z.enum(['COURIER_NEW', 'LIBERATION_MONO', 'DEJAVU_SANS_MONO']),
   font_size_px: z.number(),
   line_height_px: z.number(),

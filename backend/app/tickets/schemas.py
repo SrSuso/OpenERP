@@ -4,15 +4,22 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.tickets.layout import TicketLayoutError, validate_layout_template
-from app.tickets.models import TicketFontFamily, TicketFontWeight, TicketTaxDisplay
+from app.tickets.models import (
+    TicketFontFamily,
+    TicketFontWeight,
+    TicketLayoutMode,
+    TicketTaxDisplay,
+)
 
 
 class TicketTemplateCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     printable_width_mm: int = Field(default=72, ge=25, le=80)
+    margin_left_mm: int = Field(default=0, ge=0, le=55)
+    margin_right_mm: int = Field(default=0, ge=0, le=55)
     font_family: TicketFontFamily = TicketFontFamily.COURIER_NEW
     font_size_px: int = Field(default=9, ge=6, le=16)
     line_height_px: int = Field(default=12, ge=8, le=24)
@@ -20,6 +27,7 @@ class TicketTemplateCreate(BaseModel):
     margin_top_mm: int = Field(default=0, ge=0, le=20)
     margin_bottom_mm: int = Field(default=0, ge=0, le=20)
     layout_template: str = Field(default="", max_length=8000)
+    layout_mode: TicketLayoutMode = TicketLayoutMode.STANDARD
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
     tax_display: TicketTaxDisplay = TicketTaxDisplay.BREAKDOWN
@@ -53,6 +61,18 @@ class TicketTemplateCreate(BaseModel):
             raise ValueError(str(exc)) from exc
         return value
 
+    @model_validator(mode="after")
+    def print_area_and_editor_mode_are_coherent(self) -> TicketTemplateCreate:
+        occupied = self.margin_left_mm + self.printable_width_mm + self.margin_right_mm
+        if occupied > 80:
+            raise ValueError(
+                "El margen izquierdo, el ancho imprimible y el margen derecho "
+                "no pueden superar juntos los 80 mm del papel."
+            )
+        if self.layout_mode == TicketLayoutMode.CUSTOM and not self.layout_template.strip():
+            raise ValueError("El editor con variables necesita un diseño de ticket.")
+        return self
+
 
 class TicketTemplateUpdate(TicketTemplateCreate):
     """The saved template is updated directly; it does not create a version."""
@@ -62,6 +82,8 @@ class TicketTemplateRead(BaseModel):
     id: int
     name: str
     printable_width_mm: int
+    margin_left_mm: int
+    margin_right_mm: int
     font_family: TicketFontFamily
     font_size_px: int
     line_height_px: int
@@ -69,6 +91,7 @@ class TicketTemplateRead(BaseModel):
     margin_top_mm: int
     margin_bottom_mm: int
     layout_template: str
+    layout_mode: TicketLayoutMode
     header_text: str
     footer_text: str
     tax_display: TicketTaxDisplay
@@ -100,6 +123,8 @@ class TicketPrintProfileRead(BaseModel):
     """
 
     printable_width_mm: int
+    margin_left_mm: int
+    margin_right_mm: int
     font_family: TicketFontFamily
     font_size_px: int
     line_height_px: int
@@ -113,6 +138,8 @@ class TicketRead(BaseModel):
     sale_id: int
     template_id: int | None
     printable_width_mm: int
+    margin_left_mm: int
+    margin_right_mm: int
     font_family: TicketFontFamily
     font_size_px: int
     line_height_px: int

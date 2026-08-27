@@ -112,6 +112,8 @@ export function TicketTemplatesPage() {
         <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-sm font-semibold text-slate-700">
             Activa: {active.data.name} · {active.data.printable_width_mm} mm
+            {' · '}
+            {active.data.layout_mode === 'CUSTOM' ? 'Editor con variables' : 'Editor estándar'}
           </p>
           <pre className="mt-2 max-w-xs whitespace-pre-wrap rounded bg-slate-50 p-2 text-xs text-slate-600">
             {active.data.header_text || '(sin cabecera)'}

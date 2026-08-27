@@ -397,16 +397,23 @@ e impresión automática del TPV.
 ### 10.2. Plantillas de ticket
 
 Con `ticket.manage` se crean, revisan, activan y eliminan plantillas. Sólo una
-plantilla está activa globalmente. La plantilla define el **ancho imprimible**
-(no necesariamente el ancho físico del rollo), fuente, tamaño, interlineado,
-márgenes superior/inferior, cabecera, pie, datos de tienda, fecha, textos y
-campos visibles. En papel estándar de 80 mm se suele empezar con 72 mm de
-ancho imprimible y ajustar tras una prueba real.
+plantilla está activa globalmente. La vista previa conserva siempre los **80
+mm** de la bobina; el ancho imprimible y los márgenes izquierdo/derecho mueven
+el texto dentro de ella y juntos no pueden superar 80 mm. También se configuran
+fuente, tamaño, interlineado, márgenes verticales, datos de tienda y campos
+visibles.
 
-Editar crea una nueva revisión y activar una desactiva la anterior. El largo se
-calcula automáticamente; no se fija una altura para no cortar líneas. Una
-plantilla se puede eliminar incluso si generó tickets: cada ticket guarda su
-texto y perfil de impresión congelados, por lo que las reimpresiones no cambian.
+El selector **Tipo de editor** ofrece el modo **Estándar**, basado en campos, y
+el modo **Plantilla con variables**, con una sintaxis segura parecida a LaTeX
+para controlar cada línea. Cambiar de modo no borra el diseño personalizado.
+La sintaxis, todas las variables y ejemplos están en
+[`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md).
+
+Guardar modifica la plantilla actual y activar una desactiva la anterior. El
+largo se calcula automáticamente; no se fija una altura para no cortar líneas.
+Una plantilla se puede eliminar incluso si generó tickets: cada ticket guarda
+su texto y perfil de impresión congelados, por lo que las reimpresiones no
+cambian.
 
 ### 10.3. Avisos y correo
 

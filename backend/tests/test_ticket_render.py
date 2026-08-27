@@ -7,7 +7,12 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from app.sales.models import Payment, Sale, SaleLine, SaleStatus
-from app.tickets.models import TicketFontWeight, TicketTaxDisplay, TicketTemplate
+from app.tickets.models import (
+    TicketFontWeight,
+    TicketLayoutMode,
+    TicketTaxDisplay,
+    TicketTemplate,
+)
 from app.tickets.render import printable_characters, render_ticket
 
 
@@ -65,8 +70,12 @@ def _template(**overrides: object) -> TicketTemplate:
         "name": "Estándar",
         "version": 1,
         "printable_width_mm": 48,
+        "margin_left_mm": 16,
+        "margin_right_mm": 16,
         "font_size_px": 9,
         "font_weight": TicketFontWeight.NORMAL,
+        "layout_mode": TicketLayoutMode.STANDARD,
+        "layout_template": "",
         "header_text": "Mi Tienda\nCIF B00000000",
         "footer_text": "Gracias por su compra",
         "tax_display": TicketTaxDisplay.BREAKDOWN,
@@ -130,6 +139,7 @@ def test_custom_layout_uses_only_its_safe_variables_and_freezes_the_receipt_shap
     )
     template = _template(
         store_name="MI TIENDA",
+        layout_mode=TicketLayoutMode.CUSTOM,
         layout_template=(
             "{{ store.name | center }}\n{{ separator }}\n"
             "{% for line in sale.lines %}"
@@ -149,6 +159,19 @@ def test_custom_layout_uses_only_its_safe_variables_and_freezes_the_receipt_shap
     assert "TOTAL" in text
     assert "2.64" in text
     assert "Venta #42" not in text
+
+
+def test_standard_editor_ignores_preserved_custom_source() -> None:
+    sale = _sale([_line("Leche", "1", "1.20")], [Payment(method="CASH", amount=Decimal("1.20"))])
+    template = _template(
+        layout_mode=TicketLayoutMode.STANDARD,
+        layout_template="ESTE DISEÑO ESTÁ GUARDADO PERO INACTIVO",
+    )
+
+    text = _render(sale, template)
+
+    assert "Venta #42" in text
+    assert "ESTE DISEÑO" not in text
 
 
 def test_breakdown_prints_a_row_per_rate_with_base_and_quota() -> None:

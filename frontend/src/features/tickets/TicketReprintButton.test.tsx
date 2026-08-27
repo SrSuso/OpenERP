@@ -15,6 +15,8 @@ function ticketFor(saleId: number) {
     sale_id: saleId,
     template_id: 1,
     printable_width_mm: 80,
+    margin_left_mm: 0,
+    margin_right_mm: 0,
     font_family: 'COURIER_NEW',
     font_size_px: 10,
     line_height_px: 12,

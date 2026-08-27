@@ -29,7 +29,8 @@ La interfaz incluye:
 Las opciones específicas de una caja (terminal, buscador táctil, pantalla,
 botones, cobro e impresión automática) están en **Configuración de la tienda
 → Terminales POS**. El perfil de impresión —ancho imprimible, fuente,
-márgenes, textos y datos fiscales— se gestiona en **Plantillas de ticket**.
+márgenes laterales/verticales, textos y datos fiscales— se gestiona en
+**Plantillas de ticket**, con editor estándar o plantilla segura con variables.
 
 La documentación normativa se divide por audiencia:
 
