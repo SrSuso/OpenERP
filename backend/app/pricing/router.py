@@ -136,6 +136,15 @@ async def set_manual_price(
     return _to_read(await service.set_manual_price(session, product_id, payload.list_price))
 
 
+@router.delete(
+    "/products/{product_id}/pricing/manual-price",
+    response_model=ProductRead,
+    dependencies=[_require_manage],
+)
+async def clear_manual_price(product_id: int, session: SessionDep) -> ProductRead:
+    return _to_read(await service.clear_manual_price(session, product_id))
+
+
 # --- taxes (managed on their own — never a raw number typed on a product) ---
 
 

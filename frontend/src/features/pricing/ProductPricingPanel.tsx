@@ -5,6 +5,7 @@ import { type Product, type ProductCategory } from '@/features/catalog/api';
 import {
   productPriceHistoryQuery,
   productPriceCalculationQuery,
+  clearManualPrice,
   setManualPrice,
   type PricingOverrideInput,
   type Tax,
@@ -79,6 +80,9 @@ export function ProductPricingPanel({
   const [manualPriceInput, setManualPriceInput] = useState('');
   const [manualPriceError, setManualPriceError] = useState<string | null>(null);
 
+  const hasManualPrice =
+    calculation.data !== undefined && calculation.data.rounded_price !== product.list_price;
+
   const manualPriceMutation = useMutation({
     mutationFn: (price: string) => setManualPrice(product.id, price),
     onSuccess: () => {
@@ -94,6 +98,22 @@ export function ProductPricingPanel({
       setManualPriceError(null);
     },
     onError: () => setManualPriceError('No se ha podido fijar el precio.'),
+  });
+
+  const clearManualPriceMutation = useMutation({
+    mutationFn: () => clearManualPrice(product.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'product', product.id] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      void queryClient.invalidateQueries({
+        queryKey: productPriceCalculationQuery(product.id).queryKey,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: productPriceHistoryQuery(product.id).queryKey,
+      });
+      setManualPriceError(null);
+    },
+    onError: () => setManualPriceError('No se ha podido quitar el precio manual.'),
   });
 
   const inheritsMargin = marginInput.trim() === '';
@@ -214,7 +234,7 @@ export function ProductPricingPanel({
             {formatMoney(product.list_price)}
           </p>
           <span className="mt-1 block text-xs text-slate-400">
-            {calculation.data && calculation.data.rounded_price !== product.list_price
+            {hasManualPrice
               ? 'Precio manual: se respeta tal cual.'
               : 'Redondeado al alza a cinco céntimos.'}
           </span>
@@ -236,11 +256,25 @@ export function ProductPricingPanel({
               <button
                 type="button"
                 onClick={submitManualPrice}
-                disabled={manualPriceMutation.isPending || !manualPriceInput.trim()}
+                disabled={
+                  manualPriceMutation.isPending ||
+                  clearManualPriceMutation.isPending ||
+                  !manualPriceInput.trim()
+                }
                 className="rounded bg-brand-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
                 {manualPriceMutation.isPending ? 'Guardando…' : 'Fijar precio manual'}
               </button>
+              {hasManualPrice && (
+                <button
+                  type="button"
+                  onClick={() => clearManualPriceMutation.mutate()}
+                  disabled={manualPriceMutation.isPending || clearManualPriceMutation.isPending}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {clearManualPriceMutation.isPending ? 'Restaurando…' : 'Quitar precio manual'}
+                </button>
+              )}
             </div>
             {manualPriceError && <p className="mt-1 text-xs text-red-600">{manualPriceError}</p>}
           </div>

@@ -448,6 +448,30 @@ async def set_manual_price(session: AsyncSession, product_id: int, list_price: D
     return await catalog.get_product(session, product_id)
 
 
+async def clear_manual_price(session: AsyncSession, product_id: int) -> Product:
+    """Replace an explicitly fixed PVP with the current automatic price.
+
+    Setting a manual price already removes a product-only formula, so clearing
+    it deliberately returns to the category formula or the shop formula. The
+    recalculation is recorded even when its result happens to equal the
+    manual amount: the owner explicitly restored automatic pricing.
+    """
+    product = await _product_or_404(session, product_id)
+    before = _snapshot(product)
+    _recompute_with(product, await get_settings(session))
+    await session.flush()
+    await _record_history(session, product)
+    await audit.record(
+        session,
+        action="manual_price_cleared",
+        entity_type="product",
+        entity_id=product_id,
+        before=before,
+        after=_snapshot(product),
+    )
+    return await catalog.get_product(session, product_id)
+
+
 # --- taxes -----------------------------------------------------------------
 
 

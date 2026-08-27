@@ -162,6 +162,7 @@ function stubBackend(
   const formulaCalls: Record<string, unknown>[] = [];
   const clearFormulaCalls: true[] = [];
   const manualPriceCalls: Record<string, unknown>[] = [];
+  const clearManualPriceCalls: true[] = [];
   const editBarcodeCalls: { barcodeId: number; body: Record<string, unknown> }[] = [];
   const deleteBarcodeCalls: number[] = [];
   const deactivateCalls: number[] = [];
@@ -229,6 +230,11 @@ function stubBackend(
         manualPriceCalls.push(b);
         product.price_formula = null;
         product.list_price = b['list_price'] as string;
+        return Promise.resolve(jsonResponse(product));
+      }
+      if (method === 'DELETE' && /\/products\/1\/pricing\/manual-price$/.test(url)) {
+        clearManualPriceCalls.push(true);
+        product.list_price = '0.600000';
         return Promise.resolve(jsonResponse(product));
       }
       if (method === 'GET' && /\/products\/1\/pricing\/history$/.test(url)) {
@@ -314,6 +320,7 @@ function stubBackend(
     formulaCalls,
     clearFormulaCalls,
     manualPriceCalls,
+    clearManualPriceCalls,
     editBarcodeCalls,
     deleteBarcodeCalls,
     deactivateCalls,
@@ -664,6 +671,11 @@ describe('ProductDetailPage', () => {
     await screen.findByText('15,00 €');
     expect(backend.manualPriceCalls).toEqual([{ list_price: '15' }]);
     expect(screen.queryByRole('button', { name: 'Quitar fórmula propia' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar precio manual' }));
+    await screen.findByText('0,60 €');
+    expect(backend.clearManualPriceCalls).toEqual([true]);
+    expect(screen.queryByRole('button', { name: 'Quitar precio manual' })).not.toBeInTheDocument();
 
     // Histórico de precios, cargado sólo al desplegarlo.
     await userEvent.click(screen.getByRole('button', { name: 'Ver histórico de precios' }));

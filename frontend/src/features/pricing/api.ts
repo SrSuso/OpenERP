@@ -208,6 +208,15 @@ export async function setManualPrice(productId: number, listPrice: string): Prom
   });
 }
 
+/** Abandona el PVP fijado y aplica de inmediato el cálculo heredado de la
+ * categoría o de la tienda. */
+export async function clearManualPrice(productId: number): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${productId}/pricing/manual-price`, {
+    method: 'DELETE',
+    schema: productSchema,
+  });
+}
+
 export const priceHistoryEntrySchema = z.object({
   id: z.number(),
   product_id: z.number(),

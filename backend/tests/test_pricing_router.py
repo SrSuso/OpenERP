@@ -174,6 +174,24 @@ async def test_manual_price_clears_the_formula(
     assert after_cost_change.json()["list_price"] == "55.000000"
 
 
+async def test_clearing_a_manual_price_restores_the_automatic_calculation(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client, cost="2.16")
+
+    manual = await client.put(
+        f"/api/v1/products/{product_id}/pricing/manual-price", json={"list_price": "2.16"}
+    )
+    assert manual.status_code == 200
+
+    restored = await client.delete(f"/api/v1/products/{product_id}/pricing/manual-price")
+
+    assert restored.status_code == 200
+    # Vuelve a la fórmula de tienda (coste + IVA) y se redondea al alza.
+    assert Decimal(restored.json()["list_price"]) == Decimal("2.40")
+
+
 async def test_clearing_the_formula_keeps_the_last_computed_price(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
