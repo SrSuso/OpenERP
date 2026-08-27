@@ -32,7 +32,11 @@ export function TicketReprintButton({
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [isPrintActive, setPrintActive] = useState(false);
   const deactivatePrint = useCallback(() => setPrintActive(false), []);
-  const activatePrint = useExclusivePrintDocument(deactivatePrint);
+  const dismissTicket = useCallback(() => {
+    deactivatePrint();
+    setTicket(null);
+  }, [deactivatePrint]);
+  const activatePrint = useExclusivePrintDocument(dismissTicket);
   const pageStyle =
     ticket !== null && isPrintActive
       ? ticketPageStyle(ticket, ticket.rendered_text.split('\n').length)
@@ -62,9 +66,9 @@ export function TicketReprintButton({
 
   useEffect(() => {
     if (ticket !== null && isPrintActive) {
-      printActiveDocument(deactivatePrint);
+      printActiveDocument(dismissTicket);
     }
-  }, [ticket, isPrintActive, deactivatePrint]);
+  }, [ticket, isPrintActive, dismissTicket]);
 
   if (ticket !== null) {
     return createPortal(
@@ -79,10 +83,7 @@ export function TicketReprintButton({
         </pre>
         <button
           type="button"
-          onClick={() => {
-            deactivatePrint();
-            setTicket(null);
-          }}
+          onClick={dismissTicket}
           className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
         >
           Cerrar

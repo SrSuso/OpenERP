@@ -13,9 +13,9 @@ const PROFILE = {
 };
 
 describe('ticket print page profile', () => {
-  it('uses the configured printable width for the physical print page', () => {
+  it('uses the 80 mm thermal roll while keeping the configured width for content', () => {
     expect(ticketPageStyle(PROFILE, 20)).toMatch(
-      /^@page \{ size: 72mm \d+(?:\.\d+)?mm; margin: 0; \}$/,
+      /^@page \{ size: 80mm \d+(?:\.\d+)?mm; margin: 0; \}$/,
     );
   });
 

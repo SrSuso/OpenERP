@@ -144,11 +144,7 @@ describe('SalesPage', () => {
     expect(document.body.classList).toContain('printing-ticket-reprint');
     await act(() => window.dispatchEvent(new Event('afterprint')));
     await waitFor(() => expect(document.body.classList).not.toContain('printing-ticket-reprint'));
-    expect(
-      Array.from(document.body.children).some((element) =>
-        element.classList.contains('ticket-print-root'),
-      ),
-    ).toBe(true);
+    expect(within(charged).getByRole('button', { name: 'Reimprimir ticket' })).toBeInTheDocument();
   });
 
   it('asks the server again when the day or the status changes', async () => {

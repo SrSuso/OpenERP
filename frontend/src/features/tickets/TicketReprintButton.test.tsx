@@ -65,6 +65,7 @@ describe('TicketReprintButton', () => {
         document.querySelectorAll(".ticket-print-root[data-print-active='true']"),
       ).toHaveLength(0),
     );
+    expect(screen.getByRole('button', { name: 'Ticket 101' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 102' }));
     await waitFor(() => expect(activeDocumentCounts).toEqual([1, 1]));

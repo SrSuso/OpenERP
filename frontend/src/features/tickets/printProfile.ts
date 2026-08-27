@@ -18,6 +18,13 @@ const FONT_STACKS: Record<TicketFontFamily, string> = {
   DEJAVU_SANS_MONO: "'DejaVu Sans Mono', 'Liberation Mono', monospace",
 };
 
+/**
+ * La instalación usa bobina térmica estándar de 80 mm. `printable_width_mm`
+ * es deliberadamente otra cosa: la zona útil del contenido, que puede ser
+ * menor para respetar los márgenes no imprimibles del cabezal.
+ */
+export const THERMAL_PAPER_WIDTH_MM = 80;
+
 /** Known values only: a template cannot inject arbitrary CSS into printing. */
 export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
   return {
@@ -67,7 +74,7 @@ export function ticketPageHeightMm(
 }
 
 export function ticketPageStyle(profile: TicketPrintProfile, lineCount: number): string {
-  return `@page { size: ${profile.printable_width_mm}mm ${ticketPageHeightMm(profile, lineCount)}mm; margin: 0; }`;
+  return `@page { size: ${THERMAL_PAPER_WIDTH_MM}mm ${ticketPageHeightMm(profile, lineCount)}mm; margin: 0; }`;
 }
 
 /** Same conservative capacity model as backend/app/tickets/render.py. */
