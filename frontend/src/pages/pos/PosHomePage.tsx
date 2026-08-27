@@ -26,6 +26,7 @@ import {
   posCategoriesQuery,
   productsQuery,
   removeLine,
+  validateSaleStock,
   type Product,
   type Sale,
   type SaleLine,
@@ -55,6 +56,7 @@ export function PosHomePage() {
   const [productSearch, setProductSearch] = useState('');
   const [sale, setSale] = useState<Sale | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
+  const [stockError, setStockError] = useState<string | null>(null);
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   // One key per checkout intention. It survives a transport/timeout retry,
@@ -139,6 +141,7 @@ export function PosHomePage() {
    * metido y el total no era el suyo. */
   function syncSale(updated: Sale) {
     setSale(updated);
+    setStockError(null);
     if (warehouseId === null) return;
     queryClient.setQueryData(draftSalesQuery(terminalId, warehouseId).queryKey, (current) =>
       (current ?? []).map((candidate) => (candidate.id === updated.id ? updated : candidate)),
@@ -157,6 +160,7 @@ export function PosHomePage() {
       });
     }
     setSale(remaining[0] ?? null);
+    setStockError(null);
   }
 
   const categories = useQuery(posCategoriesQuery);
@@ -284,6 +288,16 @@ export function PosHomePage() {
     onError: (error) => setLineError(describeError(error)),
   });
 
+  const stockCheckMutation = useMutation({
+    mutationFn: () => validateSaleStock(sale!.id, terminalId as number),
+    onSuccess: () => {
+      setStockError(null);
+      setCheckoutError(null);
+      setView('checkout');
+    },
+    onError: (error) => setStockError(describeError(error)),
+  });
+
   const checkoutMutation = useMutation({
     mutationFn: ({ saleId, payments, key }: { saleId: number; payments: Tender[]; key: string }) =>
       checkout(saleId, payments, key, terminalId as number),
@@ -294,7 +308,16 @@ export function PosHomePage() {
       closeSale(completed.id);
       setView('cart');
     },
-    onError: (error) => setCheckoutError(describeError(error)),
+    onError: (error) => {
+      const message = describeError(error);
+      if (error instanceof ApiError && error.details['reason'] === 'insufficient_stock') {
+        checkoutAttemptRef.current = null;
+        setStockError(message);
+        setView('cart');
+        return;
+      }
+      setCheckoutError(message);
+    },
   });
 
   function confirmCheckout(payments: Tender[]) {
@@ -316,7 +339,8 @@ export function PosHomePage() {
     resolveBarcodeMutation.isPending ||
     addBarcodeLineMutation.isPending ||
     removeLineMutation.isPending ||
-    cancelMutation.isPending;
+    cancelMutation.isPending ||
+    stockCheckMutation.isPending;
 
   useEffect(() => {
     // El recibo ya tiene su propia acción «Nueva venta», y durante el
@@ -419,6 +443,7 @@ export function PosHomePage() {
                         checkoutAttemptRef.current = null;
                         setSale(picked);
                         setLineError(null);
+                        setStockError(null);
                       }}
                     />
                     <div className="flex min-h-0 flex-1">
@@ -488,10 +513,13 @@ export function PosHomePage() {
                         disabled={busy}
                         onRemoveLine={(line) => removeLineMutation.mutate(line)}
                         onCancelSale={() => cancelMutation.mutate(sale!.id)}
+                        stockError={stockError}
+                        isCheckingStock={stockCheckMutation.isPending}
                         onCheckout={() => {
                           checkoutAttemptRef.current = null;
+                          setStockError(null);
                           setCheckoutError(null);
-                          setView('checkout');
+                          stockCheckMutation.mutate();
                         }}
                       />
                     </div>

@@ -96,6 +96,20 @@ def _q(value: Decimal) -> Decimal:
     return value.quantize(NUMERIC_EPSILON)
 
 
+async def _allows_negative_stock(session: AsyncSession) -> bool:
+    return bool(await settings_store.get_value(session, "sales.allow_negative_stock"))
+
+
+def _insufficient_stock_error(
+    *, product_name: str, required: Decimal, available: Decimal
+) -> ConflictError:
+    return ConflictError(
+        f"No hay existencias suficientes de «{product_name}»: se necesitan "
+        f"{required} y solo hay {available} disponibles en esta ubicación.",
+        details={"reason": "insufficient_stock", "product_name": product_name},
+    )
+
+
 def compute_amounts(
     quantity_base: Decimal,
     unit_price: Decimal,
@@ -203,6 +217,36 @@ async def _get_sale_for_update(session: AsyncSession, sale_id: int) -> Sale:
     return sale
 
 
+async def _assert_sale_stock_available(session: AsyncSession, sale: Sale) -> None:
+    """Advisory stock check before opening the POS payment screen.
+
+    It deliberately does not lock or reserve stock. A different terminal can
+    still complete a sale before this one does, so ``checkout`` repeats the
+    same rule under row locks as the authoritative final check.
+    """
+    if await _allows_negative_stock(session):
+        return
+
+    required_by_product: dict[int, tuple[str, Decimal]] = {}
+    for line in sale.lines:
+        if not line.tracks_stock:
+            continue
+        name, quantity = required_by_product.get(line.product_id, (line.product_name, Decimal(0)))
+        required_by_product[line.product_id] = name, quantity + line.quantity_base
+
+    for product_id, (product_name, required) in sorted(required_by_product.items()):
+        available = await inventory_service.get_available_quantity(
+            session,
+            product_id=product_id,
+            warehouse_id=sale.warehouse_id,
+            location_id=sale.location_id,
+        )
+        if available < required:
+            raise _insufficient_stock_error(
+                product_name=product_name, required=required, available=available
+            )
+
+
 async def _assert_pos_terminal(
     session: AsyncSession,
     sale: Sale,
@@ -232,6 +276,23 @@ async def _assert_pos_terminal(
         raise ConflictError(f"Sale {sale.id} has an invalid POS terminal assignment.")
     if require_active and not terminal.is_active:
         raise ConflictError(f"POS terminal {terminal_id} is inactive.")
+
+
+async def validate_sale_stock(
+    session: AsyncSession, sale_id: int, *, terminal_id: int | None = None
+) -> None:
+    """Check a draft's stock before the POS opens payment options.
+
+    This is an advisory read for cashier feedback, not a reservation. The
+    authoritative, locking check remains in :func:`checkout`.
+    """
+    sale = await get_sale(session, sale_id)
+    await _assert_pos_terminal(session, sale, terminal_id, lock_terminal=False)
+    if sale.status != SaleStatus.DRAFT:
+        raise ConflictError(f"Cannot check out a sale that is already {sale.status}.")
+    if not sale.lines:
+        raise ValidationError("Cannot check out a sale with no lines.")
+    await _assert_sale_stock_available(session, sale)
 
 
 async def list_sales(
@@ -739,9 +800,7 @@ async def checkout(
     # afterwards than have the till refuse a customer. Off by default —
     # the ledger stays the source of truth either way, the balance simply
     # goes negative and says so.
-    allow_negative_stock = bool(
-        await settings_store.get_value(session, "sales.allow_negative_stock")
-    )
+    allow_negative_stock = await _allows_negative_stock(session)
 
     # Rule 5: lock, check and decrement every line's stock *before* the sale
     # is marked COMPLETED — any ConflictError below rolls back this whole
@@ -769,9 +828,10 @@ async def checkout(
             location_id=sale.location_id,
         )
         if available < line.quantity_base and not allow_negative_stock:
-            raise ConflictError(
-                f"No hay existencias suficientes de «{line.product_name}»: se necesitan "
-                f"{line.quantity_base} y solo hay {available} disponibles en esta ubicación."
+            raise _insufficient_stock_error(
+                product_name=line.product_name,
+                required=line.quantity_base,
+                available=available,
             )
 
         if line.track_lots:

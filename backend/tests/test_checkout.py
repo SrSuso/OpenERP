@@ -489,6 +489,36 @@ async def test_insufficient_stock_is_rejected_atomically(
     assert balances[0]["quantity"] == "2.000000"
 
 
+async def test_stock_availability_is_checked_before_opening_pos_payment(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="CHECKOUT-EARLY-NOSTOCK", name="Jamón cocido")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="2",
+    )
+    await login(role_name="CASHIER")
+    sale = await _ready_sale(client, product=product, quantity="5")
+
+    response = await client.post(f"/api/v1/sales/{sale['id']}/stock-availability")
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["message"] == (
+        "No hay existencias suficientes de «Jamón cocido»: se necesitan 5.000000 y solo hay "
+        "2.000000 disponibles en esta ubicación."
+    )
+    assert error["details"] == {"reason": "insufficient_stock", "product_name": "Jamón cocido"}
+    refreshed = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
+    assert refreshed["status"] == "DRAFT"
+    assert refreshed["payments"] == []
+
+
 async def test_explicit_negative_stock_setting_still_allows_a_non_lot_sale(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

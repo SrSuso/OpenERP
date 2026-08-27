@@ -9,6 +9,8 @@ interface CartProps {
   onRemoveLine: (line: SaleLine) => void;
   onCancelSale: () => void;
   onCheckout: () => void;
+  stockError?: string | null;
+  isCheckingStock?: boolean;
 }
 
 /**
@@ -17,7 +19,15 @@ interface CartProps {
  * whole sale, or move on to payment (phase 13's `Checkout`, rendered by
  * `PosHomePage` in place of this component once **Cobrar** is tapped).
  */
-export function Cart({ sale, disabled, onRemoveLine, onCancelSale, onCheckout }: CartProps) {
+export function Cart({
+  sale,
+  disabled,
+  onRemoveLine,
+  onCancelSale,
+  onCheckout,
+  stockError,
+  isCheckingStock,
+}: CartProps) {
   const lines = sale?.lines ?? [];
 
   return (
@@ -74,6 +84,14 @@ export function Cart({ sale, disabled, onRemoveLine, onCancelSale, onCheckout }:
       </div>
 
       <div className="border-t border-slate-700 p-4">
+        {stockError && (
+          <p
+            role="alert"
+            className="mb-3 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm font-medium text-red-200"
+          >
+            {stockError}
+          </p>
+        )}
         <div className="mb-3 flex items-baseline justify-between">
           <span className="text-sm text-slate-300">Total</span>
           <span className="text-2xl font-bold text-emerald-400">
@@ -86,7 +104,7 @@ export function Cart({ sale, disabled, onRemoveLine, onCancelSale, onCheckout }:
           disabled={disabled || lines.length === 0}
           className="w-full rounded-lg bg-till-600 py-3 text-base font-semibold text-white transition hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Cobrar
+          {isCheckingStock ? 'Comprobando existencias…' : 'Cobrar'}
         </button>
       </div>
     </aside>

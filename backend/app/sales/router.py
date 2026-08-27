@@ -172,6 +172,16 @@ async def cancel_sale(
     await service.cancel_sale(session, sale_id, terminal_id=pos_terminal_id)
 
 
+@router.post("/sales/{sale_id}/stock-availability", status_code=204, dependencies=[_require_manage])
+async def validate_sale_stock(
+    sale_id: int,
+    session: SessionDep,
+    pos_terminal_id: PosTerminalHeader = None,
+) -> None:
+    """Advisory availability check before the cashier enters payment."""
+    await service.validate_sale_stock(session, sale_id, terminal_id=pos_terminal_id)
+
+
 @router.post("/sales/{sale_id}/checkout", response_model=SaleRead, dependencies=[_require_manage])
 async def checkout(
     sale_id: int,

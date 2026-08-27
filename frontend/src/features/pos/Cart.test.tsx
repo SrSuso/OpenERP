@@ -103,6 +103,12 @@ describe('Cart', () => {
     expect(screen.getAllByText('2,64 €').length).toBeGreaterThan(0);
   });
 
+  it('shows a stock warning next to the checkout action', () => {
+    renderCart({ stockError: 'No hay existencias suficientes de «Leche entera 1L».' });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Leche entera 1L');
+  });
+
   it('calls onRemoveLine with the tapped line', async () => {
     const onRemoveLine = vi.fn();
     renderCart({ onRemoveLine });

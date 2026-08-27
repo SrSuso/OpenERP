@@ -370,6 +370,16 @@ export async function cancelSale(saleId: number, terminalId: number): Promise<vo
   });
 }
 
+/** Advisory check before showing payment methods. It never reserves stock:
+ * checkout repeats the authoritative check under PostgreSQL row locks. */
+export async function validateSaleStock(saleId: number, terminalId: number): Promise<void> {
+  await apiFetch(`${API_V1}/sales/${saleId}/stock-availability`, {
+    method: 'POST',
+    schema: z.null(),
+    headers: terminalHeaders(terminalId),
+  });
+}
+
 export interface Tender {
   method: PaymentMethod;
   /** What was tendered — plain decimal string, e.g. `'20.00'`. */

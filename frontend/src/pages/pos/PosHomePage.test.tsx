@@ -178,6 +178,7 @@ function stubBackend(
     checkoutFailures?: number;
     holdCheckout?: boolean;
     rejectLineOnce?: boolean;
+    rejectStockCheck?: boolean;
     showProductSearch?: boolean;
   } = {},
 ) {
@@ -189,6 +190,7 @@ function stubBackend(
   const barcodeLineCalls: Record<string, unknown>[] = [];
   const barcodeCalls: string[] = [];
   const checkoutKeys: string[] = [];
+  const stockCheckCalls = { count: 0 };
   let remainingCheckoutFailures = options.checkoutFailures ?? 0;
   let remainingLineFailures = options.rejectLineOnce ? 1 : 0;
   const mutationTerminalHeaders: string[] = [];
@@ -238,6 +240,25 @@ function stubBackend(
       }
       if (url.includes('/sales') && url.includes('status=DRAFT')) {
         return Promise.resolve(jsonResponse(sale ? [sale] : []));
+      }
+      if (method === 'POST' && /\/sales\/\d+\/stock-availability$/.test(url)) {
+        stockCheckCalls.count += 1;
+        if (options.rejectStockCheck) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                error: {
+                  code: 'conflict',
+                  message:
+                    'No hay existencias suficientes de «Leche entera 1L»: se necesitan 2 y solo hay 0 disponibles en esta ubicación.',
+                  details: { reason: 'insufficient_stock', product_name: 'Leche entera 1L' },
+                },
+              },
+              { status: 409 },
+            ),
+          );
+        }
+        return Promise.resolve(new Response(null, { status: 204 }));
       }
       if (method === 'POST' && /\/sales\/\d+\/checkout$/.test(url)) {
         checkoutKeys.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
@@ -384,6 +405,7 @@ function stubBackend(
     barcodeLineCalls,
     barcodeCalls,
     checkoutKeys,
+    stockCheckCalls,
     mutationTerminalHeaders,
   };
 }
@@ -839,6 +861,21 @@ describe('PosHomePage', () => {
 
     await screen.findByText(/el carrito está vacío/i);
     expect(backend.postSalesCalls.count).toBe(1);
+  });
+
+  it('shows a visible stock warning before opening payment options', async () => {
+    const backend = stubBackend({ existingDraft: saleWithMilkLine(42), rejectStockCheck: true });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No hay existencias suficientes de «Leche entera 1L»',
+    );
+    expect(screen.queryByRole('button', { name: /confirmar cobro/i })).not.toBeInTheDocument();
+    expect(backend.stockCheckCalls.count).toBe(1);
+    expect(backend.checkoutKeys).toHaveLength(0);
   });
 
   it('checking out shows a receipt, and dismissing it opens a fresh sale', async () => {

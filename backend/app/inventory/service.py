@@ -333,6 +333,28 @@ async def lock_and_get_available_quantity(
     return sum(rows, Decimal(0))
 
 
+async def get_available_quantity(
+    session: AsyncSession, *, product_id: int, warehouse_id: int, location_id: int
+) -> Decimal:
+    """Read the current quantity without reserving it.
+
+    This is deliberately for advisory UI checks such as opening the POS
+    payment screen. Only :func:`lock_and_get_available_quantity` is safe
+    to decide a checkout, because it retains row locks until the stock
+    decrement commits.
+    """
+    rows = (
+        await session.execute(
+            select(StockBalance.quantity).where(
+                StockBalance.product_id == product_id,
+                StockBalance.warehouse_id == warehouse_id,
+                StockBalance.location_id == location_id,
+            )
+        )
+    ).scalars()
+    return sum(rows, Decimal(0))
+
+
 async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) -> StockMovement:
     movement = await record_movement(
         session,
