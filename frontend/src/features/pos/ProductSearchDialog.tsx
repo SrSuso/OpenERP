@@ -4,10 +4,10 @@ import { type Product } from '@/features/pos/api';
 import { formatMoney } from '@/lib/format';
 
 const KEY_ROWS = [
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
   ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ñ'],
-  ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '0', '1', '2', '3'],
-  ['4', '5', '6', '7', '8', '9'],
+  ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
 ] as const;
 
 interface ProductSearchDialogProps {
@@ -56,7 +56,7 @@ export function ProductSearchDialog({
       aria-label="Buscar productos"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
     >
-      <div className="flex max-h-full w-full max-w-4xl flex-col rounded-xl bg-slate-800 p-4 shadow-2xl">
+      <div className="flex h-[calc(100dvh-2rem)] max-h-[54rem] w-full max-w-5xl flex-col rounded-xl bg-slate-800 p-4 shadow-2xl">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold text-slate-50">Buscar producto</h2>
           <button
@@ -81,7 +81,7 @@ export function ProductSearchDialog({
           />
         </label>
 
-        <div className="my-3 min-h-0 overflow-y-auto rounded border border-slate-700 bg-slate-900/50 p-2">
+        <div className="my-3 min-h-0 flex-1 overflow-y-auto rounded border border-slate-700 bg-slate-900/50 p-2">
           {trimmed === '' && (
             <p className="p-4 text-center text-slate-400">
               Escribe para buscar en todo el catálogo.
@@ -114,44 +114,56 @@ export function ProductSearchDialog({
           )}
         </div>
 
-        <div className="space-y-2" aria-label="Teclado para buscar productos">
-          {KEY_ROWS.map((row) => (
-            <div key={row.join('')} className="flex justify-center gap-2">
-              {row.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => pressKey(key)}
-                  className="min-w-11 rounded bg-slate-700 px-3 py-3 text-lg font-semibold text-slate-50 transition active:bg-slate-600"
-                >
-                  {key}
-                </button>
-              ))}
+        <div
+          className="shrink-0 rounded-xl border border-slate-600 bg-slate-950/50 p-3 shadow-inner"
+          aria-label="Teclado para buscar productos"
+        >
+          <div className="space-y-2">
+            {KEY_ROWS.map((row) => (
+              <div key={row.join('')} className="flex justify-center gap-2">
+                {row.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => pressKey(key)}
+                    className="min-h-12 w-[clamp(2.5rem,7vw,4.5rem)] rounded-lg border border-slate-600 bg-slate-700 px-2 text-lg font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+            ))}
+            <div className="grid grid-cols-[1.4fr_1fr_2fr_1.4fr] gap-2">
+              <button
+                type="button"
+                onClick={() => onQueryChange('')}
+                className="min-h-12 rounded-lg border border-slate-600 bg-slate-700 px-2 text-sm font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+              >
+                Borrar todo
+              </button>
+              <button
+                type="button"
+                onClick={() => onQueryChange(query.slice(0, -1))}
+                className="min-h-12 rounded-lg border border-slate-600 bg-slate-700 text-xl font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+                aria-label="Borrar una letra"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                onClick={() => pressKey(' ')}
+                className="min-h-12 rounded-lg border border-slate-600 bg-slate-700 px-2 text-sm font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+              >
+                Espacio
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-12 rounded-lg bg-till-600 px-2 text-sm font-semibold text-white shadow-sm transition hover:bg-till-500 active:translate-y-px active:bg-till-700"
+              >
+                Listo
+              </button>
             </div>
-          ))}
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => onQueryChange('')}
-              className="rounded bg-slate-700 py-3 text-base font-semibold text-slate-50 active:bg-slate-600"
-            >
-              Borrar todo
-            </button>
-            <button
-              type="button"
-              onClick={() => onQueryChange(query.slice(0, -1))}
-              className="rounded bg-slate-700 py-3 text-xl font-semibold text-slate-50 active:bg-slate-600"
-              aria-label="Borrar una letra"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded bg-till-600 py-3 text-base font-semibold text-white active:bg-till-500"
-            >
-              Listo
-            </button>
           </div>
         </div>
       </div>

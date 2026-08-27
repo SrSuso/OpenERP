@@ -36,6 +36,8 @@ describe('ProductSearchDialog', () => {
       />,
     );
 
+    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Espacio' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'A' }));
     expect(onQueryChange).toHaveBeenCalledWith('LECHEA');
 
