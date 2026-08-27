@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -182,36 +182,42 @@ describe('PosLayout', () => {
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('8');
   });
 
-  it('will not sign out until the till has been closed with a Z', async () => {
+  it('signs out the cashier without closing the till or discarding its terminal', async () => {
     const backend = stubBackend();
-    vi.stubGlobal('print', vi.fn());
     renderLayout();
     await screen.findByText('Ana');
 
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
 
-    // Sale el cierre, no la sesión: todavía no se ha ido nadie.
-    const dialog = await screen.findByRole('dialog', { name: 'Cierre de caja' });
-    expect(backend.logoutCalls).toEqual([]);
+    await waitFor(() => expect(backend.logoutCalls).toHaveLength(1));
+    expect(screen.queryByRole('dialog', { name: 'Cierre de caja' })).not.toBeInTheDocument();
+    expect(backend.closeCalls).toEqual([]);
+    // El terminal es de este navegador, no de Ana: el próximo cajero retoma
+    // la misma caja y su periodo Z todavía abierto.
+    expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
+  });
+
+  it('closes and prints the Z without signing out the cashier', async () => {
+    const backend = stubBackend();
+    vi.stubGlobal('print', vi.fn());
+    renderLayout();
+    await screen.findByText('Ana');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
+    await screen.findByRole('dialog', { name: 'Cierre de caja' });
     expect(await screen.findByText('41,80 €')).toBeInTheDocument();
     expect(screen.getByText('25,00 €')).toBeInTheDocument();
 
-    // Y se puede volver a vender sin cerrar nada.
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Seguir vendiendo' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(backend.closeCalls).toEqual([]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Cerrar caja e imprimir Z' }));
 
-    // Z guardada y con su número; sólo entonces se sale.
+    // La Z queda guardada y con su número, pero el cajero sigue en el TPV.
     expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
     expect(backend.closeCalls).toHaveLength(1);
     expect(backend.logoutCalls).toEqual([]);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Salir' }));
-    expect(backend.logoutCalls).toHaveLength(1);
-    // The register is a browser identity, not a cashier-session identity.
+    await userEvent.click(screen.getByRole('button', { name: 'Volver al TPV' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(backend.logoutCalls).toEqual([]);
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
   });
 
@@ -227,7 +233,7 @@ describe('PosLayout', () => {
     renderLayout();
     await screen.findByText('Ana');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
 
     expect(await screen.findByText(/2 ventas sin cobrar/)).toBeInTheDocument();
     expect(screen.getByText(/Venta #12 — 3 líneas · 8,40 €/)).toBeInTheDocument();
@@ -241,7 +247,7 @@ describe('PosLayout', () => {
     renderLayout();
     await screen.findByText('Ana');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
     const closeButton = await screen.findByRole('button', { name: 'Cerrar caja e imprimir Z' });
     await userEvent.click(closeButton);
     await screen.findByText('No se ha podido cerrar la caja.');

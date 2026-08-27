@@ -8,7 +8,7 @@ import { formatMoney } from '@/lib/format';
 interface CloseTillDialogProps {
   warehouseId: number | null;
   onCancel: () => void;
-  /** Se llama cuando el turno ya está cerrado y guardado. */
+  /** Se llama cuando la Z ya está guardada y el cajero vuelve al TPV. */
   onClosed: () => void;
 }
 
@@ -22,13 +22,12 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 }
 
 /**
- * El cierre de caja antes de salir.
+ * El cierre de caja (Z).
  *
- * Cerrar sesión sin cuadrar deja el turno abierto y sin nada con que
- * reconciliar el cajón al día siguiente, así que la caja no deja irse sin
- * hacer la Z. Se enseñan los totales antes de confirmar —lo que se ha
- * cobrado y en qué forma de pago— y, una vez cerrada, la Z queda guardada
- * con su número y se puede imprimir.
+ * La Z es un corte explícito de la caja, independiente de la sesión del
+ * cajero. Se enseñan los totales antes de confirmar —lo que se ha cobrado y
+ * en qué forma de pago— y, una vez cerrada, queda guardada con su número y
+ * se puede imprimir. Cambiar de usuario no crea ni descarta una Z.
  *
  * Con una venta a medias no se cierra: ese carrito se cobraría después del
  * corte y descuadraría esta Z y la siguiente. El servidor lo rechaza igual
@@ -128,7 +127,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                 onClick={onClosed}
                 className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white"
               >
-                Salir
+                Volver al TPV
               </button>
               <button
                 type="button"

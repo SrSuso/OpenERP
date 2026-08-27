@@ -280,6 +280,32 @@ async def test_a_cashier_can_close_their_own_till(
     assert closed.status_code == 201
 
 
+async def test_a_z_period_survives_a_cashier_change(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Cerrar la sesión de un cajero no es un cierre de caja.
+
+    La Z se delimita por almacén y por el corte anterior, no por quién tenga
+    la cookie del TPV. Por eso una venta de Ana sigue en el mismo periodo
+    cuando María entra después y decide hacer la Z.
+    """
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+    await _sell(client, warehouse_id, location_id, sku="Z-CASHIER-CHANGE", price="9.00")
+
+    signed_out = await client.post("/api/v1/auth/logout")
+    assert signed_out.status_code == 204
+    second_cashier = await login(role_name="CASHIER")
+
+    closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+
+    assert closed.status_code == 201
+    report = closed.json()
+    assert report["sales_count"] == 1
+    assert report["gross_total"] == "9.000000"
+    assert report["closed_by_user_id"] == second_cashier["id"]
+
+
 async def test_the_change_given_back_is_not_counted_as_cash(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

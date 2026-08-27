@@ -39,8 +39,6 @@ function PosLayoutContent() {
   // Lo que se cambie en el panel se ve aquí sin recargar la caja.
   useLiveCatalog();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
-  // Nadie sale de la caja sin cuadrarla: el botón abre el cierre, y sólo
-  // desde ahí —con la Z ya guardada— se cierra la sesión.
   const [closingTill, setClosingTill] = useState(false);
   const { selectedTerminal, selectionOpen, requestTerminalChange } = usePosTerminal();
   const { newSaleAction } = usePosHeaderActions();
@@ -86,9 +84,18 @@ function PosLayoutContent() {
               {selectedTerminal.name}
             </button>
           )}
+          {hasPermission('sale.manage') && (
+            <button
+              type="button"
+              onClick={() => setClosingTill(true)}
+              className="min-h-14 rounded bg-slate-700 px-5 py-3 font-medium hover:bg-slate-600"
+            >
+              Cierre Z
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setClosingTill(true)}
+            onClick={() => void logout()}
             className="min-h-14 rounded bg-slate-700 px-5 py-3 font-medium hover:bg-slate-600"
           >
             Cerrar sesión
@@ -103,7 +110,7 @@ function PosLayoutContent() {
         <CloseTillDialog
           warehouseId={warehouseId}
           onCancel={() => setClosingTill(false)}
-          onClosed={() => void logout()}
+          onClosed={() => setClosingTill(false)}
         />
       )}
     </div>
