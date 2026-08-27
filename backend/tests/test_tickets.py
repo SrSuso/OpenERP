@@ -52,7 +52,11 @@ async def _create_template(
 
 
 async def _completed_sale(
-    client: AsyncClient, *, product: dict[str, Any], quantity: str = "1"
+    client: AsyncClient,
+    *,
+    product: dict[str, Any],
+    quantity: str = "1",
+    cold_drink: bool = False,
 ) -> dict[str, Any]:
     warehouse_id, location_id = await _default_location(client)
     await client.post(
@@ -79,6 +83,7 @@ async def _completed_sale(
                 "product_id": product["id"],
                 "package_id": base_id,
                 "quantity_packages": quantity,
+                "cold_drink": cold_drink,
             },
         )
     ).json()
@@ -270,6 +275,26 @@ async def test_generating_a_ticket_for_a_completed_sale(
     }
     assert "Mi Tienda" in ticket["rendered_text"]
     assert "Producto de ticket" in ticket["rendered_text"]
+
+
+async def test_ticket_identifies_the_cold_drink_surcharge(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    assert (
+        await client.put(
+            "/api/v1/settings/options",
+            json={"values": {"pos.cold_drink_surcharge_amount": "0.20"}},
+        )
+    ).status_code == 200
+    await _create_template(client)
+    product = await _create_product(client, sku="TICKET-COLD-DRINK")
+    sale = await _completed_sale(client, product=product, quantity="2", cold_drink=True)
+
+    ticket = (await client.post(f"/api/v1/sales/{sale['id']}/tickets")).json()
+
+    assert "Incluye bebida fría" in ticket["rendered_text"]
+    assert "+0.40" in ticket["rendered_text"]
 
 
 async def test_generating_a_ticket_twice_is_idempotent_and_frozen(

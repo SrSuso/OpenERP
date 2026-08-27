@@ -26,6 +26,9 @@ class SaleLineCreate(BaseModel):
     #: stored net/gross unit price from the store's tax configuration.
     open_price_total: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     discount_rate: Decimal = Field(default=Decimal(0), ge=0, le=100)
+    #: The browser may request the configured cold-drink option, but never
+    #: chooses its amount: sales.service resolves and snapshots it.
+    cold_drink: bool = False
 
 
 class SaleLineByBarcodeCreate(BaseModel):
@@ -36,6 +39,7 @@ class SaleLineByBarcodeCreate(BaseModel):
     barcode: str = Field(min_length=1, max_length=64)
     quantity_packages: Decimal = Field(default=Decimal(1), gt=0)
     discount_rate: Decimal = Field(default=Decimal(0), ge=0, le=100)
+    cold_drink: bool = False
 
 
 class SaleLineRead(BaseModel):
@@ -57,6 +61,7 @@ class SaleLineRead(BaseModel):
     #: current catalogue prices base units; packages have no price override.
     package_price: Decimal
     unit_price: Decimal
+    cold_drink_surcharge: Decimal
     tax_rate: Decimal
     discount_rate: Decimal
     #: Computed, not stored — deterministic from the snapshots above, so

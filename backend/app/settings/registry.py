@@ -209,6 +209,19 @@ SETTINGS: tuple[SettingDef, ...] = (
         default=False,
     ),
     SettingDef(
+        key="pos.cold_drink_surcharge_amount",
+        group=GROUP_POS,
+        label="Recargo por bebida fría (por unidad)",
+        help=(
+            "Importe final que suma la caja a cada unidad marcada como bebida fría. "
+            "Pon 0 para desactivar el botón en el TPV."
+        ),
+        type=SettingType.DECIMAL,
+        default=Decimal(0),
+        minimum=Decimal(0),
+        maximum=Decimal(100),
+    ),
+    SettingDef(
         key="pos.surface_color",
         group=GROUP_POS,
         label="Color de fondo del TPV",

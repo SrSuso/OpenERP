@@ -180,6 +180,7 @@ function stubBackend(
     rejectLineOnce?: boolean;
     rejectStockCheck?: boolean;
     showProductSearch?: boolean;
+    coldDrinkSurcharge?: string;
   } = {},
 ) {
   let sale: Sale | null = options.existingDraft ?? null;
@@ -208,6 +209,13 @@ function stubBackend(
 
       if (url.includes('/pos-terminals')) {
         return Promise.resolve(jsonResponse([terminal]));
+      }
+      if (url.includes('/settings/values')) {
+        return Promise.resolve(
+          jsonResponse({
+            'pos.cold_drink_surcharge_amount': options.coldDrinkSurcharge ?? '0',
+          }),
+        );
       }
       if (url.includes('/warehouses/1/locations')) {
         return Promise.resolve(jsonResponse([LOCATION]));
@@ -375,13 +383,19 @@ function stubBackend(
             ),
           );
         }
-        addLineCalls.push(
-          init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
-        );
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        addLineCalls.push(body);
         // Sobre la venta que dice la URL, no sobre "la última": con varias
         // abiertas a la vez son cosas distintas.
         const targetId = Number(/\/sales\/(\d+)\/lines$/.exec(url)![1]);
-        sale = saleWithMilkLine(targetId);
+        const regularSale = saleWithMilkLine(targetId);
+        const coldDrinkSurcharge = body['cold_drink'] ? '0.200000' : '0.000000';
+        const line = {
+          ...regularSale.lines[0]!,
+          cold_drink_surcharge: coldDrinkSurcharge,
+          total: (Number(regularSale.lines[0]!.total) + Number(coldDrinkSurcharge)).toFixed(6),
+        };
+        sale = { ...regularSale, lines: [line], total: line.total };
         return Promise.resolve(jsonResponse(sale, { status: 201 }));
       }
       if (method === 'DELETE' && /\/sales\/\d+\/lines\/\d+$/.test(url)) {
@@ -494,6 +508,26 @@ describe('PosHomePage', () => {
     const cart = screen.getByRole('button', { name: /cancelar venta/i }).closest('aside')!;
     expect(within(cart).getByText('Leche entera 1L')).toBeInTheDocument();
     expect(within(cart).getAllByText('1,32 €').length).toBeGreaterThan(0);
+  });
+
+  it('adds the configured cold-drink charge to the next selected item only', async () => {
+    const backend = stubBackend({ coldDrinkSurcharge: '0.20' });
+    renderPage();
+
+    const coldDrink = await screen.findByRole('button', { name: /bebida fría/i });
+    await userEvent.click(coldDrink);
+    expect(coldDrink).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(await screen.findByRole('button', { name: /leche entera 1l/i }));
+
+    await waitFor(() => {
+      expect(backend.addLineCalls).toContainEqual({
+        product_id: 1,
+        package_id: 10,
+        quantity_packages: '1',
+        cold_drink: true,
+      });
+    });
+    expect(await screen.findByText(/bebida fría \+0,20 € por unidad/i)).toBeInTheDocument();
   });
 
   it('finds a product from the touch search and adds the selected result', async () => {

@@ -171,6 +171,9 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: the moment the line was added, never recomputed from it afterwards
     #: (rule 7).
     unit_price: Mapped[Money]
+    #: Optional per-base-unit amount selected by the cashier for a cold
+    #: drink. It is a sale snapshot, never a change to the catalogue PVP.
+    cold_drink_surcharge: Mapped[Money] = mapped_column(default=Decimal(0), server_default="0")
     #: Cost and stock policy used by the original sale and by any later
     #: physical reversal.  Without these, editing the current product could
     #: make a return value or move stock differently from the sale it undoes.

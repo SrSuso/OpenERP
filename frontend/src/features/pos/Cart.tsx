@@ -62,6 +62,11 @@ export function Cart({
                     )}
                     {formatMoney(line.package_price)}
                   </p>
+                  {Number(line.cold_drink_surcharge ?? '0') > 0 && (
+                    <p className="mt-1 text-xs font-medium text-cyan-300">
+                      Bebida fría +{formatMoney(line.cold_drink_surcharge ?? '0')} por unidad
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="text-sm font-semibold text-slate-50">

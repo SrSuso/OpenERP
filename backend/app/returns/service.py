@@ -140,6 +140,7 @@ def _return_amount(
         sale_line.unit_price,
         sale_line.discount_rate,
         sale_line.tax_rate,
+        cold_drink_surcharge=sale_line.cold_drink_surcharge,
         prices_include_tax=prices_include_tax,
     )[3]
 

@@ -95,6 +95,46 @@ async def test_cashier_can_open_a_sale_and_add_a_line(
     assert body["total"] == "30.000000"
 
 
+async def test_cold_drink_option_uses_the_configured_amount_per_unit(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    configured = await client.put(
+        "/api/v1/settings/options",
+        json={"values": {"pos.cold_drink_surcharge_amount": "0.20"}},
+    )
+    assert configured.status_code == 200
+    product = await _create_product(client, sku="SALE-COLD-DRINK")
+    base_id = next(p["id"] for p in product["packages"] if p["is_base"])
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    cold = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={
+            "product_id": product["id"],
+            "package_id": base_id,
+            "quantity_packages": "2",
+            "cold_drink": True,
+        },
+    )
+
+    assert cold.status_code == 201
+    cold_line = cold.json()["lines"][0]
+    assert cold_line["cold_drink_surcharge"] == "0.200000"
+    assert cold_line["total"] == "20.400000"
+
+    regular = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
+    )
+
+    assert regular.status_code == 201
+    lines = regular.json()["lines"]
+    assert len(lines) == 2
+    assert {line["cold_drink_surcharge"] for line in lines} == {"0.000000", "0.200000"}
+
+
 async def test_open_price_pos_product_uses_the_entered_final_total(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -115,9 +115,10 @@ def _line_amounts(line: SaleLine, *, prices_include_tax: bool) -> tuple[Decimal,
     ``unit_price``; ``True`` treats it as already tax-included and
     extracts the tax from it instead — ``total`` is what was actually
     charged either way."""
-    subtotal = line.quantity_base * line.unit_price
-    discount_amount = subtotal * line.discount_rate / Decimal(100)
-    remaining = subtotal - discount_amount
+    product_subtotal = line.quantity_base * line.unit_price
+    surcharge_total = line.quantity_base * line.cold_drink_surcharge
+    discount_amount = product_subtotal * line.discount_rate / Decimal(100)
+    remaining = product_subtotal - discount_amount + surcharge_total
     if prices_include_tax:
         net = remaining / (Decimal(1) + line.tax_rate / Decimal(100))
         tax_amount = remaining - net
@@ -183,6 +184,11 @@ def render_ticket(
         tax_by_rate[line.tax_rate] = tax_by_rate.get(line.tax_rate, Decimal(0)) + tax_amount
         subtotal += net
         rows.extend(_two_column(line.product_name, _money(total), width))
+        if line.cold_drink_surcharge > 0:
+            surcharge_total = line.quantity_base * line.cold_drink_surcharge
+            if not prices_include_tax:
+                surcharge_total *= Decimal(1) + line.tax_rate / Decimal(100)
+            rows.extend(_two_column("Incluye bebida fría", f"+{_money(surcharge_total)}", width))
         if template.show_unit_price:
             rows.append(f"{_quantity(line.quantity_packages)} x {_money(line.unit_price)}")
         if template.show_line_discounts and line.discount_rate > 0:

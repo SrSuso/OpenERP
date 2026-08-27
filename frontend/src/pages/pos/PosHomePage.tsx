@@ -33,7 +33,9 @@ import {
   type Tender,
 } from '@/features/pos/api';
 import { usePosTerminal } from '@/features/pos/usePosTerminal';
+import { useShopSetting } from '@/features/settings/useShopSettings';
 import { ApiError } from '@/lib/api';
+import { formatMoney } from '@/lib/format';
 
 function describeError(error: unknown): string {
   return error instanceof ApiError ? error.message : 'Ha ocurrido un error inesperado.';
@@ -50,12 +52,15 @@ export function PosHomePage() {
   const { registerNewSaleAction } = usePosHeaderActions();
   const { selectedTerminal } = usePosTerminal();
   const terminalId = selectedTerminal?.id ?? null;
+  const coldDrinkSurcharge = useShopSetting('pos.cold_drink_surcharge_amount', '0');
+  const coldDrinkSurchargeEnabled = Number(coldDrinkSurcharge) > 0;
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [barcode, setBarcode] = useState('');
   const [isProductSearchOpen, setProductSearchOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [sale, setSale] = useState<Sale | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
+  const [coldDrinkNext, setColdDrinkNext] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -177,16 +182,19 @@ export function PosHomePage() {
       product,
       quantity,
       openPriceTotal,
+      coldDrink,
     }: {
       product: Product;
       quantity: string;
       openPriceTotal?: string;
+      coldDrink: boolean;
     }) =>
       addLine(sale!.id, terminalId as number, {
         product_id: product.id,
         package_id: basePackage(product).id,
         quantity_packages: quantity,
         ...(openPriceTotal === undefined ? {} : { open_price_total: openPriceTotal }),
+        ...(coldDrink ? { cold_drink: true } : {}),
       }),
     onSuccess: (updated) => {
       setLineError(null);
@@ -197,8 +205,12 @@ export function PosHomePage() {
     onError: (error) => setLineError(describeError(error)),
   });
 
-  const [weighing, setWeighing] = useState<{ product: Product; barcode?: string } | null>(null);
-  const [openPrice, setOpenPrice] = useState<Product | null>(null);
+  const [weighing, setWeighing] = useState<{
+    product: Product;
+    barcode?: string;
+    coldDrink: boolean;
+  } | null>(null);
+  const [openPrice, setOpenPrice] = useState<{ product: Product; coldDrink: boolean } | null>(null);
 
   // Lo tecleado en el multiplicador, vacío mientras no se toque (= una
   // unidad). Se limpia al añadir: es para el siguiente producto, no un modo
@@ -206,25 +218,42 @@ export function PosHomePage() {
   const [pendingQuantity, setPendingQuantity] = useState('');
 
   function pickProduct(product: Product) {
+    const coldDrink = coldDrinkSurchargeEnabled && coldDrinkNext;
     if (product.is_open_price) {
-      setOpenPrice(product);
+      setOpenPrice({ product, coldDrink });
       setPendingQuantity('');
+      setColdDrinkNext(false);
       return;
     }
     if (product.is_sold_by_weight) {
       // Lo que se pesa lleva su propia cantidad, en gramos.
-      setWeighing({ product });
+      setWeighing({ product, coldDrink });
+      setColdDrinkNext(false);
       return;
     }
-    addLineMutation.mutate({ product, quantity: pendingQuantity === '' ? '1' : pendingQuantity });
+    addLineMutation.mutate({
+      product,
+      quantity: pendingQuantity === '' ? '1' : pendingQuantity,
+      coldDrink,
+    });
     setPendingQuantity('');
+    setColdDrinkNext(false);
   }
 
   const addBarcodeLineMutation = useMutation({
-    mutationFn: ({ code, quantity }: { code: string; quantity: string }) =>
+    mutationFn: ({
+      code,
+      quantity,
+      coldDrink,
+    }: {
+      code: string;
+      quantity: string;
+      coldDrink: boolean;
+    }) =>
       addLineByBarcode(sale!.id, terminalId as number, {
         barcode: code,
         quantity_packages: quantity,
+        ...(coldDrink ? { cold_drink: true } : {}),
       }),
     onSuccess: (updated) => {
       setLineError(null);
@@ -250,15 +279,19 @@ export function PosHomePage() {
     onSuccess: (product, code) => {
       setLineError(null);
       setBarcode('');
+      const coldDrink = coldDrinkSurchargeEnabled && coldDrinkNext;
       if (product.is_sold_by_weight) {
-        setWeighing({ product, barcode: code });
+        setWeighing({ product, barcode: code, coldDrink });
+        setColdDrinkNext(false);
         return;
       }
       addBarcodeLineMutation.mutate({
         code,
         quantity: pendingQuantity === '' ? '1' : pendingQuantity,
+        coldDrink,
       });
       setPendingQuantity('');
+      setColdDrinkNext(false);
     },
     // Con el lector, el error que sale casi siempre es que ese código no
     // está dado de alta — y hay que decirlo con el código delante, para no
@@ -494,6 +527,26 @@ export function PosHomePage() {
                           será el siguiente toque, sin buscarla al final de
                           la cuadrícula. */}
                         <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
+                        {coldDrinkSurchargeEnabled && (
+                          <div className="border-b border-slate-700 p-3">
+                            <button
+                              type="button"
+                              aria-pressed={coldDrinkNext}
+                              onClick={() => setColdDrinkNext((selected) => !selected)}
+                              disabled={busy}
+                              className={`min-h-12 w-full rounded-lg border px-4 text-left text-base font-semibold transition disabled:opacity-50 ${
+                                coldDrinkNext
+                                  ? 'border-cyan-300 bg-cyan-400 text-slate-950'
+                                  : 'border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
+                              }`}
+                            >
+                              Bebida fría{' '}
+                              <span className="ml-2 text-sm font-medium">
+                                +{formatMoney(coldDrinkSurcharge)} por unidad
+                              </span>
+                            </button>
+                          </div>
+                        )}
                         <CategoryTabs
                           categories={categories.data ?? []}
                           selectedId={selectedCategoryId}
@@ -538,19 +591,32 @@ export function PosHomePage() {
           onCancel={() => setWeighing(null)}
           onConfirm={(quantity) =>
             weighing.barcode === undefined
-              ? addLineMutation.mutate({ product: weighing.product, quantity })
-              : addBarcodeLineMutation.mutate({ code: weighing.barcode, quantity })
+              ? addLineMutation.mutate({
+                  product: weighing.product,
+                  quantity,
+                  coldDrink: weighing.coldDrink,
+                })
+              : addBarcodeLineMutation.mutate({
+                  code: weighing.barcode,
+                  quantity,
+                  coldDrink: weighing.coldDrink,
+                })
           }
         />
       )}
 
       {openPrice !== null && (
         <OpenPricePrompt
-          product={openPrice}
+          product={openPrice.product}
           isPending={addLineMutation.isPending}
           onCancel={() => setOpenPrice(null)}
           onConfirm={(total) =>
-            addLineMutation.mutate({ product: openPrice, quantity: '1', openPriceTotal: total })
+            addLineMutation.mutate({
+              product: openPrice.product,
+              quantity: '1',
+              openPriceTotal: total,
+              coldDrink: openPrice.coldDrink,
+            })
           }
         />
       )}

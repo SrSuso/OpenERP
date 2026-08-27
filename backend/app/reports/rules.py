@@ -103,7 +103,9 @@ def _sales_line_total() -> Any:
 
     The fiscal mode comes from the completed sale's own snapshot, never
     from the store's current pricing configuration."""
-    remaining = SaleLine.quantity_base * SaleLine.unit_price * (1 - SaleLine.discount_rate / 100)
+    remaining = SaleLine.quantity_base * (
+        SaleLine.unit_price * (1 - SaleLine.discount_rate / 100) + SaleLine.cold_drink_surcharge
+    )
     return case(
         (Sale.prices_include_tax.is_(True), remaining),
         else_=remaining * (1 + SaleLine.tax_rate / 100),

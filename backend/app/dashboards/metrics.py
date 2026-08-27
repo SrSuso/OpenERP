@@ -115,7 +115,9 @@ def _line_total_expr() -> Any:
     (its subject definitions *are* frozen at import time, see that
     module's docstring), kept identical here rather than two different
     ways of reading the same setting."""
-    remaining = SaleLine.quantity_base * SaleLine.unit_price * (1 - SaleLine.discount_rate / 100)
+    remaining = SaleLine.quantity_base * (
+        SaleLine.unit_price * (1 - SaleLine.discount_rate / 100) + SaleLine.cold_drink_surcharge
+    )
     prices_include_tax = select(PricingSettings.prices_include_tax).limit(1).scalar_subquery()
     return case(
         (prices_include_tax.is_(True), remaining),
