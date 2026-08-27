@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -176,7 +176,9 @@ describe('Receipt', () => {
     renderReceipt({ onDismiss });
 
     await waitFor(() => expect(printMock).toHaveBeenCalled());
-    expect(onDismiss).toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
+    await act(() => window.dispatchEvent(new Event('afterprint')));
+    await waitFor(() => expect(onDismiss).toHaveBeenCalled());
   });
 
   it('stays put when the ticket was asked for by hand', async () => {

@@ -3,8 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { generateTicket, type Sale, type Ticket } from '@/features/pos/api';
 import { useSettledShopFlag } from '@/features/settings/useShopSettings';
-import { ticketPrintStyle } from '@/features/tickets/printProfile';
-import { useExclusivePrintDocument } from '@/features/tickets/useExclusivePrintDocument';
+import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import {
+  printActiveDocument,
+  useExclusivePrintDocument,
+} from '@/features/tickets/useExclusivePrintDocument';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
@@ -73,11 +76,10 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   // porque alguien quería mirarlo, y ahí manda el botón de cerrar.
   useEffect(() => {
     if (ticket === null || !isPrintActive) return;
-    // `window.print()` no vuelve hasta que el trabajo está mandado, así que
-    // el texto sigue en pantalla mientras se imprime.
-    window.print();
-    deactivatePrint();
-    if (printOnCheckout === true) onDismiss();
+    printActiveDocument(() => {
+      deactivatePrint();
+      if (printOnCheckout === true) onDismiss();
+    });
   }, [ticket, isPrintActive, printOnCheckout, onDismiss, deactivatePrint]);
 
   if (ticket !== null) {
@@ -88,6 +90,11 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
         data-ticket-width={ticket.printable_width_mm}
         style={ticketPrintStyle(ticket)}
       >
+        {isPrintActive && (
+          <style media="print">
+            {ticketPageStyle(ticket, ticket.rendered_text.split('\n').length)}
+          </style>
+        )}
         <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
           {ticket.rendered_text}
         </pre>

@@ -2,8 +2,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { closeZReport, zReportPreviewQuery, type ZReport } from '@/features/pos/api';
-import { ticketPrintStyle } from '@/features/tickets/printProfile';
-import { useExclusivePrintDocument } from '@/features/tickets/useExclusivePrintDocument';
+import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import {
+  printActiveDocument,
+  useExclusivePrintDocument,
+} from '@/features/tickets/useExclusivePrintDocument';
 import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
@@ -63,8 +66,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   // manda a imprimir: es el papel con el que se cuadra el cajón.
   useEffect(() => {
     if (closed === null || !isPrintActive || printProfile.data === undefined) return;
-    window.print();
-    deactivatePrint();
+    printActiveDocument(deactivatePrint);
   }, [closed, isPrintActive, printProfile.data, deactivatePrint]);
 
   const totals = closed ?? preview.data;
@@ -83,6 +85,9 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
         data-ticket-width={printProfile.data?.printable_width_mm}
         style={printProfile.data ? ticketPrintStyle(printProfile.data) : undefined}
       >
+        {closed !== null && isPrintActive && printProfile.data !== undefined && (
+          <style media="print">{ticketPageStyle(printProfile.data, 28)}</style>
+        )}
         <h2 className="text-xl font-semibold text-slate-50">
           {closed ? `Cierre Z nº ${closed.number}` : 'Cierre de caja (Z)'}
         </h2>

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -53,6 +53,17 @@ describe('TicketReprintButton', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 101' }));
     await waitFor(() => expect(activeDocumentCounts).toEqual([1]));
+    expect(document.querySelector('style')?.textContent).toContain('@page { size: 80mm');
+
+    // El evento se dispara tanto al imprimir como al cancelar el diálogo.
+    // Por eso el documento anterior deja de existir antes del siguiente.
+    await act(() => window.dispatchEvent(new Event('afterprint')));
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(".ticket-print-root[data-print-active='true']"),
+      ).toHaveLength(0),
+    );
+
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 102' }));
     await waitFor(() => expect(activeDocumentCounts).toEqual([1, 1]));
   });

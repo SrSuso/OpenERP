@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -138,10 +138,12 @@ describe('SalesPage', () => {
 
     expect(backend.ticketCalls).toEqual([1043]);
     expect(await screen.findByText('TICKET DE PRUEBA')).toBeInTheDocument();
-    // El documento se desactiva después de que `window.print()` vuelve
-    // (también al cancelar el diálogo), para que no se sume a la siguiente
-    // reimpresión.
-    expect(document.body.classList).not.toContain('printing-ticket-reprint');
+    // El documento permanece activo mientras Chromium compone la
+    // previsualización. `afterprint` se dispara tanto al confirmar como al
+    // cancelar y entonces deja de poder sumarse a otra reimpresión.
+    expect(document.body.classList).toContain('printing-ticket-reprint');
+    await act(() => window.dispatchEvent(new Event('afterprint')));
+    await waitFor(() => expect(document.body.classList).not.toContain('printing-ticket-reprint'));
     expect(
       Array.from(document.body.children).some((element) =>
         element.classList.contains('ticket-print-root'),

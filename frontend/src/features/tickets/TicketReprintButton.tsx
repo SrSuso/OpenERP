@@ -3,8 +3,11 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { generateTicket, type Ticket } from '@/features/pos/api';
-import { ticketPrintStyle } from '@/features/tickets/printProfile';
-import { useExclusivePrintDocument } from '@/features/tickets/useExclusivePrintDocument';
+import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import {
+  printActiveDocument,
+  useExclusivePrintDocument,
+} from '@/features/tickets/useExclusivePrintDocument';
 import { ApiError } from '@/lib/api';
 
 interface TicketReprintButtonProps {
@@ -53,10 +56,7 @@ export function TicketReprintButton({
 
   useEffect(() => {
     if (ticket !== null && isPrintActive) {
-      window.print();
-      // Tanto si el navegador imprime como si se cancela su diálogo, el
-      // documento ya no puede quedar seleccionado para la próxima vez.
-      deactivatePrint();
+      printActiveDocument(deactivatePrint);
     }
   }, [ticket, isPrintActive, deactivatePrint]);
 
@@ -68,6 +68,11 @@ export function TicketReprintButton({
         data-ticket-width={ticket.printable_width_mm}
         style={ticketPrintStyle(ticket)}
       >
+        {isPrintActive && (
+          <style media="print">
+            {ticketPageStyle(ticket, ticket.rendered_text.split('\n').length)}
+          </style>
+        )}
         <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
           {ticket.rendered_text}
         </pre>

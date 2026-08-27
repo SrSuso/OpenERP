@@ -96,6 +96,8 @@
     background: #fff;
     color: #000;
     padding: 2mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .ticket-print-root[data-print-active='true'] * {
@@ -110,6 +112,9 @@
   .ticket-print-root[data-print-active='true'][data-ticket-width] {
     position: static !important;
     display: block !important;
+    inset: auto !important;
+    justify-content: initial !important;
+    align-items: initial !important;
     width: var(--ticket-printable-width) !important;
     min-width: 0 !important;
     max-width: var(--ticket-printable-width) !important;

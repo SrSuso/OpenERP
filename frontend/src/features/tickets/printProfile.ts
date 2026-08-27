@@ -34,11 +34,40 @@ export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
 /** The editor preview uses the same safe font settings before print CSS applies. */
 export function ticketPreviewStyle(profile: TicketPrintProfile): CSSProperties {
   return {
+    width: `${profile.printable_width_mm}mm`,
+    maxWidth: '100%',
+    marginTop: `${profile.margin_top_mm}mm`,
+    marginBottom: `${profile.margin_bottom_mm}mm`,
     fontFamily: FONT_STACKS[profile.font_family],
     fontSize: `${profile.font_size_px}px`,
     fontWeight: profile.font_weight === 'BOLD' ? 700 : 400,
     lineHeight: `${profile.line_height_px}px`,
   };
+}
+
+/**
+ * El tamaño de página no puede leer las custom properties CSS de un ticket.
+ * Por eso generamos una regla literal y segura para el único documento que se
+ * está imprimiendo. El alto deja espacio exacto para sus líneas, los márgenes
+ * configurados y una pequeña tolerancia del cabezal térmico; evita que un
+ * navegador lo reparta por defecto en hojas A4.
+ */
+export function ticketPageHeightMm(
+  profile: Pick<TicketPrintProfile, 'line_height_px' | 'margin_top_mm' | 'margin_bottom_mm'>,
+  lineCount: number,
+): number {
+  const lineHeightMm = (profile.line_height_px * 25.4) / 96;
+  const safeLineCount = Math.max(1, lineCount);
+  return Math.max(
+    25,
+    Math.ceil(
+      (profile.margin_top_mm + safeLineCount * lineHeightMm + profile.margin_bottom_mm + 4) * 10,
+    ) / 10,
+  );
+}
+
+export function ticketPageStyle(profile: TicketPrintProfile, lineCount: number): string {
+  return `@page { size: ${profile.printable_width_mm}mm ${ticketPageHeightMm(profile, lineCount)}mm; margin: 0; }`;
 }
 
 /** Same conservative capacity model as backend/app/tickets/render.py. */
