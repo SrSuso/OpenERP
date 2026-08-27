@@ -29,6 +29,7 @@ def _line(name: str, qty: str, price: str, tax: str = "0", discount: str = "0") 
         track_lots=False,
         tax_rate=Decimal(tax),
         discount_rate=Decimal(discount),
+        cold_drink_surcharge=Decimal(0),
     )
     return line
 
@@ -120,6 +121,34 @@ def test_renders_each_line_with_name_and_total() -> None:
     assert "Leche entera 1L" in text
     assert "2 x 1.20" in text
     assert "2.64" in text  # line total: 2 * 1.20 * 1.10
+
+
+def test_custom_layout_uses_only_its_safe_variables_and_freezes_the_receipt_shape() -> None:
+    sale = _sale(
+        [_line("Leche entera", "2", "1.20", tax="10")],
+        [Payment(method="CASH", amount=Decimal("2.64"))],
+    )
+    template = _template(
+        store_name="MI TIENDA",
+        layout_template=(
+            "{{ store.name | center }}\n{{ separator }}\n"
+            "{% for line in sale.lines %}"
+            "{{ line.name | left:24 }}{{ line.total | right:8 }}\n"
+            "{% endfor %}"
+            "{{ labels.total | left:24 }}{{ totals.total | right:8 }}\n"
+            "{% for payment in sale.payments %}"
+            "{{ payment.label | left:24 }}{{ payment.amount | right:8 }}\n"
+            "{% endfor %}"
+        ),
+    )
+
+    text = _render(sale, template)
+
+    assert "MI TIENDA" in text
+    assert "Leche entera" in text
+    assert "TOTAL" in text
+    assert "2.64" in text
+    assert "Venta #42" not in text
 
 
 def test_breakdown_prints_a_row_per_rate_with_base_and_quota() -> None:

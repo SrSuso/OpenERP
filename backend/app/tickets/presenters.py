@@ -23,6 +23,7 @@ def template_to_read(template: TicketTemplate) -> TicketTemplateRead:
         font_weight=TicketFontWeight(template.font_weight),
         margin_top_mm=template.margin_top_mm,
         margin_bottom_mm=template.margin_bottom_mm,
+        layout_template=template.layout_template,
         header_text=template.header_text,
         footer_text=template.footer_text,
         tax_display=TicketTaxDisplay(template.tax_display),

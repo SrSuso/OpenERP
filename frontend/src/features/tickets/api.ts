@@ -50,6 +50,7 @@ export const ticketTemplateSchema = z.object({
   font_weight: ticketFontWeightSchema,
   margin_top_mm: z.number().int().min(0).max(20),
   margin_bottom_mm: z.number().int().min(0).max(20),
+  layout_template: z.string().max(8000),
   header_text: z.string(),
   footer_text: z.string(),
   tax_display: ticketTaxDisplaySchema,
@@ -118,6 +119,7 @@ export interface TemplateFields {
   font_weight: TicketFontWeight;
   margin_top_mm: number;
   margin_bottom_mm: number;
+  layout_template: string;
   header_text: string;
   footer_text: string;
   tax_display: TicketTaxDisplay;

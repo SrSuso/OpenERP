@@ -15,6 +15,11 @@ import {
   type TicketTaxDisplay,
 } from '@/features/tickets/api';
 import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import {
+  TicketLayoutTemplateError,
+  renderTicketLayoutTemplate,
+  ticketLayoutPreviewContext,
+} from '@/features/tickets/layoutTemplate';
 import { ticketPreviewStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
 import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 
@@ -27,6 +32,7 @@ const fieldsSchema = z.object({
   font_weight: ticketFontWeightSchema,
   margin_top_mm: z.coerce.number().int().min(0).max(20),
   margin_bottom_mm: z.coerce.number().int().min(0).max(20),
+  layout_template: z.string().max(8000),
   header_text: z.string().max(2000).optional(),
   footer_text: z.string().max(2000).optional(),
   tax_display: ticketTaxDisplaySchema,
@@ -98,6 +104,7 @@ export function TemplateFieldsForm({
       font_weight: defaults?.font_weight ?? 'NORMAL',
       margin_top_mm: defaults?.margin_top_mm ?? 0,
       margin_bottom_mm: defaults?.margin_bottom_mm ?? 0,
+      layout_template: defaults?.layout_template ?? '',
       header_text: defaults?.header_text ?? '',
       footer_text: defaults?.footer_text ?? '',
       tax_display: defaults?.tax_display ?? 'BREAKDOWN',
@@ -133,7 +140,7 @@ export function TemplateFieldsForm({
     margin_bottom_mm: previewNumber(watch('margin_bottom_mm'), 0),
   };
 
-  const preview = renderTicketPreview({
+  let preview = renderTicketPreview({
     printable_width_mm: printProfile.printable_width_mm,
     font_size_px: printProfile.font_size_px,
     font_weight: printProfile.font_weight,
@@ -155,6 +162,38 @@ export function TemplateFieldsForm({
     tax_note: watch('tax_note') ?? '',
     business_timezone: businessTimezone,
   });
+  let layoutPreviewError: string | null = null;
+  const layoutTemplate = watch('layout_template') ?? '';
+  if (layoutTemplate.trim()) {
+    try {
+      preview = renderTicketLayoutTemplate(
+        layoutTemplate,
+        ticketLayoutPreviewContext(
+          {
+            store_name: watch('store_name') ?? '',
+            store_tax_id: watch('store_tax_id') ?? '',
+            store_address: watch('store_address') ?? '',
+            store_phone: watch('store_phone') ?? '',
+            header_text: watch('header_text') ?? '',
+            footer_text: watch('footer_text') ?? '',
+            label_total: watch('label_total') ?? '',
+            label_change: watch('label_change') ?? '',
+            label_cash: watch('label_cash') ?? '',
+            label_card: watch('label_card') ?? '',
+            label_other: watch('label_other') ?? '',
+            tax_note: watch('tax_note') ?? '',
+          },
+          Math.max(16, Math.floor(printProfile.printable_width_mm / 1.48)),
+        ),
+        Math.max(16, Math.floor(printProfile.printable_width_mm / 1.48)),
+      );
+    } catch (error) {
+      layoutPreviewError =
+        error instanceof TicketLayoutTemplateError
+          ? error.message
+          : 'No se ha podido generar la vista previa del diseño.';
+    }
+  }
 
   const submit = handleSubmit((values) => {
     if (!values.name?.trim()) {
@@ -170,6 +209,7 @@ export function TemplateFieldsForm({
       font_weight: values.font_weight,
       margin_top_mm: values.margin_top_mm,
       margin_bottom_mm: values.margin_bottom_mm,
+      layout_template: values.layout_template ?? '',
       header_text: values.header_text ?? '',
       footer_text: values.footer_text ?? '',
       tax_display: values.tax_display,
@@ -310,6 +350,56 @@ export function TemplateFieldsForm({
             El largo del ticket es automático: una impresora térmica corta al terminar el contenido.
             Fijar una altura podría cortar líneas o dejar papel en blanco.
           </p>
+
+          <div className="sm:col-span-2">
+            <label className="text-sm text-slate-600">
+              Diseño del ticket (plantilla segura)
+              <textarea
+                rows={14}
+                spellCheck={false}
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
+                placeholder={
+                  '{{ store.name | center }}\n{{ separator }}\n{% for line in sale.lines %}\n{{ line.name | left:32 }}{{ line.total | right:16 }}\n{% endfor %}\n{{ labels.total | left:32 }}{{ totals.total | right:16 }}'
+                }
+                {...register('layout_template')}
+              />
+            </label>
+            {errors.layout_template && (
+              <p className="mt-1 text-sm text-red-600">{errors.layout_template.message}</p>
+            )}
+            <p className="mt-1 text-xs text-slate-500">
+              Déjalo vacío para usar el diseño guiado actual. Si escribes aquí, este diseño controla
+              todo el ticket y se valida al guardar; no ejecuta LaTeX, HTML ni código.
+            </p>
+            <details className="mt-2 rounded border border-slate-200 px-3 py-2 text-xs text-slate-600">
+              <summary className="cursor-pointer font-medium">
+                Variables y formato disponibles
+              </summary>
+              <p className="mt-2">
+                Tienda: <code>{'{{ store.name }}'}</code>, <code>{'{{ store.tax_id }}'}</code>,{' '}
+                <code>{'{{ store.address }}'}</code>, <code>{'{{ store.phone }}'}</code>. Venta:{' '}
+                <code>{'{{ sale.number }}'}</code>, <code>{'{{ sale.date }}'}</code>,{' '}
+                <code>{'{{ sale.cashier }}'}</code>. Totales: <code>{'{{ totals.total }}'}</code>,{' '}
+                <code>{'{{ totals.tax }}'}</code>, <code>{'{{ totals.change }}'}</code> y{' '}
+                <code>{'{{ separator }}'}</code>.
+              </p>
+              <p className="mt-1">
+                Alinea con <code>{'{{ valor | left:32 }}'}</code>,{' '}
+                <code>{'{{ valor | right:16 }}'}</code> o <code>{'{{ valor | center }}'}</code>.
+              </p>
+              <pre className="mt-2 overflow-hidden rounded bg-slate-100 p-2 text-[11px] leading-4 text-slate-700">{`{% for line in sale.lines %}
+{{ line.name | left:32 }}{{ line.total | right:16 }}
+{{ line.quantity }} x {{ line.unit_price }}
+{% endfor %}
+
+{% for payment in sale.payments %}
+{{ payment.label | left:32 }}{{ payment.amount | right:16 }}
+{% endfor %}`}</pre>
+              <p className="mt-1">
+                También existe <code>tax</code> en <code>{'{% for tax in sale.taxes %}'}</code>.
+              </p>
+            </details>
+          </div>
 
           {/* Los datos de la tienda: aquí y no en Configuración, para que el
               ticket se edite en un solo sitio. */}
@@ -498,11 +588,13 @@ export function TemplateFieldsForm({
             Vista previa (con datos de ejemplo)
           </p>
           <pre
+            data-ticket-template-preview
             className="overflow-hidden rounded border border-dashed border-slate-300 bg-slate-50 p-0 text-slate-700"
             style={{ ...ticketPrintStyle(printProfile), ...ticketPreviewStyle(printProfile) }}
           >
             {preview}
           </pre>
+          {layoutPreviewError && <p className="mt-2 text-sm text-red-600">{layoutPreviewError}</p>}
         </div>
       </div>
 

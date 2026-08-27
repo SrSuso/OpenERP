@@ -92,6 +92,10 @@ class TicketTemplate(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: the printer cuts. These margins are the controllable vertical size.
     margin_top_mm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     margin_bottom_mm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    #: Optional safe receipt-layout source. Empty keeps the structured layout
+    #: used by existing shops; a non-empty value is rendered once and frozen
+    #: in ``Ticket.rendered_text`` when a sale is completed.
+    layout_template: Mapped[str] = mapped_column(Text, default="", server_default="")
     header_text: Mapped[str] = mapped_column(Text, default="")
     footer_text: Mapped[str] = mapped_column(Text, default="")
     #: How the receipt reports its tax — see ``TicketTaxDisplay`` and
@@ -162,12 +166,17 @@ class Ticket(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: Snapshot of the physical print profile, keeping an old ticket
     #: self-contained even after its source template is edited or deleted.
     printable_width_mm: Mapped[int] = mapped_column(Integer)
-    font_family: Mapped[str] = mapped_column(String(30))
-    font_size_px: Mapped[int] = mapped_column(Integer)
-    line_height_px: Mapped[int] = mapped_column(Integer)
-    font_weight: Mapped[str] = mapped_column(String(10))
-    margin_top_mm: Mapped[int] = mapped_column(Integer)
-    margin_bottom_mm: Mapped[int] = mapped_column(Integer)
+    # These server defaults have existed since the print-profile migration.
+    # Keep the ORM declaration aligned so Alembic can reliably detect real
+    # migration drift.
+    font_family: Mapped[str] = mapped_column(
+        String(30), server_default=TicketFontFamily.COURIER_NEW
+    )
+    font_size_px: Mapped[int] = mapped_column(Integer, server_default="9")
+    line_height_px: Mapped[int] = mapped_column(Integer, server_default="12")
+    font_weight: Mapped[str] = mapped_column(String(10), server_default=TicketFontWeight.NORMAL)
+    margin_top_mm: Mapped[int] = mapped_column(Integer, server_default="0")
+    margin_bottom_mm: Mapped[int] = mapped_column(Integer, server_default="0")
     #: The fully formatted receipt, frozen at generation time — see the
     #: module docstring for why this is never recomputed.
     rendered_text: Mapped[str] = mapped_column(Text)

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.tickets.layout import TicketLayoutError, validate_layout_template
 from app.tickets.models import TicketFontFamily, TicketFontWeight, TicketTaxDisplay
 
 
@@ -18,6 +19,7 @@ class TicketTemplateCreate(BaseModel):
     font_weight: TicketFontWeight = TicketFontWeight.NORMAL
     margin_top_mm: int = Field(default=0, ge=0, le=20)
     margin_bottom_mm: int = Field(default=0, ge=0, le=20)
+    layout_template: str = Field(default="", max_length=8000)
     header_text: str = Field(default="", max_length=2000)
     footer_text: str = Field(default="", max_length=2000)
     tax_display: TicketTaxDisplay = TicketTaxDisplay.BREAKDOWN
@@ -42,6 +44,15 @@ class TicketTemplateCreate(BaseModel):
     label_discount: str = Field(default="Dto.", max_length=50)
     tax_note: str = Field(default="IVA incluido", max_length=200)
 
+    @field_validator("layout_template")
+    @classmethod
+    def layout_template_is_safe(cls, value: str) -> str:
+        try:
+            validate_layout_template(value)
+        except TicketLayoutError as exc:
+            raise ValueError(str(exc)) from exc
+        return value
+
 
 class TicketTemplateUpdate(TicketTemplateCreate):
     """The saved template is updated directly; it does not create a version."""
@@ -57,6 +68,7 @@ class TicketTemplateRead(BaseModel):
     font_weight: TicketFontWeight
     margin_top_mm: int
     margin_bottom_mm: int
+    layout_template: str
     header_text: str
     footer_text: str
     tax_display: TicketTaxDisplay

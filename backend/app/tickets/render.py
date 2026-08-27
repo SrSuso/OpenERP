@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from app.core.business_time import to_business_time
 from app.sales.models import Sale, SaleLine
+from app.tickets.layout import render_layout_template
 from app.tickets.models import TicketFontWeight, TicketTaxDisplay, TicketTemplate
 
 #: Characters a standard monospace receipt font fits per line, for each
@@ -127,6 +128,95 @@ def _line_amounts(line: SaleLine, *, prices_include_tax: bool) -> tuple[Decimal,
     return remaining, tax_amount, remaining + tax_amount
 
 
+def _layout_context(
+    sale: Sale,
+    template: TicketTemplate,
+    *,
+    prices_include_tax: bool,
+    business_timezone: ZoneInfo,
+    cashier_name: str | None,
+    width: int,
+) -> dict[str, object]:
+    """The complete, closed set of values available to a custom layout."""
+    subtotal = Decimal(0)
+    tax_total = Decimal(0)
+    net_by_rate: dict[Decimal, Decimal] = {}
+    tax_by_rate: dict[Decimal, Decimal] = {}
+    lines: list[dict[str, str]] = []
+    for line in sale.lines:
+        net, tax_amount, total = _line_amounts(line, prices_include_tax=prices_include_tax)
+        subtotal += net
+        tax_total += tax_amount
+        net_by_rate[line.tax_rate] = net_by_rate.get(line.tax_rate, Decimal(0)) + net
+        tax_by_rate[line.tax_rate] = tax_by_rate.get(line.tax_rate, Decimal(0)) + tax_amount
+        discount = line.quantity_base * line.unit_price * line.discount_rate / Decimal(100)
+        lines.append(
+            {
+                "name": line.product_name,
+                "quantity": _quantity(line.quantity_packages),
+                "unit_price": _money(line.unit_price),
+                "total": _money(total),
+                "discount": _money(discount),
+                "tax_rate": _rate_label(line.tax_rate),
+            }
+        )
+
+    total = subtotal + tax_total
+    tendered = sum((payment.amount for payment in sale.payments), start=Decimal(0))
+    labels = {
+        "CASH": template.label_cash,
+        "CARD": template.label_card,
+        "OTHER": template.label_other,
+    }
+    when = sale.completed_at or sale.created_at
+    return {
+        "separator": _rule(width),
+        "store": {
+            "name": template.store_name,
+            "tax_id": template.store_tax_id,
+            "address": template.store_address,
+            "phone": template.store_phone,
+        },
+        "template": {"header": template.header_text, "footer": template.footer_text},
+        "sale": {
+            "number": str(sale.number or sale.id),
+            "date": to_business_time(when, business_timezone).strftime(template.date_format),
+            "cashier": cashier_name or "",
+            "lines": lines,
+            "payments": [
+                {
+                    "label": labels.get(payment.method, payment.method),
+                    "amount": _money(payment.amount),
+                }
+                for payment in sale.payments
+            ],
+            "taxes": [
+                {
+                    "rate": _rate_label(rate),
+                    "base": _money(net_by_rate[rate]),
+                    "amount": _money(tax_by_rate[rate]),
+                }
+                for rate in sorted(net_by_rate)
+            ],
+        },
+        "totals": {
+            "subtotal": _money(subtotal),
+            "tax": _money(tax_total),
+            "total": _money(total),
+            "tendered": _money(tendered),
+            "change": _money(max(Decimal(0), tendered - total)),
+        },
+        "labels": {
+            "total": template.label_total,
+            "change": template.label_change,
+            "cash": template.label_cash,
+            "card": template.label_card,
+            "other": template.label_other,
+            "tax_note": template.tax_note,
+        },
+    }
+
+
 def render_ticket(
     sale: Sale,
     template: TicketTemplate,
@@ -144,6 +234,19 @@ def render_ticket(
     ticket se edita en un único sitio, su plantilla, y de paso queda
     guardado en ella."""
     width = printable_characters(template)
+    if (template.layout_template or "").strip():
+        return render_layout_template(
+            template.layout_template or "",
+            _layout_context(
+                sale,
+                template,
+                prices_include_tax=prices_include_tax,
+                business_timezone=business_timezone,
+                cashier_name=cashier_name,
+                width=width,
+            ),
+            width,
+        )
     rows: list[str] = []
 
     # Los datos de la tienda van antes de la cabecera libre, que queda para

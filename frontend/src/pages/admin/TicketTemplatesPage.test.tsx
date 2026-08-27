@@ -31,6 +31,7 @@ const PRINT_PROFILE = {
   font_weight: 'NORMAL' as const,
   margin_top_mm: 0,
   margin_bottom_mm: 0,
+  layout_template: '',
 };
 
 function stubBackend() {
@@ -192,6 +193,7 @@ describe('TicketTemplatesPage', () => {
         font_weight: 'BOLD',
         margin_top_mm: 2,
         margin_bottom_mm: 3,
+        layout_template: '',
         header_text: 'Gracias por su compra',
         footer_text: '',
         tax_display: 'BREAKDOWN',
@@ -233,6 +235,7 @@ describe('TicketTemplatesPage', () => {
           font_weight: 'BOLD',
           margin_top_mm: 2,
           margin_bottom_mm: 3,
+          layout_template: '',
           header_text: 'Gracias por su compra',
           footer_text: 'Vuelva pronto',
           tax_display: 'BREAKDOWN',
@@ -260,7 +263,8 @@ describe('TicketTemplatesPage', () => {
   it('lets the shop switch the ticket from the full breakdown to just "IVA incluido"', async () => {
     const backend = stubBackend();
     const { container } = renderPage();
-    const preview = () => container.querySelector('pre')!.textContent ?? '';
+    const preview = () =>
+      container.querySelector('[data-ticket-template-preview]')!.textContent ?? '';
 
     await screen.findByText('Todavía no hay ninguna plantilla activa.');
     await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));

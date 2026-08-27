@@ -114,6 +114,28 @@ async def test_creating_multiple_templates_keeps_the_current_one_active(
     assert active["id"] == first["id"]
 
 
+async def test_ticket_layout_source_is_saved_and_rejects_unsafe_syntax(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    source = (
+        "{{ store.name | center }}\n{{ separator }}\n"
+        "{% for line in sale.lines %}"
+        "{{ line.name | left:24 }}{{ line.total | right:8 }}\n"
+        "{% endfor %}"
+        "{{ labels.total | left:24 }}{{ totals.total | right:8 }}"
+    )
+
+    template = await _create_template(client, layout_template=source)
+
+    assert template["layout_template"] == source
+    rejected = await client.post(
+        "/api/v1/ticket-templates",
+        json={"name": "No seguro", "layout_template": "{{ __import__.system }}"},
+    )
+    assert rejected.status_code == 422
+
+
 async def test_manager_cannot_manage_ticket_templates(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
