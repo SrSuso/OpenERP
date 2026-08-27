@@ -196,6 +196,7 @@ def _receipt_line_to_read(line: GoodsReceiptLine) -> GoodsReceiptLineRead:
         purchase_order_line_id=line.purchase_order_line_id,
         product_id=line.purchase_order_line.product_id,
         product_sku=line.purchase_order_line.product.sku,
+        product_name=line.purchase_order_line.product.name,
         quantity_packages=line.quantity_packages,
         lot_id=line.lot_id,
         lot_number=line.lot.lot_number if line.lot else None,

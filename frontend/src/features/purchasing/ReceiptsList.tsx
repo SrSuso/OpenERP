@@ -69,8 +69,7 @@ export function ReceiptsList({ orderId, canManagePricing }: ReceiptsListProps) {
           <ul className="mt-1 space-y-0.5">
             {receipt.lines.map((line) => (
               <li key={line.id}>
-                <span className="font-mono text-xs text-slate-500">{line.product_sku}</span>{' '}
-                {formatQuantity(line.quantity_packages)}
+                {line.product_name} · {formatQuantity(line.quantity_packages)}
                 {line.lot_number && ` · lote ${line.lot_number}`}
               </li>
             ))}
@@ -102,7 +101,6 @@ export function ReceiptsList({ orderId, canManagePricing }: ReceiptsListProps) {
                         />
                       )}
                       <span>
-                        <span className="font-mono text-slate-500">{proposal.product_sku}</span>{' '}
                         {proposal.product_name}: {formatMoney(proposal.current_catalog_cost)} →{' '}
                         {formatMoney(proposal.received_unit_cost)}
                       </span>

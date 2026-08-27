@@ -113,10 +113,10 @@ async def test_run_sales_report_groups_by_product_and_sums_quantity_and_revenue(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["columns"] == ["product_sku", "product_name", "quantity", "revenue", "tickets"]
+    assert body["columns"] == ["product_name", "quantity", "revenue", "tickets"]
     assert len(body["rows"]) == 1
     row = body["rows"][0]
-    assert row["product_sku"] == product["sku"]
+    assert row["product_name"] == product["name"]
     assert row["quantity"] == "3.000000"
     assert row["revenue"] == str(sale["total"])
     assert row["tickets"] == 1

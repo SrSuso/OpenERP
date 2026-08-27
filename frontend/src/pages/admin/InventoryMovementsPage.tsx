@@ -31,7 +31,7 @@ export function InventoryMovementsPage() {
             <option value="">Todos</option>
             {(products.data ?? []).map((product) => (
               <option key={product.id} value={product.id}>
-                {product.sku} — {product.name}
+                {product.name}
               </option>
             ))}
           </select>

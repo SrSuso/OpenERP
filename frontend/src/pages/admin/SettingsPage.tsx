@@ -20,7 +20,10 @@ export function SettingsPage() {
         esa tarjeta.
       </p>
 
-      <SettingsOptionsPanel canManage={canManage} excludeKeys={POS_TERMINAL_SETTING_KEYS} />
+      <SettingsOptionsPanel
+        canManage={canManage}
+        excludeKeys={[...POS_TERMINAL_SETTING_KEYS, 'catalog.sku_prefix']}
+      />
     </section>
   );
 }

@@ -130,7 +130,7 @@ export function CreateOrderForm({
           const pkg = product?.packages.find((p) => p.id === line.package_id);
           setStagedLines((current) => [
             ...current,
-            { ...line, label: `${product?.sku ?? '?'} — ${pkg?.name ?? '?'}` },
+            { ...line, label: `${product?.name ?? '?'} — ${pkg?.name ?? '?'}` },
           ]);
         }}
       />

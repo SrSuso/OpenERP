@@ -98,7 +98,7 @@ export function InventoryBalancesPage() {
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Nombre, SKU o código de barras…"
+              placeholder="Nombre o código de barras…"
               aria-label="Buscar producto"
               className="mt-1 block w-56 rounded border border-slate-300 px-3 py-1.5 text-sm"
             />

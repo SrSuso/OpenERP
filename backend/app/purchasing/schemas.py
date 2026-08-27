@@ -93,6 +93,7 @@ class GoodsReceiptLineRead(BaseModel):
     purchase_order_line_id: int
     product_id: int
     product_sku: str
+    product_name: str
     quantity_packages: Decimal
     lot_id: int | None
     lot_number: str | None

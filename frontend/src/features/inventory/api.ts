@@ -60,6 +60,7 @@ export const stockMovementSchema = z.object({
   id: z.number(),
   product_id: z.number(),
   product_sku: z.string(),
+  product_name: z.string(),
   warehouse_id: z.number(),
   location_id: z.number(),
   lot_id: z.number().nullable(),

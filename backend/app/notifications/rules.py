@@ -91,7 +91,6 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
     stmt = (
         select(
             Product.id,
-            Product.sku,
             Product.name,
             func.coalesce(balances.c.quantity, 0).label("quantity"),
             Product.min_stock,
@@ -115,7 +114,7 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
             subject_type="product",
             subject_id=row.id,
             message=(
-                f"{row.sku} ({row.name}): quedan {row.quantity} unidades, "
+                f"{row.name}: quedan {row.quantity} unidades, "
                 f"por debajo del mínimo ({row.min_stock})."
             ),
         )
@@ -137,7 +136,7 @@ async def _detect_expiring_lots(
     balances = balance_stmt.subquery()
 
     stmt = (
-        select(Lot.id, Lot.lot_number, Lot.expiration_date, Product.sku)
+        select(Lot.id, Lot.lot_number, Lot.expiration_date, Product.name)
         .join(Product, Product.id == Lot.product_id)
         .join(balances, balances.c.lot_id == Lot.id)
         .where(Lot.expiration_date.is_not(None), Lot.expiration_date <= threshold)
@@ -147,7 +146,7 @@ async def _detect_expiring_lots(
         Detection(
             subject_type="lot",
             subject_id=row.id,
-            message=f"Lote {row.lot_number} de {row.sku} caduca el {row.expiration_date}.",
+            message=f"Lote {row.lot_number} de {row.name} caduca el {row.expiration_date}.",
         )
         for row in rows
     ]

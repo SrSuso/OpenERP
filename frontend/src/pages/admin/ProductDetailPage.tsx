@@ -280,9 +280,7 @@ export function ProductDetailPage() {
             size="lg"
           />
           <div>
-            <h1 className="text-2xl font-semibold">
-              {data.name} <span className="font-mono text-base text-slate-400">{data.sku}</span>
-            </h1>
+            <h1 className="text-2xl font-semibold">{data.name}</h1>
             <p className="mt-1 text-sm text-slate-500">
               {data.category_name ?? 'Sin categoría'} · {data.is_active ? 'Activo' : 'Inactivo'} ·{' '}
               Stock: {totalStock === null ? '…' : `${formatQuantity(String(totalStock))} uds.`}

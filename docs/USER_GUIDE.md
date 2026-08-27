@@ -84,7 +84,7 @@ transferencia supervisada de borradores entre terminales.
 - Escanea un código de barras sin enfocar ningún campo. Para buscar a mano,
   toca o haz clic directamente en el recuadro **Escanear o introducir código
   de barras**: se abre el buscador de catálogo con teclado táctil. Busca por
-  nombre, SKU o código de barras y toca el resultado. El administrador puede
+  nombre o código de barras y toca el resultado. El administrador puede
   desactivar este buscador para cada terminal.
 - Las pestañas de colores filtran las categorías POS.
 
@@ -212,11 +212,12 @@ Con `product.read` se puede buscar y consultar productos. Con
 - presentaciones, como unidad, bandeja o caja, con su factor de equivalencia;
 - uno o más códigos de barras por presentación.
 
-El SKU se genera automáticamente. La unidad base se puede corregir aunque el
-producto ya tenga movimientos: es una corrección de etiqueta, por lo que no
-convierte cantidades, precios ni movimientos históricos. Si hay que convertir
-una magnitud real, se necesita una regularización comercial/inventariable, no
-usar este selector como conversor.
+La referencia técnica del producto se genera automáticamente y no se muestra
+en el uso diario. La unidad base se puede corregir aunque el producto ya tenga
+movimientos: es una corrección de etiqueta, por lo que no convierte cantidades,
+precios ni movimientos históricos. Si hay que convertir una magnitud real, se
+necesita una regularización comercial/inventariable, no usar este selector como
+conversor.
 
 Desactivar conserva todo el histórico. Se puede eliminar definitivamente un
 alta equivocada sólo mientras no tenga ventas, compras, devoluciones, lotes,
@@ -433,7 +434,7 @@ PostgreSQL, entre ellas:
 - nombre visible de la tienda y `business.timezone`;
 - reglas de venta, actualización del catálogo y métodos del TPV;
 - stock negativo y descuento máximo;
-- prefijo SKU y stock mínimo por defecto;
+- stock mínimo por defecto;
 - textos de avisos;
 - tamaño de letra y colores del panel.
 

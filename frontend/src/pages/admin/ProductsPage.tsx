@@ -75,7 +75,7 @@ export function ProductsPage() {
     onError: (error: unknown) => {
       setCreateError(
         error instanceof ApiError && error.code === 'conflict'
-          ? 'Ya existe un producto con ese SKU.'
+          ? 'Ya existe un producto con esos datos.'
           : 'No se ha podido crear el producto.',
       );
     },
@@ -168,7 +168,7 @@ export function ProductsPage() {
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Nombre, SKU o código de barras…"
+              placeholder="Nombre o código de barras…"
               className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
             />
           </label>

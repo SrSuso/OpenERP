@@ -72,6 +72,7 @@ async def test_recording_an_adjustment_updates_the_balance_atomically(
         },
     )
     assert response.status_code == 201
+    assert response.json()["product_name"] == "Producto de inventario"
 
     balances = (await client.get("/api/v1/stock-balance", params={"product_id": product_id})).json()
     assert len(balances) == 1

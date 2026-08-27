@@ -118,9 +118,7 @@ export function EditProductForm({
       noValidate
       className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-4"
     >
-      <h4 className="mb-3 text-sm font-semibold text-slate-700">
-        Editar «{product.sku}» — {product.name}
-      </h4>
+      <h4 className="mb-3 text-sm font-semibold text-slate-700">Editar «{product.name}»</h4>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="text-sm text-slate-600 sm:col-span-2">

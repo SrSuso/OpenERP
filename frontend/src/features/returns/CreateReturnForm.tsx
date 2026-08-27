@@ -105,7 +105,7 @@ export function CreateReturnForm({
           Number(values.stock_return_quantity_packages) > 0 && values.lot_number
             ? values.lot_number
             : null,
-        label: `${line.product_sku} — ${line.package_name}`,
+        label: `${line.product_name} — ${line.package_name}`,
       },
     ]);
     reset({
@@ -168,7 +168,7 @@ export function CreateReturnForm({
               <option value="">Elige…</option>
               {pendingLines.map((line) => (
                 <option key={line.id} value={line.id}>
-                  {line.product_sku} — {line.package_name} (dinero{' '}
+                  {line.product_name} — {line.package_name} (dinero{' '}
                   {formatQuantity(String(remainingPackages(line, 'quantity_refunded')))}, stock{' '}
                   {formatQuantity(String(remainingPackages(line, 'quantity_physically_returned')))})
                 </option>

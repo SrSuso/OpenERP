@@ -104,6 +104,23 @@ describe('AuditLogPage', () => {
     await screen.findByText('Sistema');
   });
 
+  it('does not reveal product SKUs in current or historical audit details', async () => {
+    stubBackend([
+      entry({
+        before_data: { sku: 'AR000000008', name: 'Antes' },
+        after_data: { product_sku: 'AR000000008', name: 'Después' },
+      }),
+    ]);
+    renderPage();
+
+    await screen.findByText('updated');
+    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+
+    expect(screen.getByText(/"name": "Antes"/)).toBeInTheDocument();
+    expect(screen.getByText(/"name": "Después"/)).toBeInTheDocument();
+    expect(screen.queryByText(/AR000000008/)).not.toBeInTheDocument();
+  });
+
   it('sends the entity type filter to the backend and resets to page 1', async () => {
     const backend = stubBackend([entry()]);
     renderPage();

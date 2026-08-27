@@ -29,8 +29,8 @@ interface SupplierProductsPanelProps {
   canManage: boolean;
 }
 
-/** Fila expandida de un proveedor: qué productos vende, con su propio SKU y
- * coste (independiente de `products.cost`, que es lo último que pagamos
+/** Fila expandida de un proveedor: qué productos vende, con su referencia
+ * comercial y coste (independiente de `products.cost`, que es lo último que pagamos
  * nosotros — ver backend/app/suppliers/models.py's `ProductSupplier`). */
 export function SupplierProductsPanel({ supplierId, canManage }: SupplierProductsPanelProps) {
   const links = useQuery(supplierProductsQuery(supplierId));
@@ -94,9 +94,8 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
         <table className="mb-3 w-full text-left text-sm">
           <thead className="text-xs uppercase text-slate-500">
             <tr>
-              <th className="py-1 pr-3 font-medium">SKU</th>
               <th className="py-1 pr-3 font-medium">Producto</th>
-              <th className="py-1 pr-3 font-medium">SKU proveedor</th>
+              <th className="py-1 pr-3 font-medium">Referencia del proveedor</th>
               <th className="py-1 pr-3 font-medium">Coste</th>
               <th className="py-1 pr-3 font-medium">Preferido</th>
               {canManage && <th className="py-1 pr-3 font-medium" />}
@@ -105,7 +104,6 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
           <tbody>
             {links.data.map((link) => (
               <tr key={link.id} className="border-t border-slate-200">
-                <td className="py-1 pr-3 font-mono text-xs text-slate-500">{link.product_sku}</td>
                 <td className="py-1 pr-3">{link.product_name}</td>
                 <td className="py-1 pr-3">{link.supplier_sku ?? '—'}</td>
                 <td className="py-1 pr-3">{formatMoney(link.supplier_cost)}</td>
@@ -144,7 +142,7 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Nombre, SKU o código de barras…"
+              placeholder="Nombre o código de barras…"
               aria-label="Buscar producto"
               className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
             />
@@ -156,7 +154,7 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
               <option value="">Elige un producto…</option>
               {matches.map((product) => (
                 <option key={product.id} value={product.id}>
-                  {product.sku} — {product.name}
+                  {product.name}
                 </option>
               ))}
             </select>
@@ -166,7 +164,7 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
           </div>
 
           <label className="text-sm text-slate-600">
-            SKU del proveedor
+            Referencia del proveedor
             <input
               type="text"
               className="mt-1 block w-32 rounded border border-slate-300 px-3 py-1.5 text-sm"

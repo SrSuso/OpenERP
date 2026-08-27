@@ -89,7 +89,7 @@ export function GoodsReceiptForm({
         manufacturing_date:
           values.manufacturing_date === '' ? null : (values.manufacturing_date ?? null),
         expiration_date: values.expiration_date === '' ? null : (values.expiration_date ?? null),
-        label: `${line.product_sku} — ${line.package_name}`,
+        label: `${line.product_name} — ${line.package_name}`,
       },
     ]);
     reset({
@@ -198,7 +198,7 @@ export function GoodsReceiptForm({
               <option value="">Elige…</option>
               {pendingLines.map((line) => (
                 <option key={line.id} value={line.id}>
-                  {line.product_sku} — {line.package_name} (pendiente{' '}
+                  {line.product_name} — {line.package_name} (pendiente{' '}
                   {formatQuantity(String(remainingPackages(line)))})
                 </option>
               ))}

@@ -29,10 +29,7 @@ export function OrderLinesTable({ lines, canRemove, onRemove, isRemoving }: Orde
       <tbody>
         {lines.map((line) => (
           <tr key={line.id} className="border-t border-slate-200">
-            <td className="py-1 pr-3">
-              <span className="font-mono text-xs text-slate-500">{line.product_sku}</span>{' '}
-              {line.product_name}
-            </td>
+            <td className="py-1 pr-3">{line.product_name}</td>
             <td className="py-1 pr-3">{line.package_name}</td>
             <td className="py-1 pr-3">{formatQuantity(line.quantity_packages)}</td>
             <td className="py-1 pr-3">

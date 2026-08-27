@@ -139,7 +139,7 @@ export type Product = z.infer<typeof productSchema>;
 export function basePackage(product: Product) {
   const base = product.packages.find((p) => p.is_base);
   if (!base) {
-    throw new Error(`Product ${product.sku} has no base package.`);
+    throw new Error(`Product ${product.name} has no base package.`);
   }
   return base;
 }

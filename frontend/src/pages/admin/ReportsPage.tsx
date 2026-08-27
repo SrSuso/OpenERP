@@ -276,7 +276,7 @@ export function ReportsPage() {
                     <option value="">Todos</option>
                     {(products.data ?? []).map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.sku} — {p.name}
+                        {p.name}
                       </option>
                     ))}
                   </select>

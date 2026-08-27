@@ -90,7 +90,6 @@ def _product_query() -> tuple[Select[Any], dict[str, Any]]:
     stmt = (
         select(
             Product.id.label("subject_id"),
-            Product.sku,
             Product.name,
             stock.label("stock"),
             Product.min_stock,
@@ -113,9 +112,7 @@ def _product_query() -> tuple[Select[Any], dict[str, Any]]:
 
 
 def _describe_product(row: Row[Any]) -> str:
-    return (
-        f"{row.sku} ({row.name}): stock {row.stock}, mínimo {row.min_stock}, PVP {row.list_price}."
-    )
+    return f"{row.name}: stock {row.stock}, mínimo {row.min_stock}, PVP {row.list_price}."
 
 
 def _lot_query() -> tuple[Select[Any], dict[str, Any]]:
@@ -133,7 +130,7 @@ def _lot_query() -> tuple[Select[Any], dict[str, Any]]:
             Lot.id.label("subject_id"),
             Lot.lot_number,
             Lot.expiration_date,
-            Product.sku,
+            Product.name,
             quantity.label("quantity"),
             days.label("days_to_expiration"),
         )
@@ -147,7 +144,7 @@ def _lot_query() -> tuple[Select[Any], dict[str, Any]]:
 
 def _describe_lot(row: Row[Any]) -> str:
     return (
-        f"Lote {row.lot_number} de {row.sku}: caduca el {row.expiration_date} "
+        f"Lote {row.lot_number} de {row.name}: caduca el {row.expiration_date} "
         f"(en {row.days_to_expiration} días), quedan {row.quantity}."
     )
 

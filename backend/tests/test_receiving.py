@@ -270,6 +270,7 @@ async def test_receiving_a_lot_tracked_product_creates_the_lot(
 
     assert response.status_code == 201
     receipt_line = response.json()["lines"][0]
+    assert receipt_line["product_name"] == "Producto de recepción"
     assert receipt_line["lot_number"] == "LOTE-RECV-1"
     assert receipt_line["lot_id"] is not None
 

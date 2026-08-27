@@ -155,7 +155,7 @@ describe('LotsPage', () => {
     const { consumeKeys } = stubBackend({ failFirstConsume: true });
     renderPage();
 
-    await screen.findByText(/P000010/);
+    await screen.findByText('Yogur natural');
     await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
     await screen.findByText('Este producto todavía no tiene lotes.');
 

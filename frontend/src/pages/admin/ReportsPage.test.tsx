@@ -77,8 +77,8 @@ function stubBackend() {
         runCalls.push(b);
         return Promise.resolve(
           jsonResponse({
-            columns: ['product_sku', 'product_name', 'quantity'],
-            rows: [{ product_sku: 'P000010', product_name: 'Agua 1.5L', quantity: '12.000000' }],
+            columns: ['product_name', 'quantity'],
+            rows: [{ product_name: 'Agua 1.5L', quantity: '12.000000' }],
           }),
         );
       }
@@ -101,8 +101,8 @@ function stubBackend() {
       if (method === 'POST' && runDefMatch) {
         return Promise.resolve(
           jsonResponse({
-            columns: ['product_sku', 'quantity'],
-            rows: [{ product_sku: 'P000010', quantity: '12.000000' }],
+            columns: ['product_name', 'quantity'],
+            rows: [{ product_name: 'Agua 1.5L', quantity: '12.000000' }],
           }),
         );
       }
@@ -144,8 +144,8 @@ describe('ReportsPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Ejecutar informe' }));
 
-    expect(await screen.findByText('P000010')).toBeInTheDocument();
-    expect(screen.getByText('Agua 1.5L')).toBeInTheDocument();
+    expect(await screen.findByText('Agua 1.5L')).toBeInTheDocument();
+    expect(screen.queryByText('P000010')).not.toBeInTheDocument();
     expect(backend.runCalls).toEqual([
       { subject: 'SALES', dimensions: ['product'], metrics: ['quantity'], filters: {} },
     ]);

@@ -31,8 +31,8 @@ export function ReturnsHistory({ saleId }: { saleId: number }) {
           <ul className="mt-1 space-y-0.5">
             {ret.lines.map((line) => (
               <li key={line.id}>
-                <span className="font-mono text-xs text-slate-500">{line.product_sku}</span>{' '}
-                devuelto {formatQuantity(line.refund_quantity_packages)} {line.package_name}
+                {line.product_name} · devuelto {formatQuantity(line.refund_quantity_packages)}{' '}
+                {line.package_name}
                 {' · '}repuesto {formatQuantity(line.stock_return_quantity_packages)}{' '}
                 {line.package_name}
                 {Number(line.refund_quantity_packages) > 0 &&

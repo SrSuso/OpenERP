@@ -4,7 +4,7 @@ import { columnLabel } from './columnLabels';
 
 describe('columnLabel', () => {
   it('translates a known output column to its Spanish label', () => {
-    expect(columnLabel('product_sku')).toBe('SKU');
+    expect(columnLabel('product_name')).toBe('Producto');
     expect(columnLabel('revenue')).toBe('Ingresos');
   });
 

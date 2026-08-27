@@ -5,7 +5,6 @@
  * "adivinarlo" a partir de la clave. */
 export const COLUMN_LABELS: Record<string, string> = {
   date: 'Fecha',
-  product_sku: 'SKU',
   product_name: 'Producto',
   category_name: 'Categoría',
   warehouse_name: 'Almacén',

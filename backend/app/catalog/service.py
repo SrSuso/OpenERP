@@ -73,7 +73,6 @@ def _snapshot(product: Product) -> dict[str, Any]:
         base_package.barcodes[0].barcode if base_package and base_package.barcodes else None
     )
     return {
-        "sku": product.sku,
         "name": product.name,
         "category_id": product.category_id,
         "pos_category_id": product.pos_category_id,

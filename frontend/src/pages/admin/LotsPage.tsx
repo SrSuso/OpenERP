@@ -50,7 +50,7 @@ export function LotsPage() {
           type="text"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Nombre, SKU o código de barras…"
+          placeholder="Nombre o código de barras…"
           aria-label="Buscar producto"
           className="mt-1 block w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
@@ -63,7 +63,7 @@ export function LotsPage() {
           <option value="">Elige un producto…</option>
           {matches.map((product) => (
             <option key={product.id} value={product.id}>
-              {product.sku} — {product.name}
+              {product.name}
               {product.track_lots ? '' : ' (no controla lotes)'}
             </option>
           ))}

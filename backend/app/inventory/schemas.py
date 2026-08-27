@@ -34,6 +34,7 @@ class StockMovementRead(BaseModel):
     id: int
     product_id: int
     product_sku: str
+    product_name: str
     warehouse_id: int
     location_id: int
     lot_id: int | None

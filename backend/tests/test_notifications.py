@@ -117,7 +117,8 @@ async def test_low_stock_rule_detects_a_product_below_its_minimum(
     incident = _incident_for(incidents, "product", product["id"])
     assert incident is not None
     assert incident["status"] == "OPEN"
-    assert "NOTIF-LOW" in incident["message"]
+    assert "Producto de notificación" in incident["message"]
+    assert "NOTIF-LOW" not in incident["message"]
 
 
 async def test_low_stock_rule_does_not_flag_a_product_above_its_minimum(

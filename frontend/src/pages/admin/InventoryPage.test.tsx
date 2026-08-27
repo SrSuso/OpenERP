@@ -131,6 +131,7 @@ function stubBackend() {
           id: 1,
           product_id: b['product_id'] as number,
           product_sku: product.sku,
+          product_name: product.name,
           warehouse_id: b['warehouse_id'] as number,
           location_id: b['location_id'] as number,
           lot_id: null,

@@ -127,7 +127,7 @@ _SALES = SubjectDef(
         "date": FieldDef("Fecha", {}, is_business_date=True),
         "product": FieldDef(
             "Producto",
-            {"product_sku": SaleLine.product_sku, "product_name": SaleLine.product_name},
+            {"product_name": SaleLine.product_name},
         ),
         "category": FieldDef(
             "Categoría",
@@ -176,7 +176,7 @@ _PURCHASES = SubjectDef(
     label="Compras",
     dimensions={
         "date": FieldDef("Fecha", {}, is_business_date=True),
-        "product": FieldDef("Producto", {"product_sku": Product.sku, "product_name": Product.name}),
+        "product": FieldDef("Producto", {"product_name": Product.name}),
         "supplier": FieldDef("Proveedor", {"supplier_name": Supplier.name}),
     },
     metrics={
@@ -220,7 +220,7 @@ _INVENTORY_MOVEMENTS = SubjectDef(
     label="Movimientos de inventario",
     dimensions={
         "date": FieldDef("Fecha", {}, is_business_date=True),
-        "product": FieldDef("Producto", {"product_sku": Product.sku, "product_name": Product.name}),
+        "product": FieldDef("Producto", {"product_name": Product.name}),
         "warehouse": FieldDef("Almacén", {"warehouse_name": Warehouse.name}),
         "movement_type": FieldDef("Tipo", {"movement_type": StockMovement.movement_type}),
     },

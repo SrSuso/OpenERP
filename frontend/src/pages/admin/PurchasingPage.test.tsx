@@ -199,6 +199,7 @@ function stubBackend(
             purchase_order_line_id: l.purchase_order_line_id,
             product_id: product.id,
             product_sku: product.sku,
+            product_name: product.name,
             quantity_packages: l.quantity_packages,
             lot_id: null,
             lot_number: l.lot_number,
@@ -292,7 +293,7 @@ describe('PurchasingPage', () => {
     await userEvent.type(costInput, '3');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));
 
-    await screen.findByText(/P000010 — Caja de 6/);
+    await screen.findByText(/Agua 1\.5L — Caja de 6/);
     expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeEnabled();
     await userEvent.click(screen.getByRole('button', { name: 'Crear pedido' }));
 
@@ -324,9 +325,10 @@ describe('PurchasingPage', () => {
     expect(await screen.findByText('Estado: Recibido')).toBeInTheDocument();
     expect(backend.receiptKeys[0]).not.toBe('');
     expect(backend.receiptKeys[1]).toBe(backend.receiptKeys[0]);
-    // Aparece dos veces: una en la tabla de líneas del pedido, otra en la
-    // recepción recién registrada.
-    expect(screen.getAllByText('P000010')).toHaveLength(2);
+    // La línea del pedido sigue identificando el producto por su nombre;
+    // el SKU técnico no se enseña.
+    expect(screen.getByText('Agua 1.5L')).toBeInTheDocument();
+    expect(screen.queryByText('P000010')).not.toBeInTheDocument();
     expect(screen.queryByText('Costes de compra diferentes')).not.toBeInTheDocument();
   });
 

@@ -54,6 +54,7 @@ async def _movement_to_read(session: AsyncSession, movement: StockMovement) -> S
         id=movement.id,
         product_id=movement.product_id,
         product_sku=product.sku,
+        product_name=product.name,
         warehouse_id=movement.warehouse_id,
         location_id=movement.location_id,
         lot_id=movement.lot_id,

@@ -144,6 +144,7 @@ export const goodsReceiptLineSchema = z.object({
   purchase_order_line_id: z.number(),
   product_id: z.number(),
   product_sku: z.string(),
+  product_name: z.string(),
   quantity_packages: z.string(),
   lot_id: z.number().nullable(),
   lot_number: z.string().nullable(),

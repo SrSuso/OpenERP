@@ -109,7 +109,7 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Nombre, SKU o código de barras…"
+            placeholder="Nombre o código de barras…"
             aria-label="Buscar producto"
             className="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
           />
@@ -121,7 +121,7 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
             <option value="">Elige un producto…</option>
             {matches.map((product) => (
               <option key={product.id} value={product.id}>
-                {product.sku} — {product.name}
+                {product.name}
               </option>
             ))}
           </select>
