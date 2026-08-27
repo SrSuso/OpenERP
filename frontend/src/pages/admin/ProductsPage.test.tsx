@@ -270,6 +270,27 @@ describe('ProductsPage', () => {
     expect(backend.pricingCalls).toEqual([]);
   });
 
+  it('does not submit a new product when a barcode scanner sends Enter', async () => {
+    const backend = stubBackend();
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await user.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await user.type(screen.getByLabelText('Nombre'), 'Refresco 33cl');
+    await user.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    const price = screen.getByLabelText('Precio de venta');
+    await user.clear(price);
+    await user.type(price, '1');
+
+    const barcode = screen.getByLabelText('Código de barras (opcional)');
+    await user.type(barcode, '8412345678901{Enter}');
+
+    expect(barcode).toHaveValue('8412345678901');
+    expect(backend.createCalls).toEqual([]);
+    expect(screen.getByRole('heading', { name: 'Nuevo producto' })).toBeInTheDocument();
+  });
+
   it('creates a named open-price button for the POS', async () => {
     const backend = stubBackend();
     renderPage();

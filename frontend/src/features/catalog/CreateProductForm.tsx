@@ -328,6 +328,12 @@ export function CreateProductForm({
             type="text"
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('base_barcode')}
+            // Los lectores suelen terminar el código con Enter. En un alta
+            // ese Enter debe quedarse en el campo: crear el producto sigue
+            // requiriendo pulsar explícitamente «Crear».
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.preventDefault();
+            }}
           />
         </label>
 
