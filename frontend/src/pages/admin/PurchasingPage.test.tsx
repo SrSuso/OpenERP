@@ -76,7 +76,7 @@ function stubBackend(
     tracks_stock: null,
     effective_tracks_stock: true,
     is_active: true,
-    packages: [{ id: 100, name: 'Caja de 6', factor: '6', is_base: false, barcodes: [] }],
+    packages: [{ id: 100, name: 'Unidad', factor: '1', is_base: true, barcodes: [] }],
   };
   const warehouse: Warehouse = { id: 1, name: 'Almacén central', is_active: true };
   const location: Location = { id: 1, warehouse_id: 1, name: 'Recepción', is_active: true };
@@ -91,6 +91,36 @@ function stubBackend(
   let placeFailures = options.failPlaceOnce ? 1 : 0;
   let receiptFailures = options.failReceiptOnce ? 1 : 0;
 
+  const lineFromBody = (b: Record<string, unknown>) => {
+    const qty = Number(b['quantity_packages']);
+    const cost = Number(b['unit_cost']);
+    const discountRate = Number(b['discount_rate']);
+    const taxRate = Number(b['tax_rate']);
+    const subtotal = qty * cost;
+    const discount = (subtotal * discountRate) / 100;
+    const net = subtotal - discount;
+    const tax = (net * taxRate) / 100;
+    return {
+      id: nextLineId++,
+      product_id: product.id,
+      product_sku: product.sku,
+      product_name: product.name,
+      package_id: b['package_id'] as number,
+      package_name: 'Unidad',
+      package_factor: '1',
+      quantity_packages: b['quantity_packages'] as string,
+      quantity_ordered: String(qty),
+      quantity_received: '0',
+      unit_cost: b['unit_cost'] as string,
+      tax_rate: b['tax_rate'] as string,
+      discount_rate: b['discount_rate'] as string,
+      subtotal: String(subtotal),
+      discount_amount: String(discount),
+      tax_amount: String(tax),
+      total: String(net + tax),
+    };
+  };
+
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -104,6 +134,16 @@ function stubBackend(
         return Promise.resolve(jsonResponse([supplier]));
       if (method === 'GET' && /\/products\?/.test(url))
         return Promise.resolve(jsonResponse([product]));
+      if (method === 'POST' && /\/products\/\d+\/pricing\/cost-preview$/.test(url)) {
+        const cost = Number(body()['cost']);
+        const calculated = cost * 2;
+        return Promise.resolve(
+          jsonResponse({
+            calculated_price: String(calculated),
+            rounded_price: String(Math.ceil(calculated * 20 - 1e-9) / 20),
+          }),
+        );
+      }
       if (method === 'GET' && /\/warehouses$/.test(url))
         return Promise.resolve(jsonResponse([warehouse]));
       if (method === 'GET' && /\/warehouses\/\d+\/locations/.test(url)) {
@@ -123,9 +163,10 @@ function stubBackend(
           notes: (b['notes'] as string) ?? '',
           ordered_at: null,
           created_at: new Date().toISOString(),
-          lines: [],
+          lines: (b['lines'] as Record<string, unknown>[] | undefined)?.map(lineFromBody) ?? [],
           total: '0.000000',
         };
+        order.total = orderTotal(order);
         orders.push(order);
         receipts[order.id] = [];
         return Promise.resolve(jsonResponse(order, { status: 201 }));
@@ -134,29 +175,18 @@ function stubBackend(
       if (method === 'POST' && lineMatch) {
         const order = orders.find((o) => o.id === Number(lineMatch[1]))!;
         const b = body();
-        const factor = 6;
-        const qty = Number(b['quantity_packages']);
-        order.lines.push({
-          id: nextLineId++,
-          product_id: product.id,
-          product_sku: product.sku,
-          product_name: product.name,
-          package_id: b['package_id'] as number,
-          package_name: 'Caja de 6',
-          package_factor: '6',
-          quantity_packages: b['quantity_packages'] as string,
-          quantity_ordered: String(qty * factor),
-          quantity_received: '0',
-          unit_cost: b['unit_cost'] as string,
-          tax_rate: b['tax_rate'] as string,
-          discount_rate: b['discount_rate'] as string,
-          subtotal: String(qty * Number(b['unit_cost'])),
-          discount_amount: '0',
-          tax_amount: '0',
-          total: String(qty * Number(b['unit_cost'])),
-        });
+        order.lines.push(lineFromBody(b));
         order.total = orderTotal(order);
         return Promise.resolve(jsonResponse(order, { status: 201 }));
+      }
+      const updateLineMatch = /\/purchase-orders\/(\d+)\/lines\/(\d+)$/.exec(url);
+      if (method === 'PUT' && updateLineMatch) {
+        const order = orders.find((o) => o.id === Number(updateLineMatch[1]))!;
+        const index = order.lines.findIndex((line) => line.id === Number(updateLineMatch[2]));
+        const updated = { ...lineFromBody(body()), id: order.lines[index]!.id };
+        order.lines[index] = updated;
+        order.total = orderTotal(order);
+        return Promise.resolve(jsonResponse(order));
       }
       const placeMatch = /\/purchase-orders\/(\d+)\/place$/.exec(url);
       if (method === 'POST' && placeMatch) {
@@ -284,24 +314,38 @@ describe('PurchasingPage', () => {
     expect(screen.getByLabelText('PVP actual')).toHaveValue('1');
     // El IVA sale ya puesto con el del producto, y se puede cambiar.
     expect(screen.getByLabelText('IVA %')).toHaveValue('21');
-    await userEvent.selectOptions(screen.getByLabelText('Formato'), '100');
+    // La elección rellena el coste inicial en un efecto; esperamos a que
+    // termine antes de sustituirlo por la cotización del proveedor.
+    await waitFor(() => expect(screen.getByLabelText('Coste/unidad')).toHaveValue('0,5'));
     const qtyInput = screen.getByLabelText('Cantidad');
     await userEvent.clear(qtyInput);
     await userEvent.type(qtyInput, '2');
-    const costInput = screen.getByLabelText('Coste/ud.');
+    const costInput = screen.getByLabelText('Coste/unidad');
     await userEvent.clear(costInput);
     await userEvent.type(costInput, '3');
+    expect(costInput).toHaveValue('3');
+    await waitFor(() => expect(screen.getByLabelText('PVP previsto')).toHaveValue('6,00 €'));
     await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));
 
-    await screen.findByText(/Agua 1\.5L — Caja de 6/);
+    await screen.findByText(/Agua 1\.5L — UNIT/);
     expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeEnabled();
     await userEvent.click(screen.getByRole('button', { name: 'Crear pedido' }));
 
     await screen.findByText('Distribuciones Ejemplo SL');
     await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
 
-    await screen.findByText('Caja de 6');
-    expect(screen.getByText('Realizar pedido')).toBeInTheDocument();
+    expect(await screen.findByText('Realizar pedido')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Unidad' })).toBeInTheDocument();
+
+    // Una línea de borrador se corrige en el propio pedido y mantiene la
+    // unidad del producto, sin desplegable que pueda cambiarla por error.
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    expect(screen.getByLabelText('Unidad')).toHaveValue('Unidad');
+    const editCostInput = screen.getByLabelText('Coste/unidad');
+    await userEvent.clear(editCostInput);
+    await userEvent.type(editCostInput, '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(backend.orders[0]?.lines[0]?.unit_cost).toBe('1'));
 
     // Realizar pedido
     await userEvent.click(screen.getByRole('button', { name: 'Realizar pedido' }));
@@ -340,7 +384,6 @@ describe('PurchasingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo pedido' }));
     await userEvent.selectOptions(screen.getByLabelText('Proveedor'), '1');
     await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
-    await userEvent.selectOptions(screen.getByLabelText('Formato'), '100');
     await userEvent.clear(screen.getByLabelText('Cantidad'));
     await userEvent.type(screen.getByLabelText('Cantidad'), '1');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));

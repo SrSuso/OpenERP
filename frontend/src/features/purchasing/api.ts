@@ -62,6 +62,7 @@ export function purchaseOrdersQuery(filters: OrderFilters) {
 export async function createOrder(payload: {
   supplier_id: number;
   notes: string;
+  lines: OrderLineInput[];
 }): Promise<PurchaseOrder> {
   return apiFetch(`${API_V1}/purchase-orders`, {
     method: 'POST',
@@ -85,6 +86,18 @@ export async function addOrderLine(
 ): Promise<PurchaseOrder> {
   return apiFetch(`${API_V1}/purchase-orders/${orderId}/lines`, {
     method: 'POST',
+    schema: purchaseOrderSchema,
+    body: payload,
+  });
+}
+
+export async function updateOrderLine(
+  orderId: number,
+  lineId: number,
+  payload: OrderLineInput,
+): Promise<PurchaseOrder> {
+  return apiFetch(`${API_V1}/purchase-orders/${orderId}/lines/${lineId}`, {
+    method: 'PUT',
     schema: purchaseOrderSchema,
     body: payload,
   });

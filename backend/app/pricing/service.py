@@ -88,9 +88,9 @@ def effective_formula(product: Product, settings: PricingSettings) -> str:
     return settings.formula
 
 
-def _variables(product: Product) -> dict[str, Decimal]:
+def _variables(product: Product, *, cost: Decimal | None = None) -> dict[str, Decimal]:
     return {
-        "cost": product.cost,
+        "cost": product.cost if cost is None else cost,
         "tax_rate": effective_tax_rate(product),
         "surcharge_rate": effective_surcharge_rate(product),
         "margin_rate": effective_margin_rate(product),
@@ -146,11 +146,13 @@ def _quantize_price(value: Decimal) -> Decimal:
     )
 
 
-def _calculate_automatic_price(product: Product, settings: PricingSettings) -> Decimal:
+def _calculate_automatic_price(
+    product: Product, settings: PricingSettings, *, cost: Decimal | None = None
+) -> Decimal:
     """Return the exact formula result before the commercial rounding step."""
     text = effective_formula(product, settings)
     try:
-        result = formula.evaluate(text, _variables(product))
+        result = formula.evaluate(text, _variables(product, cost=cost))
     except FormulaError as exc:
         raise ValidationError(str(exc)) from exc
     # Igual que al guardar: el margen fijo queda fuera de la fórmula y se
@@ -265,6 +267,15 @@ async def product_price_calculation(
     """
     product = await _product_or_404(session, product_id)
     calculated_price = _calculate_automatic_price(product, await get_settings(session))
+    return calculated_price, _quantize_price(calculated_price)
+
+
+async def product_price_preview_for_cost(
+    session: AsyncSession, product_id: int, cost: Decimal
+) -> tuple[Decimal, Decimal]:
+    """Preview this product's own/inherited formula without mutating it."""
+    product = await _product_or_404(session, product_id)
+    calculated_price = _calculate_automatic_price(product, await get_settings(session), cost=cost)
     return calculated_price, _quantize_price(calculated_price)
 
 

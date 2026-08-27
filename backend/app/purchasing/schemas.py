@@ -8,19 +8,24 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 
-class PurchaseOrderCreate(BaseModel):
-    supplier_id: int
-    notes: str = Field(default="", max_length=2000)
-
-
 class PurchaseOrderLineCreate(BaseModel):
     product_id: int
     package_id: int
     quantity_packages: Decimal = Field(gt=0)
-    #: Cost per unit of the chosen package, as quoted/invoiced.
+    #: Cost per selected base unit, as quoted/invoiced.
     unit_cost: Decimal = Field(ge=0)
     tax_rate: Decimal = Field(default=Decimal(0), ge=0)
     discount_rate: Decimal = Field(default=Decimal(0), ge=0, le=100)
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_id: int
+    notes: str = Field(default="", max_length=2000)
+    #: The purchase screen stages several lines locally and sends them with
+    #: the order in one request, so an invalid line cannot leave a half-made
+    #: order behind. An empty draft remains valid for API callers that need
+    #: to complete it later.
+    lines: list[PurchaseOrderLineCreate] = Field(default_factory=list)
 
 
 class PurchaseOrderLineRead(BaseModel):

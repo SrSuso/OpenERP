@@ -36,6 +36,16 @@ class ProductPriceCalculationRead(BaseModel):
     rounded_price: Decimal
 
 
+class ProductCostPreviewRequest(BaseModel):
+    """Evaluate a product's effective price formula against a proposed cost.
+
+    This is used while entering a purchase order. It deliberately has no
+    write semantics: product cost, PVP and price history remain untouched.
+    """
+
+    cost: Decimal = Field(ge=0)
+
+
 class SetPricingInputsRequest(BaseModel):
     """Updates whichever pricing inputs are given (a field simply absent
     from the JSON body is left untouched). Any of them recomputes the

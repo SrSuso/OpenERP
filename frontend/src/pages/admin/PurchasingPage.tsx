@@ -5,12 +5,7 @@ import { useAuth } from '@/features/auth/useAuth';
 import { productsQuery } from '@/features/catalog/api';
 import { CreateOrderForm } from '@/features/purchasing/CreateOrderForm';
 import { OrdersTable } from '@/features/purchasing/OrdersTable';
-import {
-  addOrderLine,
-  createOrder,
-  purchaseOrdersQuery,
-  type OrderLineInput,
-} from '@/features/purchasing/api';
+import { createOrder, purchaseOrdersQuery, type OrderLineInput } from '@/features/purchasing/api';
 import { suppliersQuery } from '@/features/suppliers/api';
 
 import { pageHeaderRow, primaryAction } from './pageActions';
@@ -50,14 +45,7 @@ export function PurchasingPage() {
       notes: string;
       lines: OrderLineInput[];
     }) => {
-      const order = await createOrder({ supplier_id: payload.supplier_id, notes: payload.notes });
-      // El backend sólo crea el pedido en sí (POST /purchase-orders no
-      // acepta líneas) — se añaden una a una justo después para que, desde
-      // el punto de vista de quien lo crea, sea un único paso.
-      for (const line of payload.lines) {
-        await addOrderLine(order.id, line);
-      }
-      return order;
+      return createOrder(payload);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['purchasing', 'orders'] });

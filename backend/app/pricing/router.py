@@ -22,6 +22,7 @@ from app.pricing.schemas import (
     PriceHistoryEntryRead,
     PricingSettingsRead,
     PricingSettingsUpdate,
+    ProductCostPreviewRequest,
     ProductPriceCalculationRead,
     SetFormulaRequest,
     SetManualPriceRequest,
@@ -90,6 +91,23 @@ async def get_product_price_calculation(
     product_id: int, session: SessionDep
 ) -> ProductPriceCalculationRead:
     calculated_price, rounded_price = await service.product_price_calculation(session, product_id)
+    return ProductPriceCalculationRead(
+        calculated_price=calculated_price,
+        rounded_price=rounded_price,
+    )
+
+
+@router.post(
+    "/products/{product_id}/pricing/cost-preview",
+    response_model=ProductPriceCalculationRead,
+    dependencies=[_require_read],
+)
+async def preview_product_price_for_cost(
+    product_id: int, payload: ProductCostPreviewRequest, session: SessionDep
+) -> ProductPriceCalculationRead:
+    calculated_price, rounded_price = await service.product_price_preview_for_cost(
+        session, product_id, payload.cost
+    )
     return ProductPriceCalculationRead(
         calculated_price=calculated_price,
         rounded_price=rounded_price,

@@ -145,6 +145,27 @@ async def test_product_price_calculation_exposes_raw_and_rounded_prices(
     assert Decimal(response.json()["rounded_price"]) == Decimal("1.55")
 
 
+async def test_purchase_cost_preview_uses_the_product_formula_without_writing(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client, cost="1.00")
+    await client.put(
+        f"/api/v1/products/{product_id}/pricing/formula", json={"price_formula": "cost"}
+    )
+
+    preview = await client.post(
+        f"/api/v1/products/{product_id}/pricing/cost-preview", json={"cost": "1.53"}
+    )
+
+    assert preview.status_code == 200
+    assert Decimal(preview.json()["calculated_price"]) == Decimal("1.53")
+    assert Decimal(preview.json()["rounded_price"]) == Decimal("1.55")
+    persisted = await client.get(f"/api/v1/products/{product_id}")
+    assert persisted.json()["cost"] == "1.000000"
+    assert persisted.json()["list_price"] == "1.000000"
+
+
 async def test_manual_price_clears_the_formula(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -1,13 +1,16 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useId } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { type Product } from '@/features/catalog/api';
 import { useChosenProduct } from '@/features/catalog/useChosenProduct';
 import { useProductSearch } from '@/features/catalog/useProductSearch';
-import { type OrderLineInput } from '@/features/purchasing/api';
+import { type OrderLineInput, type PurchaseOrderLine } from '@/features/purchasing/api';
+import { previewProductPriceForCost } from '@/features/pricing/api';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
+import { formatMoney } from '@/lib/format';
 
 const addLineSchema = z.object({
   product_id: z.string().min(1, 'Elige un producto.'),
@@ -20,16 +23,31 @@ const addLineSchema = z.object({
 
 type AddLineFormValues = z.infer<typeof addLineSchema>;
 
-interface AddOrderLineFormProps {
-  products: Product[];
-  onSubmit: (payload: OrderLineInput) => void;
-  isPending: boolean;
+export interface OrderLinePreview {
+  product_name: string;
+  unit_name: string;
+  rounded_price: string | null;
 }
 
-/** Formulario para añadir una línea a un pedido en `DRAFT` — la presentación
- * se elige de las del producto seleccionado (`product.packages`), igual que
- * en el TPV. */
-export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLineFormProps) {
+interface AddOrderLineFormProps {
+  products: Product[];
+  onSubmit: (payload: OrderLineInput, preview: OrderLinePreview) => void;
+  isPending: boolean;
+  initialLine?: PurchaseOrderLine;
+  submitLabel?: string;
+  onCancel?: () => void;
+}
+
+/** Formulario para añadir una línea a un pedido en `DRAFT` — la unidad se
+ * toma automáticamente de la unidad base del producto. */
+export function AddOrderLineForm({
+  products,
+  onSubmit,
+  isPending,
+  initialLine,
+  submitLabel = 'Añadir línea',
+  onCancel,
+}: AddOrderLineFormProps) {
   const {
     register,
     handleSubmit,
@@ -40,36 +58,80 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
   } = useForm<AddLineFormValues>({
     resolver: zodResolver(addLineSchema),
     defaultValues: {
-      product_id: '',
-      package_id: '',
-      quantity_packages: '1',
-      unit_cost: '0',
-      tax_rate: '0',
-      discount_rate: '0',
+      product_id: initialLine ? String(initialLine.product_id) : '',
+      package_id: initialLine ? String(initialLine.package_id) : '',
+      quantity_packages: initialLine?.quantity_packages ?? '1',
+      unit_cost: initialLine?.unit_cost ?? '0',
+      tax_rate: initialLine?.tax_rate ?? '0',
+      discount_rate: initialLine?.discount_rate ?? '0',
     },
   });
 
   const productId = watch('product_id');
+  const unitCost = watch('unit_cost');
   const productFieldId = useId();
   const { query, setQuery, matches } = useProductSearch(products, {
     onSingleMatch: (id) => setValue('product_id', id),
   });
-  // El IVA sale ya puesto con el del producto (el suyo, o el de su
-  // categoría — el backend lo resuelve en `effective_tax_rate`), pero se
-  // puede cambiar: una factura de compra puede traer otro tipo.
-  const selectedProduct = useChosenProduct(productId, products, (product) =>
-    setValue('tax_rate', decimalInputValue(product.effective_tax_rate)),
-  );
+  // El IVA y la unidad salen del producto: una línea de compra nunca debe
+  // pedir elegir otra unidad distinta. Se conserva la posibilidad de cambiar
+  // el IVA de factura, pero no la identidad física de lo que se compra.
+  const selectedProduct = useChosenProduct(productId, products, (product) => {
+    // Una línea existente conserva su instantánea: no convertimos una compra
+    // histórica hecha por cajas a unidades sólo por abrir el editor. Al
+    // elegir otro artículo sí se toma automáticamente su unidad base.
+    if (initialLine?.product_id === product.id) return;
+    const basePackage = product.packages.find((pkg) => pkg.is_base) ?? product.packages[0];
+    setValue('package_id', basePackage ? String(basePackage.id) : '');
+    setValue('tax_rate', decimalInputValue(product.effective_tax_rate));
+    setValue('unit_cost', decimalInputValue(product.cost));
+  });
+  const selectedProductId = selectedProduct?.id;
+  const selectedUnitName =
+    initialLine !== undefined && initialLine.product_id === selectedProductId
+      ? initialLine.package_name
+      : selectedProduct?.base_unit_name;
+  const parsedCost = Number(unitCost);
+  const canPreviewPrice =
+    selectedProduct !== undefined &&
+    unitCost.trim() !== '' &&
+    Number.isFinite(parsedCost) &&
+    parsedCost >= 0;
+  const {
+    mutate: previewPrice,
+    data: pricePreview,
+    isPending: isPreviewingPrice,
+  } = useMutation({
+    mutationFn: ({ productId: id, cost }: { productId: number; cost: string }) =>
+      previewProductPriceForCost(id, cost),
+  });
+
+  // Una breve pausa evita disparar una petición por cada dígito, pero la
+  // fórmula sigue siendo la del backend y no se persiste absolutamente nada.
+  useEffect(() => {
+    if (!canPreviewPrice || selectedProductId === undefined) return;
+    const timer = window.setTimeout(() => {
+      previewPrice({ productId: selectedProductId, cost: unitCost });
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [canPreviewPrice, previewPrice, selectedProductId, unitCost]);
 
   const submit = handleSubmit((values) => {
-    onSubmit({
-      product_id: Number(values.product_id),
-      package_id: Number(values.package_id),
-      quantity_packages: values.quantity_packages,
-      unit_cost: values.unit_cost,
-      tax_rate: values.tax_rate,
-      discount_rate: values.discount_rate,
-    });
+    onSubmit(
+      {
+        product_id: Number(values.product_id),
+        package_id: Number(values.package_id),
+        quantity_packages: values.quantity_packages,
+        unit_cost: values.unit_cost,
+        tax_rate: values.tax_rate,
+        discount_rate: values.discount_rate,
+      },
+      {
+        product_name: selectedProduct?.name ?? '?',
+        unit_name: selectedUnitName ?? '?',
+        rounded_price: pricePreview?.rounded_price ?? null,
+      },
+    );
     reset({
       product_id: '',
       package_id: '',
@@ -114,18 +176,15 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
       </div>
 
       <label className="text-sm text-slate-600">
-        Formato
-        <select
-          className="mt-1 block w-32 rounded border border-slate-300 px-3 py-1.5 text-sm"
-          {...register('package_id')}
-        >
-          <option value="">Elige…</option>
-          {(selectedProduct?.packages ?? []).map((pkg) => (
-            <option key={pkg.id} value={pkg.id}>
-              {pkg.name}
-            </option>
-          ))}
-        </select>
+        Unidad
+        <input
+          type="text"
+          readOnly
+          value={selectedUnitName ?? ''}
+          placeholder="—"
+          className="mt-1 block w-24 rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600"
+        />
+        <input type="hidden" {...register('package_id')} />
         {errors.package_id && (
           <p className="mt-1 text-sm text-red-600">{errors.package_id.message}</p>
         )}
@@ -145,7 +204,7 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
       </label>
 
       <label className="text-sm text-slate-600">
-        Coste/ud.
+        Coste/unidad
         <input
           type="text"
           inputMode="decimal"
@@ -184,6 +243,23 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
       </label>
 
       <label className="text-sm text-slate-600">
+        PVP previsto
+        <input
+          type="text"
+          readOnly
+          value={
+            pricePreview
+              ? formatMoney(pricePreview.rounded_price)
+              : isPreviewingPrice
+                ? 'Calculando…'
+                : ''
+          }
+          placeholder="—"
+          className="mt-1 block w-28 rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800"
+        />
+      </label>
+
+      <label className="text-sm text-slate-600">
         IVA %
         <input
           type="text"
@@ -208,8 +284,17 @@ export function AddOrderLineForm({ products, onSubmit, isPending }: AddOrderLine
         disabled={isPending}
         className="rounded bg-brand-700 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
       >
-        {isPending ? 'Añadiendo…' : 'Añadir línea'}
+        {isPending ? 'Guardando…' : submitLabel}
       </button>
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+        >
+          Cancelar edición
+        </button>
+      )}
     </form>
   );
 }

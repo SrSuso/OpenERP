@@ -124,6 +124,17 @@ async def add_line(
     return _order_to_read(await service.add_line(session, order_id, payload))
 
 
+@router.put(
+    "/purchase-orders/{order_id}/lines/{line_id}",
+    response_model=PurchaseOrderRead,
+    dependencies=[_require_manage],
+)
+async def update_line(
+    order_id: int, line_id: int, payload: PurchaseOrderLineCreate, session: SessionDep
+) -> PurchaseOrderRead:
+    return _order_to_read(await service.update_line(session, order_id, line_id, payload))
+
+
 @router.delete(
     "/purchase-orders/{order_id}/lines/{line_id}",
     response_model=PurchaseOrderRead,

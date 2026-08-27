@@ -18,6 +18,7 @@ type CreateOrderFormValues = z.infer<typeof createOrderSchema>;
 
 interface StagedLine extends OrderLineInput {
   label: string;
+  preview_price: string | null;
 }
 
 interface CreateOrderFormProps {
@@ -54,7 +55,7 @@ export function CreateOrderForm({
     onSubmit({
       supplier_id: Number(values.supplier_id),
       notes: values.notes ?? '',
-      lines: stagedLines.map(({ label: _label, ...line }) => line),
+      lines: stagedLines.map(({ label: _label, preview_price: _previewPrice, ...line }) => line),
     });
   });
 
@@ -104,6 +105,7 @@ export function CreateOrderForm({
             <li key={`${line.product_id}-${index}`} className="flex items-center gap-2">
               <span>
                 {line.label} — {formatQuantity(line.quantity_packages)}
+                {line.preview_price !== null && ` · PVP previsto ${line.preview_price}`}
               </span>
               <button
                 type="button"
@@ -125,12 +127,14 @@ export function CreateOrderForm({
       <AddOrderLineForm
         products={products}
         isPending={false}
-        onSubmit={(line) => {
-          const product = products.find((p) => p.id === line.product_id);
-          const pkg = product?.packages.find((p) => p.id === line.package_id);
+        onSubmit={(line, preview) => {
           setStagedLines((current) => [
             ...current,
-            { ...line, label: `${product?.name ?? '?'} — ${pkg?.name ?? '?'}` },
+            {
+              ...line,
+              label: `${preview.product_name} — ${preview.unit_name}`,
+              preview_price: preview.rounded_price,
+            },
           ]);
         }}
       />

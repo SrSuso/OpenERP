@@ -62,6 +62,76 @@ async def test_create_order_starts_as_draft(
     assert body["ordered_at"] is None
 
 
+async def test_create_order_accepts_multiple_lines_atomically(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    supplier_id = await _create_supplier(client)
+    first = await _create_product(client, sku="PUR-BATCH-1")
+    second = await _create_product(client, sku="PUR-BATCH-2")
+    first_base = next(package["id"] for package in first["packages"] if package["is_base"])
+    second_base = next(package["id"] for package in second["packages"] if package["is_base"])
+
+    response = await client.post(
+        "/api/v1/purchase-orders",
+        json={
+            "supplier_id": supplier_id,
+            "lines": [
+                {
+                    "product_id": first["id"],
+                    "package_id": first_base,
+                    "quantity_packages": "2",
+                    "unit_cost": "0.80",
+                },
+                {
+                    "product_id": second["id"],
+                    "package_id": second_base,
+                    "quantity_packages": "3",
+                    "unit_cost": "1.20",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    order = response.json()
+    assert [line["product_id"] for line in order["lines"]] == [first["id"], second["id"]]
+    assert order["total"] == "5.200000"
+
+
+async def test_invalid_line_does_not_create_a_partial_batch_order(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    supplier_id = await _create_supplier(client)
+    product = await _create_product(client, sku="PUR-BATCH-INVALID")
+    base_id = next(package["id"] for package in product["packages"] if package["is_base"])
+
+    response = await client.post(
+        "/api/v1/purchase-orders",
+        json={
+            "supplier_id": supplier_id,
+            "lines": [
+                {
+                    "product_id": product["id"],
+                    "package_id": base_id,
+                    "quantity_packages": "1",
+                    "unit_cost": "1",
+                },
+                {
+                    "product_id": product["id"],
+                    "package_id": 999_999,
+                    "quantity_packages": "1",
+                    "unit_cost": "1",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert (await client.get("/api/v1/purchase-orders")).json() == []
+
+
 async def test_order_of_100_units_via_a_box_of_6(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
@@ -272,6 +342,45 @@ async def test_remove_line_from_draft_order(
 
     assert response.status_code == 200
     assert response.json()["lines"] == []
+
+
+async def test_a_draft_purchase_line_can_be_corrected(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    order_id, first = await _create_draft_order(client)
+    second = await _create_product(client, sku="PUR-CORRECTED")
+    first_base = next(package["id"] for package in first["packages"] if package["is_base"])
+    second_base = next(package["id"] for package in second["packages"] if package["is_base"])
+    added = await client.post(
+        f"/api/v1/purchase-orders/{order_id}/lines",
+        json={
+            "product_id": first["id"],
+            "package_id": first_base,
+            "quantity_packages": "1",
+            "unit_cost": "1",
+        },
+    )
+    line_id = added.json()["lines"][0]["id"]
+
+    corrected = await client.put(
+        f"/api/v1/purchase-orders/{order_id}/lines/{line_id}",
+        json={
+            "product_id": second["id"],
+            "package_id": second_base,
+            "quantity_packages": "4",
+            "unit_cost": "1.25",
+            "tax_rate": "10",
+            "discount_rate": "20",
+        },
+    )
+
+    assert corrected.status_code == 200
+    line = corrected.json()["lines"][0]
+    assert line["id"] == line_id
+    assert line["product_id"] == second["id"]
+    assert line["quantity_ordered"] == "4.000000"
+    assert line["total"] == "4.400000"
 
 
 async def test_product_purchase_history_orders_most_recent_first(

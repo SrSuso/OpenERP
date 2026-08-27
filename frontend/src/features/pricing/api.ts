@@ -116,6 +116,19 @@ export function productPriceCalculationQuery(productId: number) {
   });
 }
 
+/** Uses the product's actual formula/inheritance with a proposed purchase
+ * cost, but never persists either cost or PVP. */
+export async function previewProductPriceForCost(
+  productId: number,
+  cost: string,
+): Promise<ProductPriceCalculation> {
+  return apiFetch(`${API_V1}/products/${productId}/pricing/cost-preview`, {
+    method: 'POST',
+    schema: productPriceCalculationSchema,
+    body: { cost },
+  });
+}
+
 /** Nunca toca un producto real — para el "PVP en vivo" del formulario de
  * alta y del editor de fórmula. */
 export async function previewFormula(input: FormulaPreviewInput): Promise<string> {

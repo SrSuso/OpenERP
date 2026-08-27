@@ -153,17 +153,27 @@ async def _supplier_or_422(session: AsyncSession, supplier_id: int) -> Supplier:
 async def create_order(session: AsyncSession, payload: PurchaseOrderCreate) -> PurchaseOrder:
     await _supplier_or_422(session, payload.supplier_id)
 
+    # Validate every selected product/unit before creating the aggregate.
+    # A multi-line screen is one user action and must not persist a partial
+    # order when one of its rows is incoherent.
+    packages = [
+        await _package_or_422(session, line.product_id, line.package_id) for line in payload.lines
+    ]
+
     order = PurchaseOrder(
         supplier_id=payload.supplier_id, notes=payload.notes, created_by_user_id=get_user_id()
     )
     session.add(order)
+    await session.flush()
+    for line_payload, package in zip(payload.lines, packages, strict=True):
+        session.add(_new_line(order.id, line_payload, package))
     await session.flush()
     await audit.record(
         session,
         action="created",
         entity_type="purchase_order",
         entity_id=order.id,
-        after=_order_snapshot(order),
+        after={**_order_snapshot(order), "lines_count": len(payload.lines)},
     )
     return await get_order(session, order.id)
 
@@ -177,15 +187,10 @@ async def _package_or_422(
     return package
 
 
-async def add_line(
-    session: AsyncSession, order_id: int, payload: PurchaseOrderLineCreate
-) -> PurchaseOrder:
-    order = await _get_order_for_update(session, order_id)
-    if order.status != PurchaseOrderStatus.DRAFT:
-        raise ConflictError("Lines can only be added to a draft purchase order.")
-    package = await _package_or_422(session, payload.product_id, payload.package_id)
-
-    line = PurchaseOrderLine(
+def _new_line(
+    order_id: int, payload: PurchaseOrderLineCreate, package: ProductPackage
+) -> PurchaseOrderLine:
+    return PurchaseOrderLine(
         purchase_order_id=order_id,
         product_id=payload.product_id,
         package_id=payload.package_id,
@@ -197,6 +202,29 @@ async def add_line(
         tax_rate=payload.tax_rate,
         discount_rate=payload.discount_rate,
     )
+
+
+def _line_snapshot(line: PurchaseOrderLine) -> dict[str, str | int]:
+    return {
+        "line_id": line.id,
+        "product_id": line.product_id,
+        "package": line.package_name,
+        "quantity_packages": str(line.quantity_packages),
+        "unit_cost": str(line.unit_cost),
+        "tax_rate": str(line.tax_rate),
+        "discount_rate": str(line.discount_rate),
+    }
+
+
+async def add_line(
+    session: AsyncSession, order_id: int, payload: PurchaseOrderLineCreate
+) -> PurchaseOrder:
+    order = await _get_order_for_update(session, order_id)
+    if order.status != PurchaseOrderStatus.DRAFT:
+        raise ConflictError("Lines can only be added to a draft purchase order.")
+    package = await _package_or_422(session, payload.product_id, payload.package_id)
+
+    line = _new_line(order_id, payload, package)
     session.add(line)
     await session.flush()
     await audit.record(
@@ -209,6 +237,40 @@ async def add_line(
             "package": package.name,
             "quantity_packages": str(payload.quantity_packages),
         },
+    )
+    return await get_order(session, order_id)
+
+
+async def update_line(
+    session: AsyncSession, order_id: int, line_id: int, payload: PurchaseOrderLineCreate
+) -> PurchaseOrder:
+    """Correct one draft line before it can affect a supplier order or stock."""
+    order = await _get_order_for_update(session, order_id)
+    if order.status != PurchaseOrderStatus.DRAFT:
+        raise ConflictError("Lines can only be edited on a draft purchase order.")
+    line = next((candidate for candidate in order.lines if candidate.id == line_id), None)
+    if line is None:
+        raise NotFoundError(f"Line {line_id} not found on order {order_id}.")
+    package = await _package_or_422(session, payload.product_id, payload.package_id)
+    before = _line_snapshot(line)
+
+    line.product_id = payload.product_id
+    line.package_id = payload.package_id
+    line.package_name = package.name
+    line.package_factor = package.factor
+    line.quantity_packages = payload.quantity_packages
+    line.quantity_ordered = payload.quantity_packages * package.factor
+    line.unit_cost = payload.unit_cost
+    line.tax_rate = payload.tax_rate
+    line.discount_rate = payload.discount_rate
+    await session.flush()
+    await audit.record(
+        session,
+        action="line_updated",
+        entity_type="purchase_order",
+        entity_id=order_id,
+        before=before,
+        after=_line_snapshot(line),
     )
     return await get_order(session, order_id)
 
