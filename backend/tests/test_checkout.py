@@ -477,6 +477,9 @@ async def test_insufficient_stock_is_rejected_atomically(
     )
 
     assert response.status_code == 409
+    message = response.json()["error"]["message"]
+    assert "Producto de cobro" in message
+    assert product["sku"] not in message
     refreshed = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
     assert refreshed["status"] == "DRAFT"
     assert refreshed["payments"] == []

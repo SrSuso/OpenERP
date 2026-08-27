@@ -770,8 +770,8 @@ async def checkout(
         )
         if available < line.quantity_base and not allow_negative_stock:
             raise ConflictError(
-                f"Not enough stock for {line.product_sku}: needs {line.quantity_base}, "
-                f"only {available} available at this location."
+                f"No hay existencias suficientes de «{line.product_name}»: se necesitan "
+                f"{line.quantity_base} y solo hay {available} disponibles en esta ubicación."
             )
 
         if line.track_lots:
