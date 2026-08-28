@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   printableCharacters,
   THERMAL_PAPER_WIDTH_MM,
+  ticketPageStyle,
   ticketPreviewStyle,
   ticketPrintStyle,
 } from './printProfile';
@@ -31,6 +32,7 @@ describe('ticket print page profile', () => {
       '--ticket-margin-left': '4mm',
       '--ticket-margin-right': '4mm',
     });
+    expect(ticketPageStyle(PROFILE)).toBe('@media print { @page { margin: 2mm 4mm 3mm 4mm; } }');
   });
 
   it('calculates a conservative line width without imposing a roll height', () => {

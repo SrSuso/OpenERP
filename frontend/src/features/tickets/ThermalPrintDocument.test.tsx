@@ -29,6 +29,9 @@ describe('ThermalPrintDocument', () => {
     expect(printRoot?.style.getPropertyValue('--ticket-printable-width')).toBe('72mm');
     expect(printRoot?.style.getPropertyValue('--ticket-margin-left')).toBe('4mm');
     expect(printRoot?.style.getPropertyValue('--ticket-margin-right')).toBe('4mm');
+    expect(printRoot?.querySelector('[data-ticket-page-style]')).toHaveTextContent(
+      '@page { margin: 2mm 4mm 3mm 4mm; }',
+    );
     expect(document.body).toHaveClass('printing-thermal-document');
 
     view.rerender(<ThermalPrintDocument active={false} text="" profile={PROFILE} />);

@@ -1,7 +1,11 @@
 import { useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 
-import { ticketPrintStyle, type TicketPrintProfile } from '@/features/tickets/printProfile';
+import {
+  ticketPageStyle,
+  ticketPrintStyle,
+  type TicketPrintProfile,
+} from '@/features/tickets/printProfile';
 
 interface ThermalPrintDocumentProps {
   active: boolean;
@@ -45,6 +49,7 @@ export function ThermalPrintDocument({
       data-ticket-width={profile.printable_width_mm}
       style={ticketPrintStyle(profile)}
     >
+      <style data-ticket-page-style>{ticketPageStyle(profile)}</style>
       <pre
         className={
           onDismiss === undefined

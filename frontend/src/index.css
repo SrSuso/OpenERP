@@ -70,15 +70,6 @@
     display: none !important;
   }
 
-  /* La mayoría de impresoras de rollo de 80 mm sólo tienen unos 72 mm de
-     cabeza imprimible. El ticket se compone con 48 caracteres para 80 mm,
-     así que dejar que el navegador use sus rellenos de pantalla o refluya
-     el <pre> estrechaba las líneas y algunos drivers las solapaban. La
-     altura sigue siendo continua y la decide el controlador térmico. */
-  @page {
-    margin: 0;
-  }
-
   html,
   body,
   #root {
@@ -118,9 +109,12 @@
        decir, en blanco. */
     background: #fff;
     color: #000;
-    width: 80mm;
-    min-width: 80mm;
-    max-width: 80mm;
+    /* `@page` recibe los márgenes de la plantilla. Esta caja ocupa su área
+       de contenido ya imprimible; forzar aquí otros 80 mm haría que el
+       controlador térmico redujera el ticket por segunda vez. */
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: auto;
     min-height: 0;
     margin: 0;
@@ -138,9 +132,9 @@
      interlineado y márgenes. El ancho es la zona que realmente se imprime,
      nunca el ancho nominal de la bobina. */
   .ticket-print-root[data-print-active='true'][data-ticket-width] {
-    width: 80mm !important;
-    min-width: 80mm !important;
-    max-width: 80mm !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
   }
 
   .ticket-print-root[data-print-active='true'][data-ticket-width] pre {
@@ -150,8 +144,10 @@
     max-width: var(--ticket-printable-width) !important;
     height: auto !important;
     max-height: none !important;
-    margin: var(--ticket-margin-top) var(--ticket-margin-right) var(--ticket-margin-bottom)
-      var(--ticket-margin-left) !important;
+    /* Los márgenes físicos están en @page. Repetirlos aquí reduciría el
+       ancho útil, especialmente en drivers que ya declaran 4 mm no
+       imprimibles a cada lado de una bobina de 80 mm. */
+    margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
     border: 0 !important;

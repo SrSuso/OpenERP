@@ -42,6 +42,20 @@ export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
   } as CSSProperties;
 }
 
+/**
+ * Physical margins belong to the printer page, not to an 80 mm element inside
+ * that page. Thermal drivers already expose a printable area smaller than the
+ * roll; applying the same margins to an 80 mm element makes Chromium shrink
+ * the whole ticket a second time. A per-document rule lets the browser
+ * reconcile the requested margins with the driver's non-printable area.
+ *
+ * The driver still owns the paper format and continuous roll length. Setting a
+ * fixed CSS page height here would split or pad receipts unnecessarily.
+ */
+export function ticketPageStyle(profile: TicketPrintProfile): string {
+  return `@media print { @page { margin: ${profile.margin_top_mm}mm ${profile.margin_right_mm}mm ${profile.margin_bottom_mm}mm ${profile.margin_left_mm}mm; } }`;
+}
+
 /** The editor preview uses the same safe font settings before print CSS applies. */
 export function ticketPreviewStyle(profile: TicketPrintProfile): CSSProperties {
   return {

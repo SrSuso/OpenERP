@@ -356,9 +356,11 @@ deliberada: si una web pudiera imprimir sola, cualquiera podría vaciarte el
 papel. No hay forma de programarlo desde la aplicación.
 
 Antes de usar la caja, configura el controlador con bobina de **80 mm**,
-orientación vertical, escala **100 %**, sin márgenes y sin cabeceras ni pies.
-OpenERP controla el ancho útil, los márgenes del contenido y la tipografía; el
-controlador de la térmica controla la longitud continua y el corte. Una
+orientación vertical, escala **100 %**, sin márgenes adicionales y sin cabeceras
+ni pies. OpenERP envía el ancho útil y los márgenes de la plantilla como área
+física de página; el controlador de la térmica controla la longitud continua y
+el corte. No repitas esos márgenes en el controlador porque estrecharía el texto
+por segunda vez. Una
 impresora PDF configurada como A4 mostrará A4 aunque el contenido mida 80 mm.
 La explicación completa y las opciones disponibles están en
 [`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md).

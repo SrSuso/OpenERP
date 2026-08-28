@@ -36,11 +36,14 @@ Por ejemplo, `4 + 72 + 4 = 80 mm`. Al subir el margen izquierdo, el texto se
 desplaza a la derecha dentro de la misma bobina; la vista previa no cambia a A4
 ni adquiere una barra de desplazamiento horizontal.
 
-OpenERP genera un único documento de impresión aislado del resto de la página,
-con una anchura física de 80 mm. No fija una altura ficticia: una impresora
-térmica trabaja con una bobina continua y su controlador corta al terminar el
-contenido. Esto evita que el menú, las tablas o impresiones canceladas dejen
-páginas en blanco delante del ticket.
+OpenERP genera un único documento de impresión aislado del resto de la página.
+Entrega los márgenes configurados como márgenes físicos de página (`@page`) y
+el texto ocupa directamente el ancho imprimible restante. No coloca otra caja
+de 80 mm con los mismos márgenes dentro: eso haría que el controlador redujera
+el ticket dos veces. Tampoco fija una altura ficticia; la impresora trabaja con
+una bobina continua y su controlador corta al terminar el contenido. Así se
+evita también que el menú, las tablas o impresiones canceladas dejen páginas en
+blanco delante del ticket.
 
 ### Configuración del controlador de impresión
 
@@ -52,12 +55,14 @@ su controlador:
 - papel, recibo o bobina de **80 mm**;
 - orientación vertical;
 - escala **100 %** o **tamaño real**, nunca «ajustar a página»;
-- márgenes **ninguno**;
+- márgenes adicionales del controlador **ninguno**;
 - cabeceras y pies del navegador desactivados.
 
-OpenERP controla la anchura exterior de 80 mm, el área imprimible, los márgenes
-del contenido, la fuente y el interlineado. El controlador controla la longitud
-continua, el corte y el área física que admite el cabezal.
+OpenERP controla el área imprimible, los márgenes de página, la fuente y el
+interlineado. El controlador controla la bobina exterior de 80 mm, la longitud
+continua, el corte y el límite físico que admite el cabezal. No configures otros
+4 mm en el controlador: los márgenes de la plantilla ya se envían como margen de
+página y duplicarlos volvería a estrechar el texto.
 
 Si se selecciona «Microsoft Print to PDF» u otra impresora configurada como A4,
 la vista del sistema mostrará una hoja A4. Eso describe el papel del destino
