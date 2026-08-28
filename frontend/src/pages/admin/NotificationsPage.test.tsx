@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
-import { type Warehouse } from '@/features/inventory/api';
-import { type Incident, type NotificationRule } from '@/features/notifications/api';
+import { type Product } from '@/features/catalog/api';
+import { type ActiveAlert, type NotificationSettings } from '@/features/notifications/api';
 
 import { NotificationsPage } from './NotificationsPage';
 
@@ -21,109 +22,163 @@ const ME = {
   email: 'admin@example.com',
   full_name: 'Admin Uno',
   role: 'ADMIN',
-  permissions: ['admin.access', 'notification.read', 'notification.manage'],
+  permissions: [
+    'admin.access',
+    'notification.read',
+    'notification.manage',
+    'product.read',
+    'lot.read',
+  ],
 };
 
-function stubBackend() {
-  const warehouse: Warehouse = { id: 1, name: 'Almacén central', is_active: true };
-  const rules: NotificationRule[] = [];
-  let incidents: Incident[] = [];
-  const createRuleCalls: Record<string, unknown>[] = [];
-  const toggleCalls: { id: number; body: Record<string, unknown> }[] = [];
+const YOGURT: Product = {
+  id: 42,
+  sku: 'P000042',
+  name: 'Yogur natural',
+  description: '',
+  category_id: null,
+  category_name: null,
+  pos_category_id: null,
+  pos_category_name: null,
+  pos_display_order: 0,
+  is_open_price: false,
+  is_sold_by_weight: false,
+  base_unit_name: 'UDS.',
+  cost: '0.400000',
+  list_price: '0.750000',
+  tax_rate: '4.000000',
+  surcharge_rate: '0.000000',
+  effective_tax_rate: '4.000000',
+  margin_rate: null,
+  margin_amount: null,
+  taxes: [],
+  price_formula: null,
+  min_stock: '5.000000',
+  track_lots: true,
+  track_expiration: true,
+  tracks_stock: true,
+  effective_tracks_stock: true,
+  is_active: true,
+  packages: [],
+};
+
+const ACTIVE_ALERTS: ActiveAlert[] = [
+  {
+    id: 1,
+    kind: 'LOW_STOCK',
+    title: 'Leche entera',
+    message: null,
+    severity: 'MEDIUM_HIGH',
+    product_id: 10,
+    stock_current: '7.000000',
+    min_stock: '10.000000',
+    replenish: '3.000000',
+    lot_id: null,
+    lot_number: null,
+    expiration_date: null,
+    days_remaining: null,
+    quantity_remaining: null,
+  },
+  {
+    id: 2,
+    kind: 'EXPIRATION',
+    title: 'Yogur natural',
+    message: null,
+    severity: 'MEDIUM_HIGH',
+    product_id: 42,
+    stock_current: null,
+    min_stock: null,
+    replenish: null,
+    lot_id: 52,
+    lot_number: 'L24051',
+    expiration_date: '2026-09-12',
+    days_remaining: 2,
+    quantity_remaining: '8.000000',
+  },
+  {
+    id: 3,
+    kind: 'OTHER',
+    title: 'Revisar escaparate',
+    message: 'La regla personalizada sigue activa.',
+    severity: 'LOW',
+    product_id: null,
+    stock_current: null,
+    min_stock: null,
+    replenish: null,
+    lot_id: null,
+    lot_number: null,
+    expiration_date: null,
+    days_remaining: null,
+    quantity_remaining: null,
+  },
+];
+
+interface StubOptions {
+  empty?: boolean;
+  permissions?: string[];
+}
+
+function stubBackend(options: StubOptions = {}) {
+  let settings: NotificationSettings = {
+    general_expiration: { enabled: true, days_before_expiration: 5 },
+    product_expirations: [],
+    custom_rules: [{ name: 'Revisar escaparate', is_active: true }],
+  };
+  const calls: { method: string; url: string; body: unknown }[] = [];
 
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
-      const body = () =>
-        init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+      const body: unknown =
+        typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null;
+      calls.push({ method, url, body });
 
-      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
-      if (method === 'GET' && url.includes('/notification-fields')) {
+      if (url.includes('/auth/me')) {
         return Promise.resolve(
-          jsonResponse({
-            subjects: [
-              {
-                key: 'PRODUCT',
-                label: 'Productos',
-                fields: [
-                  { key: 'stock', label: 'Stock actual', type: 'NUMBER', help: 'Unidades.' },
-                ],
-              },
-            ],
-            operators: ['=', '!=', '<', '<=', '>', '>='],
-            severities: ['LOW', 'MEDIUM_LOW', 'MEDIUM_HIGH', 'HIGH'],
-          }),
+          jsonResponse({ ...ME, permissions: options.permissions ?? ME.permissions }),
         );
       }
-      if (method === 'GET' && /\/warehouses$/.test(url))
-        return Promise.resolve(jsonResponse([warehouse]));
-
-      if (method === 'GET' && /\/notification-rules$/.test(url)) {
-        return Promise.resolve(jsonResponse(rules));
+      if (method === 'GET' && /\/alerts$/.test(url)) {
+        return Promise.resolve(jsonResponse(options.empty ? [] : ACTIVE_ALERTS));
       }
-      if (method === 'POST' && /\/notification-rules$/.test(url)) {
-        const b = body();
-        createRuleCalls.push(b);
-        const created: NotificationRule = {
-          id: rules.length + 1,
-          name: b['name'] as string,
-          rule_type: b['rule_type'] as NotificationRule['rule_type'],
-          severity: 'MEDIUM_LOW',
-          params: b['params'] as Record<string, unknown>,
-          is_active: true,
+      if (method === 'GET' && /\/notification-settings$/.test(url)) {
+        return Promise.resolve(jsonResponse(settings));
+      }
+      if (method === 'GET' && /\/products\?/.test(url)) {
+        return Promise.resolve(jsonResponse([YOGURT]));
+      }
+      if (method === 'PUT' && /\/notification-settings\/expiration\/general$/.test(url)) {
+        const update = body as NotificationSettings['general_expiration'];
+        settings = { ...settings, general_expiration: update };
+        return Promise.resolve(jsonResponse(settings));
+      }
+      const productMatch = /\/notification-settings\/expiration\/products\/(\d+)$/.exec(url);
+      if (method === 'PUT' && productMatch) {
+        const update = body as { days_before_expiration: number };
+        settings = {
+          ...settings,
+          product_expirations: [
+            {
+              product_id: Number(productMatch[1]),
+              product_name: YOGURT.name,
+              days_before_expiration: update.days_before_expiration,
+            },
+          ],
         };
-        rules.push(created);
-        return Promise.resolve(jsonResponse(created, { status: 201 }));
+        return Promise.resolve(jsonResponse(settings));
       }
-      const toggleMatch = /\/notification-rules\/(\d+)$/.exec(url);
-      if (method === 'PATCH' && toggleMatch) {
-        const id = Number(toggleMatch[1]);
-        const b = body();
-        toggleCalls.push({ id, body: b });
-        const rule = rules.find((r) => r.id === id)!;
-        if ('is_active' in b) rule.is_active = b['is_active'] as boolean;
-        return Promise.resolve(jsonResponse(rule));
-      }
-
-      if (method === 'GET' && /\/incidents\?/.test(url)) {
-        const status = new URL(url, 'http://x').searchParams.get('status');
-        return Promise.resolve(
-          jsonResponse(status ? incidents.filter((i) => i.status === status) : incidents),
-        );
-      }
-      if (method === 'POST' && /\/notifications\/evaluate$/.test(url)) {
-        incidents = [
-          {
-            id: 1,
-            rule_id: 1,
-            rule_name: rules[0]?.name ?? 'Stock bajo',
-            severity: 'HIGH' as const,
-            subject_type: 'product',
-            subject_id: 10,
-            message: 'P000010 (Agua): quedan 2 unidades, por debajo del mínimo (5).',
-            status: 'OPEN',
-            first_detected_at: new Date().toISOString(),
-            last_seen_at: new Date().toISOString(),
-            resolved_at: null,
-          },
-        ];
-        return Promise.resolve(jsonResponse(incidents));
-      }
-      const resolveMatch = /\/incidents\/(\d+)\/resolve$/.exec(url);
-      if (method === 'POST' && resolveMatch) {
-        const incident = incidents.find((i) => i.id === Number(resolveMatch[1]))!;
-        incident.status = 'RESOLVED';
-        incident.resolved_at = new Date().toISOString();
-        return Promise.resolve(jsonResponse(incident));
+      if (method === 'DELETE' && productMatch) {
+        settings = { ...settings, product_expirations: [] };
+        return Promise.resolve(jsonResponse(settings));
       }
 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
 
-  return { createRuleCalls, toggleCalls };
+  return calls;
 }
 
 function renderPage() {
@@ -131,82 +186,108 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <NotificationsPage />
+        <MemoryRouter>
+          <NotificationsPage />
+        </MemoryRouter>
       </AuthProvider>
     </QueryClientProvider>,
   );
 }
 
 describe('NotificationsPage', () => {
-  it('creates a low-stock rule, deactivates it, then evaluates and resolves an incident', async () => {
-    const backend = stubBackend();
+  it('shows active store alerts grouped with useful data and no technical workflow', async () => {
+    const calls = stubBackend();
     renderPage();
 
-    // La prioridad operativa es atender primero lo que ya está ocurriendo.
-    expect(await screen.findByText('No hay incidencias con estos filtros.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Reglas' }));
-    await screen.findByText('Todavía no hay ninguna regla.');
-    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
+    expect(await screen.findByRole('heading', { name: 'Avisos', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Stock bajo' })).toBeInTheDocument();
+    expect(screen.getByText('Leche entera')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Caducidad' })).toBeInTheDocument();
+    expect(screen.getByText('L24051')).toBeInTheDocument();
+    expect(screen.getByText('2 días')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Otros avisos' })).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Stock bajo almacén central');
-    await userEvent.selectOptions(screen.getByLabelText('Almacén (vacío = todos)'), '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
-
-    await screen.findByText('Stock bajo almacén central');
-    expect(backend.createRuleCalls).toEqual([
-      {
-        name: 'Stock bajo almacén central',
-        rule_type: 'LOW_STOCK',
-        severity: 'MEDIUM_LOW',
-        params: { warehouse_id: 1 },
-      },
-    ]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
-    await screen.findByText('Inactiva');
-    expect(backend.toggleCalls).toEqual([{ id: 1, body: { is_active: false } }]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Incidencias' }));
-    await screen.findByText('No hay incidencias con estos filtros.');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Evaluar ahora' }));
-    await screen.findByText(/quedan 2 unidades/);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Resolver' }));
-    await screen.findByText('No hay incidencias con estos filtros.');
+    expect(screen.queryByRole('button', { name: /evaluar ahora/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /resolver/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/criticidad/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/condition/i)).not.toBeInTheDocument();
+    expect(calls.some((call) => call.url.includes('/notification-fields'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/notification-rules'))).toBe(false);
   });
 
-  it('builds a rule from the fields and comparators the backend offers', async () => {
-    const backend = stubBackend();
+  it('explains the empty state without incident terminology', async () => {
+    stubBackend({ empty: true });
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Reglas' }));
-    await screen.findByRole('button', { name: 'Nueva regla' });
-    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
 
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Stock por debajo de 5');
-    await userEvent.selectOptions(screen.getByLabelText('Tipo'), 'CONDITION');
-    await userEvent.selectOptions(screen.getByLabelText('Criticidad'), 'HIGH');
-    await userEvent.selectOptions(screen.getByLabelText('Avisar sobre'), 'PRODUCT');
+    expect(await screen.findByText('No hay avisos activos')).toBeInTheDocument();
+    expect(screen.queryByText(/incidencia/i)).not.toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir condición' }));
-    // Los campos y comparadores vienen del backend, no escritos en el panel.
-    await userEvent.selectOptions(screen.getByLabelText('Campo 1'), 'stock');
-    await userEvent.selectOptions(screen.getByLabelText('Comparador 1'), '<');
-    await userEvent.type(screen.getByLabelText('Valor 1'), '5');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+  it('configures general expiry and a product override without exposing IDs', async () => {
+    const calls = stubBackend();
+    renderPage();
+    const user = userEvent.setup();
 
-    await waitFor(() =>
-      expect(backend.createRuleCalls).toEqual([
-        {
-          name: 'Stock por debajo de 5',
-          rule_type: 'CONDITION',
-          severity: 'HIGH',
-          params: {
-            subject: 'PRODUCT',
-            conditions: [{ field: 'stock', operator: '<', value: 5 }],
-          },
-        },
-      ]),
+    await user.click(await screen.findByRole('button', { name: 'Configuración de avisos' }));
+    expect(screen.getByRole('heading', { name: 'Stock mínimo' })).toBeInTheDocument();
+    expect(screen.getByText('Automático')).toBeInTheDocument();
+    expect(screen.getByText(/sustituye por completo a la general/i)).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: /avisar para productos sin configuración específica/i,
+      }),
     );
+    await user.click(screen.getByRole('button', { name: 'Guardar configuración general' }));
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (call) =>
+            call.method === 'PUT' &&
+            call.url.endsWith('/notification-settings/expiration/general') &&
+            JSON.stringify(call.body) ===
+              JSON.stringify({ enabled: false, days_before_expiration: 5 }),
+        ),
+      ).toBe(true),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Añadir producto' }));
+    await user.type(screen.getByLabelText('Producto'), 'Yog');
+    await user.click(await screen.findByRole('option', { name: 'Yogur natural' }));
+    const daysInputs = screen.getAllByLabelText('Avisar con');
+    await user.type(daysInputs[1]!, '2');
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(await screen.findByText('Yogur natural')).toBeInTheDocument();
+    expect(screen.getByText('2 días antes')).toBeInTheDocument();
+    expect(screen.queryByText('P000042')).not.toBeInTheDocument();
+    expect(screen.queryByText('42')).not.toBeInTheDocument();
+    expect(
+      calls.some(
+        (call) =>
+          call.method === 'PUT' &&
+          call.url.endsWith('/notification-settings/expiration/products/42') &&
+          JSON.stringify(call.body) === JSON.stringify({ days_before_expiration: 2 }),
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps configuration read-only without management permission', async () => {
+    stubBackend({ permissions: ['notification.read', 'product.read', 'lot.read'] });
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Configuración de avisos' }));
+
+    expect(screen.getByRole('checkbox')).toBeDisabled();
+    expect(screen.getByLabelText('Avisar con')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Añadir producto' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Guardar configuración general' }),
+    ).not.toBeInTheDocument();
   });
 });

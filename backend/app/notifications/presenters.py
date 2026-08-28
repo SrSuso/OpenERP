@@ -23,6 +23,7 @@ def incident_to_read(incident: Incident) -> IncidentRead:
         id=incident.id,
         rule_id=incident.rule_id,
         rule_name=incident.rule.name,
+        rule_type=RuleType(incident.rule.rule_type),
         severity=Severity(incident.rule.severity),
         subject_type=incident.subject_type,
         subject_id=incident.subject_id,

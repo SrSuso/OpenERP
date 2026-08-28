@@ -84,7 +84,13 @@ async def test_a_rule_written_with_conditions_detects_what_matches(
     assert low["id"] in subjects
     assert plenty["id"] not in subjects
     # La criticidad viaja con el aviso, para que el panel pueda destacarlo.
-    assert all(i["severity"] == "HIGH" for i in incidents if i["subject_id"] == low["id"])
+    condition_incidents = [
+        incident
+        for incident in incidents
+        if incident["subject_id"] == low["id"] and incident["rule_type"] == "CONDITION"
+    ]
+    assert condition_incidents
+    assert all(incident["severity"] == "HIGH" for incident in condition_incidents)
 
 
 async def test_several_conditions_all_have_to_hold(
@@ -110,7 +116,10 @@ async def test_several_conditions_all_have_to_hold(
 
     incidents = (await client.post("/api/v1/notifications/evaluate")).json()
 
-    assert cheap["id"] not in {i["subject_id"] for i in incidents}
+    condition_subjects = {
+        incident["subject_id"] for incident in incidents if incident["rule_type"] == "CONDITION"
+    }
+    assert cheap["id"] not in condition_subjects
 
 
 async def test_an_invented_field_or_operator_is_rejected(

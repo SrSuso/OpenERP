@@ -22,6 +22,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import session_scope
 from app.jobs import service
+from app.notifications import service as notifications
 
 logger = logging.getLogger("app.jobs.worker")
 
@@ -53,17 +54,54 @@ async def run_once(
         return processed
 
 
+async def run_notification_evaluation_once(
+    settings: Settings, *, session_factory: SessionFactory | None = None
+) -> int:
+    """Evaluate store alerts in their own transaction and session.
+
+    Keeping this separate from ``run_once`` means SMTP polling and alert
+    cadence cannot accidentally become the same operational setting.
+    """
+    scope: SessionFactory = session_factory or session_scope
+    async with scope() as session:
+        touched = await notifications.evaluate_rules(session, settings)
+        await session.commit()
+        return len(touched)
+
+
 async def run_forever(
     *,
     poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    notification_interval_seconds: float | None = None,
     iterations: int | None = None,
     session_factory: SessionFactory | None = None,
+    monotonic: Callable[[], float] | None = None,
 ) -> None:
     """``iterations``/``session_factory`` are only for tests — production
     always passes neither, and this simply never returns."""
     settings = get_settings()
+    notification_interval = (
+        settings.notification_evaluation_interval_seconds
+        if notification_interval_seconds is None
+        else notification_interval_seconds
+    )
+    clock = monotonic or asyncio.get_running_loop().time
+    next_notification_at = 0.0
     count = 0
     while iterations is None or count < iterations:
+        now = clock()
+        if now >= next_notification_at:
+            try:
+                touched = await run_notification_evaluation_once(
+                    settings, session_factory=session_factory
+                )
+                if touched:
+                    logger.info("notifications: refreshed %d alert(s)", touched)
+            except Exception:
+                logger.exception("notifications: evaluation failed, will retry next interval")
+            finally:
+                next_notification_at = now + notification_interval
+
         try:
             processed = await run_once(settings, session_factory=session_factory)
             if processed:
@@ -79,7 +117,11 @@ async def run_forever(
 def main() -> None:
     settings = get_settings()
     configure_logging(level=settings.log_level, fmt=settings.log_format)
-    logger.info("outbox worker starting (poll every %ss)", DEFAULT_POLL_INTERVAL_SECONDS)
+    logger.info(
+        "outbox worker starting (mail every %ss, notifications every %ss)",
+        DEFAULT_POLL_INTERVAL_SECONDS,
+        settings.notification_evaluation_interval_seconds,
+    )
     asyncio.run(run_forever())
 
 

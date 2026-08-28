@@ -64,3 +64,65 @@ async def test_run_forever_stops_after_the_given_iterations(
     await worker.run_forever(
         iterations=2, poll_interval_seconds=0, session_factory=committing_sessionmaker
     )
+
+
+async def test_notification_evaluation_has_an_independent_cadence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notification_calls = 0
+    outbox_calls = 0
+
+    async def fake_notifications(_settings: Settings, **_kwargs: object) -> int:
+        nonlocal notification_calls
+        notification_calls += 1
+        return 0
+
+    async def fake_outbox(_settings: Settings, **_kwargs: object) -> int:
+        nonlocal outbox_calls
+        outbox_calls += 1
+        return 1
+
+    monkeypatch.setattr(worker, "run_notification_evaluation_once", fake_notifications)
+    monkeypatch.setattr(worker, "run_once", fake_outbox)
+    times = iter([0.0, 30.0, 60.0, 90.0])
+
+    await worker.run_forever(
+        iterations=4,
+        notification_interval_seconds=60,
+        monotonic=lambda: next(times),
+    )
+
+    assert notification_calls == 2
+    assert outbox_calls == 4
+
+
+async def test_notification_failure_does_not_stop_outbox_or_the_next_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notification_calls = 0
+    outbox_calls = 0
+
+    async def flaky_notifications(_settings: Settings, **_kwargs: object) -> int:
+        nonlocal notification_calls
+        notification_calls += 1
+        if notification_calls == 1:
+            raise RuntimeError("temporary evaluation failure")
+        return 0
+
+    async def fake_outbox(_settings: Settings, **_kwargs: object) -> int:
+        nonlocal outbox_calls
+        outbox_calls += 1
+        return 1
+
+    monkeypatch.setattr(worker, "run_notification_evaluation_once", flaky_notifications)
+    monkeypatch.setattr(worker, "run_once", fake_outbox)
+    times = iter([0.0, 60.0])
+
+    await worker.run_forever(
+        iterations=2,
+        notification_interval_seconds=60,
+        monotonic=lambda: next(times),
+    )
+
+    assert notification_calls == 2
+    assert outbox_calls == 2

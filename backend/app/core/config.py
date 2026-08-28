@@ -152,6 +152,9 @@ class Settings(BaseSettings):
     # incident. Unset means "queue nothing" — notifications still work purely
     # through GET /incidents either way.
     notification_recipient_email: str | None = None
+    # Independent from the SMTP outbox poll: store conditions change much
+    # less often than queued email and need no five-second polling loop.
+    notification_evaluation_interval_seconds: float = Field(default=60.0, ge=5.0)
 
     # --- security (phase 19) ------------------------------------------------
     # POST /auth/login is rate-limited independently by the email being

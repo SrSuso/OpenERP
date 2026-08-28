@@ -52,6 +52,7 @@ const OPEN_INCIDENTS: Incident[] = [
     id: 1,
     rule_id: 1,
     rule_name: 'Stock bajo',
+    rule_type: 'LOW_STOCK',
     severity: 'HIGH',
     subject_type: 'product',
     subject_id: 10,
@@ -63,7 +64,7 @@ const OPEN_INCIDENTS: Incident[] = [
   },
 ];
 
-function renderLayout(user = ME) {
+function renderLayout(user = ME, initialPath = '/admin') {
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL) => {
@@ -82,10 +83,11 @@ function renderLayout(user = ME) {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={['/admin']}>
+        <MemoryRouter initialEntries={[initialPath]}>
           <Routes>
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<p>Inicio de administración</p>} />
+              <Route path="*" element={<p>Página de administración</p>} />
             </Route>
           </Routes>
         </MemoryRouter>
@@ -169,6 +171,26 @@ describe('AdminLayout', () => {
       '/admin/z-reports',
     );
   });
+
+  it.each([
+    ['/admin/suppliers', 'Compras', 'Proveedores'],
+    ['/admin/returns', 'Ventas', 'Devoluciones'],
+    ['/admin/access', 'Configuración', 'Usuarios y roles'],
+  ])(
+    'opens and marks the parent group when entering child route %s directly',
+    async (path, parentLabel, childLabel) => {
+      renderLayout(ME, path);
+
+      const child = await screen.findByRole('link', { name: childLabel });
+      const parent = screen.getByRole('link', { name: parentLabel });
+
+      expect(child).toHaveAttribute('aria-current', 'page');
+      expect(parent).toHaveClass('bg-brand-50', 'text-brand-700');
+      expect(
+        screen.getByRole('button', { name: `Ocultar opciones de ${parentLabel}` }),
+      ).toHaveAttribute('aria-expanded', 'true');
+    },
+  );
 
   it('keeps a fixed, scrollable sidebar and a non-overlapping content column', async () => {
     renderLayout();

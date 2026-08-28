@@ -107,6 +107,12 @@ function visibleEntries(
     .filter((entry) => entry.canOpen || entry.children.length > 0);
 }
 
+function entryContainsPath(entry: VisibleNavEntry, pathname: string): boolean {
+  if (entry.to === '/admin') return pathname === entry.to;
+  if (pathname === entry.to || pathname.startsWith(`${entry.to}/`)) return true;
+  return entry.children.some((child) => entryContainsPath(child, pathname));
+}
+
 function NavigationIcon({ name }: { name: NavigationIconName }) {
   const paths: Record<NavigationIconName, ReactNode> = {
     home: <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />,
@@ -178,8 +184,7 @@ function NavigationEntry({
   const hasChildren = entry.children.length > 0;
   const isAlerts = entry.to === '/admin/notifications';
   const isNested = entry.icon === undefined;
-  const containsCurrentPath =
-    location.pathname === entry.to || location.pathname.startsWith(`${entry.to}/`);
+  const containsCurrentPath = entryContainsPath(entry, location.pathname);
   const showChildren = hasChildren && expanded;
 
   useEffect(() => {
@@ -188,7 +193,7 @@ function NavigationEntry({
 
   const linkClassName = ({ isActive }: { isActive: boolean }) =>
     `group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-      isActive
+      isActive || containsCurrentPath
         ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100'
         : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
     } ${isNested ? 'py-2 pl-3' : ''}`;

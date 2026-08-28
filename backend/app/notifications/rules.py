@@ -41,9 +41,9 @@ class Severity(StrEnum):
 class RuleType(StrEnum):
     LOW_STOCK = "LOW_STOCK"
     EXPIRING_LOT = "EXPIRING_LOT"
-    #: Regla escrita por el usuario con campos y comparadores — ver
-    #: `app.notifications.conditions`. Los dos de arriba se quedan por
-    #: compatibilidad con las reglas ya creadas.
+    #: Regla genérica conservada para compatibilidad — ver
+    #: `app.notifications.conditions`. La interfaz V2 no expone su
+    #: constructor técnico, aunque la API sigue evaluando las ya guardadas.
     CONDITION = "CONDITION"
 
 
@@ -56,10 +56,13 @@ class ConditionParams(BaseModel):
 
 class LowStockParams(BaseModel):
     warehouse_id: int | None = None
+    automatic: bool = False
 
 
 class ExpiringLotParams(BaseModel):
     days_before_expiration: int = Field(default=7, ge=0, le=365)
+    product_id: int | None = Field(default=None, gt=0)
+    managed: bool = False
 
 
 PARAMS_BY_RULE_TYPE: dict[RuleType, type[BaseModel]] = {
@@ -114,8 +117,8 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
             subject_type="product",
             subject_id=row.id,
             message=(
-                f"{row.name}: quedan {row.quantity} unidades, "
-                f"por debajo del mínimo ({row.min_stock})."
+                f"{row.name}: stock actual {row.quantity}, mínimo {row.min_stock}, "
+                f"reponer {row.min_stock - row.quantity}."
             ),
         )
         for row in rows
@@ -123,7 +126,11 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
 
 
 async def _detect_expiring_lots(
-    session: AsyncSession, params: ExpiringLotParams, today: date
+    session: AsyncSession,
+    params: ExpiringLotParams,
+    today: date,
+    *,
+    excluded_product_ids: frozenset[int] = frozenset(),
 ) -> list[Detection]:
     threshold = today + timedelta(days=params.days_before_expiration)
 
@@ -136,17 +143,35 @@ async def _detect_expiring_lots(
     balances = balance_stmt.subquery()
 
     stmt = (
-        select(Lot.id, Lot.lot_number, Lot.expiration_date, Product.name)
+        select(
+            Lot.id,
+            Lot.lot_number,
+            Lot.expiration_date,
+            Product.name,
+            balances.c.quantity,
+        )
         .join(Product, Product.id == Lot.product_id)
         .join(balances, balances.c.lot_id == Lot.id)
-        .where(Lot.expiration_date.is_not(None), Lot.expiration_date <= threshold)
+        .where(
+            Product.is_active.is_(True),
+            Lot.expiration_date.is_not(None),
+            Lot.expiration_date <= threshold,
+        )
     )
+    if params.product_id is not None:
+        stmt = stmt.where(Product.id == params.product_id)
+    elif excluded_product_ids:
+        stmt = stmt.where(Product.id.not_in(excluded_product_ids))
     rows = (await session.execute(stmt)).all()
     return [
         Detection(
             subject_type="lot",
             subject_id=row.id,
-            message=f"Lote {row.lot_number} de {row.name} caduca el {row.expiration_date}.",
+            message=(
+                f"{row.name}: lote {row.lot_number}, caduca el {row.expiration_date} "
+                f"(quedan {(row.expiration_date - today).days} días), "
+                f"cantidad restante {row.quantity}."
+            ),
         )
         for row in rows
     ]
@@ -158,6 +183,7 @@ async def detect(
     raw_params: dict[str, Any],
     *,
     today: date,
+    excluded_product_ids: frozenset[int] = frozenset(),
 ) -> list[Detection]:
     params = validate_params(rule_type, raw_params)
     if rule_type == RuleType.CONDITION:
@@ -172,4 +198,6 @@ async def detect(
         assert isinstance(params, LowStockParams)
         return await _detect_low_stock(session, params)
     assert isinstance(params, ExpiringLotParams)
-    return await _detect_expiring_lots(session, params, today)
+    return await _detect_expiring_lots(
+        session, params, today, excluded_product_ids=excluded_product_ids
+    )

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic import ValidationError as PydanticValidationError
@@ -47,6 +48,7 @@ class IncidentRead(BaseModel):
     id: int
     rule_id: int
     rule_name: str
+    rule_type: RuleType
     #: Copiada de la regla al leer — el panel la usa para el color y el
     #: parpadeo, sin tener que cruzar con la lista de reglas.
     severity: Severity
@@ -57,6 +59,57 @@ class IncidentRead(BaseModel):
     first_detected_at: datetime
     last_seen_at: datetime
     resolved_at: datetime | None
+
+
+# --- V2: configuración y avisos en lenguaje de tienda -----------------------
+
+
+class ExpirationGeneralRead(BaseModel):
+    enabled: bool
+    days_before_expiration: int = Field(ge=0, le=365)
+
+
+class ProductExpirationRead(BaseModel):
+    product_id: int
+    product_name: str
+    days_before_expiration: int = Field(ge=0, le=365)
+
+
+class CustomRuleSummaryRead(BaseModel):
+    name: str
+    is_active: bool
+
+
+class NotificationSettingsRead(BaseModel):
+    general_expiration: ExpirationGeneralRead
+    product_expirations: list[ProductExpirationRead]
+    custom_rules: list[CustomRuleSummaryRead]
+
+
+class ExpirationGeneralUpdate(BaseModel):
+    enabled: bool
+    days_before_expiration: int = Field(ge=0, le=365)
+
+
+class ProductExpirationUpdate(BaseModel):
+    days_before_expiration: int = Field(ge=0, le=365)
+
+
+class ActiveAlertRead(BaseModel):
+    id: int
+    kind: Literal["LOW_STOCK", "EXPIRATION", "OTHER"]
+    title: str
+    message: str | None = None
+    severity: Severity
+    product_id: int | None = None
+    stock_current: Decimal | None = None
+    min_stock: Decimal | None = None
+    replenish: Decimal | None = None
+    lot_id: int | None = None
+    lot_number: str | None = None
+    expiration_date: date | None = None
+    days_remaining: int | None = None
+    quantity_remaining: Decimal | None = None
 
 
 # --- catálogo para el constructor de reglas -------------------------------

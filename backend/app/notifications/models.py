@@ -5,9 +5,8 @@ A rule watches one fixed condition (``RuleType`` — same whitelist spirit as
 too: a rule can only ever point at one of a small set of hand-written,
 parameterised detector queries, never arbitrary logic). Evaluating the
 rules (``app.notifications.service.evaluate_rules``) is what actually
-finds/creates/resolves ``Incident`` rows — nothing here runs on a
-schedule yet; wiring that up against the transactional outbox is phase
-18's job, anticipated by ``app.jobs`` since phase 0.
+finds/creates/resolves ``Incident`` rows. The existing worker invokes it
+periodically on a cadence independent from transactional-outbox polling.
 
 Deduplication is enforced by the database, not just application logic: at
 most one ``OPEN`` incident may exist for a given ``(rule_id, subject_type,

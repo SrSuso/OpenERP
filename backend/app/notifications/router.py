@@ -14,11 +14,15 @@ from app.notifications import service
 from app.notifications.presenters import incident_to_read as _incident_to_read
 from app.notifications.presenters import rule_to_read as _rule_to_read
 from app.notifications.schemas import (
+    ActiveAlertRead,
     ConditionCatalogueRead,
+    ExpirationGeneralUpdate,
     IncidentRead,
     NotificationRuleCreate,
     NotificationRuleRead,
     NotificationRuleUpdate,
+    NotificationSettingsRead,
+    ProductExpirationUpdate,
     condition_catalogue,
 )
 from app.rbac.dependencies import require_permission
@@ -68,15 +72,61 @@ async def update_rule(
     return _rule_to_read(await service.update_rule(session, rule_id, payload))
 
 
+@router.get(
+    "/notification-settings",
+    response_model=NotificationSettingsRead,
+    dependencies=[_require_read],
+)
+async def get_notification_settings(session: SessionDep) -> NotificationSettingsRead:
+    return await service.get_notification_settings(session)
+
+
+@router.put(
+    "/notification-settings/expiration/general",
+    response_model=NotificationSettingsRead,
+    dependencies=[_require_manage],
+)
+async def update_general_expiration(
+    payload: ExpirationGeneralUpdate, session: SessionDep
+) -> NotificationSettingsRead:
+    return await service.update_general_expiration(session, payload)
+
+
+@router.put(
+    "/notification-settings/expiration/products/{product_id}",
+    response_model=NotificationSettingsRead,
+    dependencies=[_require_manage],
+)
+async def update_product_expiration(
+    product_id: int, payload: ProductExpirationUpdate, session: SessionDep
+) -> NotificationSettingsRead:
+    return await service.update_product_expiration(session, product_id, payload)
+
+
+@router.delete(
+    "/notification-settings/expiration/products/{product_id}",
+    response_model=NotificationSettingsRead,
+    dependencies=[_require_manage],
+)
+async def remove_product_expiration(
+    product_id: int, session: SessionDep
+) -> NotificationSettingsRead:
+    return await service.remove_product_expiration(session, product_id)
+
+
 @router.post(
     "/notifications/evaluate",
     response_model=list[IncidentRead],
     dependencies=[_require_manage],
 )
 async def evaluate(session: SessionDep, settings: SettingsDep) -> list[IncidentRead]:
-    """Runs every active rule now. Manually triggered until phase 18 wires
-    this up to a scheduled worker — see the module docstring."""
+    """Compatibility/debug endpoint. Normal operation is worker-driven."""
     return [_incident_to_read(i) for i in await service.evaluate_rules(session, settings)]
+
+
+@router.get("/alerts", response_model=list[ActiveAlertRead], dependencies=[_require_read])
+async def list_active_alerts(session: SessionDep) -> list[ActiveAlertRead]:
+    return await service.list_active_alerts(session)
 
 
 @router.get("/incidents", response_model=list[IncidentRead], dependencies=[_require_read])

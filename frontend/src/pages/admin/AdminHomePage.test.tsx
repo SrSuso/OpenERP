@@ -1,10 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthContext, type AuthContextValue } from '@/features/auth/AuthContext';
-import { type Product } from '@/features/catalog/api';
 import { type Incident } from '@/features/notifications/api';
 import { type PurchaseOrder } from '@/features/purchasing/api';
 import { formatMoney } from '@/lib/format';
@@ -39,37 +38,6 @@ const USER = {
   must_change_password: false,
 };
 
-const LOW_STOCK_PRODUCT: Product = {
-  id: 10,
-  sku: 'P000010',
-  name: 'Leche',
-  description: '',
-  category_id: null,
-  category_name: null,
-  pos_category_id: null,
-  pos_category_name: null,
-  pos_display_order: 0,
-  is_open_price: false,
-  is_sold_by_weight: false,
-  base_unit_name: 'UDS.',
-  cost: '0.700000',
-  list_price: '1.000000',
-  tax_rate: '4.000000',
-  surcharge_rate: '0.000000',
-  effective_tax_rate: '4.000000',
-  margin_rate: null,
-  margin_amount: null,
-  taxes: [],
-  price_formula: null,
-  min_stock: '5.000000',
-  track_lots: false,
-  track_expiration: false,
-  tracks_stock: true,
-  effective_tracks_stock: true,
-  is_active: true,
-  packages: [],
-};
-
 const PENDING_ORDER: PurchaseOrder = {
   id: 20,
   supplier_id: 2,
@@ -86,6 +54,7 @@ const LOT_INCIDENT: Incident = {
   id: 30,
   rule_id: 4,
   rule_name: 'Caducidad próxima',
+  rule_type: 'EXPIRING_LOT',
   severity: 'MEDIUM_HIGH',
   subject_type: 'lot',
   subject_id: 5,
@@ -94,6 +63,28 @@ const LOT_INCIDENT: Incident = {
   first_detected_at: '2026-08-27T10:00:00Z',
   last_seen_at: '2026-08-27T10:00:00Z',
   resolved_at: null,
+};
+
+const LOW_STOCK_INCIDENT: Incident = {
+  ...LOT_INCIDENT,
+  id: 29,
+  rule_id: 2,
+  rule_name: 'Stock mínimo automático',
+  rule_type: 'LOW_STOCK',
+  subject_type: 'product',
+  subject_id: 10,
+  message: 'Leche: stock actual 2, mínimo 5, reponer 3.',
+};
+
+const OTHER_INCIDENT: Incident = {
+  ...LOT_INCIDENT,
+  id: 31,
+  rule_id: 5,
+  rule_name: 'Regla personalizada',
+  rule_type: 'CONDITION',
+  subject_type: 'product',
+  subject_id: 11,
+  message: 'Revisión personalizada.',
 };
 
 function authValue(permissions = ALL_METRIC_PERMISSIONS): AuthContextValue {
@@ -154,19 +145,13 @@ function stubBackend(
           }),
         );
       }
-      if (url.includes('/products?')) {
-        return Promise.resolve(jsonResponse(options.empty ? [] : [LOW_STOCK_PRODUCT]));
-      }
-      if (url.includes('/stock-balance/totals')) {
-        return Promise.resolve(
-          jsonResponse(options.empty ? [] : [{ product_id: 10, quantity: '2.000000' }]),
-        );
-      }
       if (url.includes('/purchase-orders?')) {
         return Promise.resolve(jsonResponse(options.empty ? [] : [PENDING_ORDER]));
       }
       if (url.includes('/incidents?status=OPEN')) {
-        return Promise.resolve(jsonResponse(options.empty ? [] : [LOT_INCIDENT]));
+        return Promise.resolve(
+          jsonResponse(options.empty ? [] : [LOW_STOCK_INCIDENT, LOT_INCIDENT, OTHER_INCIDENT]),
+        );
       }
       return Promise.reject(new Error(`Unexpected fetch to ${url}`));
     }),
@@ -194,12 +179,19 @@ describe('AdminHomePage', () => {
 
     expect(await screen.findByText(formatMoney('1248.32'))).toBeInTheDocument();
     expect(screen.getByText('83')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Necesita atención' })).toBeInTheDocument();
-    expect(screen.getByText('Productos con stock bajo')).toBeInTheDocument();
-    expect(screen.getByText('Avisos sobre lotes')).toBeInTheDocument();
-    expect(screen.getByText('Recepciones pendientes')).toBeInTheDocument();
+    const attentionHeading = screen.getByRole('heading', { name: 'Necesita atención' });
+    const attentionCard = attentionHeading.parentElement?.parentElement;
+    expect(attentionCard).not.toBeNull();
+    expect(within(attentionCard!).getByText('Stock bajo')).toBeInTheDocument();
+    expect(within(attentionCard!).getByText('Caducidades')).toBeInTheDocument();
+    expect(within(attentionCard!).getByText('Otros avisos')).toBeInTheDocument();
+    expect(within(attentionCard!).getByText('Recepciones pendientes')).toBeInTheDocument();
+    expect(within(attentionCard!).queryByText('Avisos abiertos')).not.toBeInTheDocument();
+    expect(within(attentionCard!).queryByText('Avisos sobre lotes')).not.toBeInTheDocument();
     expect(screen.getByTestId('sales-chart')).toBeInTheDocument();
     expect(requestedUrls.some((url) => url.includes('/dashboards'))).toBe(false);
+    expect(requestedUrls.some((url) => url.includes('/stock-balance/totals'))).toBe(false);
+    expect(requestedUrls.some((url) => url.includes('/products?'))).toBe(false);
   });
 
   it('does not expose API health or dashboard and widget controls', async () => {
