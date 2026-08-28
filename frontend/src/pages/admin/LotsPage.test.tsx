@@ -5,9 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { type Product } from '@/features/catalog/api';
-import { type Location, type Warehouse } from '@/features/inventory/api';
 import { type FefoAllocation, type Lot, type LotBalance } from '@/features/lots/api';
-import { type Supplier } from '@/features/suppliers/api';
 
 import { LotsPage } from './LotsPage';
 
@@ -18,16 +16,18 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
-const ME = {
-  id: 1,
-  email: 'admin@example.com',
-  full_name: 'Admin Uno',
-  role: 'ADMIN',
-  permissions: ['admin.access', 'lot.read', 'lot.manage'],
-};
+function isoFromToday(days: number): string {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
-function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean } = {}) {
-  const product: Product = {
+function product(overrides: Partial<Product>): Product {
+  return {
     id: 10,
     sku: 'P000010',
     name: 'Yogur natural',
@@ -37,7 +37,7 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
     pos_category_id: null,
     pos_category_name: null,
     pos_display_order: 0,
-    base_unit_name: 'UNIT',
+    base_unit_name: 'UDS.',
     cost: '0.500000',
     list_price: '1.000000',
     tax_rate: '0',
@@ -55,22 +55,68 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
     effective_tracks_stock: true,
     is_active: true,
     packages: [],
+    ...overrides,
   };
-  const supplier: Supplier = {
-    id: 1,
-    name: 'Lácteos SA',
-    tax_id: null,
-    email: null,
-    phone: null,
-    address: '',
-    is_active: true,
-  };
-  const warehouse: Warehouse = { id: 1, name: 'Almacén central', is_active: true };
-  const location: Location = { id: 1, warehouse_id: 1, name: 'Cámara', is_active: true };
-  const lots: Lot[] = [];
-  let nextLotId = 1;
-  const balances: LotBalance[] = [];
+}
+
+function stubBackend({
+  canManage = true,
+  empty = false,
+  failFirstConsume = false,
+}: {
+  canManage?: boolean;
+  empty?: boolean;
+  failFirstConsume?: boolean;
+} = {}) {
+  const products = [
+    product({}),
+    product({ id: 20, sku: 'P000020', name: 'Leche entera' }),
+    product({
+      id: 30,
+      sku: 'P000030',
+      name: 'Servicio de reparto',
+      track_lots: false,
+      track_expiration: false,
+    }),
+  ];
+  const lots: Lot[] = empty
+    ? []
+    : [
+        {
+          id: 1,
+          product_id: 10,
+          product_sku: 'P000010',
+          lot_number: 'YG-CADUCADO',
+          manufacturing_date: null,
+          expiration_date: isoFromToday(-2),
+          supplier_id: 1,
+          purchase_order_id: null,
+        },
+        {
+          id: 2,
+          product_id: 20,
+          product_sku: 'P000020',
+          lot_number: 'LE-AVISO',
+          manufacturing_date: null,
+          expiration_date: isoFromToday(4),
+          supplier_id: 1,
+          purchase_order_id: null,
+        },
+        {
+          id: 3,
+          product_id: 10,
+          product_sku: 'P000010',
+          lot_number: 'YG-SIN-FECHA',
+          manufacturing_date: null,
+          expiration_date: null,
+          supplier_id: null,
+          purchase_order_id: null,
+        },
+      ];
+  let nextLotId = 10;
   const consumeKeys: string[] = [];
+  const lotRequests: string[] = [];
+  const createCalls: Record<string, unknown>[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -80,44 +126,108 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
       const body = () =>
         init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
 
-      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
-      if (method === 'GET' && /\/products\?/.test(url))
-        return Promise.resolve(jsonResponse([product]));
-      if (method === 'GET' && /\/suppliers\?/.test(url))
-        return Promise.resolve(jsonResponse([supplier]));
-      if (method === 'GET' && /\/warehouses$/.test(url))
-        return Promise.resolve(jsonResponse([warehouse]));
-      if (method === 'GET' && /\/warehouses\/\d+\/locations/.test(url)) {
-        return Promise.resolve(jsonResponse([location]));
+      if (url.includes('/auth/me')) {
+        return Promise.resolve(
+          jsonResponse({
+            id: 1,
+            email: 'admin@example.com',
+            full_name: 'Admin Uno',
+            role: 'ADMIN',
+            permissions: [
+              'admin.access',
+              'lot.read',
+              'notification.read',
+              ...(canManage ? ['lot.manage'] : []),
+            ],
+          }),
+        );
       }
-
-      if (method === 'GET' && /\/lots\?/.test(url)) return Promise.resolve(jsonResponse(lots));
+      if (method === 'GET' && /\/products\?/.test(url)) {
+        return Promise.resolve(jsonResponse(products));
+      }
+      if (method === 'GET' && /\/suppliers\?/.test(url)) {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              id: 1,
+              name: 'Lácteos SA',
+              tax_id: null,
+              email: null,
+              phone: null,
+              address: '',
+              is_active: true,
+            },
+          ]),
+        );
+      }
+      if (method === 'GET' && url.endsWith('/alerts')) {
+        return Promise.resolve(
+          jsonResponse(
+            lots
+              .filter((lot) => lot.id === 2)
+              .map((lot) => ({
+                id: 50,
+                kind: 'EXPIRATION',
+                title: 'Leche entera',
+                product_id: 20,
+                stock_current: null,
+                min_stock: null,
+                replenish: null,
+                lot_id: lot.id,
+                lot_number: lot.lot_number,
+                expiration_date: lot.expiration_date,
+                days_remaining: 4,
+                quantity_remaining: '8',
+              })),
+          ),
+        );
+      }
+      if (method === 'GET' && /\/lots\?/.test(url)) {
+        lotRequests.push(url);
+        return Promise.resolve(jsonResponse(lots));
+      }
       if (method === 'POST' && /\/lots$/.test(url)) {
-        const b = body();
-        const lot: Lot = {
+        const payload = body();
+        createCalls.push(payload);
+        const created: Lot = {
           id: nextLotId++,
-          product_id: b['product_id'] as number,
-          product_sku: product.sku,
-          lot_number: b['lot_number'] as string,
-          manufacturing_date: (b['manufacturing_date'] as string | null) ?? null,
-          expiration_date: (b['expiration_date'] as string | null) ?? null,
-          supplier_id: (b['supplier_id'] as number | null) ?? null,
+          product_id: payload['product_id'] as number,
+          product_sku: products.find((item) => item.id === payload['product_id'])!.sku,
+          lot_number: payload['lot_number'] as string,
+          manufacturing_date: (payload['manufacturing_date'] as string | null) ?? null,
+          expiration_date: (payload['expiration_date'] as string | null) ?? null,
+          supplier_id: (payload['supplier_id'] as number | null) ?? null,
           purchase_order_id: null,
         };
-        lots.push(lot);
-        balances.push({ lot, quantity: '10' });
-        return Promise.resolve(jsonResponse(lot, { status: 201 }));
+        lots.push(created);
+        return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      if (method === 'GET' && url.endsWith('/warehouses')) {
+        return Promise.resolve(jsonResponse([{ id: 1, name: 'Almacén central', is_active: true }]));
+      }
+      if (method === 'GET' && /\/warehouses\/1\/locations/.test(url)) {
+        return Promise.resolve(
+          jsonResponse([{ id: 1, warehouse_id: 1, name: 'Cámara', is_active: true }]),
+        );
       }
       if (method === 'GET' && /\/lot-balances\?/.test(url)) {
+        const productId = Number(/\/products\/(\d+)\/lot-balances/.exec(url)![1]);
+        const balances: LotBalance[] = lots
+          .filter((lot) => lot.product_id === productId)
+          .map((lot) => ({ lot, quantity: '10' }));
         return Promise.resolve(jsonResponse(balances));
       }
       if (method === 'POST' && /\/fefo-plan$/.test(url)) {
-        const allocations: FefoAllocation[] = balances.map((b) => ({
-          lot_id: b.lot.id,
-          lot_number: b.lot.lot_number,
-          expiration_date: b.lot.expiration_date,
-          quantity: b.quantity,
-        }));
+        const productId = Number(/\/products\/(\d+)\/fefo-plan/.exec(url)![1]);
+        const first = lots.find((lot) => lot.product_id === productId)!;
+        const allocations: FefoAllocation[] = [
+          {
+            lot_id: first.id,
+            lot_number: first.lot_number,
+            expiration_date: first.expiration_date,
+            quantity: body()['quantity'] as string,
+          },
+        ];
         return Promise.resolve(jsonResponse({ allocations }));
       }
       if (method === 'POST' && /\/fefo-consume$/.test(url)) {
@@ -125,19 +235,13 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
         if (failFirstConsume && consumeKeys.length === 1) {
           return Promise.reject(new TypeError('Connection lost after sending request'));
         }
-        const allocations: FefoAllocation[] = balances.map((b) => ({
-          lot_id: b.lot.id,
-          lot_number: b.lot.lot_number,
-          expiration_date: b.lot.expiration_date,
-          quantity: b.quantity,
-        }));
-        return Promise.resolve(jsonResponse({ allocations, movement_ids: [1] }));
+        return Promise.resolve(jsonResponse({ allocations: [], movement_ids: [1] }));
       }
-
-      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
+      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url}`));
     }),
   );
-  return { consumeKeys };
+
+  return { lotRequests, createCalls, consumeKeys };
 }
 
 function renderPage() {
@@ -151,42 +255,128 @@ function renderPage() {
   );
 }
 
-describe('LotsPage', () => {
-  it('creates a lot with an expiration date and shows the FEFO plan for it', async () => {
-    const { consumeKeys } = stubBackend({ failFirstConsume: true });
+describe('LotsPage V2', () => {
+  it('loads every lot immediately, shows product names and orders expiry before undated lots', async () => {
+    const backend = stubBackend();
     renderPage();
+    expect(await screen.findByText('YG-CADUCADO')).toBeInTheDocument();
+    expect(screen.getByText('LE-AVISO')).toBeInTheDocument();
+    expect(screen.getByText('YG-SIN-FECHA')).toBeInTheDocument();
+    expect(screen.getAllByText('Yogur natural')).not.toHaveLength(0);
+    expect(screen.getAllByText('Leche entera')).not.toHaveLength(0);
+    expect(screen.queryByText('P000010')).not.toBeInTheDocument();
+    expect(screen.getByText('Caducado')).toBeInTheDocument();
+    expect(await screen.findByText('Caduca en 4 días')).toBeInTheDocument();
+    expect(screen.getByText('Sin caducidad')).toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(within(rows[0]!).getByText('YG-CADUCADO')).toBeInTheDocument();
+    expect(within(rows.at(-1)!).getByText('YG-SIN-FECHA')).toBeInTheDocument();
+    expect(new URL(backend.lotRequests[0]!, 'http://test').searchParams.has('product_id')).toBe(
+      false,
+    );
+  });
 
-    await screen.findByText('Yogur natural');
-    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
-    await screen.findByText('Este producto todavía no tiene lotes.');
+  it('filters by product name, lot number and expiration state', async () => {
+    stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('YG-CADUCADO');
+    const search = screen.getByLabelText('Buscar producto o lote');
+    await user.type(search, 'Leche');
+    expect(screen.getByText('LE-AVISO')).toBeInTheDocument();
+    expect(screen.queryByText('YG-CADUCADO')).not.toBeInTheDocument();
+    await user.clear(search);
+    await user.type(search, 'SIN-FECHA');
+    expect(screen.getByText('YG-SIN-FECHA')).toBeInTheDocument();
+    await user.clear(search);
+    await user.selectOptions(screen.getByLabelText('Estado de caducidad'), 'alert');
+    expect(screen.getByText('LE-AVISO')).toBeInTheDocument();
+    expect(screen.queryByText('YG-CADUCADO')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Estado de caducidad'), 'expired');
+    expect(screen.getByText('YG-CADUCADO')).toBeInTheDocument();
+  });
 
-    await userEvent.type(screen.getByLabelText('Nº de lote'), 'L2026-01');
-    await userEvent.type(screen.getByLabelText('Caducidad (opcional)'), '2026-09-01');
-    await userEvent.selectOptions(screen.getByLabelText('Proveedor (opcional)'), '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear lote' }));
+  it('creates a lot from an on-demand form and excludes products that do not track lots', async () => {
+    const backend = stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('YG-CADUCADO');
+    expect(screen.queryByLabelText('Número de lote')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '+ Nuevo lote' }));
+    expect(screen.queryByText('Servicio de reparto')).not.toBeInTheDocument();
+    const form = screen.getByRole('heading', { name: 'Nuevo lote' }).closest('section')!;
+    await user.type(within(form).getByLabelText('Producto'), 'Yogur');
+    await user.click(within(form).getByRole('button', { name: 'Elegir Yogur natural' }));
+    await user.type(screen.getByLabelText('Número de lote'), 'YG-NUEVO');
+    await user.type(screen.getByLabelText('Fecha de caducidad'), isoFromToday(10));
+    await user.selectOptions(screen.getByLabelText('Proveedor'), '1');
+    await user.click(screen.getByRole('button', { name: 'Crear lote' }));
+    expect(await screen.findByText('Lote YG-NUEVO creado correctamente.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Número de lote')).not.toBeInTheDocument();
+    expect(await screen.findByText('YG-NUEVO')).toBeInTheDocument();
+    expect(backend.createCalls).toEqual([
+      {
+        product_id: 10,
+        lot_number: 'YG-NUEVO',
+        manufacturing_date: null,
+        expiration_date: isoFromToday(10),
+        supplier_id: 1,
+        purchase_order_id: null,
+      },
+    ]);
+  });
 
-    await screen.findByText('L2026-01');
-    expect(screen.getByText('2026-09-01')).toBeInTheDocument();
+  it('opens stock from a row, auto-selects the only warehouse/location and keeps output closed', async () => {
+    stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('YG-CADUCADO');
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Ver existencias de Yogur natural, lote YG-CADUCADO',
+      }),
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Existencias por lote' }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Almacén')).toHaveValue('1'));
+    await waitFor(() => expect(screen.getByLabelText('Ubicación')).toHaveValue('1'));
+    await waitFor(() => expect(screen.getAllByText('YG-CADUCADO')).toHaveLength(2));
+    expect(screen.getByRole('button', { name: 'Registrar salida' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Cantidad')).not.toBeInTheDocument();
+  });
 
-    // Saldo por lote + plan FEFO
-    await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
-    await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
-    // Aparece dos veces: en la tabla de lotes del producto y en el saldo
-    // por lote del almacén/ubicación elegidos.
-    expect(await screen.findAllByText('L2026-01')).toHaveLength(2);
+  it('previews and confirms a friendly output flow while preserving its retry key', async () => {
+    const backend = stubBackend({ failFirstConsume: true });
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('YG-CADUCADO');
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Ver existencias de Yogur natural, lote YG-CADUCADO',
+      }),
+    );
+    await waitFor(() => expect(screen.getByLabelText('Ubicación')).toHaveValue('1'));
+    await user.click(screen.getByRole('button', { name: 'Registrar salida' }));
+    expect(screen.getByText(/utilizará primero los lotes que caducan antes/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Cantidad'), '5');
+    await user.selectOptions(screen.getByLabelText('Motivo'), 'WASTE');
+    await user.type(screen.getByLabelText('Nota'), 'Envase roto');
+    await user.click(screen.getByRole('button', { name: 'Previsualizar' }));
+    expect(await screen.findByText('Se descontará de estos lotes')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirmar salida' }));
+    expect(await screen.findByText('No se ha podido registrar la salida.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirmar salida' }));
+    expect(await screen.findByText('Salida registrada correctamente.')).toBeInTheDocument();
+    expect(backend.consumeKeys).toHaveLength(2);
+    expect(backend.consumeKeys[0]).not.toBe('');
+    expect(backend.consumeKeys[1]).toBe(backend.consumeKeys[0]);
+  });
 
-    await userEvent.type(screen.getByLabelText('Cantidad a sacar'), '5');
-    await userEvent.click(screen.getByRole('button', { name: 'Ver plan' }));
-
-    const fefoList = await screen.findByText(/Lote L2026-01 \(caduca 2026-09-01\)/);
-    expect(within(fefoList.closest('ul')!).getByText(/Lote L2026-01/)).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Confirmar salida' }));
-    await screen.findByText('No se ha podido consumir el stock.');
-    await userEvent.click(screen.getByRole('button', { name: 'Confirmar salida' }));
-    await waitFor(() => expect(consumeKeys).toHaveLength(2));
-    expect(consumeKeys[0]).not.toBe('');
-    expect(consumeKeys[1]).toBe(consumeKeys[0]);
-    expect(await screen.findByText(/Lote L2026-01 \(caduca 2026-09-01\)/)).toBeInTheDocument();
+  it('respects read-only permissions and renders an empty state', async () => {
+    stubBackend({ canManage: false, empty: true });
+    renderPage();
+    expect(await screen.findByText('Todavía no hay lotes')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Nuevo lote' })).not.toBeInTheDocument();
   });
 });

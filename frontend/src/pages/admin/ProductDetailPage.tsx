@@ -103,6 +103,7 @@ export function ProductDetailPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [createLotError, setCreateLotError] = useState<string | null>(null);
+  const [showCreateLot, setShowCreateLot] = useState(false);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
   const [inventoryFeedback, setInventoryFeedback] = useState<string | null>(null);
   const [inventoryError, setInventoryError] = useState<string | null>(null);
@@ -325,6 +326,7 @@ export function ProductDetailPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['lots', 'list', productId] });
       setCreateLotError(null);
+      setShowCreateLot(false);
     },
     onError: () => setCreateLotError('No se ha podido crear el lote.'),
   });
@@ -532,22 +534,55 @@ export function ProductDetailPage() {
             />
           )}
           {data.track_lots && (
-            <Card className="p-5 sm:p-6">
-              <h2 className="text-lg font-bold text-slate-900">Lotes del producto</h2>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-bold text-slate-900">Lotes del producto</h2>
+                {canManageLots && !showCreateLot && (
+                  <Button variant="secondary" onClick={() => setShowCreateLot(true)}>
+                    + Nuevo lote
+                  </Button>
+                )}
+              </div>
               <div className="mt-5 space-y-4">
-                {canManageLots && (
+                {canManageLots && showCreateLot && (
                   <CreateLotForm
-                    productId={productId}
+                    products={[data]}
                     suppliers={suppliers.data ?? []}
+                    initialProductId={productId}
                     isPending={createLotMutation.isPending}
                     submitError={createLotError}
+                    onCancel={() => {
+                      setShowCreateLot(false);
+                      setCreateLotError(null);
+                    }}
                     onSubmit={(payload) => createLotMutation.mutate(payload)}
                   />
                 )}
-                {lots.data && <LotsTable lots={lots.data} />}
-                <LotBalancesPanel productId={productId} canManage={canManageLots} />
+                {lots.data && (
+                  <LotsTable
+                    lots={lots.data}
+                    productNames={new Map([[data.id, data.name]])}
+                    alertDaysByLot={
+                      new Map(
+                        (activeAlerts.data ?? [])
+                          .filter(
+                            (alert) =>
+                              alert.kind === 'EXPIRATION' &&
+                              alert.lot_id !== null &&
+                              alert.days_remaining !== null,
+                          )
+                          .map((alert) => [alert.lot_id!, alert.days_remaining!]),
+                      )
+                    }
+                  />
+                )}
+                <LotBalancesPanel
+                  productId={productId}
+                  productName={data.name}
+                  canManage={canManageLots}
+                />
               </div>
-            </Card>
+            </div>
           )}
         </div>
       )}
