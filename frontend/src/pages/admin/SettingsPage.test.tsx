@@ -27,7 +27,7 @@ const ME = {
  * ajuste de cada tipo: la pantalla no conoce ninguna de estas claves, las
  * pinta a partir de esta respuesta. */
 const DEFAULT_OPTIONS: SettingsOptions = {
-  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Avisos', 'Pantalla'],
+  groups: ['Datos de la tienda', 'Ticket', 'Ventas', 'Pantalla'],
   settings: [
     {
       key: 'store.name',
@@ -240,11 +240,6 @@ describe('SettingsPage — opciones del registro', () => {
     const discount = screen.getByLabelText('Descuento máximo por línea (%)');
     expect(discount).toHaveProperty('type', 'text');
     expect(discount).toHaveAttribute('inputmode', 'decimal');
-    expect(screen.getByLabelText('Días de antelación para avisar de caducidades')).toHaveAttribute(
-      'inputmode',
-      'numeric',
-    );
-
     // Las choices del ENUM salen como opciones, con su etiqueta legible.
     expect(screen.getByRole('option', { name: '31/12/2026 14:05' })).toBeInTheDocument();
 

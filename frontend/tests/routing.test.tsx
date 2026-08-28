@@ -10,7 +10,7 @@
 // happy-dom doesn't shadow those globals, so this file alone opts out of
 // jsdom (the project default, used everywhere else) until vitest 4 ships.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -60,8 +60,9 @@ function meBody(role: 'ADMIN' | 'CASHIER', permissions?: string[]): unknown {
 
 /**
  * Every request goes through here so each test states, up front, exactly
- * what the signed-in user (if any) and the health check look like — routes
- * now depend on `/auth/me` (phase 1), not just `/health/live` (phase 0).
+ * what the signed-in user (if any) and the health check look like. Admin and
+ * POS deliberately use separate sessions, so the cashier fixture supplies
+ * both surfaces while the admin/signed-out fixtures leave POS signed out.
  */
 function stubFetch(options: {
   me: 'admin' | 'cashier' | 'signed-out';
@@ -75,6 +76,14 @@ function stubFetch(options: {
     'fetch',
     vi.fn((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+      if (url.includes('/auth/pos/me')) {
+        return Promise.resolve(
+          options.me === 'cashier'
+            ? jsonResponse(meBody('CASHIER', options.permissions))
+            : jsonResponse(UNAUTHENTICATED_ENVELOPE, { status: 401 }),
+        );
+      }
 
       if (url.includes('/auth/me')) {
         if (options.me === 'signed-out') {
@@ -95,6 +104,20 @@ function stubFetch(options: {
 
       if (url.includes('/pos-terminals')) {
         return Promise.resolve(jsonResponse([POS_TERMINAL]));
+      }
+
+      if (url.includes('/warehouses/1/locations')) {
+        return Promise.resolve(
+          jsonResponse([{ id: 11, warehouse_id: 1, name: 'Tienda', is_active: true }]),
+        );
+      }
+
+      if (url.includes('/sales?status=DRAFT')) {
+        return Promise.resolve(jsonResponse([]));
+      }
+
+      if (url.includes('/pos-categories') || url.includes('/products?')) {
+        return Promise.resolve(jsonResponse([]));
       }
 
       // /admin/access, /admin/inventory and /admin/pricing's tabs (only
@@ -145,12 +168,7 @@ describe('routing', () => {
 
     renderAt('/admin');
 
-    expect(
-      await screen.findByRole('heading', { name: /panel de administración/i }),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByTestId('api-status')).toHaveTextContent('ok · OpenERP · test'),
-    );
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
   });
 
   it('redirects to /login when signed out', async () => {
@@ -191,9 +209,7 @@ describe('routing', () => {
 
     renderAt('/');
 
-    expect(
-      await screen.findByRole('heading', { name: /panel de administración/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
   });
 
   it('shows a not-found page for an unknown route', async () => {
@@ -206,14 +222,13 @@ describe('routing', () => {
     ).toBeInTheDocument();
   });
 
-  it('surfaces an API failure instead of hanging on the loading state', async () => {
+  it('renders the V2 home without depending on the retired health badge', async () => {
     stubFetch({ me: 'admin', health: 'down' });
 
     renderAt('/admin');
 
-    await waitFor(() =>
-      expect(screen.getByTestId('api-status')).toHaveTextContent(/sin conexión/i),
-    );
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('api-status')).not.toBeInTheDocument();
   });
 
   it('bounces an admin without users.manage away from /admin/users', async () => {
@@ -223,9 +238,7 @@ describe('routing', () => {
 
     // RequirePermission sends it to `/`, which resolves back to /admin's
     // own index for this admin.access user (HomeRedirect) — never /login.
-    expect(
-      await screen.findByRole('heading', { name: /panel de administración/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
   });
 
   it('lets a MANAGER (users.manage, no roles.manage) into /admin/users', async () => {
@@ -241,9 +254,7 @@ describe('routing', () => {
 
     renderAt('/admin/roles');
 
-    expect(
-      await screen.findByRole('heading', { name: /panel de administración/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
   });
 
   it('lets an ADMIN (roles.manage) into /admin/roles', async () => {
@@ -281,9 +292,7 @@ describe('routing', () => {
 
     renderAt('/admin/access');
 
-    expect(
-      await screen.findByRole('heading', { name: /panel de administración/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
   });
 
   it('sends /admin/inventory straight to the Productos tab for a user with product.read', async () => {
@@ -302,9 +311,7 @@ describe('routing', () => {
 
     renderAt('/admin/inventory');
 
-    expect(
-      await screen.findByRole('heading', { name: /panel de administración/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
   });
 
   it('sends /admin/pricing straight to the Impuestos tab for a user with pricing.manage', async () => {
@@ -325,9 +332,7 @@ describe('routing', () => {
 
     renderAt('/admin/pricing');
 
-    expect(
-      await screen.findByRole('heading', { name: /panel de administración/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^inicio$/i })).toBeInTheDocument();
   });
 
   it('lets any signed-in admin-panel user into /admin/account, no extra permission needed', async () => {

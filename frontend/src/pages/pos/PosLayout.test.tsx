@@ -243,11 +243,10 @@ describe('PosLayout', () => {
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
 
     fullscreenElement = document.documentElement;
-    act(() => document.dispatchEvent(new Event('fullscreenchange')));
-    expect(await screen.findByRole('button', { name: 'Salir de pantalla completa' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await act(() => document.dispatchEvent(new Event('fullscreenchange')));
+    expect(
+      await screen.findByRole('button', { name: 'Salir de pantalla completa' }),
+    ).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'Salir de pantalla completa' }));
     expect(exitFullscreen).toHaveBeenCalledTimes(1);
   });
