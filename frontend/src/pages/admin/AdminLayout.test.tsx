@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -19,7 +20,31 @@ const ME = {
   email: 'admin@example.com',
   full_name: 'Admin Uno',
   role: 'ADMIN',
-  permissions: ['admin.access', 'notification.read', 'product.read'],
+  permissions: [
+    'admin.access',
+    'notification.read',
+    'product.read',
+    'supplier.read',
+    'purchase.read',
+    'sale.read',
+    'return.read',
+    'report.read',
+    'settings.read',
+    'users.manage',
+    'roles.manage',
+    'pricing.manage',
+    'pos_terminal.manage',
+    'ticket.manage',
+    'job.read',
+    'audit.read',
+  ],
+};
+
+const MANAGER = {
+  ...ME,
+  email: 'manager@example.com',
+  full_name: 'Encargada Uno',
+  role: 'MANAGER',
 };
 
 const OPEN_INCIDENTS: Incident[] = [
@@ -38,12 +63,12 @@ const OPEN_INCIDENTS: Incident[] = [
   },
 ];
 
-function renderLayout() {
+function renderLayout(user = ME) {
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
+      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(user));
       if (url.includes('/settings/values')) {
         return Promise.resolve(jsonResponse({ 'app.display_name': 'Mi tienda' }));
       }
@@ -70,7 +95,7 @@ function renderLayout() {
 }
 
 describe('AdminLayout', () => {
-  it('places alerts first, before inventory, and makes open alerts visible', async () => {
+  it('groups the manager operation menu and keeps open alerts visible', async () => {
     renderLayout();
 
     const alerts = await screen.findByRole('link', { name: /Avisos/ });
@@ -81,8 +106,66 @@ describe('AdminLayout', () => {
       .getAllByRole('link')
       .map((link) => new URL(link.getAttribute('href')!, 'http://test').pathname);
 
-    expect(destinations.slice(0, 2)).toEqual(['/admin/notifications', '/admin/inventory']);
-    expect(destinations).not.toContain('/admin');
+    expect(screen.getByText('Operación')).toBeInTheDocument();
+    expect(destinations).toEqual([
+      '/admin',
+      '/admin/notifications',
+      '/admin/inventory',
+      '/admin/purchasing',
+      '/admin/sales',
+      '/admin/reports',
+      '/admin/settings',
+    ]);
     expect(badge).toHaveClass('bg-red-100', 'animate-pulse');
+  });
+
+  it('does not show administration to a manager, even if an existing permission allows a direct route', async () => {
+    renderLayout(MANAGER);
+
+    await screen.findByRole('link', { name: /Encargada Uno/ });
+    expect(screen.queryByText('Administración')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Configuración' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Inventario' })).toHaveAttribute(
+      'href',
+      '/admin/inventory',
+    );
+    expect(screen.getByRole('link', { name: 'Compras' })).toHaveAttribute(
+      'href',
+      '/admin/purchasing',
+    );
+    expect(screen.getByRole('link', { name: 'Ventas' })).toHaveAttribute('href', '/admin/sales');
+  });
+
+  it('shows the administration group to an admin and keeps grouped pages reachable', async () => {
+    renderLayout();
+
+    expect(await screen.findByText('Administración')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Mostrar opciones de Configuración' }),
+    );
+
+    expect(screen.getByRole('link', { name: 'Usuarios y roles' })).toHaveAttribute(
+      'href',
+      '/admin/access',
+    );
+    expect(screen.getByRole('link', { name: 'Terminales POS' })).toHaveAttribute(
+      'href',
+      '/admin/pos-terminals',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mostrar opciones de Compras' }));
+    expect(screen.getByRole('link', { name: 'Proveedores' })).toHaveAttribute(
+      'href',
+      '/admin/suppliers',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Mostrar opciones de Ventas' }));
+    expect(screen.getByRole('link', { name: 'Devoluciones' })).toHaveAttribute(
+      'href',
+      '/admin/returns',
+    );
+    expect(screen.getByRole('link', { name: 'Cierres de caja' })).toHaveAttribute(
+      'href',
+      '/admin/z-reports',
+    );
   });
 });
