@@ -69,6 +69,11 @@ describe('QZ thermal printer adapter', () => {
     });
 
     expect(qzMocks.certificate).toHaveBeenCalledOnce();
+    const certificateProvider = qzMocks.certificate.mock.calls[0]?.[0] as
+      (() => Promise<string>) | undefined;
+    if (certificateProvider === undefined) throw new Error('QZ certificate provider was not set.');
+    expect(certificateProvider.constructor.name).toBe('AsyncFunction');
+    await expect(certificateProvider()).resolves.toBe('-----BEGIN CERTIFICATE-----\nPUBLIC\n');
     expect(qzMocks.algorithm).toHaveBeenCalledWith('SHA512');
     expect(qzMocks.signature).toHaveBeenCalledWith(qzMocks.sign);
     expect(qzMocks.connect).toHaveBeenCalledWith({

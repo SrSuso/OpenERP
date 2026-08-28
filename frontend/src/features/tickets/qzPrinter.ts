@@ -74,7 +74,11 @@ async function configureQzSecurity(): Promise<boolean> {
     const security = await getQzSecurity();
     if (!security.enabled || security.certificate === null) return false;
     const certificate = security.certificate;
-    qz.security.setCertificatePromise(() => Promise.resolve(certificate), {
+    // QZ 2.2 treats a normal callback as a resolve/reject-style executor and
+    // ignores its return value. This must be an actual AsyncFunction so QZ
+    // awaits the certificate before completing the WebSocket handshake.
+    // eslint-disable-next-line @typescript-eslint/require-await -- QZ detects AsyncFunction at runtime.
+    qz.security.setCertificatePromise(async () => certificate, {
       rejectOnFailure: true,
     });
     qz.security.setSignatureAlgorithm('SHA512');
