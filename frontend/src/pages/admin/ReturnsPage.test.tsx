@@ -213,14 +213,18 @@ describe('ReturnsPage', () => {
 
     await screen.findByText(/Venta #7/);
     await screen.findByText('Todavía no se ha devuelto nada de esta venta.');
+    expect(screen.getByText('Líneas del ticket')).toBeInTheDocument();
+    expect(screen.getByText('Importe pendiente')).toBeInTheDocument();
+    expect(screen.getAllByText('10,00 €')).not.toHaveLength(0);
 
     await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
     const qtyInput = screen.getByLabelText('Cantidad a reembolsar');
     await userEvent.clear(qtyInput);
     await userEvent.type(qtyInput, '2');
+    expect(screen.getByText(/Importe a devolver de esta línea: 4,00 €/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Añadir a la devolución' }));
 
-    await screen.findByText(/devuelve 2.*repone 2/);
+    await screen.findByText(/Importe total a devolver: 4,00 €/);
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
     await screen.findByText('No se ha podido registrar la devolución.');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));

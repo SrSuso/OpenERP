@@ -10,13 +10,31 @@ import {
   type Sale,
 } from '@/features/returns/api';
 import { decimalString } from '@/lib/decimal';
-import { formatQuantity } from '@/lib/format';
+import { formatMoney, formatQuantity } from '@/lib/format';
+
+function decimalNumber(value: string): number {
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 function remainingPackages(
   line: Sale['lines'][number],
   returnedField: 'quantity_refunded' | 'quantity_physically_returned',
 ): number {
-  return (Number(line.quantity_base) - Number(line[returnedField])) / Number(line.package_factor);
+  return (
+    (decimalNumber(line.quantity_base) - decimalNumber(line[returnedField])) /
+    decimalNumber(line.package_factor)
+  );
+}
+
+/** El backend calcula el reembolso exacto con los snapshots fiscales de la
+ * línea. Antes de confirmarlo enseñamos la parte proporcional del total que
+ * figura en el ticket; se redondea como dinero y permite decidir la devolución
+ * sin tener que reconstruir mentalmente el importe. */
+function estimatedRefundAmount(line: Sale['lines'][number], quantityPackages: number): number {
+  const boughtPackages = decimalNumber(line.quantity_packages);
+  if (boughtPackages <= 0 || quantityPackages <= 0) return 0;
+  return (decimalNumber(line.total) * quantityPackages) / boughtPackages;
 }
 
 const addLineSchema = z
@@ -88,8 +106,17 @@ export function CreateReturnForm({
         remainingPackages(line, 'quantity_physically_returned') > 0),
   );
   const selectedLine = sale.lines.find((line) => line.id === Number(watch('sale_line_id')));
-  const stockQuantity = Number(watch('stock_return_quantity_packages') ?? 0);
-  const hasEconomicEffect = stagedLines.some((line) => Number(line.refund_quantity_packages) > 0);
+  const selectedRefundQuantity = decimalNumber(watch('refund_quantity_packages') ?? '0');
+  const stockQuantity = decimalNumber(watch('stock_return_quantity_packages') ?? '0');
+  const hasEconomicEffect = stagedLines.some(
+    (line) => decimalNumber(line.refund_quantity_packages) > 0,
+  );
+  const stagedRefundTotal = stagedLines.reduce((total, staged) => {
+    const saleLine = sale.lines.find((line) => line.id === staged.sale_line_id);
+    return saleLine === undefined
+      ? total
+      : total + estimatedRefundAmount(saleLine, decimalNumber(staged.refund_quantity_packages));
+  }, 0);
   const refundQuantityField = register('refund_quantity_packages');
 
   const addLine = handleSubmit((values) => {
@@ -129,28 +156,107 @@ export function CreateReturnForm({
     <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-4">
       <h4 className="mb-3 text-sm font-semibold text-slate-700">Registrar devolución</h4>
 
+      <div className="mb-4 overflow-x-auto rounded border border-slate-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <caption className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase text-slate-600">
+            Líneas del ticket
+          </caption>
+          <thead className="text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2 font-medium">Artículo</th>
+              <th className="px-3 py-2 font-medium">Comprado</th>
+              <th className="px-3 py-2 font-medium">Ya devuelto</th>
+              <th className="px-3 py-2 font-medium">Pendiente</th>
+              <th className="px-3 py-2 font-medium">Importe pendiente</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sale.lines.map((line) => {
+              const pendingRefund = remainingPackages(line, 'quantity_refunded');
+              return (
+                <tr key={line.id} className="border-t border-slate-100">
+                  <td className="px-3 py-2 font-medium text-slate-800">
+                    {line.product_name}
+                    <span className="block text-xs font-normal text-slate-500">
+                      {line.package_name}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">{formatQuantity(line.quantity_packages)}</td>
+                  <td className="px-3 py-2">{formatQuantity(line.quantity_refunded)}</td>
+                  <td className="px-3 py-2">
+                    {formatQuantity(String(Math.max(0, pendingRefund)))}
+                  </td>
+                  <td className="px-3 py-2 font-medium text-slate-800">
+                    {formatMoney(String(estimatedRefundAmount(line, Math.max(0, pendingRefund))))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
       {stagedLines.length > 0 && (
-        <ul className="mb-3 space-y-1 text-sm">
-          {stagedLines.map((line, index) => (
-            <li key={`${line.sale_line_id}-${index}`} className="flex items-center gap-2">
-              <span>
-                {line.label}
-                {Number(line.refund_quantity_packages) > 0 &&
-                  ` · devuelve ${formatQuantity(line.refund_quantity_packages)}`}
-                {Number(line.stock_return_quantity_packages) > 0 &&
-                  ` · repone ${formatQuantity(line.stock_return_quantity_packages)}`}
-                {line.lot_number && ` · lote ${line.lot_number}`}
-              </span>
-              <button
-                type="button"
-                onClick={() => setStagedLines((current) => current.filter((_, i) => i !== index))}
-                className="text-xs font-medium text-red-600 hover:underline"
-              >
-                Quitar
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="mb-3 overflow-x-auto rounded border border-brand-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-brand-50 text-xs uppercase text-slate-600">
+              <tr>
+                <th className="px-3 py-2 font-medium">A devolver</th>
+                <th className="px-3 py-2 font-medium">Dinero</th>
+                <th className="px-3 py-2 font-medium">Vuelve a stock</th>
+                <th className="px-3 py-2 font-medium">Importe</th>
+                <th className="px-3 py-2 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {stagedLines.map((line, index) => {
+                const saleLine = sale.lines.find((candidate) => candidate.id === line.sale_line_id);
+                return (
+                  <tr key={`${line.sale_line_id}-${index}`} className="border-t border-slate-100">
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      {line.label}
+                      {line.lot_number && (
+                        <span className="block text-xs font-normal text-slate-500">
+                          Lote {line.lot_number}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{formatQuantity(line.refund_quantity_packages)}</td>
+                    <td className="px-3 py-2">
+                      {formatQuantity(line.stock_return_quantity_packages)}
+                    </td>
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      {formatMoney(
+                        String(
+                          saleLine === undefined
+                            ? 0
+                            : estimatedRefundAmount(
+                                saleLine,
+                                decimalNumber(line.refund_quantity_packages),
+                              ),
+                        ),
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStagedLines((current) => current.filter((_, i) => i !== index))
+                        }
+                        className="text-xs font-medium text-red-600 hover:underline"
+                      >
+                        Quitar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="border-t border-brand-100 bg-brand-50 px-3 py-2 text-right text-sm font-semibold text-slate-800">
+            Importe total a devolver: {formatMoney(String(stagedRefundTotal))}
+          </p>
+        </div>
       )}
 
       {pendingLines.length > 0 && (
@@ -222,6 +328,13 @@ export function CreateReturnForm({
                 {...register('lot_number')}
               />
             </label>
+          )}
+
+          {selectedLine && selectedRefundQuantity > 0 && (
+            <p className="pb-1 text-sm font-medium text-emerald-800">
+              Importe a devolver de esta línea:{' '}
+              {formatMoney(String(estimatedRefundAmount(selectedLine, selectedRefundQuantity)))}
+            </p>
           )}
 
           <button
