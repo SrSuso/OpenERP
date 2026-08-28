@@ -1,15 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { closeZReport, zReportPreviewQuery, type ZReport } from '@/features/pos/api';
 import { renderZReportTicket } from '@/features/pos/zReportTicket';
 import { useBusinessTimezone } from '@/features/settings/useShopSettings';
 import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
-import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
-import {
-  printActiveDocument,
-  useExclusivePrintDocument,
-} from '@/features/tickets/useExclusivePrintDocument';
+import { TicketPrintSurface } from '@/features/tickets/TicketPrintSurface';
 import { ApiError } from '@/lib/api';
 import { formatBusinessDateTime } from '@/lib/businessTime';
 import { formatMoney } from '@/lib/format';
@@ -50,8 +46,6 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   const [isPrintActive, setPrintActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const closeAttemptRef = useRef<string | null>(null);
-  const deactivatePrint = useCallback(() => setPrintActive(false), []);
-  const activatePrint = useExclusivePrintDocument(deactivatePrint);
   const closedTicketText =
     closed !== null && printProfile.data !== undefined
       ? renderZReportTicket(
@@ -65,7 +59,6 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
     mutationFn: (key: string) => closeZReport(warehouseId as number, key),
     onSuccess: (report) => {
       closeAttemptRef.current = null;
-      activatePrint();
       setPrintActive(true);
       setClosed(report);
       setError(null);
@@ -73,13 +66,6 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
     onError: (err: unknown) =>
       setError(err instanceof ApiError ? err.message : 'No se ha podido cerrar la caja.'),
   });
-
-  // Con la Z ya guardada y el mismo perfil físico que usa una venta, se
-  // manda a imprimir: es el papel con el que se cuadra el cajón.
-  useEffect(() => {
-    if (closed === null || !isPrintActive || printProfile.data === undefined) return;
-    printActiveDocument(deactivatePrint);
-  }, [closed, isPrintActive, printProfile.data, deactivatePrint]);
 
   const totals = closed ?? preview.data;
   const openSales = preview.data?.open_sales ?? [];
@@ -166,7 +152,6 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                   disabled={printProfile.data === undefined}
                   onClick={() => {
                     if (printProfile.data !== undefined) {
-                      activatePrint();
                       setPrintActive(true);
                     }
                   }}
@@ -204,11 +189,11 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
           </div>
         </div>
       </div>
-      {closedTicketText !== null && printProfile.data !== undefined && (
-        <ThermalPrintDocument
-          active={isPrintActive}
+      {isPrintActive && closedTicketText !== null && printProfile.data !== undefined && (
+        <TicketPrintSurface
           text={closedTicketText}
           profile={printProfile.data}
+          onDismiss={() => setPrintActive(false)}
         />
       )}
     </>

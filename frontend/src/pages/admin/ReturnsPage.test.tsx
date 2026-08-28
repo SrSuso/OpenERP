@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,10 @@ import { AuthProvider } from '@/features/auth/AuthProvider';
 import { type Return, type Sale } from '@/features/returns/api';
 
 import { ReturnsPage } from './ReturnsPage';
+
+const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+
+vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -306,10 +310,9 @@ describe('ReturnsPage', () => {
     expect(backend.createCalls[0]).not.toHaveProperty('refund_method');
   });
 
-  it('reprints the frozen ticket of a completed sale and triggers window.print()', async () => {
+  it('reprints the frozen ticket of a completed sale through QZ', async () => {
     stubBackend();
-    const printMock = vi.fn();
-    vi.stubGlobal('print', printMock);
+    printMocks.thermal.mockClear();
     renderPage();
 
     await userEvent.type(screen.getByLabelText('Nº de venta'), '7');
@@ -318,10 +321,7 @@ describe('ReturnsPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Reimprimir ticket' }));
 
-    await screen.findByText(/TOTAL 10\.00/);
-    expect(printMock).toHaveBeenCalled();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
-    expect(screen.queryByText(/TOTAL 10\.00/)).not.toBeInTheDocument();
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    expect(printMocks.thermal).toHaveBeenCalledWith('Venta #42\nTOTAL 10.00\n', expect.any(Object));
   });
 });

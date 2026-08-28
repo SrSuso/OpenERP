@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,10 @@ import { AuthProvider } from '@/features/auth/AuthProvider';
 import { type Sale } from '@/features/pos/api';
 
 import { SalesPage } from './SalesPage';
+
+const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+
+vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -101,6 +105,7 @@ function renderPage() {
 
 describe('SalesPage', () => {
   it("lists the day's sales with their takings, and reprints one", async () => {
+    printMocks.thermal.mockClear();
     const backend = stubBackend([
       sale({
         id: 1043,
@@ -110,8 +115,6 @@ describe('SalesPage', () => {
       }),
       sale({ id: 1044, number: null, status: 'DRAFT', total: '3.500000' }),
     ]);
-    // `window.print` no existe en jsdom y el botón lo llama al imprimir.
-    vi.stubGlobal('print', vi.fn());
     renderPage();
 
     // Se identifica por el número impreso en el ticket, no por el id.
@@ -139,13 +142,8 @@ describe('SalesPage', () => {
     await userEvent.click(within(charged).getByRole('button', { name: 'Reimprimir ticket' }));
 
     expect(backend.ticketCalls).toEqual([1043]);
-    expect(await screen.findByText('TICKET DE PRUEBA')).toBeInTheDocument();
-    // El documento permanece activo mientras Chromium compone la
-    // previsualización. `afterprint` se dispara tanto al confirmar como al
-    // cancelar y entonces deja de poder sumarse a otra reimpresión.
-    expect(document.body.classList).toContain('printing-thermal-document');
-    await act(() => window.dispatchEvent(new Event('afterprint')));
-    await waitFor(() => expect(document.body.classList).not.toContain('printing-thermal-document'));
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    expect(printMocks.thermal).toHaveBeenCalledWith('TICKET DE PRUEBA', expect.any(Object));
     expect(within(charged).getByRole('button', { name: 'Reimprimir ticket' })).toBeInTheDocument();
   });
 

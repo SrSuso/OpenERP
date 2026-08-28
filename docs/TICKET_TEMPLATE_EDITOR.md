@@ -55,10 +55,10 @@ En el primer uso QZ Tray puede pedir autorización para que el sitio de OpenERP
 imprima. Debe aceptarse. Si QZ Tray no está abierto, no encuentra la impresora o
 Windows rechaza el trabajo, OpenERP muestra el error y permite reintentar.
 
-El botón **Imprimir con el navegador (alternativa)** conserva el método antiguo
-para emergencias. Sólo en ese modo intervienen el diálogo de Chrome, el tamaño
-de papel y la escala del controlador. La vista previa A4 de Microsoft Print to
-PDF no sirve para validar la impresión ESC/POS de QZ Tray.
+No existe una ruta térmica alternativa mediante `window.print()`: un ticket
+nuevo, una reimpresión de venta, una Z recién cerrada y una reimpresión de Z
+utilizan la misma imagen y el mismo adaptador QZ. Así no pueden reaparecer por
+accidente las páginas A4, escalas o márgenes del diálogo de Chrome.
 
 ## Editor estándar
 

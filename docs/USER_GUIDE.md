@@ -122,9 +122,13 @@ genera uno con nombres o precios actuales.
 
 La impresión principal usa QZ Tray abierto en el ordenador Windows de la caja y
 la impresora `POSPrinter POS-80`. La primera vez puede pedir autorización. Si
-QZ o la impresora no están disponibles se muestra el motivo y se ofrece la
-impresión del navegador como alternativa. La preparación está en
+QZ o la impresora no están disponibles se muestra el motivo y se permite
+reintentar. La preparación está en
 [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-la-caja-impresión-térmica-con-qz-tray).
+
+La impresión del ticket recién cobrado, las reimpresiones de Ventas y
+Devoluciones, el cierre Z y la reimpresión de cierres usan siempre QZ Tray. No
+existe una segunda composición del ticket mediante el navegador.
 
 ### 2.6. Cerrar caja y sesión
 

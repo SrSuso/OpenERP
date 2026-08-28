@@ -9,6 +9,10 @@ import { POS_TERMINAL_STORAGE_KEY } from '@/features/pos/PosTerminalProvider';
 
 import { PosLayout } from './PosLayout';
 
+const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+
+vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
+
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
@@ -172,7 +176,10 @@ function renderLayout({ configured = true }: { configured?: boolean } = {}) {
 }
 
 describe('PosLayout', () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    printMocks.thermal.mockClear();
+  });
 
   it('requires an explicit terminal selection and persists it for later logins', async () => {
     stubBackend();
@@ -255,16 +262,14 @@ describe('PosLayout', () => {
 
   it('reprints the latest ticket saved for this terminal', async () => {
     const backend = stubBackend();
-    const print = vi.fn();
-    vi.stubGlobal('print', print);
     window.localStorage.setItem('openerp.pos.lastTicketSaleId.7', '42');
     renderLayout();
 
     await userEvent.click(await screen.findByRole('button', { name: 'Reimprimir último ticket' }));
 
     await waitFor(() => expect(backend.ticketCalls).toEqual(['/api/v1/sales/42/tickets']));
-    expect(await screen.findByText('TICKET ANTERIOR')).toBeInTheDocument();
-    expect(print).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    expect(printMocks.thermal).toHaveBeenCalledWith('TICKET ANTERIOR', expect.any(Object));
   });
 
   it('signs out the cashier without closing the till or discarding its terminal', async () => {
@@ -284,7 +289,6 @@ describe('PosLayout', () => {
 
   it('closes and prints the Z without signing out the cashier', async () => {
     const backend = stubBackend();
-    vi.stubGlobal('print', vi.fn());
     renderLayout();
     await screen.findByText('Ana');
 
@@ -299,14 +303,11 @@ describe('PosLayout', () => {
     expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
     expect(backend.closeCalls).toHaveLength(1);
     expect(backend.logoutCalls).toEqual([]);
-    const printRoot = document.querySelector(".ticket-print-root[data-print-active='true']");
-    expect(printRoot).toHaveAttribute('data-ticket-width', '64');
-    expect(printRoot).toHaveStyle({
-      '--ticket-font-size': '10px',
-      '--ticket-line-height': '14px',
-      '--ticket-margin-top': '2mm',
-      '--ticket-margin-bottom': '3mm',
-    });
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    expect(printMocks.thermal).toHaveBeenCalledWith(
+      expect.stringContaining('CIERRE Z'),
+      PRINT_PROFILE,
+    );
 
     await userEvent.click(screen.getByRole('button', { name: 'Volver al TPV' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -336,7 +337,6 @@ describe('PosLayout', () => {
 
   it('reuses the Z idempotency key after an uncertain transport error', async () => {
     const backend = stubBackend({ failFirstClose: true });
-    vi.stubGlobal('print', vi.fn());
     renderLayout();
     await screen.findByText('Ana');
 

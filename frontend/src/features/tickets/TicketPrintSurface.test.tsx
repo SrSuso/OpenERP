@@ -1,9 +1,9 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 const printMocks = vi.hoisted(() => ({
-  thermal: vi.fn(() => Promise.reject(new Error('QZ no disponible'))),
+  thermal: vi.fn<() => Promise<void>>(() => Promise.reject(new Error('QZ no disponible'))),
 }));
 
 vi.mock('./qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
@@ -23,7 +23,7 @@ const PROFILE = {
 };
 
 describe('TicketPrintSurface', () => {
-  it('shows a useful QZ error and keeps browser printing as an explicit fallback', async () => {
+  it('shows a useful QZ error and only retries through QZ', async () => {
     const onDismiss = vi.fn();
     const browserPrint = vi.fn();
     vi.stubGlobal('print', browserPrint);
@@ -35,18 +35,13 @@ describe('TicketPrintSurface', () => {
       'TOTAL 1.25 €\n',
     );
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Imprimir con el navegador (alternativa)' }),
-    );
-    await waitFor(() => expect(browserPrint).toHaveBeenCalledTimes(1));
-    expect(document.querySelectorAll(".ticket-print-root[data-print-active='true']")).toHaveLength(
-      1,
-    );
+    expect(screen.queryByRole('button', { name: /navegador/i })).not.toBeInTheDocument();
+    expect(browserPrint).not.toHaveBeenCalled();
 
-    await act(() => window.dispatchEvent(new Event('afterprint')));
+    printMocks.thermal.mockResolvedValueOnce(undefined);
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar con QZ Tray' }));
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
-    expect(document.querySelectorAll(".ticket-print-root[data-print-active='true']")).toHaveLength(
-      0,
-    );
+    expect(browserPrint).not.toHaveBeenCalled();
   });
 });

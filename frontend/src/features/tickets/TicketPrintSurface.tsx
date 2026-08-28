@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
 import { TicketRasterPreview } from '@/features/tickets/TicketRasterPreview';
 import { printThermalTicket } from '@/features/tickets/qzPrinter';
 import { type TicketPrintProfile } from '@/features/tickets/printProfile';
-import {
-  printActiveDocument,
-  useExclusivePrintDocument,
-} from '@/features/tickets/useExclusivePrintDocument';
 
 interface TicketPrintSurfaceProps {
   text: string;
@@ -18,7 +13,7 @@ interface TicketPrintSurfaceProps {
 
 type PrintStatus = 'printing' | 'error';
 
-/** QZ is primary; the old browser composition remains an explicit fallback. */
+/** Every thermal output uses the same QZ/ESC-POS path. */
 export function TicketPrintSurface({
   text,
   profile,
@@ -27,10 +22,7 @@ export function TicketPrintSurface({
 }: TicketPrintSurfaceProps) {
   const [status, setStatus] = useState<PrintStatus>('printing');
   const [error, setError] = useState<string | null>(null);
-  const [browserPrintActive, setBrowserPrintActive] = useState(false);
   const started = useRef(false);
-  const deactivateBrowserPrint = useCallback(() => setBrowserPrintActive(false), []);
-  const activateExclusivePrint = useExclusivePrintDocument(deactivateBrowserPrint);
 
   const printWithQz = useCallback(async () => {
     setStatus('printing');
@@ -52,60 +44,39 @@ export function TicketPrintSurface({
     void printWithQz();
   }, [printWithQz]);
 
-  useEffect(() => {
-    if (!browserPrintActive) return;
-    printActiveDocument(() => {
-      deactivateBrowserPrint();
-      onPrinted();
-    });
-  }, [browserPrintActive, deactivateBrowserPrint, onPrinted]);
-
   return (
-    <>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4">
-        <div className="flex max-h-full max-w-3xl flex-col items-center gap-4 overflow-auto rounded-xl bg-slate-100 p-5 shadow-2xl">
-          <TicketRasterPreview text={text} profile={profile} compact />
-          {status === 'printing' && (
-            <p role="status" className="text-sm font-medium text-slate-700">
-              Enviando a POSPrinter POS-80 mediante QZ Tray…
-            </p>
-          )}
-          {error !== null && (
-            <p role="alert" className="max-w-xl text-center text-sm text-red-700">
-              {error}
-            </p>
-          )}
-          <div className="flex flex-wrap justify-center gap-2">
-            {status === 'error' && (
-              <button
-                type="button"
-                onClick={() => void printWithQz()}
-                className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white"
-              >
-                Reintentar con QZ Tray
-              </button>
-            )}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4">
+      <div className="flex max-h-full max-w-3xl flex-col items-center gap-4 overflow-auto rounded-xl bg-slate-100 p-5 shadow-2xl">
+        <TicketRasterPreview text={text} profile={profile} compact />
+        {status === 'printing' && (
+          <p role="status" className="text-sm font-medium text-slate-700">
+            Enviando a POSPrinter POS-80 mediante QZ Tray…
+          </p>
+        )}
+        {error !== null && (
+          <p role="alert" className="max-w-xl text-center text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        <div className="flex flex-wrap justify-center gap-2">
+          {status === 'error' && (
             <button
               type="button"
-              onClick={() => {
-                activateExclusivePrint();
-                setBrowserPrintActive(true);
-              }}
-              className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-white"
+              onClick={() => void printWithQz()}
+              className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white"
             >
-              Imprimir con el navegador (alternativa)
+              Reintentar con QZ Tray
             </button>
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-white"
-            >
-              Cerrar
-            </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-white"
+          >
+            Cerrar
+          </button>
         </div>
       </div>
-      <ThermalPrintDocument active={browserPrintActive} text={text} profile={profile} />
-    </>
+    </div>
   );
 }

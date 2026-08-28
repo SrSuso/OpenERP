@@ -380,10 +380,10 @@ Si aparece un error:
 - acepta la solicitud de autorización de QZ Tray;
 - pulsa **Reintentar con QZ Tray**.
 
-**Imprimir con el navegador (alternativa)** abre el mecanismo antiguo sólo para
-emergencias. En esa ruta sí afectan el papel y la escala elegidos en el diálogo
-del sistema. No uses Microsoft Print to PDF ni su vista A4 para diagnosticar la
-ruta ESC/POS de QZ.
+No existe impresión térmica mediante el diálogo del navegador. Tickets nuevos,
+reimpresiones desde Ventas o Devoluciones, cierres Z y reimpresiones de cierres
+usan el mismo envío ESC/POS mediante QZ. Si QZ falla, se muestra el error y debe
+corregirse o reintentarse; no se cambia silenciosamente a un documento A4.
 
 QZ Tray puede advertir sobre trabajos sin firma. La firma con certificado es el
 paso operativo necesario para eliminar avisos en un puesto definitivo; la clave
