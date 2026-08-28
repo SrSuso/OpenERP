@@ -1,13 +1,9 @@
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { generateTicket, type Sale, type Ticket } from '@/features/pos/api';
 import { useSettledShopFlag } from '@/features/settings/useShopSettings';
-import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
-import {
-  printActiveDocument,
-  useExclusivePrintDocument,
-} from '@/features/tickets/useExclusivePrintDocument';
+import { TicketPrintSurface } from '@/features/tickets/TicketPrintSurface';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
@@ -36,18 +32,11 @@ function describeError(error: unknown): string {
  */
 export function Receipt({ sale, onDismiss }: ReceiptProps) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [isPrintActive, setPrintActive] = useState(false);
   const printOnCheckout = useSettledShopFlag('pos.print_ticket_on_checkout', true);
-  const deactivatePrint = useCallback(() => setPrintActive(false), []);
-  const activatePrint = useExclusivePrintDocument(deactivatePrint);
 
   const printMutation = useMutation({
     mutationFn: () => generateTicket(sale.id),
-    onSuccess: (generated) => {
-      activatePrint();
-      setPrintActive(true);
-      setTicket(generated);
-    },
+    onSuccess: setTicket,
   });
 
   // Una sola vez por venta: generar el ticket es idempotente, pero pedirlo
@@ -62,48 +51,17 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
     print();
   }, [printOnCheckout, print]);
 
-  // `.ticket-print-root` (src/index.css) hides the rest of the page for
-  // `@media print` — this just has to trigger the browser's print dialog
-  // once that text is actually on screen.
-  //
-  // Y con el ticket ya enviado, de vuelta a una venta nueva sin tocar
-  // nada: en una caja con cola detrás, un botón por cliente son cientos de
-  // pulsaciones al mes. No se pierde el cambio a devolver, que se ve en la
-  // pantalla de cobro mientras se teclea lo que entrega el cliente, y va
-  // impreso en el propio ticket.
-  //
-  // Sólo cuando el ticket ha salido solo: si se ha pedido a mano, es
-  // porque alguien quería mirarlo, y ahí manda el botón de cerrar.
-  useEffect(() => {
-    if (ticket === null || !isPrintActive) return;
-    printActiveDocument(() => {
-      deactivatePrint();
-      if (printOnCheckout === true) onDismiss();
-    });
-  }, [ticket, isPrintActive, printOnCheckout, onDismiss, deactivatePrint]);
-
   if (ticket !== null) {
     return (
-      <>
-        <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8">
-          {!isPrintActive && (
-            <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
-              {ticket.rendered_text}
-            </pre>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              deactivatePrint();
-              setTicket(null);
-            }}
-            className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600"
-          >
-            Cerrar
-          </button>
-        </div>
-        <ThermalPrintDocument active={isPrintActive} text={ticket.rendered_text} profile={ticket} />
-      </>
+      <TicketPrintSurface
+        text={ticket.rendered_text}
+        profile={ticket}
+        onDismiss={() => setTicket(null)}
+        onPrinted={() => {
+          setTicket(null);
+          if (printOnCheckout === true) onDismiss();
+        }}
+      />
     );
   }
 

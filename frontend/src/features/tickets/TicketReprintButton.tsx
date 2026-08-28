@@ -1,12 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { generateTicket, type Ticket } from '@/features/pos/api';
-import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
-import {
-  printActiveDocument,
-  useExclusivePrintDocument,
-} from '@/features/tickets/useExclusivePrintDocument';
+import { TicketPrintSurface } from '@/features/tickets/TicketPrintSurface';
 import { ApiError } from '@/lib/api';
 
 interface TicketReprintButtonProps {
@@ -28,36 +24,18 @@ export function TicketReprintButton({
   className = 'rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50',
 }: TicketReprintButtonProps) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [isPrintActive, setPrintActive] = useState(false);
-  const deactivatePrint = useCallback(() => setPrintActive(false), []);
-  const dismissTicket = useCallback(() => {
-    deactivatePrint();
-    setTicket(null);
-  }, [deactivatePrint]);
-  const activatePrint = useExclusivePrintDocument(dismissTicket);
 
   const mutation = useMutation({
     mutationFn: () => generateTicket(saleId),
-    onSuccess: (generated) => {
-      activatePrint();
-      setPrintActive(true);
-      setTicket(generated);
-    },
+    onSuccess: setTicket,
   });
-
-  useEffect(() => {
-    if (ticket !== null && isPrintActive) {
-      printActiveDocument(dismissTicket);
-    }
-  }, [ticket, isPrintActive, dismissTicket]);
 
   if (ticket !== null) {
     return (
-      <ThermalPrintDocument
-        active={isPrintActive}
+      <TicketPrintSurface
         text={ticket.rendered_text}
         profile={ticket}
-        onDismiss={dismissTicket}
+        onDismiss={() => setTicket(null)}
       />
     );
   }

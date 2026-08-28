@@ -294,14 +294,16 @@ Nginx emite estos headers en SPA, assets, API, errores y mantenimiento:
 
 | Header | Valor |
 | --- | --- |
-| `Content-Security-Policy` | `default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'` |
+| `Content-Security-Policy` | Recursos del propio servidor; además, `connect-src` permite sólo los puertos WSS locales 8181/8282/8383/8484 que usa QZ Tray. |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `camera=(), geolocation=(), microphone=(), payment=(), usb=()` |
 | `Strict-Transport-Security` | `max-age=31536000` |
 
-La CSP no permite scripts inline ni `unsafe-eval`. `style-src 'unsafe-inline'`
+La CSP no permite scripts inline ni `unsafe-eval`. Las conexiones WSS añadidas
+apuntan exclusivamente a `localhost` para comunicar el navegador con QZ Tray en
+la propia caja; no exponen un servicio remoto. `style-src 'unsafe-inline'`
 es la única excepción: React usa estilos calculados para colores/alturas y
 ECharts CanvasRenderer posiciona su canvas mediante atributos `style`. Scripts,
 API, imágenes y fuentes permanecen same-origin; `data:` sólo se abre para
@@ -348,81 +350,46 @@ y localiza la venta «Sin cobrar» en **Ventas**: allí permanece visible con el
 terminal que la originó. La versión actual no transfiere borradores entre
 terminales.
 
-## 3.4. La caja: imprimir el ticket sin cuadro de impresión
+## 3.4. La caja: impresión térmica con QZ Tray
 
-Una página web no puede saltarse el cuadro de impresión del navegador.
-`window.print()` lo abre siempre, y es una restricción de seguridad
-deliberada: si una web pudiera imprimir sola, cualquiera podría vaciarte el
-papel. No hay forma de programarlo desde la aplicación.
+La impresión habitual no usa el diálogo de Chrome. El servidor Ubuntu entrega
+el ticket a la web y QZ Tray, instalado en el ordenador Windows de la caja,
+envía una imagen ESC/POS directamente a la impresora USB local.
 
-Antes de usar la caja, configura el controlador con bobina de **80 mm**,
-orientación vertical, escala **100 %**, sin márgenes adicionales y sin cabeceras
-ni pies. OpenERP envía explícitamente una página de 80 mm, igual que un documento
-de LibreOffice configurado a 8 cm, y coloca dentro los márgenes de la plantilla.
-El alto se ajusta al contenido para no alimentar papel en blanco. En el
-controlador no añadas otros márgenes ni reducción de escala. El controlador de la
-térmica controla la longitud continua y el corte. Una
-impresora PDF configurada como A4 mostrará A4 aunque el contenido mida 80 mm.
-La explicación completa y las opciones disponibles están en
+Configuración del ordenador de la caja:
+
+1. Instala el controlador de la POSPrinter y comprueba en Windows que su nombre
+   es exactamente **`POSPrinter POS-80`**.
+2. Instala QZ Tray, ábrelo y activa su inicio automático con Windows.
+3. Abre OpenERP en ese mismo ordenador. En el primer trabajo, acepta la
+   autorización que muestre QZ Tray.
+4. Cobra una venta de prueba. OpenERP debe mostrar «Enviando a POSPrinter
+   POS-80 mediante QZ Tray» y la impresora debe cortar un único ticket.
+
+OpenERP genera una imagen de **576 puntos**: el ancho real del cabezal de esta
+impresora (72 mm a 203 dpi). La misma imagen se muestra en la vista previa y se
+envía a QZ, así que Chrome y el controlador no pueden volver a escalar el texto
+ni ignorar los márgenes. El rollo sigue midiendo 80 mm; los 4 mm laterales
+restantes son el margen físico entre papel y cabezal.
+
+Si aparece un error:
+
+- comprueba que el icono de QZ Tray está activo junto al reloj de Windows;
+- comprueba que Windows muestra exactamente `POSPrinter POS-80` y que la
+  impresora no está pausada ni sin conexión;
+- acepta la solicitud de autorización de QZ Tray;
+- pulsa **Reintentar con QZ Tray**.
+
+**Imprimir con el navegador (alternativa)** abre el mecanismo antiguo sólo para
+emergencias. En esa ruta sí afectan el papel y la escala elegidos en el diálogo
+del sistema. No uses Microsoft Print to PDF ni su vista A4 para diagnosticar la
+ruta ESC/POS de QZ.
+
+QZ Tray puede advertir sobre trabajos sin firma. La firma con certificado es el
+paso operativo necesario para eliminar avisos en un puesto definitivo; la clave
+privada no debe guardarse en el navegador ni en Git. La explicación del modelo
+físico, los márgenes y el editor está en
 [`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md).
-
-Lo que sí se puede es arrancar el navegador de la caja en **modo caja**,
-donde `window.print()` manda el trabajo directo a la impresora
-predeterminada. Según el equipo de la caja:
-
-**Windows** — haz doble clic en `scripts\pos-kiosk.cmd`, o crea un acceso
-directo a él con la dirección detrás:
-
-```
-pos-kiosk.cmd https://tu-tienda.example
-```
-
-Para que arranque solo al encender, pon ese acceso directo en la carpeta
-Inicio (tecla Windows + R → `shell:startup`).
-
-**Linux** — `scripts/pos-kiosk.sh https://tu-tienda.example`, y añádelo a
-las aplicaciones de inicio de sesión del escritorio.
-
-**macOS** — desde el Terminal:
-
-```bash
-open -na "Google Chrome" --args --kiosk-printing \
-  --user-data-dir="$HOME/Library/Application Support/openerp-pos-kiosk" \
-  --app=https://tu-tienda.example/pos
-```
-
-**Firefox**, si es el navegador de la caja: no tiene modo caja, pero sí un
-ajuste equivalente. En `about:config`, pon `print.always_print_silent` a
-`true`.
-
-### Cómo saber si está funcionando
-
-Cobra una venta de prueba. Si el ticket sale por la impresora **sin que
-aparezca ninguna ventana**, está bien. Si sigue apareciendo el cuadro de
-impresión, casi siempre es una de estas tres:
-
-- Se abrió el TPV con un Chrome que **ya estaba abierto**. El modo caja se
-  decide al arrancar el navegador; el script usa un perfil aparte
-  precisamente para arrancar uno nuevo, pero si abres la dirección
-  copiándola a una pestaña del Chrome de siempre, no vale.
-- El acceso directo perdió el `--kiosk-printing` (pasa al recrearlo a mano).
-- Es otro navegador. Edge admite el mismo `--kiosk-printing`; Safari no
-  tiene equivalente.
-
-En el equipo de la caja, antes:
-
-1. Pon la impresora de tickets como **predeterminada del sistema**. Es la
-   que se usará: el modo caja no pregunta, y por eso no elige.
-2. En su controlador, deja configurado el ancho físico del rollo (normalmente
-   80 mm). En **Plantillas de ticket** configura aparte el ancho **imprimible**:
-   en una impresora de 80 mm, 72 mm es un buen punto de partida para evitar que
-   el área no imprimible lateral monte texto. Ajusta los márgenes izquierdo y
-   derecho dentro de la vista fija de 80 mm, además de fuente, tamaño e
-   interlineado. El largo es automático; fijar una altura puede cortar líneas o
-   desperdiciar papel.
-
-Para que arranque solo al encender, añade el script a las aplicaciones de
-inicio de sesión del escritorio.
 
 ### 3.5. Mantener las plantillas de ticket
 

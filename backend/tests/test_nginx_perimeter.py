@@ -17,7 +17,9 @@ from tests.conftest import BACKEND_ROOT
 PROJECT_ROOT = BACKEND_ROOT.parent
 PRODUCTION_IMAGE = "openerp-frontend:latest"
 EXPECTED_CSP = (
-    "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; "
+    "default-src 'self'; base-uri 'self'; connect-src 'self' "
+    "wss://localhost:8181 wss://localhost:8282 wss://localhost:8383 "
+    "wss://localhost:8484; font-src 'self'; "
     "form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; "
     "object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
 )

@@ -1,7 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+
+const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+
+vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
 
 import { ZReportReprintButton } from './ZReportReprintButton';
 
@@ -47,12 +51,7 @@ describe('ZReportReprintButton', () => {
         ),
       ),
     );
-    const activeDocuments: number[] = [];
-    vi.stubGlobal('print', () => {
-      activeDocuments.push(
-        document.querySelectorAll(".ticket-print-root[data-print-active='true']").length,
-      );
-    });
+    printMocks.thermal.mockClear();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
@@ -64,18 +63,10 @@ describe('ZReportReprintButton', () => {
     await waitFor(() => expect(button).toBeEnabled());
     await userEvent.click(button);
 
-    await waitFor(() => expect(activeDocuments).toEqual([1]));
-    expect(await screen.findByText(/CIERRE Z Nº 7/)).toBeInTheDocument();
-    expect(screen.getByText(/TOTAL COBRADO/)).toBeInTheDocument();
-    expect(document.head.querySelector('[data-ticket-page-style="active"]')).toBeNull();
-    expect(document.body).toHaveClass('printing-thermal-document');
-
-    await act(() => window.dispatchEvent(new Event('afterprint')));
-    await waitFor(() =>
-      expect(
-        document.querySelectorAll(".ticket-print-root[data-print-active='true']"),
-      ).toHaveLength(0),
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    expect(printMocks.thermal).toHaveBeenCalledWith(
+      expect.stringMatching(/CIERRE Z Nº 7[\s\S]*TOTAL COBRADO/),
+      expect.objectContaining({ printable_width_mm: 72 }),
     );
-    expect(document.body).not.toHaveClass('printing-thermal-document');
   });
 });

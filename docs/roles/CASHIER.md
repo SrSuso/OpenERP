@@ -15,6 +15,10 @@ El cajero entra en `/pos/login`, elige su usuario TPV, introduce el PIN y
 selecciona el terminal físico. El terminal queda asociado al navegador; el
 cajero es quien confirma realmente el cobro.
 
+En el ordenador Windows de caja deben estar abiertos QZ Tray y la impresora
+`POSPrinter POS-80`. La primera solicitud de impresión puede requerir aceptar
+la autorización local de QZ Tray.
+
 ## Qué puede hacer
 
 - Crear, recuperar, modificar y cancelar borradores de venta en su terminal.

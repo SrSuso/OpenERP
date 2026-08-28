@@ -159,10 +159,18 @@ function renderPage() {
   );
 }
 
+function previewText(container: HTMLElement): string {
+  return (
+    container
+      .querySelector('[data-ticket-template-preview]')
+      ?.getAttribute('data-ticket-preview-text') ?? ''
+  );
+}
+
 describe('TicketTemplatesPage', () => {
   it('creates the first template, then updates it in place', async () => {
     const backend = stubBackend();
-    renderPage();
+    const { container } = renderPage();
 
     await screen.findByText('Todavía no hay ninguna plantilla activa.');
     await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
@@ -184,10 +192,10 @@ describe('TicketTemplatesPage', () => {
     await userEvent.type(screen.getByLabelText('Margen inferior (mm)'), '3');
     await userEvent.type(screen.getByLabelText('Cabecera'), 'Gracias por su compra');
     // La vista previa se actualiza en vivo mientras se escribe, antes de guardar nada.
-    expect(screen.getByText(/Gracias por su compra/)).toBeInTheDocument();
-    expect(screen.getByText(/Gracias por su compra/).closest('pre')).toHaveClass(
-      'overflow-hidden',
-      'p-0',
+    expect(previewText(container)).toContain('Gracias por su compra');
+    expect(screen.getByAltText('Vista previa exacta del ticket térmico')).toHaveAttribute(
+      'src',
+      expect.stringContaining('data:image/svg+xml'),
     );
     await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
@@ -231,7 +239,7 @@ describe('TicketTemplatesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Editar plantilla activa' }));
     const footerInput = screen.getByLabelText('Pie');
     await userEvent.type(footerInput, 'Vuelva pronto');
-    expect(screen.getByText(/Vuelva pronto/)).toBeInTheDocument();
+    expect(previewText(container)).toContain('Vuelva pronto');
     await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     await screen.findByText(/Activa: Tienda principal · 48 mm/);
@@ -290,34 +298,25 @@ describe('TicketTemplatesPage', () => {
     await userEvent.clear(screen.getByLabelText('Margen izquierdo (mm)'));
     await userEvent.type(screen.getByLabelText('Margen izquierdo (mm)'), '6');
     await userEvent.clear(screen.getByLabelText('Margen derecho (mm)'));
-    await userEvent.type(screen.getByLabelText('Margen derecho (mm)'), '2');
+    await userEvent.type(screen.getByLabelText('Margen derecho (mm)'), '4');
 
     expect(paper).toHaveStyle({ width: '80mm' });
-    expect(content).toHaveStyle({
-      width: '72mm',
-      marginLeft: '6mm',
-      marginRight: '2mm',
-      fontSize: '9px',
-    });
+    expect(content).toHaveStyle({ width: '72mm', marginLeft: '4mm', marginRight: '4mm' });
+    const shiftedRaster = content?.getAttribute('src');
 
     await userEvent.clear(screen.getByLabelText('Margen derecho (mm)'));
     await userEvent.type(screen.getByLabelText('Margen derecho (mm)'), '10');
 
     expect(paper).toHaveStyle({ width: '80mm' });
-    expect(content).toHaveStyle({
-      width: '64mm',
-      marginLeft: '6mm',
-      marginRight: '10mm',
-      fontSize: '9px',
-    });
+    expect(content).toHaveStyle({ width: '72mm', marginLeft: '4mm', marginRight: '4mm' });
+    expect(content?.getAttribute('src')).not.toBe(shiftedRaster);
     expect(screen.getByText('64', { selector: 'output' })).toBeInTheDocument();
   });
 
   it('switches between the standard and variable editors without losing custom source', async () => {
     stubBackend();
     const { container } = renderPage();
-    const preview = () =>
-      container.querySelector('[data-ticket-template-preview]')?.textContent ?? '';
+    const preview = () => previewText(container);
 
     await screen.findByText('Todavía no hay ninguna plantilla activa.');
     await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
@@ -342,8 +341,7 @@ describe('TicketTemplatesPage', () => {
   it('lets the shop switch the ticket from the full breakdown to just "IVA incluido"', async () => {
     const backend = stubBackend();
     const { container } = renderPage();
-    const preview = () =>
-      container.querySelector('[data-ticket-template-preview]')!.textContent ?? '';
+    const preview = () => previewText(container);
 
     await screen.findByText('Todavía no hay ninguna plantilla activa.');
     await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));

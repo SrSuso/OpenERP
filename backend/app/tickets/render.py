@@ -45,7 +45,7 @@ _CENTS = Decimal("0.01")
 
 
 def _money(value: Decimal) -> str:
-    return f"{value.quantize(_CENTS, rounding=ROUND_HALF_UP):.2f}"
+    return f"{value.quantize(_CENTS, rounding=ROUND_HALF_UP):.2f} €"
 
 
 def _quantity(value: Decimal) -> str:

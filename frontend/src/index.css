@@ -47,19 +47,11 @@
   }
 }
 
-/* Printing a ticket (phase 15): hide everything on the page except the
- * receipt text itself — the classic "print only this element" trick, so
- * `window.print()` never needs the rest of the till's chrome (or its dark
- * background) reproduced on paper. */
+/* The browser print path is retained only as an explicit fallback when QZ
+ * Tray is unavailable. QZ printing does not use these rules: it sends the
+ * same 576-dot raster shown in the in-app preview directly as ESC/POS. */
 .ticket-print-root {
   display: none;
-}
-
-/* Reimprimir mantiene un control visible por si el navegador no entrega el
-   evento `afterprint` al cancelar su diálogo. Es el mismo nodo que se imprime,
-   no una segunda copia susceptible de acumularse. */
-.ticket-print-root.ticket-print-screen {
-  display: flex;
 }
 
 @media print {

@@ -1,14 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { type ZReport } from '@/features/pos/api';
 import { renderZReportTicket } from '@/features/pos/zReportTicket';
 import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
-import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
-import {
-  printActiveDocument,
-  useExclusivePrintDocument,
-} from '@/features/tickets/useExclusivePrintDocument';
+import { TicketPrintSurface } from '@/features/tickets/TicketPrintSurface';
 
 interface ZReportReprintButtonProps {
   report: ZReport;
@@ -26,15 +22,8 @@ export function ZReportReprintButton({
 }: ZReportReprintButtonProps) {
   const printProfile = useQuery(activeTicketPrintProfileQuery);
   const [isPrintActive, setPrintActive] = useState(false);
-  const deactivatePrint = useCallback(() => setPrintActive(false), []);
-  const activatePrint = useExclusivePrintDocument(deactivatePrint);
   const profile = printProfile.data;
   const text = profile === undefined ? null : renderZReportTicket(report, closedAtLabel, profile);
-
-  useEffect(() => {
-    if (!isPrintActive) return;
-    printActiveDocument(deactivatePrint);
-  }, [deactivatePrint, isPrintActive]);
 
   return (
     <>
@@ -42,7 +31,6 @@ export function ZReportReprintButton({
         type="button"
         onClick={() => {
           if (profile === undefined) return;
-          activatePrint();
           setPrintActive(true);
         }}
         disabled={profile === undefined}
@@ -55,8 +43,8 @@ export function ZReportReprintButton({
           No se ha podido cargar el perfil de impresión.
         </p>
       )}
-      {text !== null && profile !== undefined && (
-        <ThermalPrintDocument active={isPrintActive} text={text} profile={profile} />
+      {isPrintActive && text !== null && profile !== undefined && (
+        <TicketPrintSurface text={text} profile={profile} onDismiss={() => setPrintActive(false)} />
       )}
     </>
   );

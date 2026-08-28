@@ -1,7 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+
+vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
 
 import { Receipt } from './Receipt';
 import { type Sale } from './api';
@@ -78,11 +82,8 @@ function stubBackend(values: Record<string, string>) {
 }
 
 describe('Receipt', () => {
-  let printMock: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    printMock = vi.fn();
-    vi.stubGlobal('print', printMock);
+    printMocks.thermal.mockReset().mockResolvedValue(undefined);
   });
 
   it('shows the total charged', () => {
@@ -120,7 +121,7 @@ describe('Receipt', () => {
     expect(onDismiss).toHaveBeenCalled();
   });
 
-  it('generates and shows the ticket text, then triggers window.print()', async () => {
+  it('generates the ticket and sends the exact frozen text to QZ Tray', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
@@ -151,12 +152,12 @@ describe('Receipt', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
 
-    expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
-    expect(screen.getByText(/TOTAL 20\.00/).closest('[data-ticket-width]')).toHaveAttribute(
-      'data-ticket-width',
-      '48',
+    await waitFor(() =>
+      expect(printMocks.thermal).toHaveBeenCalledWith(
+        'Venta #1\nTOTAL 20.00\n',
+        expect.objectContaining({ printable_width_mm: 48 }),
+      ),
     );
-    expect(printMock).toHaveBeenCalled();
   });
 
   it('prints on its own as soon as the sale is charged', async () => {
@@ -165,8 +166,7 @@ describe('Receipt', () => {
     const backend = stubBackend({});
     renderReceipt();
 
-    expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
-    expect(printMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
     // Una sola vez: generar el ticket es idempotente, pero pedirlo dos
     // veces mandaría dos trabajos a la impresora.
     expect(backend.ticketCalls).toHaveLength(1);
@@ -179,9 +179,7 @@ describe('Receipt', () => {
     const onDismiss = vi.fn();
     renderReceipt({ onDismiss });
 
-    await waitFor(() => expect(printMock).toHaveBeenCalled());
-    expect(onDismiss).not.toHaveBeenCalled();
-    await act(() => window.dispatchEvent(new Event('afterprint')));
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalled());
     await waitFor(() => expect(onDismiss).toHaveBeenCalled());
   });
 
@@ -194,7 +192,7 @@ describe('Receipt', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
 
-    expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
@@ -203,13 +201,12 @@ describe('Receipt', () => {
     renderReceipt();
     await screen.findByText('20,00 €');
 
-    expect(printMock).not.toHaveBeenCalled();
+    expect(printMocks.thermal).not.toHaveBeenCalled();
     expect(backend.ticketCalls).toEqual([]);
 
     await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
 
-    expect(await screen.findByText(/TOTAL 20\.00/)).toBeInTheDocument();
-    expect(printMock).toHaveBeenCalled();
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalled());
   });
 
   it('shows an error if generating the ticket fails', async () => {
@@ -232,6 +229,7 @@ describe('Receipt', () => {
   });
 
   it('"Cerrar" returns from the ticket view to the receipt', async () => {
+    printMocks.thermal.mockRejectedValueOnce(new Error('Impresora desconectada'));
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
@@ -260,7 +258,7 @@ describe('Receipt', () => {
     );
     renderReceipt();
     await userEvent.click(screen.getByRole('button', { name: /imprimir ticket/i }));
-    await screen.findByText(/Venta #1/);
+    await screen.findByRole('alert');
 
     await userEvent.click(screen.getByRole('button', { name: /cerrar/i }));
 

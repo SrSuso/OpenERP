@@ -15,8 +15,10 @@ seleccionado se usa para los tickets nuevos.
 
 ## Papel, ancho imprimible y márgenes
 
-La vista previa exterior representa siempre los **80 mm de papel**. Dentro de
-ella, el área punteada representa el texto que puede imprimir el cabezal.
+La vista previa exterior representa siempre los **80 mm de papel**. La
+POSPrinter POS-80 tiene un cabezal de **576 puntos a 203 dpi**, equivalente a
+**72 mm imprimibles**. Los 4 mm restantes a cada lado son la zona física entre
+el borde de la bobina y el cabezal.
 
 Se pueden modificar:
 
@@ -25,54 +27,38 @@ Se pueden modificar:
 - margen superior e inferior;
 - familia, tamaño, grosor e interlineado de la fuente.
 
-El ancho imprimible no es un control de escala independiente. Como en el
-diálogo de página de LibreOffice, OpenERP lo muestra calculado mediante:
+El ancho imprimible no es un control de escala independiente. OpenERP lo
+muestra calculado mediante:
 
 ```text
 ancho útil = 80 mm - margen izquierdo - margen derecho
 ```
 
-Por ejemplo, `4 + 72 + 4 = 80 mm`. Al subir el margen izquierdo, el texto se
-desplaza a la derecha dentro de la misma bobina; la vista previa no cambia a A4
-ni adquiere una barra de desplazamiento horizontal. Aumentar un margen reduce
-el área disponible y puede recomponer las líneas, pero no cambia ni amplía el
-tamaño de la fuente.
+Por ejemplo, `4 + 72 + 4 = 80 mm` utiliza los 576 puntos completos del cabezal.
+Al aumentar un margen, OpenERP deja puntos en blanco dentro de esos 576 y reduce
+el espacio disponible para el texto. El tamaño de letra no cambia. Los márgenes
+no pueden ser inferiores a 4 mm porque esa parte ya queda fuera del cabezal.
 
-OpenERP genera un único documento de impresión aislado del resto de la página.
-OpenERP envía el mismo modelo físico que funciona desde LibreOffice: una página
-explícita de 80 mm y los márgenes de la plantilla dentro de ella. Por ejemplo,
-`4 + 72 + 4 mm` produce exactamente 72 mm de contenido, sin dejar que Chrome o
-el controlador deduzcan otra anchura. El alto de la página se calcula con las
-líneas reales, el interlineado y los márgenes verticales; no se fijan 200 mm que
-puedan alimentar papel en blanco. La impresora corta al terminar ese documento.
+La vista previa y la impresión comparten ahora el mismo documento: OpenERP
+genera una imagen de **576 puntos de ancho**, la muestra dentro de una bobina de
+80 mm y envía esa misma imagen a QZ Tray. Windows y Chrome ya no recalculan el
+ancho, los márgenes, la fuente ni el centrado.
 
-### Configuración del controlador de impresión
+### Impresión directa con QZ Tray
 
-El navegador no puede cambiar de forma fiable el tamaño configurado en una
-impresora. Para imprimir en la térmica hay que seleccionar en el diálogo o en
-su controlador:
+La ruta principal de impresión requiere QZ Tray abierto en el ordenador Windows
+de la caja. OpenERP busca el nombre exacto **`POSPrinter POS-80`** y envía la
+imagen como ESC/POS por la cola RAW de Windows. El trabajo incluye inicio de
+impresora, la imagen, avance final y corte.
 
-- la impresora térmica real;
-- papel, recibo o bobina de **80 mm**;
-- orientación vertical;
-- escala **100 %** o **tamaño real**, nunca «ajustar a página»;
-- márgenes adicionales del controlador **ninguno**;
-- cabeceras y pies del navegador desactivados.
+En el primer uso QZ Tray puede pedir autorización para que el sitio de OpenERP
+imprima. Debe aceptarse. Si QZ Tray no está abierto, no encuentra la impresora o
+Windows rechaza el trabajo, OpenERP muestra el error y permite reintentar.
 
-OpenERP controla la página exterior de 80 mm, el ancho de contenido, los
-márgenes, la fuente, el interlineado y el alto necesario. El controlador
-controla el cabezal y el corte. No configures otros márgenes ni una reducción de
-escala en el controlador: volvería a estrechar el documento ya dimensionado.
-
-Si se selecciona «Microsoft Print to PDF» u otra impresora configurada como A4,
-la vista del sistema mostrará una hoja A4. Eso describe el papel del destino
-seleccionado, no el documento que recibirá una impresora térmica configurada a
-80 mm. Para comprobar el resultado real debe seleccionarse la térmica y revisar
-que el papel sea 80 mm y la escala 100 %.
-
-La vista previa del editor sí representa siempre los 80 mm nominales y permite
-comprobar cómo se mueve el texto al cambiar los parámetros, pero la prueba final
-debe hacerse con el controlador y el cabezal que se utilizarán en caja.
+El botón **Imprimir con el navegador (alternativa)** conserva el método antiguo
+para emergencias. Sólo en ese modo intervienen el diálogo de Chrome, el tamaño
+de papel y la escala del controlador. La vista previa A4 de Microsoft Print to
+PDF no sirve para validar la impresión ESC/POS de QZ Tray.
 
 ## Editor estándar
 

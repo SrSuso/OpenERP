@@ -1,7 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+
+const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+
+vi.mock('./qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
 
 import { TicketReprintButton } from './TicketReprintButton';
 
@@ -29,7 +33,7 @@ function ticketFor(saleId: number) {
 }
 
 describe('TicketReprintButton', () => {
-  it('never leaves a cancelled reprint in the next print document', async () => {
+  it('sends each requested historical ticket once to QZ without accumulating documents', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) => {
@@ -39,18 +43,7 @@ describe('TicketReprintButton', () => {
         return Promise.resolve(jsonResponse(ticketFor(saleId)));
       }),
     );
-    const activeDocumentCounts: number[] = [];
-    const isolatedFromApplication: boolean[] = [];
-    vi.stubGlobal('print', () => {
-      activeDocumentCounts.push(
-        document.querySelectorAll(".ticket-print-root[data-print-active='true']").length,
-      );
-      const printRoot = document.querySelector(".ticket-print-root[data-print-active='true']");
-      isolatedFromApplication.push(
-        printRoot?.parentElement === document.body &&
-          document.body.classList.contains('printing-thermal-document'),
-      );
-    });
+    printMocks.thermal.mockClear();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
@@ -60,23 +53,20 @@ describe('TicketReprintButton', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 101' }));
-    await waitFor(() => expect(activeDocumentCounts).toEqual([1]));
-    expect(isolatedFromApplication).toEqual([true]);
-    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
-    expect(document.head.querySelector('[data-ticket-page-style="active"]')).toBeNull();
-
-    // El evento se dispara tanto al imprimir como al cancelar el diálogo.
-    // Por eso el documento anterior deja de existir antes del siguiente.
-    await act(() => window.dispatchEvent(new Event('afterprint')));
     await waitFor(() =>
-      expect(
-        document.querySelectorAll(".ticket-print-root[data-print-active='true']"),
-      ).toHaveLength(0),
+      expect(printMocks.thermal).toHaveBeenCalledWith(
+        'TICKET 101',
+        expect.objectContaining({ sale_id: 101 }),
+      ),
     );
-    expect(document.body).not.toHaveClass('printing-thermal-document');
     expect(screen.getByRole('button', { name: 'Ticket 101' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 102' }));
-    await waitFor(() => expect(activeDocumentCounts).toEqual([1, 1]));
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(2));
+    expect(printMocks.thermal).toHaveBeenLastCalledWith(
+      'TICKET 102',
+      expect.objectContaining({ sale_id: 102 }),
+    );
+    expect(document.querySelectorAll('[data-ticket-paper-preview]')).toHaveLength(0);
   });
 });

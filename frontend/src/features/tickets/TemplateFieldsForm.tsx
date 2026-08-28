@@ -21,19 +21,15 @@ import {
   renderTicketLayoutTemplate,
   ticketLayoutPreviewContext,
 } from '@/features/tickets/layoutTemplate';
-import {
-  THERMAL_PAPER_WIDTH_MM,
-  printableWidthFromMargins,
-  ticketPreviewStyle,
-  ticketPrintStyle,
-} from '@/features/tickets/printProfile';
+import { TicketRasterPreview } from '@/features/tickets/TicketRasterPreview';
+import { printableWidthFromMargins } from '@/features/tickets/printProfile';
 import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 
 const fieldsSchema = z
   .object({
     name: z.string().max(100).optional(),
-    margin_left_mm: z.coerce.number().int().min(0).max(55),
-    margin_right_mm: z.coerce.number().int().min(0).max(55),
+    margin_left_mm: z.coerce.number().int().min(4).max(51),
+    margin_right_mm: z.coerce.number().int().min(4).max(51),
     font_family: ticketFontFamilySchema,
     font_size_px: z.coerce.number().int().min(6).max(16),
     line_height_px: z.coerce.number().int().min(8).max(24),
@@ -123,8 +119,8 @@ export function TemplateFieldsForm({
     resolver: zodResolver(fieldsSchema),
     defaultValues: {
       name: defaults?.name ?? '',
-      margin_left_mm: defaults?.margin_left_mm ?? 4,
-      margin_right_mm: defaults?.margin_right_mm ?? 4,
+      margin_left_mm: Math.max(4, defaults?.margin_left_mm ?? 4),
+      margin_right_mm: Math.max(4, defaults?.margin_right_mm ?? 4),
       font_family: defaults?.font_family ?? 'COURIER_NEW',
       font_size_px: defaults?.font_size_px ?? 9,
       line_height_px: defaults?.line_height_px ?? 12,
@@ -312,8 +308,8 @@ export function TemplateFieldsForm({
               Margen izquierdo (mm)
               <input
                 type="number"
-                min="0"
-                max="55"
+                min="4"
+                max="51"
                 className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
                 {...register('margin_left_mm')}
               />
@@ -333,8 +329,8 @@ export function TemplateFieldsForm({
               Margen derecho (mm)
               <input
                 type="number"
-                min="0"
-                max="55"
+                min="4"
+                max="51"
                 className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
                 {...register('margin_right_mm')}
               />
@@ -345,9 +341,9 @@ export function TemplateFieldsForm({
               )}
             </label>
             <p className="text-xs text-slate-500 sm:col-span-3">
-              Como en LibreOffice, la bobina permanece en 80 mm y el ancho útil se calcula como 80
-              menos los dos márgenes. Los márgenes mueven y estrechan el área de texto; nunca
-              cambian el tamaño de letra.
+              El cabezal de 72 mm ya deja 4 mm físicos a cada lado de la bobina de 80 mm. Puedes
+              ampliar esos márgenes; el ancho útil se calcula automáticamente y nunca cambia el
+              tamaño de letra.
             </p>
           </fieldset>
 
@@ -682,19 +678,7 @@ export function TemplateFieldsForm({
           <p className="mb-1 text-xs font-semibold uppercase text-slate-500">
             Vista previa — papel de 80 mm (datos de ejemplo)
           </p>
-          <div
-            data-ticket-paper-preview
-            className="overflow-hidden rounded border border-slate-300 bg-white shadow-sm"
-            style={{ width: `${THERMAL_PAPER_WIDTH_MM}mm`, boxSizing: 'border-box' }}
-          >
-            <pre
-              data-ticket-template-preview
-              className="overflow-hidden border-x border-dashed border-sky-300 bg-slate-50/60 p-0 text-slate-700"
-              style={{ ...ticketPrintStyle(printProfile), ...ticketPreviewStyle(printProfile) }}
-            >
-              {preview}
-            </pre>
-          </div>
+          <TicketRasterPreview text={preview} profile={printProfile} compact />
           {layoutPreviewError && <p className="mt-2 text-sm text-red-600">{layoutPreviewError}</p>}
         </div>
       </div>

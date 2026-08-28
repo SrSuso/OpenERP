@@ -37,6 +37,9 @@ botones, cobro e impresión automática) están en **Configuración de la tienda
 → Terminales POS**. El perfil de impresión —ancho imprimible, fuente,
 márgenes laterales/verticales, textos y datos fiscales— se gestiona en
 **Plantillas de ticket**, con editor estándar o plantilla segura con variables.
+La vista previa de 576 puntos se envía sin reescalado a la impresora Windows
+`POSPrinter POS-80` mediante QZ Tray; el diálogo del navegador queda como
+alternativa explícita.
 
 La documentación normativa se divide por audiencia:
 

@@ -120,9 +120,11 @@ de la tienda, el ticket se imprime automáticamente o mediante **Imprimir
 ticket**. Si se repite la impresión se reutiliza el ticket congelado, no se
 genera uno con nombres o precios actuales.
 
-La impresión silenciosa necesita que el navegador de la caja se inicie en modo
-kiosco. Su preparación está en
-[`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-impresión-sin-cuadro-del-navegador).
+La impresión principal usa QZ Tray abierto en el ordenador Windows de la caja y
+la impresora `POSPrinter POS-80`. La primera vez puede pedir autorización. Si
+QZ o la impresora no están disponibles se muestra el motivo y se ofrece la
+impresión del navegador como alternativa. La preparación está en
+[`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-la-caja-impresión-térmica-con-qz-tray).
 
 ### 2.6. Cerrar caja y sesión
 
@@ -398,9 +400,9 @@ e impresión automática del TPV.
 
 Con `ticket.manage` se crean, revisan, activan y eliminan plantillas. Sólo una
 plantilla está activa globalmente. La vista previa conserva siempre los **80
-mm** de la bobina; los márgenes izquierdo/derecho mueven el texto dentro de
-ella y el ancho imprimible se calcula automáticamente restándolos de 80 mm.
-Los márgenes nunca escalan la letra. También se configuran
+mm** de la bobina y muestra el mismo raster de 576 puntos que se envía mediante
+QZ Tray al cabezal de 72 mm. Los márgenes izquierdo/derecho mueven el texto
+dentro del cabezal y nunca escalan la letra. También se configuran
 fuente, tamaño, interlineado, márgenes verticales, datos de tienda y campos
 visibles.
 

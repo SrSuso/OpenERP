@@ -20,6 +20,10 @@ const FONT_STACKS: Record<TicketFontFamily, string> = {
   DEJAVU_SANS_MONO: "'DejaVu Sans Mono', 'Liberation Mono', monospace",
 };
 
+export function ticketFontStack(font: TicketFontFamily): string {
+  return FONT_STACKS[font];
+}
+
 /**
  * La instalación usa bobina térmica estándar de 80 mm. `printable_width_mm`
  * es deliberadamente otra cosa: la zona útil del contenido, que puede ser
