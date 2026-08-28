@@ -1,13 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation } from '@tanstack/react-query';
-import { useEffect, useId } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useId, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-import { type Product } from '@/features/catalog/api';
-import { useChosenProduct } from '@/features/catalog/useChosenProduct';
-import { useProductSearch } from '@/features/catalog/useProductSearch';
-import { type OrderLineInput, type PurchaseOrderLine } from '@/features/purchasing/api';
+import { productsQuery, type Product } from '@/features/catalog/api';
+import { type OrderLineInput } from '@/features/purchasing/api';
 import { previewProductPriceForCost } from '@/features/pricing/api';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
@@ -23,6 +21,8 @@ const addLineSchema = z.object({
 
 type AddLineFormValues = z.infer<typeof addLineSchema>;
 
+const EMPTY_PRODUCTS: Product[] = [];
+
 export interface OrderLinePreview {
   product_name: string;
   unit_name: string;
@@ -30,10 +30,8 @@ export interface OrderLinePreview {
 }
 
 interface AddOrderLineFormProps {
-  products: Product[];
   onSubmit: (payload: OrderLineInput, preview: OrderLinePreview) => void;
   isPending: boolean;
-  initialLine?: PurchaseOrderLine;
   submitLabel?: string;
   onCancel?: () => void;
 }
@@ -41,10 +39,8 @@ interface AddOrderLineFormProps {
 /** Formulario para añadir una línea a un pedido en `DRAFT` — la unidad se
  * toma automáticamente de la unidad base del producto. */
 export function AddOrderLineForm({
-  products,
   onSubmit,
   isPending,
-  initialLine,
   submitLabel = 'Añadir línea',
   onCancel,
 }: AddOrderLineFormProps) {
@@ -58,39 +54,53 @@ export function AddOrderLineForm({
   } = useForm<AddLineFormValues>({
     resolver: zodResolver(addLineSchema),
     defaultValues: {
-      product_id: initialLine ? String(initialLine.product_id) : '',
-      package_id: initialLine ? String(initialLine.package_id) : '',
-      quantity_packages: initialLine?.quantity_packages ?? '1',
-      unit_cost: initialLine?.unit_cost ?? '0',
-      tax_rate: initialLine?.tax_rate ?? '0',
-      discount_rate: initialLine?.discount_rate ?? '0',
+      product_id: '',
+      package_id: '',
+      quantity_packages: '1',
+      unit_cost: '0',
+      tax_rate: '0',
+      discount_rate: '0',
     },
   });
 
-  const productId = watch('product_id');
   const unitCost = watch('unit_cost');
   const productFieldId = useId();
-  const { query, setQuery, matches } = useProductSearch(products, {
-    onSingleMatch: (id) => setValue('product_id', id),
+  const [query, setQuery] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const search = query.trim();
+  const productSearch = useQuery({
+    ...productsQuery({ activeOnly: true, search, limit: 8 }),
+    enabled: search.length >= 2,
   });
+  const matches = productSearch.data ?? EMPTY_PRODUCTS;
+  const onlyProductId = search.length > 0 && matches.length === 1 ? String(matches[0]!.id) : null;
+
+  useEffect(() => {
+    if (onlyProductId === null) return;
+    setValue('product_id', onlyProductId);
+    setSelectedProduct(matches[0]!);
+  }, [matches, onlyProductId, search, setValue]);
+
   // El IVA y la unidad salen del producto: una línea de compra nunca debe
-  // pedir elegir otra unidad distinta. Se conserva la posibilidad de cambiar
-  // el IVA de factura, pero no la identidad física de lo que se compra.
-  const selectedProduct = useChosenProduct(productId, products, (product) => {
-    // Una línea existente conserva su instantánea: no convertimos una compra
-    // histórica hecha por cajas a unidades sólo por abrir el editor. Al
-    // elegir otro artículo sí se toma automáticamente su unidad base.
-    if (initialLine?.product_id === product.id) return;
-    const basePackage = product.packages.find((pkg) => pkg.is_base) ?? product.packages[0];
+  // pedir elegir otra unidad distinta. El IVA de factura sigue siendo
+  // editable, pero no la identidad física de lo que se compra.
+  useEffect(() => {
+    if (!selectedProduct) return;
+    // Cada artículo se añade con su unidad base, sin obligar a seleccionarla
+    // de nuevo en la compra.
+    const basePackage =
+      selectedProduct.packages.find((pkg) => pkg.is_base) ?? selectedProduct.packages[0];
     setValue('package_id', basePackage ? String(basePackage.id) : '');
-    setValue('tax_rate', decimalInputValue(product.effective_tax_rate));
-    setValue('unit_cost', decimalInputValue(product.cost));
-  });
+    setValue('tax_rate', decimalInputValue(selectedProduct.effective_tax_rate));
+    setValue('unit_cost', decimalInputValue(selectedProduct.cost));
+  }, [selectedProduct, setValue]);
   const selectedProductId = selectedProduct?.id;
-  const selectedUnitName =
-    initialLine !== undefined && initialLine.product_id === selectedProductId
-      ? initialLine.package_name
-      : selectedProduct?.base_unit_name;
+  const selectedUnitName = selectedProduct?.base_unit_name;
+  // Nunca se pinta el catálogo entero: con miles de artículos el selector
+  // nativo sería lento e imposible de recorrer. Se muestran como mucho ocho
+  // coincidencias sólo después de escribir; el lector de códigos conserva el
+  // atajo de seleccionar automáticamente una coincidencia única.
+  const visibleMatches = search === '' ? [] : matches;
   // Los campos monetarios aceptan la coma decimal española, pero `Number`
   // no. Normalízala antes de decidir si se puede pedir la previsualización y
   // antes de enviarla al backend, que trabaja con decimales de punto.
@@ -145,6 +155,8 @@ export function AddOrderLineForm({
       tax_rate: '0',
       discount_rate: '0',
     });
+    setQuery('');
+    setSelectedProduct(null);
   });
 
   return (
@@ -153,28 +165,50 @@ export function AddOrderLineForm({
       noValidate
       className="flex flex-wrap items-end gap-2"
     >
-      <div className="text-sm text-slate-600">
+      <div className="relative text-sm text-slate-600">
         <label htmlFor={productFieldId}>Producto</label>
         <input
+          id={productFieldId}
           type="text"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setValue('product_id', '');
+            setSelectedProduct(null);
+          }}
           placeholder="Nombre o código de barras…"
           aria-label="Buscar producto"
-          className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
+          autoComplete="off"
+          className="mt-1 block w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
-        <select
-          id={productFieldId}
-          className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
-          {...register('product_id')}
-        >
-          <option value="">Elige un producto…</option>
-          {matches.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.name}
-            </option>
-          ))}
-        </select>
+        <input type="hidden" {...register('product_id')} />
+        {visibleMatches.length > 1 && (
+          <div
+            role="listbox"
+            aria-label="Resultados de producto"
+            className="absolute z-20 mt-1 max-h-72 w-80 overflow-y-auto rounded border border-slate-300 bg-white py-1 shadow-lg"
+          >
+            {visibleMatches.map((product) => (
+              <button
+                key={product.id}
+                type="button"
+                role="option"
+                aria-label={`Seleccionar ${product.name}`}
+                onClick={() => {
+                  setValue('product_id', String(product.id), { shouldValidate: true });
+                  setQuery(product.name);
+                  setSelectedProduct(product);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-brand-50"
+              >
+                {product.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {selectedProduct && (
+          <p className="mt-1 text-xs text-emerald-700">Seleccionado: {selectedProduct.name}</p>
+        )}
         {errors.product_id && (
           <p className="mt-1 text-sm text-red-600">{errors.product_id.message}</p>
         )}

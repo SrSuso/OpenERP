@@ -307,7 +307,7 @@ describe('PurchasingPage', () => {
     expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeDisabled();
     await screen.findByText('Añade al menos un producto — un pedido no se puede crear vacío.');
 
-    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    await userEvent.type(screen.getByLabelText('Producto'), 'Agua 1.5L');
     // Lo que ese producto vale hoy, para comparar con lo que pide el
     // proveedor sin abrir su ficha.
     expect(screen.getByLabelText('Coste actual')).toHaveValue('0,5');
@@ -399,7 +399,7 @@ describe('PurchasingPage', () => {
     await screen.findByText('No hay pedidos de compra todavía.');
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo pedido' }));
     await userEvent.selectOptions(screen.getByLabelText('Proveedor'), '1');
-    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    await userEvent.type(screen.getByLabelText('Producto'), 'Agua 1.5L');
     await userEvent.clear(screen.getByLabelText('Cantidad'));
     await userEvent.type(screen.getByLabelText('Cantidad'), '1');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir fila' }));

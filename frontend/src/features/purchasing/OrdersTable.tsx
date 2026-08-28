@@ -1,6 +1,5 @@
 import { Fragment } from 'react';
 
-import { type Product } from '@/features/catalog/api';
 import { OrderDetailPanel } from '@/features/purchasing/OrderDetailPanel';
 import { type PurchaseOrder } from '@/features/purchasing/api';
 import { formatMoney } from '@/lib/format';
@@ -23,7 +22,6 @@ const STATUS_STYLES: Record<PurchaseOrder['status'], string> = {
 
 interface OrdersTableProps {
   orders: PurchaseOrder[];
-  products: Product[];
   expandedId: number | null;
   onToggleExpand: (id: number) => void;
   canManagePurchase: boolean;
@@ -33,7 +31,6 @@ interface OrdersTableProps {
 
 export function OrdersTable({
   orders,
-  products,
   expandedId,
   onToggleExpand,
   canManagePurchase,
@@ -81,7 +78,6 @@ export function OrdersTable({
                   <td colSpan={5} className="p-0">
                     <OrderDetailPanel
                       order={order}
-                      products={products}
                       canManagePurchase={canManagePurchase}
                       canManageReceiving={canManageReceiving}
                       canManagePricing={canManagePricing}

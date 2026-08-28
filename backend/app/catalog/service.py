@@ -620,6 +620,7 @@ async def list_products(
     pos_category_id: int | None = None,
     active_only: bool = True,
     search: str | None = None,
+    limit: int | None = None,
 ) -> list[Product]:
     stmt = select(Product).options(*_product_options()).order_by(Product.name)
     if active_only:
@@ -652,6 +653,8 @@ async def list_products(
                 by_barcode,
             )
         )
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list((await session.execute(stmt)).scalars())
 
 

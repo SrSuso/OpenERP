@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-import { type Product } from '@/features/catalog/api';
 import { AddOrderLineForm } from '@/features/purchasing/AddOrderLineForm';
 import { type OrderLineInput } from '@/features/purchasing/api';
 import { previewProductPriceForCost } from '@/features/pricing/api';
@@ -25,7 +24,6 @@ interface StagedLine extends OrderLineInput {
 
 interface CreateOrderFormProps {
   suppliers: Supplier[];
-  products: Product[];
   onSubmit: (payload: { supplier_id: number; notes: string; lines: OrderLineInput[] }) => void;
   onCancel: () => void;
   isPending: boolean;
@@ -158,7 +156,6 @@ function StagedOrderLineRow({
  * a que alguien vuelva más tarde a añadirle algo. */
 export function CreateOrderForm({
   suppliers,
-  products,
   onSubmit,
   onCancel,
   isPending,
@@ -309,7 +306,6 @@ export function CreateOrderForm({
       {stagedError && <p className="mb-3 text-sm text-red-600">{stagedError}</p>}
 
       <AddOrderLineForm
-        products={products}
         isPending={false}
         onSubmit={(line, preview) => {
           setStagedError(null);

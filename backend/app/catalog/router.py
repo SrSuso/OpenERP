@@ -246,6 +246,7 @@ async def list_products(
     pos_category_id: Annotated[int | None, Query()] = None,
     active_only: Annotated[bool, Query()] = True,
     search: Annotated[str | None, Query()] = None,
+    limit: Annotated[int | None, Query(ge=1, le=50)] = None,
 ) -> list[ProductRead]:
     products = await service.list_products(
         session,
@@ -253,6 +254,7 @@ async def list_products(
         pos_category_id=pos_category_id,
         active_only=active_only,
         search=search,
+        limit=limit,
     )
     return [_to_read(p) for p in products]
 

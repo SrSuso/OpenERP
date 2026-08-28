@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 
-import { type Product } from '@/features/catalog/api';
 import { AddOrderLineForm } from '@/features/purchasing/AddOrderLineForm';
 import { GoodsReceiptForm } from '@/features/purchasing/GoodsReceiptForm';
 import { OrderLinesTable } from '@/features/purchasing/OrderLinesTable';
@@ -29,7 +28,6 @@ const STATUS_LABELS: Record<PurchaseOrder['status'], string> = {
 
 interface OrderDetailPanelProps {
   order: PurchaseOrder;
-  products: Product[];
   canManagePurchase: boolean;
   canManageReceiving: boolean;
   canManagePricing: boolean;
@@ -37,7 +35,6 @@ interface OrderDetailPanelProps {
 
 export function OrderDetailPanel({
   order,
-  products,
   canManagePurchase,
   canManageReceiving,
   canManagePricing,
@@ -157,7 +154,6 @@ export function OrderDetailPanel({
       />
       {canManagePurchase && order.status === 'DRAFT' && (
         <AddOrderLineForm
-          products={products}
           onSubmit={(payload) => addLineMutation.mutate(payload)}
           isPending={addLineMutation.isPending}
           submitLabel="Añadir otra línea"

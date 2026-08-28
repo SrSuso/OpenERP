@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { useAuth } from '@/features/auth/useAuth';
-import { productsQuery } from '@/features/catalog/api';
 import { CreateOrderForm } from '@/features/purchasing/CreateOrderForm';
 import { OrdersTable } from '@/features/purchasing/OrdersTable';
 import { createOrder, purchaseOrdersQuery, type OrderLineInput } from '@/features/purchasing/api';
@@ -36,7 +35,6 @@ export function PurchasingPage() {
 
   const orders = useQuery(purchaseOrdersQuery(status === '' ? {} : { status }));
   const suppliers = useQuery(suppliersQuery(true));
-  const products = useQuery(productsQuery({ activeOnly: true }));
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
@@ -87,7 +85,6 @@ export function PurchasingPage() {
       {showCreateForm && (
         <CreateOrderForm
           suppliers={suppliers.data ?? []}
-          products={products.data ?? []}
           isPending={createMutation.isPending}
           submitError={createError}
           onCancel={() => {
@@ -110,7 +107,6 @@ export function PurchasingPage() {
       {orders.data && orders.data.length > 0 && (
         <OrdersTable
           orders={orders.data}
-          products={products.data ?? []}
           expandedId={expandedId}
           onToggleExpand={(id) => setExpandedId((current) => (current === id ? null : id))}
           canManagePurchase={canManagePurchase}

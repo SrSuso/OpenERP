@@ -487,3 +487,24 @@ async def test_products_can_be_searched_by_barcode(
         product["id"]
     ]
     assert (await client.get("/api/v1/products?search=000000")).json() == []
+
+
+async def test_product_search_can_limit_autocomplete_results(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    for number in range(3):
+        response = await client.post(
+            "/api/v1/products",
+            json=_product_payload(
+                sku=f"WATER-{number}",
+                name=f"Agua mineral {number}",
+                base_barcode=f"800000{number}",
+            ),
+        )
+        assert response.status_code == 201
+
+    response = await client.get("/api/v1/products?search=agua&limit=2")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2

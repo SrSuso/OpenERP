@@ -284,6 +284,7 @@ export interface ProductFilters {
   posCategoryId?: number;
   activeOnly?: boolean;
   search?: string;
+  limit?: number;
 }
 
 export function productQuery(id: number) {
@@ -302,6 +303,7 @@ export function productsQuery(filters: ProductFilters) {
   }
   params.set('active_only', String(filters.activeOnly ?? true));
   if (filters.search) params.set('search', filters.search);
+  if (filters.limit !== undefined) params.set('limit', String(filters.limit));
 
   return queryOptions({
     queryKey: ['catalog', 'products', filters] as const,
