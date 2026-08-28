@@ -213,6 +213,13 @@ atiende la tienda aplicaría el código y las migraciones de v2 sobre sus datos.
 Nunca se debe usar como una vista previa de v2 sobre la base de producción de
 0.8.
 
+Antes de activar mantenimiento, el despliegue comprueba que la rama elegida
+conoce la revisión Alembic que ya tiene la base. Si no la contiene, se detiene
+con la tienda todavía online. Esto evita arrancar código antiguo sobre un
+esquema de una rama posterior, pero no convierte ni revierte bases entre
+ramas: para volver a una versión anterior hay que restaurar su backup en una
+base aislada y hacer el corte controlado descrito en §4.
+
 No ejecutes `prod-migrate` por separado con la tienda abierta. El script usa
 un lock local para impedir dos deploys simultáneos y sigue este orden:
 

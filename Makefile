@@ -334,6 +334,10 @@ prod-migration-check:  ## Assert the production DB revision equals the target im
 	@$(PROD_COMPOSE) run --rm --no-deps migrate uv run alembic current | grep -q '(head)' \
 	  || (echo 'ERROR: production database is not at Alembic head' >&2; exit 2)
 
+.PHONY: prod-schema-compatible
+prod-schema-compatible:  ## Refuse an incompatible branch before entering maintenance
+	./scripts/check-production-migration-compatibility.sh
+
 .PHONY: prod-stop-writers
 prod-stop-writers:  ## Stop API and outbox worker while leaving PostgreSQL/web available
 	$(PROD_COMPOSE) stop api worker

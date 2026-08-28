@@ -47,5 +47,24 @@ case "${MODE}" in
     fi
     exec "${ROOT_DIR}/scripts/restore-postgres.sh" "$@"
     ;;
-  *) die "usage: $0 backup [directory] | restore <dump> --target-database <new-name>" ;;
+  current-revision)
+    command -v psql >/dev/null || die "psql not found — install PostgreSQL client tools"
+    source "${ROOT_DIR}/scripts/lib-postgres.sh"
+    URL="$(resolve_url)"
+    openerp_configure_pg_url "${URL}"
+    unset OPENERP_DATABASE_URL OPENERP_DATABASE_URL_FILE URL
+    VERSION_TABLE="$({
+      psql --dbname="${OPENERP_PG_URL}" --no-psqlrc -X -Atq -v ON_ERROR_STOP=1 \
+        -c "SELECT COALESCE(to_regclass('public.alembic_version')::text, '')"
+    })"
+    if [[ -z "${VERSION_TABLE}" ]]; then
+      printf 'unversioned\n'
+    else
+      psql --dbname="${OPENERP_PG_URL}" --no-psqlrc -X -Atq -v ON_ERROR_STOP=1 \
+        -c "SELECT version_num FROM alembic_version ORDER BY version_num"
+    fi
+    ;;
+  *)
+    die "usage: $0 backup [directory] | restore <dump> --target-database <new-name> | current-revision"
+    ;;
 esac

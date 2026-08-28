@@ -119,6 +119,8 @@ log "building immutable images for ${TARGET_VERSION:0:12} while the old version 
 make prod-build
 make prod-validate-web-config
 make prod-validate-api-config
+log "checking that the target branch recognizes the production schema"
+make prod-schema-compatible
 
 printf 'previous=%s\ntarget=%s\nstarted_at_utc=%s\n' \
   "${DEPLOYED_BEFORE}" "${TARGET_VERSION}" "$(date -u +%Y%m%dT%H%M%SZ)" \
