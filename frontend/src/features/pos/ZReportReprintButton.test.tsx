@@ -67,9 +67,8 @@ describe('ZReportReprintButton', () => {
     await waitFor(() => expect(activeDocuments).toEqual([1]));
     expect(await screen.findByText(/CIERRE Z Nº 7/)).toBeInTheDocument();
     expect(screen.getByText(/TOTAL COBRADO/)).toBeInTheDocument();
-    expect(document.head.querySelector('[data-ticket-page-style="active"]')?.textContent).toContain(
-      '@page { size: 80mm',
-    );
+    expect(document.head.querySelector('[data-ticket-page-style="active"]')).toBeNull();
+    expect(document.body).toHaveClass('printing-thermal-document');
 
     await act(() => window.dispatchEvent(new Event('afterprint')));
     await waitFor(() =>
@@ -77,5 +76,6 @@ describe('ZReportReprintButton', () => {
         document.querySelectorAll(".ticket-print-root[data-print-active='true']"),
       ).toHaveLength(0),
     );
+    expect(document.body).not.toHaveClass('printing-thermal-document');
   });
 });

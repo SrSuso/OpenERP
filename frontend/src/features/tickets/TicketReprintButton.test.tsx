@@ -40,9 +40,15 @@ describe('TicketReprintButton', () => {
       }),
     );
     const activeDocumentCounts: number[] = [];
+    const isolatedFromApplication: boolean[] = [];
     vi.stubGlobal('print', () => {
       activeDocumentCounts.push(
         document.querySelectorAll(".ticket-print-root[data-print-active='true']").length,
+      );
+      const printRoot = document.querySelector(".ticket-print-root[data-print-active='true']");
+      isolatedFromApplication.push(
+        printRoot?.parentElement === document.body &&
+          document.body.classList.contains('printing-thermal-document'),
       );
     });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -55,9 +61,9 @@ describe('TicketReprintButton', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 101' }));
     await waitFor(() => expect(activeDocumentCounts).toEqual([1]));
-    expect(document.head.querySelector('[data-ticket-page-style="active"]')?.textContent).toContain(
-      '@page { size: 80mm',
-    );
+    expect(isolatedFromApplication).toEqual([true]);
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
+    expect(document.head.querySelector('[data-ticket-page-style="active"]')).toBeNull();
 
     // El evento se dispara tanto al imprimir como al cancelar el diálogo.
     // Por eso el documento anterior deja de existir antes del siguiente.
@@ -67,6 +73,7 @@ describe('TicketReprintButton', () => {
         document.querySelectorAll(".ticket-print-root[data-print-active='true']"),
       ).toHaveLength(0),
     );
+    expect(document.body).not.toHaveClass('printing-thermal-document');
     expect(screen.getByRole('button', { name: 'Ticket 101' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Ticket 102' }));

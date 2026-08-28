@@ -1,15 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useState } from 'react';
 
 import { type ZReport } from '@/features/pos/api';
 import { renderZReportTicket } from '@/features/pos/zReportTicket';
 import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
-import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
 import {
   printActiveDocument,
   useExclusivePrintDocument,
-  usePrintPageStyle,
 } from '@/features/tickets/useExclusivePrintDocument';
 
 interface ZReportReprintButtonProps {
@@ -32,19 +30,6 @@ export function ZReportReprintButton({
   const activatePrint = useExclusivePrintDocument(deactivatePrint);
   const profile = printProfile.data;
   const text = profile === undefined ? null : renderZReportTicket(report, closedAtLabel, profile);
-  const pageStyle =
-    text !== null && isPrintActive && profile !== undefined
-      ? ticketPageStyle(profile, text.split('\n').length)
-      : null;
-  usePrintPageStyle(pageStyle);
-
-  // Igual que con una venta reimpresa desde Administración, el portal evita
-  // que la tabla de cierres conserve alto y produzca páginas en blanco.
-  useLayoutEffect(() => {
-    if (!isPrintActive) return;
-    document.body.classList.add('printing-ticket-reprint');
-    return () => document.body.classList.remove('printing-ticket-reprint');
-  }, [isPrintActive]);
 
   useEffect(() => {
     if (!isPrintActive) return;
@@ -70,29 +55,9 @@ export function ZReportReprintButton({
           No se ha podido cargar el perfil de impresión.
         </p>
       )}
-      {text !== null &&
-        isPrintActive &&
-        profile !== undefined &&
-        createPortal(
-          <div
-            className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
-            data-print-active="true"
-            data-ticket-width={profile.printable_width_mm}
-            style={ticketPrintStyle(profile)}
-          >
-            <pre className="max-h-full overflow-auto whitespace-pre rounded bg-white p-4 font-mono text-xs text-slate-900">
-              {text}
-            </pre>
-            <button
-              type="button"
-              onClick={deactivatePrint}
-              className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
-            >
-              Cerrar
-            </button>
-          </div>,
-          document.body,
-        )}
+      {text !== null && profile !== undefined && (
+        <ThermalPrintDocument active={isPrintActive} text={text} profile={profile} />
+      )}
     </>
   );
 }

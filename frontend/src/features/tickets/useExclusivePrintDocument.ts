@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useId, useRef } from 'react';
 
 const PRINT_DOCUMENT_EVENT = 'openerp:activate-print-document';
 
@@ -16,25 +16,6 @@ export function printActiveDocument(onFinished: () => void): void {
 
   window.addEventListener('afterprint', finish, { once: true });
   window.print();
-}
-
-/**
- * Chromium toma la regla de tamaño desde <head> al abrir su composición de
- * impresión. Mantenerla dentro del portal del ticket permitía que el motor
- * usara la hoja A4 que tenía ya preparada. Sólo se monta para el documento
- * activo y se retira al volver del diálogo.
- */
-export function usePrintPageStyle(pageCss: string | null): void {
-  useLayoutEffect(() => {
-    if (pageCss === null) return;
-
-    const style = document.createElement('style');
-    style.media = 'print';
-    style.dataset.ticketPageStyle = 'active';
-    style.textContent = pageCss;
-    document.head.append(style);
-    return () => style.remove();
-  }, [pageCss]);
 }
 
 /**

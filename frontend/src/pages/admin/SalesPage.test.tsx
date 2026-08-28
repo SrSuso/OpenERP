@@ -143,9 +143,9 @@ describe('SalesPage', () => {
     // El documento permanece activo mientras Chromium compone la
     // previsualización. `afterprint` se dispara tanto al confirmar como al
     // cancelar y entonces deja de poder sumarse a otra reimpresión.
-    expect(document.body.classList).toContain('printing-ticket-reprint');
+    expect(document.body.classList).toContain('printing-thermal-document');
     await act(() => window.dispatchEvent(new Event('afterprint')));
-    await waitFor(() => expect(document.body.classList).not.toContain('printing-ticket-reprint'));
+    await waitFor(() => expect(document.body.classList).not.toContain('printing-thermal-document'));
     expect(within(charged).getByRole('button', { name: 'Reimprimir ticket' })).toBeInTheDocument();
   });
 

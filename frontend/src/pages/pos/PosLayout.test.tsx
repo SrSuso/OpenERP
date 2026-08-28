@@ -243,11 +243,12 @@ describe('PosLayout', () => {
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
 
     fullscreenElement = document.documentElement;
-    act(() => document.dispatchEvent(new Event('fullscreenchange')));
-    expect(await screen.findByRole('button', { name: 'Salir de pantalla completa' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    act(() => {
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+    expect(
+      await screen.findByRole('button', { name: 'Salir de pantalla completa' }),
+    ).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'Salir de pantalla completa' }));
     expect(exitFullscreen).toHaveBeenCalledTimes(1);
   });
@@ -298,7 +299,7 @@ describe('PosLayout', () => {
     expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
     expect(backend.closeCalls).toHaveLength(1);
     expect(backend.logoutCalls).toEqual([]);
-    const printRoot = screen.getByText('Cierre Z nº 7').closest('[data-ticket-width]');
+    const printRoot = document.querySelector(".ticket-print-root[data-print-active='true']");
     expect(printRoot).toHaveAttribute('data-ticket-width', '64');
     expect(printRoot).toHaveStyle({
       '--ticket-font-size': '10px',

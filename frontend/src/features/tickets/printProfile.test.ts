@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  ticketPageHeightMm,
-  ticketPageStyle,
+  printableCharacters,
+  THERMAL_PAPER_WIDTH_MM,
   ticketPreviewStyle,
   ticketPrintStyle,
 } from './printProfile';
@@ -20,10 +20,8 @@ const PROFILE = {
 };
 
 describe('ticket print page profile', () => {
-  it('uses the 80 mm thermal roll while keeping the configured width for content', () => {
-    expect(ticketPageStyle(PROFILE, 20)).toMatch(
-      /^@page \{ size: 80mm \d+(?:\.\d+)?mm; margin: 0; \}$/,
-    );
+  it('keeps the configured printable area and margins inside the 80 mm roll', () => {
+    expect(THERMAL_PAPER_WIDTH_MM).toBe(80);
     expect(ticketPreviewStyle(PROFILE)).toMatchObject({
       width: '72mm',
       marginLeft: '4mm',
@@ -35,8 +33,7 @@ describe('ticket print page profile', () => {
     });
   });
 
-  it('reserves configured margins and enough height for every printed line', () => {
-    expect(ticketPageHeightMm(PROFILE, 20)).toBeGreaterThan(ticketPageHeightMm(PROFILE, 5));
-    expect(ticketPageHeightMm(PROFILE, 1)).toBeGreaterThanOrEqual(25);
+  it('calculates a conservative line width without imposing a roll height', () => {
+    expect(printableCharacters(PROFILE)).toBe(48);
   });
 });

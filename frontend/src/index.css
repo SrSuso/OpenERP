@@ -51,11 +51,22 @@
  * receipt text itself — the classic "print only this element" trick, so
  * `window.print()` never needs the rest of the till's chrome (or its dark
  * background) reproduced on paper. */
+.ticket-print-root {
+  display: none;
+}
+
+/* Reimprimir mantiene un control visible por si el navegador no entrega el
+   evento `afterprint` al cancelar su diálogo. Es el mismo nodo que se imprime,
+   no una segunda copia susceptible de acumularse. */
+.ticket-print-root.ticket-print-screen {
+  display: flex;
+}
+
 @media print {
-  /* La reimpresión del panel administrativo se monta directamente bajo
-     <body>. Quitar #root del flujo impreso evita que sus tablas, menú y
-     alto de pantalla se conviertan en papel en blanco antes del ticket. */
-  body.printing-ticket-reprint #root {
+  /* Todos los documentos térmicos se montan directamente bajo <body>.
+     Quitar #root del flujo impreso evita que las tablas, el TPV, el menú y
+     el alto de pantalla se conviertan en papel en blanco antes del ticket. */
+  body.printing-thermal-document #root {
     display: none !important;
   }
 
@@ -94,18 +105,27 @@
     visibility: visible;
   }
 
+  .ticket-print-root[data-print-active='true'] .ticket-print-controls {
+    display: none !important;
+  }
+
   .ticket-print-root[data-print-active='true'] {
-    position: fixed;
-    inset: 0;
+    position: static;
+    display: block !important;
     /* En negro sobre blanco pase lo que pase: el cierre de caja se pinta
        en pantalla sobre fondo oscuro y con letra clara, y los navegadores
        no imprimen fondos — esa letra saldría en blanco sobre el papel, es
        decir, en blanco. */
     background: #fff;
     color: #000;
-    padding: 2mm;
-    break-inside: avoid;
-    page-break-inside: avoid;
+    width: 80mm;
+    min-width: 80mm;
+    max-width: 80mm;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
 
   .ticket-print-root[data-print-active='true'] * {
@@ -118,29 +138,20 @@
      interlineado y márgenes. El ancho es la zona que realmente se imprime,
      nunca el ancho nominal de la bobina. */
   .ticket-print-root[data-print-active='true'][data-ticket-width] {
-    position: static !important;
-    display: block !important;
-    inset: auto !important;
-    justify-content: initial !important;
-    align-items: initial !important;
-    width: var(--ticket-printable-width) !important;
-    min-width: 0 !important;
-    max-width: var(--ticket-printable-width) !important;
-    height: auto !important;
-    min-height: 0 !important;
-    margin: var(--ticket-margin-top) var(--ticket-margin-right) var(--ticket-margin-bottom)
-      var(--ticket-margin-left) !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
+    width: 80mm !important;
+    min-width: 80mm !important;
+    max-width: 80mm !important;
   }
 
   .ticket-print-root[data-print-active='true'][data-ticket-width] pre {
     display: block !important;
-    width: 100% !important;
-    max-width: none !important;
+    width: var(--ticket-printable-width) !important;
+    min-width: 0 !important;
+    max-width: var(--ticket-printable-width) !important;
     height: auto !important;
     max-height: none !important;
-    margin: 0 !important;
+    margin: var(--ticket-margin-top) var(--ticket-margin-right) var(--ticket-margin-bottom)
+      var(--ticket-margin-left) !important;
     padding: 0 !important;
     overflow: visible !important;
     border: 0 !important;
@@ -152,17 +163,6 @@
     font-size: var(--ticket-font-size) !important;
     font-weight: var(--ticket-font-weight) !important;
     font-variant-ligatures: none;
-    line-height: var(--ticket-line-height) !important;
-  }
-
-  /* La Z no se renderiza como un bloque <pre>, pero debe salir por la misma
-     impresora con el mismo ancho útil, fuente, tamaño, interlineado y peso
-     configurados para los tickets de venta. */
-  .ticket-print-root[data-print-active='true'][data-ticket-width],
-  .ticket-print-root[data-print-active='true'][data-ticket-width] * {
-    font-family: var(--ticket-font-family) !important;
-    font-size: var(--ticket-font-size) !important;
-    font-weight: var(--ticket-font-weight) !important;
     line-height: var(--ticket-line-height) !important;
   }
 }

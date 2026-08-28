@@ -348,6 +348,14 @@ Una página web no puede saltarse el cuadro de impresión del navegador.
 deliberada: si una web pudiera imprimir sola, cualquiera podría vaciarte el
 papel. No hay forma de programarlo desde la aplicación.
 
+Antes de usar la caja, configura el controlador con bobina de **80 mm**,
+orientación vertical, escala **100 %**, sin márgenes y sin cabeceras ni pies.
+OpenERP controla el ancho útil, los márgenes del contenido y la tipografía; el
+controlador de la térmica controla la longitud continua y el corte. Una
+impresora PDF configurada como A4 mostrará A4 aunque el contenido mida 80 mm.
+La explicación completa y las opciones disponibles están en
+[`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md).
+
 Lo que sí se puede es arrancar el navegador de la caja en **modo caja**,
 donde `window.print()` manda el trabajo directo a la impresora
 predeterminada. Según el equipo de la caja:

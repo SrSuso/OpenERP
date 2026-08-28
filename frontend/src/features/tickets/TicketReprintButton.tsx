@@ -1,13 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useState } from 'react';
 
 import { generateTicket, type Ticket } from '@/features/pos/api';
-import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
 import {
   printActiveDocument,
   useExclusivePrintDocument,
-  usePrintPageStyle,
 } from '@/features/tickets/useExclusivePrintDocument';
 import { ApiError } from '@/lib/api';
 
@@ -37,11 +35,6 @@ export function TicketReprintButton({
     setTicket(null);
   }, [deactivatePrint]);
   const activatePrint = useExclusivePrintDocument(dismissTicket);
-  const pageStyle =
-    ticket !== null && isPrintActive
-      ? ticketPageStyle(ticket, ticket.rendered_text.split('\n').length)
-      : null;
-  usePrintPageStyle(pageStyle);
 
   const mutation = useMutation({
     mutationFn: () => generateTicket(saleId),
@@ -52,18 +45,6 @@ export function TicketReprintButton({
     },
   });
 
-  // Esta vista se monta mediante un portal directamente bajo <body>. Al
-  // imprimir desde Administración, dejarla dentro de una fila de la tabla
-  // ocultaba el panel pero conservaba toda su altura en el documento, y la
-  // impresora térmica avanzaba varias páginas en blanco antes del ticket.
-  // La clase permite retirar #root de la maquetación impresa sin afectar la
-  // impresión normal que se inicia desde el propio TPV.
-  useLayoutEffect(() => {
-    if (ticket === null || !isPrintActive) return;
-    document.body.classList.add('printing-ticket-reprint');
-    return () => document.body.classList.remove('printing-ticket-reprint');
-  }, [ticket, isPrintActive]);
-
   useEffect(() => {
     if (ticket !== null && isPrintActive) {
       printActiveDocument(dismissTicket);
@@ -71,25 +52,13 @@ export function TicketReprintButton({
   }, [ticket, isPrintActive, dismissTicket]);
 
   if (ticket !== null) {
-    return createPortal(
-      <div
-        className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
-        data-print-active={isPrintActive ? 'true' : undefined}
-        data-ticket-width={ticket.printable_width_mm}
-        style={ticketPrintStyle(ticket)}
-      >
-        <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
-          {ticket.rendered_text}
-        </pre>
-        <button
-          type="button"
-          onClick={dismissTicket}
-          className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
-        >
-          Cerrar
-        </button>
-      </div>,
-      document.body,
+    return (
+      <ThermalPrintDocument
+        active={isPrintActive}
+        text={ticket.rendered_text}
+        profile={ticket}
+        onDismiss={dismissTicket}
+      />
     );
   }
 

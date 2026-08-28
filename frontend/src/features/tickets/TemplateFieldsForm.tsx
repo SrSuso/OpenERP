@@ -441,6 +441,16 @@ export function TemplateFieldsForm({
             Fijar una altura podría cortar líneas o dejar papel en blanco.
           </p>
 
+          <div className="rounded border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 sm:col-span-2">
+            <p className="font-semibold">Configuración necesaria al imprimir</p>
+            <p className="mt-1">
+              En el controlador selecciona papel o bobina de 80 mm, escala 100 % (tamaño real),
+              márgenes ninguno y cabeceras y pies desactivados. OpenERP controla el ancho del
+              contenido, los márgenes y la tipografía; la impresora controla el largo continuo y el
+              corte. Un destino A4 como «Microsoft Print to PDF» seguirá mostrando una hoja A4.
+            </p>
+          </div>
+
           {layoutMode === 'CUSTOM' && (
             <div className="sm:col-span-2">
               <label className="text-sm text-slate-600">

@@ -2,14 +2,16 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { closeZReport, zReportPreviewQuery, type ZReport } from '@/features/pos/api';
-import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import { renderZReportTicket } from '@/features/pos/zReportTicket';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
+import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
 import {
   printActiveDocument,
   useExclusivePrintDocument,
-  usePrintPageStyle,
 } from '@/features/tickets/useExclusivePrintDocument';
-import { activeTicketPrintProfileQuery } from '@/features/tickets/api';
 import { ApiError } from '@/lib/api';
+import { formatBusinessDateTime } from '@/lib/businessTime';
 import { formatMoney } from '@/lib/format';
 
 interface CloseTillDialogProps {
@@ -41,6 +43,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
  * (regla 11); aquí sólo se dice antes de dejar pulsar.
  */
 export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDialogProps) {
+  const businessTimezone = useBusinessTimezone();
   const preview = useQuery(zReportPreviewQuery(warehouseId));
   const printProfile = useQuery(activeTicketPrintProfileQuery);
   const [closed, setClosed] = useState<ZReport | null>(null);
@@ -49,11 +52,14 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   const closeAttemptRef = useRef<string | null>(null);
   const deactivatePrint = useCallback(() => setPrintActive(false), []);
   const activatePrint = useExclusivePrintDocument(deactivatePrint);
-  const pageStyle =
-    closed !== null && isPrintActive && printProfile.data !== undefined
-      ? ticketPageStyle(printProfile.data, 28)
+  const closedTicketText =
+    closed !== null && printProfile.data !== undefined
+      ? renderZReportTicket(
+          closed,
+          formatBusinessDateTime(closed.closed_at, businessTimezone),
+          printProfile.data,
+        )
       : null;
-  usePrintPageStyle(pageStyle);
 
   const closeMutation = useMutation({
     mutationFn: (key: string) => closeZReport(warehouseId as number, key),
@@ -79,128 +85,132 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   const openSales = preview.data?.open_sales ?? [];
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Cierre de caja"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
-    >
+    <>
       <div
-        className="ticket-print-root w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl"
-        data-print-active={closed !== null && isPrintActive ? 'true' : undefined}
-        data-ticket-width={printProfile.data?.printable_width_mm}
-        style={printProfile.data ? ticketPrintStyle(printProfile.data) : undefined}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Cierre de caja"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
       >
-        <h2 className="text-xl font-semibold text-slate-50">
-          {closed ? `Cierre Z nº ${closed.number}` : 'Cierre de caja (Z)'}
-        </h2>
-        <p className="mt-1 text-sm text-slate-400">
-          {closed
-            ? 'Guardado. Puedes volver a imprimirlo desde el panel.'
-            : 'Estos son los totales del turno desde el último cierre.'}
-        </p>
-
-        {preview.isPending && !closed && <p className="mt-4 text-slate-400">Calculando…</p>}
-
-        {totals && (
-          <div className="mt-4 border-t border-slate-700 pt-3 text-sm">
-            <Row label="Ventas cobradas" value={String(totals.sales_count)} />
-            <Row label="Efectivo" value={formatMoney(totals.cash_total)} />
-            <Row label="Tarjeta" value={formatMoney(totals.card_total)} />
-            <Row label="Otros" value={formatMoney(totals.other_total)} />
-            {Number(totals.returns_total) > 0 && (
-              <Row
-                label={`Devoluciones (${totals.returns_count})`}
-                value={`− ${formatMoney(totals.returns_total)}`}
-              />
-            )}
-            <div className="mt-2 border-t border-slate-700 pt-2">
-              <Row label="Total cobrado" value={formatMoney(totals.gross_total)} strong />
-              <Row label="Del que es IVA" value={formatMoney(totals.tax_total)} />
-            </div>
-          </div>
-        )}
-
-        {!closed && openSales.length > 0 && (
-          <div className="mt-4 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
-            <p>
-              {openSales.length === 1
-                ? 'Hay una venta sin cobrar. Cóbrala o cancélala antes de cerrar:'
-                : `Hay ${openSales.length} ventas sin cobrar. Cóbralas o cancélalas antes de cerrar:`}
-            </p>
-            {/* Cuáles son, con lo que llevan dentro: son las que hay que ir
-                a buscar a la barra de ventas abiertas. */}
-            <ul className="mt-1 flex flex-col gap-0.5">
-              {openSales.map((pending) => (
-                <li key={pending.id}>
-                  Venta #{pending.id} — {pending.lines_count}{' '}
-                  {pending.lines_count === 1 ? 'línea' : 'líneas'} · {formatMoney(pending.total)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
-        {closed !== null && printProfile.isError && (
-          <p role="alert" className="mt-4 text-sm text-red-300">
-            No se ha podido cargar el perfil de impresión del ticket. Vuelve a intentarlo antes de
-            imprimir la Z.
+        <div className="w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl">
+          <h2 className="text-xl font-semibold text-slate-50">
+            {closed ? `Cierre Z nº ${closed.number}` : 'Cierre de caja (Z)'}
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            {closed
+              ? 'Guardado. Puedes volver a imprimirlo desde el panel.'
+              : 'Estos son los totales del turno desde el último cierre.'}
           </p>
-        )}
 
-        <div className="mt-6 flex gap-2 print:hidden">
-          {closed ? (
-            <>
-              <button
-                type="button"
-                onClick={onClosed}
-                className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white"
-              >
-                Volver al TPV
-              </button>
-              <button
-                type="button"
-                disabled={printProfile.data === undefined}
-                onClick={() => {
-                  if (printProfile.data !== undefined) {
-                    activatePrint();
-                    setPrintActive(true);
-                  }
-                }}
-                className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
-              >
-                Imprimir otra vez
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                disabled={closeMutation.isPending || preview.isPending || openSales.length > 0}
-                onClick={() => {
-                  const key = closeAttemptRef.current ?? crypto.randomUUID();
-                  closeAttemptRef.current = key;
-                  closeMutation.mutate(key);
-                }}
-                className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white disabled:opacity-40"
-              >
-                {closeMutation.isPending ? 'Cerrando…' : 'Cerrar caja e imprimir Z'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  closeAttemptRef.current = null;
-                  onCancel();
-                }}
-                className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
-              >
-                Seguir vendiendo
-              </button>
-            </>
+          {preview.isPending && !closed && <p className="mt-4 text-slate-400">Calculando…</p>}
+
+          {totals && (
+            <div className="mt-4 border-t border-slate-700 pt-3 text-sm">
+              <Row label="Ventas cobradas" value={String(totals.sales_count)} />
+              <Row label="Efectivo" value={formatMoney(totals.cash_total)} />
+              <Row label="Tarjeta" value={formatMoney(totals.card_total)} />
+              <Row label="Otros" value={formatMoney(totals.other_total)} />
+              {Number(totals.returns_total) > 0 && (
+                <Row
+                  label={`Devoluciones (${totals.returns_count})`}
+                  value={`− ${formatMoney(totals.returns_total)}`}
+                />
+              )}
+              <div className="mt-2 border-t border-slate-700 pt-2">
+                <Row label="Total cobrado" value={formatMoney(totals.gross_total)} strong />
+                <Row label="Del que es IVA" value={formatMoney(totals.tax_total)} />
+              </div>
+            </div>
           )}
+
+          {!closed && openSales.length > 0 && (
+            <div className="mt-4 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
+              <p>
+                {openSales.length === 1
+                  ? 'Hay una venta sin cobrar. Cóbrala o cancélala antes de cerrar:'
+                  : `Hay ${openSales.length} ventas sin cobrar. Cóbralas o cancélalas antes de cerrar:`}
+              </p>
+              {/* Cuáles son, con lo que llevan dentro: son las que hay que ir
+                a buscar a la barra de ventas abiertas. */}
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {openSales.map((pending) => (
+                  <li key={pending.id}>
+                    Venta #{pending.id} — {pending.lines_count}{' '}
+                    {pending.lines_count === 1 ? 'línea' : 'líneas'} · {formatMoney(pending.total)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+          {closed !== null && printProfile.isError && (
+            <p role="alert" className="mt-4 text-sm text-red-300">
+              No se ha podido cargar el perfil de impresión del ticket. Vuelve a intentarlo antes de
+              imprimir la Z.
+            </p>
+          )}
+
+          <div className="mt-6 flex gap-2 print:hidden">
+            {closed ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onClosed}
+                  className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white"
+                >
+                  Volver al TPV
+                </button>
+                <button
+                  type="button"
+                  disabled={printProfile.data === undefined}
+                  onClick={() => {
+                    if (printProfile.data !== undefined) {
+                      activatePrint();
+                      setPrintActive(true);
+                    }
+                  }}
+                  className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Imprimir otra vez
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={closeMutation.isPending || preview.isPending || openSales.length > 0}
+                  onClick={() => {
+                    const key = closeAttemptRef.current ?? crypto.randomUUID();
+                    closeAttemptRef.current = key;
+                    closeMutation.mutate(key);
+                  }}
+                  className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white disabled:opacity-40"
+                >
+                  {closeMutation.isPending ? 'Cerrando…' : 'Cerrar caja e imprimir Z'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeAttemptRef.current = null;
+                    onCancel();
+                  }}
+                  className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+                >
+                  Seguir vendiendo
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+      {closedTicketText !== null && printProfile.data !== undefined && (
+        <ThermalPrintDocument
+          active={isPrintActive}
+          text={closedTicketText}
+          profile={printProfile.data}
+        />
+      )}
+    </>
   );
 }

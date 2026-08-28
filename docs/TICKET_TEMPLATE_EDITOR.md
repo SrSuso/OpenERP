@@ -34,12 +34,40 @@ margen izquierdo + ancho imprimible + margen derecho <= 80 mm
 
 Por ejemplo, `4 + 72 + 4 = 80 mm`. Al subir el margen izquierdo, el texto se
 desplaza a la derecha dentro de la misma bobina; la vista previa no cambia a A4
-ni adquiere una barra de desplazamiento horizontal. El alto se calcula a partir
-del contenido porque una impresora térmica corta al terminar.
+ni adquiere una barra de desplazamiento horizontal.
 
-El controlador de la impresora también debe estar configurado con papel de 80
-mm. El editor controla el documento generado, pero no puede cambiar desde el
-navegador una preferencia equivocada del controlador.
+OpenERP genera un único documento de impresión aislado del resto de la página,
+con una anchura física de 80 mm. No fija una altura ficticia: una impresora
+térmica trabaja con una bobina continua y su controlador corta al terminar el
+contenido. Esto evita que el menú, las tablas o impresiones canceladas dejen
+páginas en blanco delante del ticket.
+
+### Configuración del controlador de impresión
+
+El navegador no puede cambiar de forma fiable el tamaño configurado en una
+impresora. Para imprimir en la térmica hay que seleccionar en el diálogo o en
+su controlador:
+
+- la impresora térmica real;
+- papel, recibo o bobina de **80 mm**;
+- orientación vertical;
+- escala **100 %** o **tamaño real**, nunca «ajustar a página»;
+- márgenes **ninguno**;
+- cabeceras y pies del navegador desactivados.
+
+OpenERP controla la anchura exterior de 80 mm, el área imprimible, los márgenes
+del contenido, la fuente y el interlineado. El controlador controla la longitud
+continua, el corte y el área física que admite el cabezal.
+
+Si se selecciona «Microsoft Print to PDF» u otra impresora configurada como A4,
+la vista del sistema mostrará una hoja A4. Eso describe el papel del destino
+seleccionado, no el documento que recibirá una impresora térmica configurada a
+80 mm. Para comprobar el resultado real debe seleccionarse la térmica y revisar
+que el papel sea 80 mm y la escala 100 %.
+
+La vista previa del editor sí representa siempre los 80 mm nominales y permite
+comprobar cómo se mueve el texto al cambiar los parámetros, pero la prueba final
+debe hacerse con el controlador y el cabezal que se utilizarán en caja.
 
 ## Editor estándar
 

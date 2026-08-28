@@ -3,11 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { generateTicket, type Sale, type Ticket } from '@/features/pos/api';
 import { useSettledShopFlag } from '@/features/settings/useShopSettings';
-import { ticketPageStyle, ticketPrintStyle } from '@/features/tickets/printProfile';
+import { ThermalPrintDocument } from '@/features/tickets/ThermalPrintDocument';
 import {
   printActiveDocument,
   useExclusivePrintDocument,
-  usePrintPageStyle,
 } from '@/features/tickets/useExclusivePrintDocument';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
@@ -41,11 +40,6 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   const printOnCheckout = useSettledShopFlag('pos.print_ticket_on_checkout', true);
   const deactivatePrint = useCallback(() => setPrintActive(false), []);
   const activatePrint = useExclusivePrintDocument(deactivatePrint);
-  const pageStyle =
-    ticket !== null && isPrintActive
-      ? ticketPageStyle(ticket, ticket.rendered_text.split('\n').length)
-      : null;
-  usePrintPageStyle(pageStyle);
 
   const printMutation = useMutation({
     mutationFn: () => generateTicket(sale.id),
@@ -90,26 +84,26 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
 
   if (ticket !== null) {
     return (
-      <div
-        className="ticket-print-root flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8"
-        data-print-active={isPrintActive ? 'true' : undefined}
-        data-ticket-width={ticket.printable_width_mm}
-        style={ticketPrintStyle(ticket)}
-      >
-        <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
-          {ticket.rendered_text}
-        </pre>
-        <button
-          type="button"
-          onClick={() => {
-            deactivatePrint();
-            setTicket(null);
-          }}
-          className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600 print:hidden"
-        >
-          Cerrar
-        </button>
-      </div>
+      <>
+        <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-900 p-8">
+          {!isPrintActive && (
+            <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded bg-white p-4 font-mono text-xs text-slate-900">
+              {ticket.rendered_text}
+            </pre>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              deactivatePrint();
+              setTicket(null);
+            }}
+            className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-medium text-slate-50 hover:bg-slate-600"
+          >
+            Cerrar
+          </button>
+        </div>
+        <ThermalPrintDocument active={isPrintActive} text={ticket.rendered_text} profile={ticket} />
+      </>
     );
   }
 
