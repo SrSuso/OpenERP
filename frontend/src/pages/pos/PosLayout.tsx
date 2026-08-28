@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Outlet } from 'react-router';
 
 import { usePosAuth } from '@/features/auth/usePosAuth';
@@ -41,9 +41,29 @@ function PosLayoutContent() {
   useLiveCatalog();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
   const [closingTill, setClosingTill] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => document.fullscreenElement !== null);
   const { selectedTerminal, selectionOpen, requestTerminalChange } = usePosTerminal();
   const { newSaleAction, lastTicketSaleId } = usePosHeaderActions();
   const warehouseId = selectedTerminal?.warehouse_id ?? null;
+
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(document.fullscreenElement !== null);
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
+  }, []);
+
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement !== null) {
+        await document.exitFullscreen?.();
+      } else {
+        await document.documentElement.requestFullscreen?.();
+      }
+    } catch {
+      // El navegador puede bloquear la petición (por ejemplo, fuera de un
+      // gesto del usuario). El TPV sigue siendo perfectamente utilizable.
+    }
+  }
 
   if (selectionOpen) return <TerminalSelection />;
 
@@ -101,6 +121,14 @@ function PosLayoutContent() {
               {selectedTerminal.name}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => void toggleFullscreen()}
+            className="min-h-14 rounded border border-slate-600 px-4 py-3 font-medium hover:bg-slate-700"
+            aria-pressed={isFullscreen}
+          >
+            {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          </button>
           {hasPermission('sale.manage') && (
             <button
               type="button"

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -217,6 +217,39 @@ describe('PosLayout', () => {
 
     expect(await screen.findByRole('button', { name: 'Caja 2' })).toBeInTheDocument();
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('8');
+  });
+
+  it('enters and exits browser fullscreen from the POS header', async () => {
+    stubBackend();
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    const exitFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: exitFullscreen,
+    });
+    let fullscreenElement: Element | null = null;
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+
+    renderLayout();
+    const fullscreenButton = await screen.findByRole('button', { name: 'Pantalla completa' });
+    await userEvent.click(fullscreenButton);
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    fullscreenElement = document.documentElement;
+    act(() => document.dispatchEvent(new Event('fullscreenchange')));
+    expect(await screen.findByRole('button', { name: 'Salir de pantalla completa' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Salir de pantalla completa' }));
+    expect(exitFullscreen).toHaveBeenCalledTimes(1);
   });
 
   it('reprints the latest ticket saved for this terminal', async () => {
