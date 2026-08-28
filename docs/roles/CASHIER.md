@@ -16,8 +16,10 @@ selecciona el terminal físico. El terminal queda asociado al navegador; el
 cajero es quien confirma realmente el cobro.
 
 En el ordenador Windows de caja deben estar abiertos QZ Tray y la impresora
-`POSPrinter POS-80`. La primera solicitud de impresión puede requerir aceptar
-la autorización local de QZ Tray.
+`POSPrinter POS-80`. QZ debe estar iniciado como aplicación normal desde la
+bandeja de Windows, no mediante su consola de diagnóstico. El administrador
+deja la firma silenciosa configurada; si QZ pide autorización de forma repetida,
+avisa al administrador y no aceptes avisos indefinidamente.
 
 ## Qué puede hacer
 

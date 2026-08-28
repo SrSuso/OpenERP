@@ -259,6 +259,34 @@ QZ puede pedir una última vez confiar en el certificado de firma. Elige
 **Allow** y **Remember this decision**. Los trabajos posteriores no deben
 volver a pedir autorización.
 
+### 4.3. Configuración terminada: lista de comprobación
+
+La instalación queda terminada únicamente cuando se cumplen todos estos puntos:
+
+1. En el PC de caja está abierta la aplicación normal `qz-tray.exe`, con su
+   icono en la bandeja de Windows. `qz-tray-console.exe` no queda abierto: sólo
+   sirve para `certgen` y diagnóstico.
+2. El certificado WSS de QZ incluye la IP fija o el nombre DNS del PC de caja,
+   y `root-ca.crt` está instalado en cada PC que abre OpenERP e imprime.
+3. El firewall de Windows permite el puerto 8181 únicamente desde esos PCs de
+   la LAN.
+4. Las claves de firma están en
+   `/home/su_admin/OpenERP/deploy/qz-signing/` y las variables de
+   `.env.production` usan **sólo** `/run/secrets/qz-signing/...`.
+5. Tras cambiar claves o variables se ejecuta el despliegue soportado:
+
+   ```bash
+   cd /home/su_admin/OpenERP
+   scripts/deploy-update.sh --branch main
+   ```
+
+6. Se recarga OpenERP con `Ctrl+F5`, se guarda el destino QZ y la prueba indica
+   el nombre de la impresora y **`Firma silenciosa: activa`**.
+
+Si la prueba muestra firma no configurada o QZ identifica la petición como
+anónima, no se debe aceptar avisos en cada ticket: revisa el par de ficheros de
+firma, sus rutas dentro del contenedor y vuelve a desplegar.
+
 ## 5. Comprobación final
 
 1. El botón de prueba encuentra la impresora configurada.
@@ -270,17 +298,18 @@ volver a pedir autorización.
 
 ## 6. Diagnóstico rápido
 
-| Síntoma                                          | Acción                                                                                                         |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| No conecta con QZ                                | Comprueba que QZ está abierto, IP/puerto guardados, certificado instalado y firewall 8181.                     |
-| La prueba queda comprobando                      | Tras 12 s muestra un error. Responde cualquier aviso de QZ y revisa autorización, firma y red.                 |
-| Preflight no encuentra `/run/secrets/deploy/...` | Quita `deploy` de las variables `OPENERP_QZ_SIGNING_*_FILE`: la ruta interna es `/run/secrets/qz-signing/...`. |
-| WSS no confiable                                 | Repite `certgen --host` con la IP real, reinicia QZ y reinstala el nuevo `root-ca.crt`.                        |
-| `Acceso denegado` con `certgen`                  | Cierra QZ y abre CMD como administrador; no cambies permisos de `Program Files`.                               |
-| No encuentra impresora                           | Copia el nombre literal de la cola de Windows, no sólo el modelo de la carcasa.                                |
-| QZ pregunta en cada ticket                       | Falta la firma del apartado 4 o el servidor todavía no se ha desplegado.                                       |
-| Chrome/Edge pregunta por red local               | Es un permiso independiente del navegador; concédelo una vez para el sitio.                                    |
-| Sale A4 o diálogo del navegador                  | No es la ruta térmica: revisa que OpenERP y QZ estén desplegados y conectados.                                 |
+| Síntoma                                          | Acción                                                                                                                                                                 |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No conecta con QZ                                | Comprueba que QZ está abierto, IP/puerto guardados, certificado instalado y firewall 8181.                                                                             |
+| La prueba queda comprobando                      | Tras 12 s muestra un error. Responde cualquier aviso de QZ y revisa autorización, firma y red.                                                                         |
+| Preflight no encuentra `/run/secrets/deploy/...` | Quita `deploy` de las variables `OPENERP_QZ_SIGNING_*_FILE`: la ruta interna es `/run/secrets/qz-signing/...`.                                                         |
+| WSS no confiable                                 | Repite `certgen --host` con la IP real, reinicia QZ y reinstala el nuevo `root-ca.crt`.                                                                                |
+| `Acceso denegado` con `certgen`                  | Cierra QZ y abre CMD como administrador; no cambies permisos de `Program Files`.                                                                                       |
+| No encuentra impresora                           | Copia el nombre literal de la cola de Windows, no sólo el modelo de la carcasa.                                                                                        |
+| QZ pregunta en cada ticket                       | Falta la firma del apartado 4 o el servidor todavía no se ha desplegado.                                                                                               |
+| QZ identifica la solicitud como anónima          | El navegador no recibió un certificado de firma válido: verifica ambos ficheros en `deploy/qz-signing/`, las rutas `/run/secrets/qz-signing/...` y despliega de nuevo. |
+| Chrome/Edge pregunta por red local               | Es un permiso independiente del navegador; concédelo una vez para el sitio.                                                                                            |
+| Sale A4 o diálogo del navegador                  | No es la ruta térmica: revisa que OpenERP y QZ estén desplegados y conectados.                                                                                         |
 
 ## 7. Mantenimiento y seguridad
 

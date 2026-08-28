@@ -121,8 +121,9 @@ ticket**. Si se repite la impresión se reutiliza el ticket congelado, no se
 genera uno con nombres o precios actuales.
 
 La impresión principal usa QZ Tray abierto en el ordenador Windows configurado y
-la impresora `POSPrinter POS-80`. La primera vez puede pedir autorización. Si
-QZ o la impresora no están disponibles se muestra el motivo y se permite
+la impresora `POSPrinter POS-80`. En una instalación terminada la prueba de QZ
+indica **Firma silenciosa: activa** y no solicita autorización en cada ticket.
+Si QZ o la impresora no están disponibles se muestra el motivo y se permite
 reintentar. La preparación está en
 [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-la-caja-impresión-térmica-con-qz-tray).
 

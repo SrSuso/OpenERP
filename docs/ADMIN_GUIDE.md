@@ -33,6 +33,7 @@ Cinco piezas, cada una su propio contenedor, definidas en
 | `worker` | Envía los correos encolados (incidencias, etc.) | No — no expone ningún puerto |
 | `migrate` | Aplica las migraciones y termina; no es un servicio permanente | No |
 | `postgres` | La base de datos | No — sólo `127.0.0.1` del propio servidor (backups) |
+
 Esto es un stack **independiente** del `docker/compose.yml` de desarrollo
 (ese sólo levanta PostgreSQL y Mailpit para trabajar en el código a mano).
 
@@ -368,11 +369,15 @@ Configuración mínima del ordenador de la caja:
 
 1. Instala el controlador de la POSPrinter y comprueba en Windows que su nombre
    es exactamente **`POSPrinter POS-80`**.
-2. Instala QZ Tray, ábrelo y activa su inicio automático con Windows.
+2. Instala QZ Tray y deja abierta su aplicación normal `qz-tray.exe`, con el
+   icono junto al reloj. `qz-tray-console.exe` se usa sólo para generar
+   certificados o diagnosticar errores; no debe quedar como proceso permanente.
 3. En **Configuración de la tienda → Terminales POS → Impresión mediante QZ
    Tray**, guarda `localhost`, puerto `8181` y el nombre exacto de la impresora.
-4. Pulsa **Probar conexión e impresora guardadas**. En el primer uso, acepta la
-   autorización que muestre QZ Tray.
+4. Pulsa **Probar conexión e impresora guardadas**. Sin firma silenciosa QZ
+   puede pedir autorización; la configuración de firma al final de esta sección
+   debe hacer que la prueba indique **Firma silenciosa: activa** y evitar esos
+   avisos repetidos.
 5. Cobra una venta de prueba. OpenERP debe mostrar el destino configurado y la
    impresora debe cortar un único ticket.
 
@@ -393,6 +398,7 @@ PC de caja (en estos ejemplos, `192.168.1.50`) y haz lo siguiente en ese PC:
 
    Si se usa un nombre DNS estable, genera el certificado para ese nombre y
    guarda exactamente el mismo nombre en OpenERP. Reinicia QZ después.
+
 2. Cierra y vuelve a abrir QZ. Es obligatorio reiniciarlo cada vez que se
    regenera el certificado.
 3. En Firewall de Windows permite entrada TCP al puerto 8181 sólo desde los PCs
@@ -407,6 +413,7 @@ PC de caja (en estos ejemplos, `192.168.1.50`) y haz lo siguiente en ese PC:
 
    Añade la IP del propio TPV si ese navegador también se conectará mediante la
    IP remota. No publiques este puerto en el router ni en Internet.
+
 4. Copia `root-ca.crt` del directorio compartido de QZ a cada PC que vaya a
    abrir OpenERP e instálalo en **Equipo local → Entidades de certificación raíz
    de confianza**. Permite al navegador confiar en el WSS privado; no contiene
@@ -465,9 +472,20 @@ OPENERP_QZ_SIGNING_CERTIFICATE_FILE=/run/secrets/qz-signing/digital-certificate.
 OPENERP_QZ_SIGNING_PRIVATE_KEY_FILE=/run/secrets/qz-signing/private-key.pem
 ```
 
-Los ficheros de `deploy/qz-signing/` están ignorados por Git. Reinicia API y
-worker mediante el despliegue soportado; el API entrega sólo el certificado
-público al navegador y firma cada digest en el servidor. Nunca copies
+Los ficheros de `deploy/qz-signing/` están ignorados por Git. Si ya se
+encuentran allí, no hay que copiarlos otra vez: ésa es la ruta del servidor. El
+montaje Docker los expone como `/run/secrets/qz-signing/`, por lo que **nunca**
+debe escribirse `/run/secrets/deploy/qz-signing/...` en `.env.production`.
+Aplica los cambios mediante el despliegue soportado:
+
+```bash
+cd /home/su_admin/OpenERP
+scripts/deploy-update.sh --branch main
+```
+
+Después recarga OpenERP con `Ctrl+F5` y ejecuta la prueba guardada. El API
+entrega sólo el certificado público al navegador y firma cada digest en el
+servidor. Nunca copies
 `private-key.pem` al frontend, al panel ni al repositorio. En QZ debe confiarse
 una vez en ese certificado; después el botón de prueba muestra **Firma
 silenciosa: activa** y las llamadas protegidas ya no provocan avisos repetidos.

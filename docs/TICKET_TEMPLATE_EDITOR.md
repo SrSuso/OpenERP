@@ -52,9 +52,11 @@ conecta al host y puerto WSS guardados, busca el nombre exacto de impresora y
 envía la imagen como ESC/POS por la cola RAW de Windows. El trabajo incluye
 inicio de impresora, la imagen, avance final y corte.
 
-En el primer uso QZ Tray puede pedir autorización para que el sitio de OpenERP
-imprima. Debe aceptarse. Si QZ Tray no está abierto, no encuentra la impresora o
-Windows rechaza el trabajo, OpenERP muestra el error y permite reintentar.
+Antes de la configuración de firma, QZ Tray puede pedir autorización para que
+el sitio de OpenERP imprima. En una instalación definitiva la prueba debe
+indicar **Firma silenciosa: activa**, de modo que no se aceptan avisos en cada
+ticket. Si QZ Tray no está abierto, no encuentra la impresora o Windows rechaza
+el trabajo, OpenERP muestra el error y permite reintentar.
 
 No existe una ruta térmica alternativa mediante `window.print()`: un ticket
 nuevo, una reimpresión de venta, una Z recién cerrada y una reimpresión de Z
