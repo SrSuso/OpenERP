@@ -26,10 +26,12 @@ const FULL_PERMISSIONS = [
 
 function stubBackend({
   permissions = FULL_PERMISSIONS,
+  role = 'ADMIN',
   emptyCategories = false,
   categoryInUse = false,
 }: {
   permissions?: string[];
+  role?: string;
   emptyCategories?: boolean;
   categoryInUse?: boolean;
 } = {}) {
@@ -85,7 +87,7 @@ function stubBackend({
             id: 1,
             email: 'admin@example.com',
             full_name: 'Admin Uno',
-            role: 'ADMIN',
+            role,
             permissions,
           }),
         );
@@ -133,7 +135,9 @@ function stubBackend({
         const category = categories.find((item) => item.id === id)!;
         category.margin_rate = payload['margin_rate'] as string | null;
         category.margin_amount = payload['margin_amount'] as string | null;
-        category.price_formula = (payload['price_formula'] as string) || null;
+        if ('price_formula' in payload) {
+          category.price_formula = (payload['price_formula'] as string) || null;
+        }
         category.taxes = taxes.filter((tax) => (payload['tax_ids'] as number[]).includes(tax.id));
         return Promise.resolve(jsonResponse(category));
       }
@@ -276,7 +280,11 @@ describe('CategoriesPage V2', () => {
     await user.click(screen.getByRole('checkbox', { name: /Permitir cambiar el PVP/ }));
     await user.type(screen.getByLabelText('Margen porcentual (%)'), '25');
     await user.type(screen.getByLabelText('Margen fijo (€)'), '0,20');
-    await user.type(screen.getByLabelText('Fórmula'), 'cost * 2');
+    const advanced = screen.getByText('Configuración avanzada').closest('details')!;
+    expect(advanced).not.toHaveAttribute('open');
+    await user.click(screen.getByText('Configuración avanzada'));
+    expect(advanced).toHaveAttribute('open');
+    await user.type(screen.getByLabelText('Fórmula personalizada'), 'cost * 2');
     await user.click(screen.getByRole('button', { name: /IVA general/ }));
     await user.click(screen.getByRole('button', { name: 'Crear categoría' }));
 
@@ -295,6 +303,31 @@ describe('CategoriesPage V2', () => {
       },
     ]);
     expect(screen.getByText('Control de stock · Por peso · PVP rápido')).toBeInTheDocument();
+  });
+
+  it('hides the technical formula from MANAGER while preserving normal pricing controls', async () => {
+    const calls = stubBackend({ role: 'MANAGER' });
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Bebidas');
+    await user.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    expect(screen.queryByText('Configuración avanzada')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Fórmula personalizada')).not.toBeInTheDocument();
+    for (const variable of ['cost', 'tax_rate', 'surcharge_rate', 'margin_rate']) {
+      expect(screen.queryByText(variable)).not.toBeInTheDocument();
+    }
+    await user.type(screen.getByLabelText('Margen porcentual (%)'), '20');
+    await user.click(screen.getByRole('checkbox', { name: /Permitir cambiar el PVP/ }));
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => expect(calls.categoryPricing).toHaveLength(1));
+    expect(calls.categoryPricing[0]!.body).toEqual({
+      margin_rate: '20',
+      margin_amount: null,
+      tax_ids: [],
+    });
+    expect(calls.updateCategory[0]!.body).toMatchObject({ quick_price_edit: true });
   });
 
   it('edits all category blocks and sends quick PVP independently from weight sales', async () => {

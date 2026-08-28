@@ -73,10 +73,12 @@ function sameValues(left: CategoryValues, right: CategoryValues): boolean {
 export function ProductCategoriesPanel({
   canManage,
   canManagePricing,
+  canManageFormula,
   onDirtyChange,
 }: {
   canManage: boolean;
   canManagePricing: boolean;
+  canManageFormula: boolean;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const categories = useQuery(productCategoriesQuery);
@@ -121,8 +123,8 @@ export function ProductCategoriesPanel({
       const pricing = {
         margin_rate: values.margin.trim() === '' ? null : values.margin,
         margin_amount: values.amount.trim() === '' ? null : values.amount,
-        price_formula: values.formula.trim(),
         tax_ids: [...values.taxIds],
+        ...(canManageFormula ? { price_formula: values.formula.trim() } : {}),
       };
       if (category === null) {
         return createProductCategory({
@@ -133,7 +135,10 @@ export function ProductCategoriesPanel({
           default_unit_name: values.defaultUnitName || null,
           margin_rate: canManagePricing ? pricing.margin_rate : null,
           margin_amount: canManagePricing ? pricing.margin_amount : null,
-          price_formula: canManagePricing && pricing.price_formula ? pricing.price_formula : null,
+          price_formula:
+            canManagePricing && 'price_formula' in pricing && pricing.price_formula
+              ? pricing.price_formula
+              : null,
           tax_ids: canManagePricing ? pricing.tax_ids : [],
         });
       }
@@ -157,7 +162,7 @@ export function ProductCategoriesPanel({
       const pricingChanged =
         values.margin !== original.margin ||
         values.amount !== original.amount ||
-        values.formula !== original.formula ||
+        (canManageFormula && values.formula !== original.formula) ||
         values.taxIds.size !== original.taxIds.size ||
         [...values.taxIds].some((id) => !original.taxIds.has(id));
       if (canManagePricing && pricingChanged) {
@@ -299,6 +304,7 @@ export function ProductCategoriesPanel({
           units={units.data ?? []}
           taxes={taxes.data ?? []}
           canManagePricing={canManagePricing}
+          canManageFormula={canManageFormula}
           isPending={busy}
           error={error}
           onDirtyChange={setEditorDirty}
@@ -347,6 +353,7 @@ function CategoryForm({
   units,
   taxes,
   canManagePricing,
+  canManageFormula,
   isPending,
   error,
   onDirtyChange,
@@ -359,6 +366,7 @@ function CategoryForm({
   units: { id: number; name: string }[];
   taxes: Tax[];
   canManagePricing: boolean;
+  canManageFormula: boolean;
   isPending: boolean;
   error: string | null;
   onDirtyChange: (dirty: boolean) => void;
@@ -493,19 +501,6 @@ function CategoryForm({
               />
             </FormField>
           </div>
-          <FormField
-            label="Fórmula"
-            htmlFor={formulaId}
-            hint="Déjala vacía para usar la fórmula de la tienda. Variables: cost, tax_rate, surcharge_rate y margin_rate."
-          >
-            <Input
-              id={formulaId}
-              disabled={!canManagePricing}
-              value={values.formula}
-              className="font-mono"
-              onChange={(event) => setValues({ ...values, formula: event.target.value })}
-            />
-          </FormField>
           <div>
             <p className="text-sm font-semibold text-slate-700">Impuestos</p>
             <div className={`mt-2 ${canManagePricing ? '' : 'pointer-events-none opacity-60'}`}>
@@ -517,6 +512,33 @@ function CategoryForm({
             </div>
           </div>
         </fieldset>
+
+        {canManageFormula && (
+          <details className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+              Configuración avanzada
+            </summary>
+            <p className="mt-3 text-sm text-slate-700">
+              Modificar esta fórmula cambia cómo se calculan los precios de los productos de esta
+              categoría.
+            </p>
+            <div className="mt-4">
+              <FormField
+                label="Fórmula personalizada"
+                htmlFor={formulaId}
+                hint="Déjala vacía para utilizar la fórmula general de la tienda."
+              >
+                <Input
+                  id={formulaId}
+                  disabled={!canManagePricing}
+                  value={values.formula}
+                  className="font-mono"
+                  onChange={(event) => setValues({ ...values, formula: event.target.value })}
+                />
+              </FormField>
+            </div>
+          </details>
+        )}
 
         <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-5">
           <Button type="submit" disabled={isPending || !values.name.trim() || !dirty}>

@@ -16,7 +16,7 @@ const SECTIONS: { id: CategorySection; label: string }[] = [
 ];
 
 export function CategoriesPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [section, setSection] = useState<CategorySection>('products');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -59,6 +59,7 @@ export function CategoriesPage() {
         <ProductCategoriesPanel
           canManage={hasPermission('product.manage')}
           canManagePricing={hasPermission('pricing.manage')}
+          canManageFormula={user?.role === 'ADMIN'}
           onDirtyChange={setHasUnsavedChanges}
         />
       )}
