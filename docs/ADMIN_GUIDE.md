@@ -303,8 +303,8 @@ Nginx emite estos headers en SPA, assets, API, errores y mantenimiento:
 
 La CSP no permite scripts inline ni `unsafe-eval`. Las conexiones WSS sólo
 pueden salir hacia los puertos seguros 8181/8282/8383/8484 de QZ; el destino
-concreto se valida y guarda en **Terminales POS**, y QZ restringe además el
-origen autorizado. No abras esos puertos fuera de la LAN. `style-src
+concreto se valida y guarda en **Terminales POS**, y QZ valida además la
+autorización o firma de cada cliente. No abras esos puertos fuera de la LAN. `style-src
 'unsafe-inline'` es la única excepción: React usa estilos calculados para
 colores/alturas y ECharts CanvasRenderer posiciona su canvas mediante atributos
 `style`. Scripts, API, imágenes y fuentes permanecen same-origin; `data:` sólo
@@ -388,17 +388,8 @@ PC de caja (en estos ejemplos, `192.168.1.50`) y haz lo siguiente en ese PC:
 
    Si se usa un nombre DNS estable, genera el certificado para ese nombre y
    guarda exactamente el mismo nombre en OpenERP. Reinicia QZ después.
-2. Desde el menú avanzado de QZ abre su **directorio compartido**, localiza
-   `qz-tray.properties` y conserva estas propiedades (sustituye el origen por
-   la URL exacta con la que abres OpenERP, sin ruta final):
-
-   ```properties
-   security.wss.host=0.0.0.0
-   security.wss.httpsonly=true
-   security.wss.alloworigin=https://192.168.1.11
-   ```
-
-   Reinicia QZ. No uses `*` en `alloworigin`.
+2. Cierra y vuelve a abrir QZ. Es obligatorio reiniciarlo cada vez que se
+   regenera el certificado.
 3. En Firewall de Windows permite entrada TCP al puerto 8181 sólo desde los PCs
    que deban imprimir. Por ejemplo, desde PowerShell como administrador, si el
    PC de administración es `192.168.1.20`:
@@ -478,6 +469,13 @@ silenciosa: activa** y las llamadas protegidas ya no provocan avisos repetidos.
 El permiso de acceso a la red local que pueda pedir Chrome/Edge es independiente
 de QZ: se concede una vez al sitio o mediante la política corporativa del
 navegador, no se puede ocultar desde JavaScript.
+
+Las claves de demostración creadas en **QZ → Advanced → Site Manager** sólo son
+válidas para la instalación de QZ que las generó: sirven para esta única caja y
+para comprobar el circuito. Un despliegue que deba confiar en varios servidores
+QZ utiliza un certificado de firma oficial. Consulta las guías oficiales de
+[QZ Print Server](https://qz.io/docs/print-server) y
+[firma de mensajes](https://qz.io/docs/signing).
 
 La explicación del modelo físico, los márgenes y el editor está en
 [`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md).
