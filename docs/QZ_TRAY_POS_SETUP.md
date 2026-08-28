@@ -87,7 +87,33 @@ elevación real. Cierra QZ y repite desde CMD como administrador. No modifiques
 los permisos de `Program Files`. No instales todavía `root-ca.crt` si `certgen`
 ha fallado: al repetirlo correctamente se genera un conjunto coherente.
 
-### 3.2. Permitir el puerto sólo en la LAN autorizada
+### 3.2. Arranque normal de QZ Tray en la caja
+
+`qz-tray-console.exe` se usa únicamente para `certgen` y diagnóstico: mientras
+esa ventana permanece abierta, mantiene QZ Tray ejecutándose; al cerrarla,
+finaliza también el proceso. **No es el programa que debe quedar abierto en la
+caja.**
+
+Tras terminar `certgen`, inicia la aplicación normal, que deja el icono de QZ
+en la bandeja de Windows:
+
+```bat
+start "" "%ProgramFiles%\QZ Tray\qz-tray.exe"
+```
+
+QZ Tray 2.1 o posterior se inicia automáticamente al iniciar sesión de Windows.
+No hace falta dejar una consola de logs abierta. Si el icono no aparece o el
+proceso se cierra solo, abre la consola sólo para diagnosticarlo y conserva las
+líneas de error:
+
+```bat
+"%ProgramFiles%\QZ Tray\qz-tray-console.exe"
+```
+
+No uses el modo `--headless` ni lo conviertas todavía en servicio Windows: en
+esta instalación QZ necesita poder mostrar su primera autorización de firma.
+
+### 3.3. Permitir el puerto sólo en la LAN autorizada
 
 En PowerShell **como administrador**, permite el puerto seguro 8181 únicamente
 desde los PCs que puedan imprimir. Ejemplo para Administración `192.168.1.20`:
@@ -101,7 +127,7 @@ New-NetFirewallRule -DisplayName "QZ Tray WSS 8181 desde OpenERP" `
 Añade una regla para cada PC autorizado. No abras este puerto a Internet ni lo
 redirecciones en el router.
 
-### 3.3. Confiar en QZ desde los PCs clientes
+### 3.4. Confiar en QZ desde los PCs clientes
 
 Copia `C:\ProgramData\qz\ssl\root-ca.crt` desde el PC de caja a cada PC que
 abra OpenERP y pueda imprimir remotamente. En cada uno:
@@ -115,7 +141,7 @@ abra OpenERP y pueda imprimir remotamente. En cada uno:
 En Firefox, activa además `security.enterprise_roots.enabled` en `about:config`
 o importa el certificado en su almacén propio.
 
-### 3.4. Guardar la conexión remota en OpenERP
+### 3.5. Guardar la conexión remota en OpenERP
 
 En **Configuración de la tienda → Terminales POS → Impresión mediante QZ Tray**
 guarda:
