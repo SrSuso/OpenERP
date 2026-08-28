@@ -215,15 +215,16 @@ volver a pedir autorización.
 
 ## 6. Diagnóstico rápido
 
-| Síntoma                            | Acción                                                                                     |
-| ---------------------------------- | ------------------------------------------------------------------------------------------ |
-| No conecta con QZ                  | Comprueba que QZ está abierto, IP/puerto guardados, certificado instalado y firewall 8181. |
-| WSS no confiable                   | Repite `certgen --host` con la IP real, reinicia QZ y reinstala el nuevo `root-ca.crt`.    |
-| `Acceso denegado` con `certgen`    | Cierra QZ y abre CMD como administrador; no cambies permisos de `Program Files`.           |
-| No encuentra impresora             | Copia el nombre literal de la cola de Windows, no sólo el modelo de la carcasa.            |
-| QZ pregunta en cada ticket         | Falta la firma del apartado 4 o el servidor todavía no se ha desplegado.                   |
-| Chrome/Edge pregunta por red local | Es un permiso independiente del navegador; concédelo una vez para el sitio.                |
-| Sale A4 o diálogo del navegador    | No es la ruta térmica: revisa que OpenERP y QZ estén desplegados y conectados.             |
+| Síntoma                            | Acción                                                                                         |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| No conecta con QZ                  | Comprueba que QZ está abierto, IP/puerto guardados, certificado instalado y firewall 8181.     |
+| La prueba queda comprobando        | Tras 12 s muestra un error. Responde cualquier aviso de QZ y revisa autorización, firma y red. |
+| WSS no confiable                   | Repite `certgen --host` con la IP real, reinicia QZ y reinstala el nuevo `root-ca.crt`.        |
+| `Acceso denegado` con `certgen`    | Cierra QZ y abre CMD como administrador; no cambies permisos de `Program Files`.               |
+| No encuentra impresora             | Copia el nombre literal de la cola de Windows, no sólo el modelo de la carcasa.                |
+| QZ pregunta en cada ticket         | Falta la firma del apartado 4 o el servidor todavía no se ha desplegado.                       |
+| Chrome/Edge pregunta por red local | Es un permiso independiente del navegador; concédelo una vez para el sitio.                    |
+| Sale A4 o diálogo del navegador    | No es la ruta térmica: revisa que OpenERP y QZ estén desplegados y conectados.                 |
 
 ## 7. Mantenimiento y seguridad
 

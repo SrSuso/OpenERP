@@ -117,4 +117,23 @@ describe('QZ thermal printer adapter', () => {
     expect(qzMocks.disconnect).toHaveBeenCalledOnce();
     expect(qzMocks.connect).toHaveBeenCalledWith(expect.objectContaining({ host: '192.168.1.50' }));
   });
+
+  it('turns an unresponsive QZ printer query into a useful error instead of hanging', async () => {
+    vi.useFakeTimers();
+    qzMocks.find.mockImplementationOnce(() => new Promise(() => undefined));
+
+    try {
+      const result = testQzPrinterConnection({
+        host: '192.168.1.50',
+        securePort: 8181,
+        printerName: 'Caja charcutería',
+      });
+      const rejected = expect(result).rejects.toThrow('QZ Tray no ha respondido');
+      await vi.advanceTimersByTimeAsync(12_000);
+
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

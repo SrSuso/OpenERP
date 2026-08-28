@@ -10,10 +10,37 @@ export const DEFAULT_THERMAL_PRINTER = DEFAULT_QZ_PRINT_CONFIG.printerName;
 export class ThermalPrinterError extends Error {}
 
 let securityConfigured: Promise<boolean> | undefined;
+const QZ_OPERATION_TIMEOUT_MS = 12_000;
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return String(error);
+}
+
+/** QZ may leave a WebSocket call pending when Windows shows a native prompt
+ * or its local service has stopped responding. A user-facing operation must
+ * always settle instead of leaving a disabled UI button forever. */
+function qzWithin<T>(operation: Promise<T>, action: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(
+        new ThermalPrinterError(
+          `QZ Tray no ha respondido al ${action} en 12 segundos. ` +
+            'Comprueba su ventana, la autorización y la conexión.',
+        ),
+      );
+    }, QZ_OPERATION_TIMEOUT_MS);
+    operation.then(
+      (result) => {
+        window.clearTimeout(timer);
+        resolve(result);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error instanceof Error ? error : new ThermalPrinterError(errorMessage(error)));
+      },
+    );
+  });
 }
 
 async function connectToQz(config: QzPrintConfig): Promise<void> {
@@ -24,13 +51,16 @@ async function connectToQz(config: QzPrintConfig): Promise<void> {
     await qz.websocket.disconnect();
   }
   try {
-    await qz.websocket.connect({
-      host: config.host,
-      port: { secure: [config.securePort], insecure: [] },
-      usingSecure: true,
-      retries: 2,
-      delay: 1,
-    });
+    await qzWithin(
+      qz.websocket.connect({
+        host: config.host,
+        port: { secure: [config.securePort], insecure: [] },
+        usingSecure: true,
+        retries: 2,
+        delay: 1,
+      }),
+      `conectar con ${config.host}:${config.securePort}`,
+    );
   } catch (error) {
     throw new ThermalPrinterError(
       `No se puede conectar con QZ Tray en ${config.host}:${config.securePort}. ` +
@@ -52,7 +82,7 @@ async function configureQzSecurity(): Promise<boolean> {
     return true;
   })();
   try {
-    return await securityConfigured;
+    return await qzWithin(securityConfigured, 'preparar la firma segura');
   } catch (error) {
     securityConfigured = undefined;
     throw new ThermalPrinterError(
@@ -63,7 +93,10 @@ async function configureQzSecurity(): Promise<boolean> {
 
 async function findPrinter(config: QzPrintConfig): Promise<string> {
   try {
-    const result = await qz.printers.find(config.printerName);
+    const result = await qzWithin(
+      qz.printers.find(config.printerName),
+      `consultar la impresora «${config.printerName}»`,
+    );
     const names = typeof result === 'string' ? [result] : result;
     const exact = names.find((name) => name === config.printerName);
     if (exact === undefined) {
@@ -103,21 +136,24 @@ export async function printThermalTicket(
   });
 
   try {
-    await qz.print(printConfig, [
-      '\x1b\x40',
-      {
-        type: 'raw',
-        format: 'image',
-        data: raster,
-        options: {
-          language: 'ESCPOS',
-          dotDensity: 'double',
-          imageEncoding: 'gs_v_0',
+    await qzWithin(
+      qz.print(printConfig, [
+        '\x1b\x40',
+        {
+          type: 'raw',
+          format: 'image',
+          data: raster,
+          options: {
+            language: 'ESCPOS',
+            dotDensity: 'double',
+            imageEncoding: 'gs_v_0',
+          },
         },
-      },
-      '\n\n\n',
-      '\x1d\x56\x00',
-    ]);
+        '\n\n\n',
+        '\x1d\x56\x00',
+      ]),
+      `enviar el ticket a «${printer}»`,
+    );
   } catch (error) {
     throw new ThermalPrinterError(
       `QZ Tray no ha podido imprimir en «${printer}». (${errorMessage(error)})`,

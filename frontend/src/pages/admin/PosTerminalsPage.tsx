@@ -34,7 +34,7 @@ function QzConnectionTest() {
         onClick={() => test.mutate()}
         className="rounded border border-brand-700 px-4 py-2 text-sm font-medium text-brand-700 disabled:opacity-40"
       >
-        {test.isPending ? 'Comprobando QZ…' : 'Probar conexión e impresora guardadas'}
+        {test.isPending ? 'Comprobando QZ… (máx. 12 s)' : 'Probar conexión e impresora guardadas'}
       </button>
       {test.isSuccess && (
         <p role="status" className="mt-2 text-sm font-medium text-green-700">
@@ -48,7 +48,8 @@ function QzConnectionTest() {
         </p>
       )}
       <p className="mt-2 text-xs text-slate-500">
-        La prueba utiliza los valores ya guardados. Guarda cualquier cambio antes de probar.
+        La prueba utiliza los valores ya guardados. Guarda cualquier cambio antes de probar. Si QZ
+        muestra una autorización, respóndela: la comprobación caduca con un diagnóstico a los 12 s.
       </p>
     </div>
   );
