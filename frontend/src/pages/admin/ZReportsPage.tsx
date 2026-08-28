@@ -3,6 +3,7 @@ import { queryOptions } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { zReportSchema, type ZReport } from '@/features/pos/api';
+import { ZReportReprintButton } from '@/features/pos/ZReportReprintButton';
 import { useBusinessTimezone } from '@/features/settings/useShopSettings';
 import { API_V1, apiFetch } from '@/lib/api';
 import { formatBusinessDateTime } from '@/lib/businessTime';
@@ -55,6 +56,7 @@ export function ZReportsPage() {
                 <th className="px-4 py-2 font-medium">Otros</th>
                 <th className="px-4 py-2 font-medium">Devuelto</th>
                 <th className="px-4 py-2 font-medium">Total</th>
+                <th className="px-4 py-2 font-medium" />
               </tr>
             </thead>
             <tbody>
@@ -82,6 +84,12 @@ export function ZReportsPage() {
                   </td>
                   <td className="px-4 py-2 font-medium text-slate-800">
                     {formatMoney(report.gross_total)}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <ZReportReprintButton
+                      report={report}
+                      closedAtLabel={formatBusinessDateTime(report.closed_at, businessTimezone)}
+                    />
                   </td>
                 </tr>
               ))}
