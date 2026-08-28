@@ -91,16 +91,21 @@ export function AddOrderLineForm({
     initialLine !== undefined && initialLine.product_id === selectedProductId
       ? initialLine.package_name
       : selectedProduct?.base_unit_name;
-  const parsedCost = Number(unitCost);
+  // Los campos monetarios aceptan la coma decimal española, pero `Number`
+  // no. Normalízala antes de decidir si se puede pedir la previsualización y
+  // antes de enviarla al backend, que trabaja con decimales de punto.
+  const normalizedUnitCost = unitCost.trim().replace(',', '.');
+  const parsedCost = Number(normalizedUnitCost);
   const canPreviewPrice =
     selectedProduct !== undefined &&
-    unitCost.trim() !== '' &&
+    /^\d+(?:\.\d{1,6})?$/.test(normalizedUnitCost) &&
     Number.isFinite(parsedCost) &&
     parsedCost >= 0;
   const {
     mutate: previewPrice,
     data: pricePreview,
     isPending: isPreviewingPrice,
+    isError: isPreviewingPriceError,
   } = useMutation({
     mutationFn: ({ productId: id, cost }: { productId: number; cost: string }) =>
       previewProductPriceForCost(id, cost),
@@ -111,10 +116,10 @@ export function AddOrderLineForm({
   useEffect(() => {
     if (!canPreviewPrice || selectedProductId === undefined) return;
     const timer = window.setTimeout(() => {
-      previewPrice({ productId: selectedProductId, cost: unitCost });
+      previewPrice({ productId: selectedProductId, cost: normalizedUnitCost });
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [canPreviewPrice, previewPrice, selectedProductId, unitCost]);
+  }, [canPreviewPrice, normalizedUnitCost, previewPrice, selectedProductId]);
 
   const submit = handleSubmit((values) => {
     onSubmit(
@@ -257,6 +262,9 @@ export function AddOrderLineForm({
           placeholder="—"
           className="mt-1 block w-28 rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800"
         />
+        {isPreviewingPriceError && (
+          <p className="mt-1 text-xs text-red-600">No se ha podido calcular el PVP previsto.</p>
+        )}
       </label>
 
       <label className="text-sm text-slate-600">

@@ -322,9 +322,9 @@ describe('PurchasingPage', () => {
     await userEvent.type(qtyInput, '2');
     const costInput = screen.getByLabelText('Coste/unidad');
     await userEvent.clear(costInput);
-    await userEvent.type(costInput, '3');
-    expect(costInput).toHaveValue('3');
-    await waitFor(() => expect(screen.getByLabelText('PVP previsto')).toHaveValue('6,00 €'));
+    await userEvent.type(costInput, '3,25');
+    expect(costInput).toHaveValue('3,25');
+    await waitFor(() => expect(screen.getByLabelText('PVP previsto')).toHaveValue('6,50 €'));
     await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));
 
     await screen.findByText(/Agua 1\.5L — UNIT/);
