@@ -6,6 +6,7 @@ import { CreateSupplierForm } from '@/features/suppliers/CreateSupplierForm';
 import { EditSupplierForm } from '@/features/suppliers/EditSupplierForm';
 import { SuppliersTable } from '@/features/suppliers/SuppliersTable';
 import {
+  activateSupplier,
   createSupplier,
   deactivateSupplier,
   suppliersQuery,
@@ -57,8 +58,9 @@ export function SuppliersPage() {
     onError: () => setEditError('No se ha podido guardar el proveedor.'),
   });
 
-  const deactivateMutation = useMutation({
-    mutationFn: (id: number) => deactivateSupplier(id),
+  const statusMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
+      isActive ? activateSupplier(id) : deactivateSupplier(id),
     onSuccess: invalidateSuppliers,
   });
 
@@ -124,8 +126,8 @@ export function SuppliersPage() {
             setEditingSupplier(supplier);
             setEditError(null);
           }}
-          onDeactivate={(id) => deactivateMutation.mutate(id)}
-          isDeactivating={deactivateMutation.isPending}
+          onSetActive={(id, isActive) => statusMutation.mutate({ id, isActive })}
+          isChangingStatus={statusMutation.isPending}
         />
       )}
     </section>

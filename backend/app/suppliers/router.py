@@ -86,6 +86,15 @@ async def deactivate_supplier(supplier_id: int, session: SessionDep) -> Supplier
     return _supplier_to_read(await service.deactivate_supplier(session, supplier_id))
 
 
+@router.post(
+    "/suppliers/{supplier_id}/activate",
+    response_model=SupplierRead,
+    dependencies=[_require_manage],
+)
+async def activate_supplier(supplier_id: int, session: SessionDep) -> SupplierRead:
+    return _supplier_to_read(await service.activate_supplier(session, supplier_id))
+
+
 @router.get(
     "/suppliers/{supplier_id}/products",
     response_model=list[ProductSupplierRead],

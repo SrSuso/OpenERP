@@ -105,6 +105,23 @@ async def deactivate_supplier(session: AsyncSession, supplier_id: int) -> Suppli
     return supplier
 
 
+async def activate_supplier(session: AsyncSession, supplier_id: int) -> Supplier:
+    """Restore a supplier to the selectable, active supplier list."""
+    supplier = await get_supplier(session, supplier_id)
+    before = _snapshot(supplier)
+    supplier.is_active = True
+    await session.flush()
+    await audit.record(
+        session,
+        action="activated",
+        entity_type="supplier",
+        entity_id=supplier_id,
+        before=before,
+        after=_snapshot(supplier),
+    )
+    return supplier
+
+
 # --- product <-> supplier links ----------------------------------------------
 
 _LINK_OPTIONS = (selectinload(ProductSupplier.product), selectinload(ProductSupplier.supplier))

@@ -9,8 +9,8 @@ interface SuppliersTableProps {
   expandedId: number | null;
   onToggleExpand: (id: number) => void;
   onEdit: (supplier: Supplier) => void;
-  onDeactivate: (id: number) => void;
-  isDeactivating: boolean;
+  onSetActive: (id: number, isActive: boolean) => void;
+  isChangingStatus: boolean;
 }
 
 export function SuppliersTable({
@@ -19,8 +19,8 @@ export function SuppliersTable({
   expandedId,
   onToggleExpand,
   onEdit,
-  onDeactivate,
-  isDeactivating,
+  onSetActive,
+  isChangingStatus,
 }: SuppliersTableProps) {
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -71,16 +71,16 @@ export function SuppliersTable({
                       >
                         Editar
                       </button>
-                      {supplier.is_active && (
-                        <button
-                          type="button"
-                          onClick={() => onDeactivate(supplier.id)}
-                          disabled={isDeactivating}
-                          className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Desactivar
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => onSetActive(supplier.id, !supplier.is_active)}
+                        disabled={isChangingStatus}
+                        className={`text-sm font-medium hover:underline disabled:cursor-not-allowed disabled:opacity-50 ${
+                          supplier.is_active ? 'text-red-600' : 'text-green-700'
+                        }`}
+                      >
+                        {supplier.is_active ? 'Desactivar' : 'Reactivar'}
+                      </button>
                     </>
                   )}
                 </td>

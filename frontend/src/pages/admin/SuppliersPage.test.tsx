@@ -67,6 +67,7 @@ function stubBackend() {
   const links: ProductSupplier[] = [];
   const createCalls: Record<string, unknown>[] = [];
   const deactivateCalls: number[] = [];
+  const activateCalls: number[] = [];
   const linkCalls: { productId: number; supplierId: number; body: Record<string, unknown> }[] = [];
 
   vi.stubGlobal(
@@ -105,6 +106,13 @@ function stubBackend() {
         supplier.is_active = false;
         return Promise.resolve(jsonResponse(supplier));
       }
+      if (method === 'POST' && /\/suppliers\/(\d+)\/activate$/.test(url)) {
+        const id = Number(/\/suppliers\/(\d+)\/activate$/.exec(url)![1]);
+        activateCalls.push(id);
+        const supplier = suppliers.find((s) => s.id === id)!;
+        supplier.is_active = true;
+        return Promise.resolve(jsonResponse(supplier));
+      }
       if (method === 'GET' && /\/suppliers\/(\d+)\/products$/.test(url)) {
         return Promise.resolve(jsonResponse(links));
       }
@@ -136,7 +144,7 @@ function stubBackend() {
     }),
   );
 
-  return { createCalls, deactivateCalls, linkCalls };
+  return { createCalls, deactivateCalls, activateCalls, linkCalls };
 }
 
 function renderPage() {
@@ -187,6 +195,10 @@ describe('SuppliersPage', () => {
 
     expect(await screen.findByText('Inactivo')).toBeInTheDocument();
     expect(backend.deactivateCalls).toEqual([1]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reactivar' }));
+    expect(await screen.findByText('Activo')).toBeInTheDocument();
+    expect(backend.activateCalls).toEqual([1]);
   });
 
   it('links a product to a supplier', async () => {

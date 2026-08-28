@@ -60,6 +60,21 @@ async def test_deactivate_supplier(
     assert supplier_id in {s["id"] for s in full_list.json()}
 
 
+async def test_reactivate_supplier(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    supplier_id = await _create_supplier(client)
+    await client.post(f"/api/v1/suppliers/{supplier_id}/deactivate")
+
+    response = await client.post(f"/api/v1/suppliers/{supplier_id}/activate")
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+
+    active_list = await client.get("/api/v1/suppliers")
+    assert supplier_id in {s["id"] for s in active_list.json()}
+
+
 async def test_link_product_to_supplier(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -55,6 +55,13 @@ export async function deactivateSupplier(id: number): Promise<Supplier> {
   });
 }
 
+export async function activateSupplier(id: number): Promise<Supplier> {
+  return apiFetch(`${API_V1}/suppliers/${id}/activate`, {
+    method: 'POST',
+    schema: supplierSchema,
+  });
+}
+
 // --- productos vendidos por un proveedor: su SKU y coste (independiente
 // del coste propio del producto, que es lo último que pagamos nosotros) ---
 
