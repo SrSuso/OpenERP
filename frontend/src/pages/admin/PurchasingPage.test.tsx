@@ -325,26 +325,31 @@ describe('PurchasingPage', () => {
     await userEvent.type(costInput, '3,25');
     expect(costInput).toHaveValue('3,25');
     await waitFor(() => expect(screen.getByLabelText('PVP previsto')).toHaveValue('6,50 €'));
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir fila' }));
 
     await screen.findByText(/Agua 1\.5L — UNIT/);
+    // La tabla previa al alta también es editable: no hace falta quitar la
+    // fila para corregir una cotización recién tecleada.
+    const stagedCostInput = screen.getByLabelText('Coste por unidad de Agua 1.5L — UNIT');
+    await userEvent.clear(stagedCostInput);
+    await userEvent.type(stagedCostInput, '1,25');
+    await waitFor(() => expect(screen.getAllByText('2,50 €')).not.toHaveLength(0));
     expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeEnabled();
     await userEvent.click(screen.getByRole('button', { name: 'Crear pedido' }));
 
     await screen.findByText('Distribuciones Ejemplo SL');
+    expect(backend.orders[0]?.lines[0]?.unit_cost).toBe('1.25');
     await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
 
     expect(await screen.findByText('Realizar pedido')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Unidad' })).toBeInTheDocument();
 
-    // Una línea de borrador se corrige en el propio pedido y mantiene la
-    // unidad del producto, sin desplegable que pueda cambiarla por error.
-    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
-    expect(screen.getByLabelText('Unidad')).toHaveValue('Unidad');
-    const editCostInput = screen.getByLabelText('Coste/unidad');
+    // El borrador se corrige directamente en la tabla: al salir de la
+    // celda se guarda sin abrir otro formulario.
+    const editCostInput = screen.getByLabelText('Coste por unidad de Agua 1.5L');
     await userEvent.clear(editCostInput);
     await userEvent.type(editCostInput, '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await userEvent.tab();
     await waitFor(() => expect(backend.orders[0]?.lines[0]?.unit_cost).toBe('1'));
 
     // Realizar pedido
@@ -359,16 +364,27 @@ describe('PurchasingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
     await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
     await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
-    await userEvent.selectOptions(screen.getByLabelText('Línea pendiente'), String(1));
-    await userEvent.type(screen.getByLabelText('Cantidad'), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir a la recepción' }));
+    const receivedQuantity = screen.getByLabelText('Cantidad recibida de Agua 1.5L');
+    expect(receivedQuantity).toHaveValue('2');
+    await userEvent.clear(receivedQuantity);
+    await userEvent.type(receivedQuantity, '1');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
     await screen.findByText('No se ha podido registrar la recepción.');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
 
-    expect(await screen.findByText('Estado: Recibido')).toBeInTheDocument();
+    expect(await screen.findByText('Estado: Recibido parcialmente')).toBeInTheDocument();
     expect(backend.receiptKeys[0]).not.toBe('');
     expect(backend.receiptKeys[1]).toBe(backend.receiptKeys[0]);
+    // Al abrir la segunda recepción sólo queda una unidad pendiente y ya
+    // aparece escrita: no hace falta volver a elegir ni añadir la línea.
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
+    await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
+    await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
+    expect(screen.getByLabelText('Cantidad recibida de Agua 1.5L')).toHaveValue('1');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
+
+    expect(await screen.findByText('Estado: Recibido')).toBeInTheDocument();
+    expect(backend.receiptKeys[2]).not.toBe(backend.receiptKeys[0]);
     // La línea del pedido sigue identificando el producto por su nombre;
     // el SKU técnico no se enseña.
     expect(screen.getByText('Agua 1.5L')).toBeInTheDocument();
@@ -386,7 +402,7 @@ describe('PurchasingPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
     await userEvent.clear(screen.getByLabelText('Cantidad'));
     await userEvent.type(screen.getByLabelText('Cantidad'), '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir línea' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir fila' }));
     await userEvent.click(screen.getByRole('button', { name: 'Crear pedido' }));
     await screen.findByText('Distribuciones Ejemplo SL');
     await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
@@ -396,9 +412,7 @@ describe('PurchasingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
     await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
     await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
-    await userEvent.selectOptions(screen.getByLabelText('Línea pendiente'), '1');
-    await userEvent.type(screen.getByLabelText('Cantidad'), '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Añadir a la recepción' }));
+    expect(screen.getByLabelText('Cantidad recibida de Agua 1.5L')).toHaveValue('1');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
 
     expect(await screen.findByText('Costes de compra diferentes')).toBeInTheDocument();

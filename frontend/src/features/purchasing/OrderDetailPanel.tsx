@@ -43,7 +43,6 @@ export function OrderDetailPanel({
   canManagePricing,
 }: OrderDetailPanelProps) {
   const [showReceiptForm, setShowReceiptForm] = useState(false);
-  const [editingLineId, setEditingLineId] = useState<number | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const placeAttemptRef = useRef<string | null>(null);
   const receiptAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
@@ -67,10 +66,7 @@ export function OrderDetailPanel({
   const updateLineMutation = useMutation({
     mutationFn: ({ lineId, payload }: { lineId: number; payload: OrderLineInput }) =>
       updateOrderLine(order.id, lineId, payload),
-    onSuccess: () => {
-      setEditingLineId(null);
-      invalidateOrders();
-    },
+    onSuccess: invalidateOrders,
   });
 
   const placeMutation = useMutation({
@@ -118,9 +114,6 @@ export function OrderDetailPanel({
 
   const canReceive =
     canManageReceiving && (order.status === 'ORDERED' || order.status === 'PARTIALLY_RECEIVED');
-  const editingLine =
-    editingLineId === null ? undefined : order.lines.find((line) => line.id === editingLineId);
-
   return (
     <div className="border-t border-slate-100 bg-slate-50 p-4">
       <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -159,24 +152,15 @@ export function OrderDetailPanel({
         canRemove={canManagePurchase && order.status === 'DRAFT'}
         canEdit={canManagePurchase && order.status === 'DRAFT'}
         onRemove={(lineId) => removeLineMutation.mutate(lineId)}
-        onEdit={setEditingLineId}
+        onUpdate={(lineId, payload) => updateLineMutation.mutate({ lineId, payload })}
         isRemoving={removeLineMutation.isPending}
       />
       {canManagePurchase && order.status === 'DRAFT' && (
         <AddOrderLineForm
-          key={editingLineId ?? 'new'}
           products={products}
-          {...(editingLine === undefined ? {} : { initialLine: editingLine })}
-          onSubmit={(payload) => {
-            if (editingLineId !== null) {
-              updateLineMutation.mutate({ lineId: editingLineId, payload });
-              return;
-            }
-            addLineMutation.mutate(payload);
-          }}
-          isPending={addLineMutation.isPending || updateLineMutation.isPending}
-          submitLabel={editingLineId === null ? 'Añadir línea' : 'Guardar cambios'}
-          {...(editingLineId === null ? {} : { onCancel: () => setEditingLineId(null) })}
+          onSubmit={(payload) => addLineMutation.mutate(payload)}
+          isPending={addLineMutation.isPending}
+          submitLabel="Añadir otra línea"
         />
       )}
 
