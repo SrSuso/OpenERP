@@ -18,6 +18,7 @@ class ProductCategoryCreate(BaseModel):
     #: ``app.pricing``.
     tracks_stock: bool = True
     is_sold_by_weight: bool = False
+    quick_price_edit: bool = False
     default_unit_name: str | None = Field(default=None, max_length=20)
     margin_rate: Decimal | None = Field(default=None, ge=0)
     margin_amount: Decimal | None = Field(default=None, ge=0)
@@ -36,6 +37,8 @@ class ProductCategoryUpdate(BaseModel):
     #: ``None`` preserves existing categories for older callers that only
     #: rename or change stock control.
     is_sold_by_weight: bool | None = None
+    #: ``None`` conserva el valor para clientes anteriores a esta opción.
+    quick_price_edit: bool | None = None
     #: Ausente = conservar; ``null`` = dejar la categoría sin propuesta.
     default_unit_name: str | None = Field(default=None, max_length=20)
 
@@ -74,6 +77,7 @@ class ProductCategoryRead(BaseModel):
     #: Resuelve la regla de venta por peso de la categoría para que el POS
     #: no tenga que cargar ni interpretar categorías por su cuenta.
     is_sold_by_weight: bool
+    quick_price_edit: bool
     default_unit_name: str | None
     taxes: list[ProductTaxRead]
 

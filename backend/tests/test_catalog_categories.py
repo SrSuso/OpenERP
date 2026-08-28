@@ -18,6 +18,7 @@ async def test_manager_can_create_and_list_categories(
     assert create_response.json()["name"] == "Lácteos"
     assert create_response.json()["is_active"] is True
     assert create_response.json()["is_sold_by_weight"] is False
+    assert create_response.json()["quick_price_edit"] is False
 
     list_response = await client.get("/api/v1/product-categories")
     assert list_response.status_code == 200
@@ -58,6 +59,7 @@ async def test_admin_can_create_category_with_stock_pricing_and_tax_defaults(
             "name": "Congelados",
             "tracks_stock": False,
             "is_sold_by_weight": True,
+            "quick_price_edit": True,
             "margin_rate": "25",
             "margin_amount": "0.25",
             "price_formula": "cost * 2",
@@ -70,6 +72,7 @@ async def test_admin_can_create_category_with_stock_pricing_and_tax_defaults(
     assert category["name"] == "Congelados"
     assert category["tracks_stock"] is False
     assert category["is_sold_by_weight"] is True
+    assert category["quick_price_edit"] is True
     assert category["margin_rate"] == "25.000000"
     assert category["margin_amount"] == "0.250000"
     assert category["price_formula"] == "cost * 2"
@@ -89,6 +92,37 @@ async def test_admin_can_create_category_with_stock_pricing_and_tax_defaults(
     # El POS recibe el comportamiento ya resuelto. No decide por el nombre
     # de la unidad ni acepta una indicación del navegador al vender.
     assert product.json()["is_sold_by_weight"] is True
+
+
+async def test_weight_sales_and_quick_price_edit_can_change_independently(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    created = await client.post(
+        "/api/v1/product-categories",
+        json={
+            "name": "Fruta",
+            "is_sold_by_weight": True,
+            "quick_price_edit": False,
+        },
+    )
+    assert created.status_code == 201
+    category = created.json()
+    assert category["is_sold_by_weight"] is True
+    assert category["quick_price_edit"] is False
+
+    updated = await client.patch(
+        f"/api/v1/product-categories/{category['id']}",
+        json={
+            "name": "Fruta",
+            "tracks_stock": True,
+            "is_sold_by_weight": False,
+            "quick_price_edit": True,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["is_sold_by_weight"] is False
+    assert updated.json()["quick_price_edit"] is True
 
 
 async def test_duplicate_category_name_is_a_conflict(

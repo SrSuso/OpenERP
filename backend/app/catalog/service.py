@@ -140,6 +140,7 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
         name=payload.name,
         tracks_stock=payload.tracks_stock,
         is_sold_by_weight=payload.is_sold_by_weight,
+        quick_price_edit=payload.quick_price_edit,
         default_unit_name=await _managed_unit_or_422(session, payload.default_unit_name),
     )
     session.add(category)
@@ -153,6 +154,7 @@ async def create_category(session: AsyncSession, payload: ProductCategoryCreate)
             "name": category.name,
             "tracks_stock": category.tracks_stock,
             "is_sold_by_weight": category.is_sold_by_weight,
+            "quick_price_edit": category.quick_price_edit,
             "default_unit_name": category.default_unit_name,
         },
     )
@@ -175,6 +177,10 @@ async def update_category(
             or category.is_sold_by_weight == payload.is_sold_by_weight
         )
         and (
+            payload.quick_price_edit is None
+            or category.quick_price_edit == payload.quick_price_edit
+        )
+        and (
             "default_unit_name" not in payload.model_fields_set
             or category.default_unit_name == payload.default_unit_name
         )
@@ -195,12 +201,15 @@ async def update_category(
         "name": category.name,
         "tracks_stock": category.tracks_stock,
         "is_sold_by_weight": category.is_sold_by_weight,
+        "quick_price_edit": category.quick_price_edit,
         "default_unit_name": category.default_unit_name,
     }
     category.name = payload.name
     category.tracks_stock = payload.tracks_stock
     if payload.is_sold_by_weight is not None:
         category.is_sold_by_weight = payload.is_sold_by_weight
+    if payload.quick_price_edit is not None:
+        category.quick_price_edit = payload.quick_price_edit
     if "default_unit_name" in payload.model_fields_set:
         category.default_unit_name = await _managed_unit_or_422(session, payload.default_unit_name)
     await session.flush()
@@ -214,6 +223,7 @@ async def update_category(
             "name": category.name,
             "tracks_stock": category.tracks_stock,
             "is_sold_by_weight": category.is_sold_by_weight,
+            "quick_price_edit": category.quick_price_edit,
             "default_unit_name": category.default_unit_name,
         },
     )

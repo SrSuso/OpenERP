@@ -228,6 +228,45 @@ def test_v2_alert_migration_preserves_product_behaviour_and_purges_legacy(
     engine.dispose()
 
 
+def test_quick_price_edit_migration_preserves_weight_category_behaviour(
+    fresh_database: Callable[[], str],
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "f4c2a8d91e73")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        weighed_id = connection.scalar(
+            text(
+                "INSERT INTO product_categories "
+                "(name, is_sold_by_weight, created_at, updated_at) "
+                "VALUES ('Fruta migrada', true, now(), now()) RETURNING id"
+            )
+        )
+        normal_id = connection.scalar(
+            text(
+                "INSERT INTO product_categories "
+                "(name, is_sold_by_weight, created_at, updated_at) "
+                "VALUES ('Conservas migradas', false, now(), now()) RETURNING id"
+            )
+        )
+
+    run_alembic(url, "upgrade", "c6a2e9f4b1d7")
+    with engine.begin() as connection:
+        migrated = connection.execute(
+            text(
+                "SELECT id, is_sold_by_weight, quick_price_edit "
+                "FROM product_categories WHERE id IN (:weighed_id, :normal_id) ORDER BY id"
+            ),
+            {"weighed_id": weighed_id, "normal_id": normal_id},
+        ).all()
+
+    assert migrated == [
+        (weighed_id, True, True),
+        (normal_id, False, False),
+    ]
+    engine.dispose()
+
+
 def test_there_is_exactly_one_head(alembic_runner: AlembicRunner) -> None:
     heads = [line for line in alembic_runner("heads").splitlines() if line.strip()]
 

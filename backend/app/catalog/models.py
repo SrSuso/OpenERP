@@ -94,6 +94,10 @@ class ProductCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: €/KG); la caja convierte los gramos introducidos a esa unidad antes de
     #: crear la línea de venta.
     is_sold_by_weight: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    #: Permite cambiar el PVP desde la lista de productos. Es una ayuda de
+    #: administración independiente de la venta al peso: una categoría puede
+    #: activar cualquiera de las dos opciones sin activar la otra.
+    quick_price_edit: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     #: Unidad que se propone al crear un producto dentro de esta categoría.
     #: Es un nombre (como ``Product.base_unit_name``), no una conversión ni
     #: una regla de inventario; cada producto puede elegir otra si hace falta.

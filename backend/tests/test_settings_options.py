@@ -40,7 +40,7 @@ async def test_saving_only_touches_the_keys_sent(
     await login(role_name="ADMIN")
     await client.put(
         "/api/v1/settings/options",
-        json={"values": {"app.display_name": "Alimentación Pepe", "pos.weighed_units": "KG,L"}},
+        json={"values": {"app.display_name": "Alimentación Pepe", "ui.base_font_px": "20"}},
     )
 
     response = await client.put(
@@ -52,7 +52,7 @@ async def test_saving_only_touches_the_keys_sent(
     assert options["sales.max_discount_rate"]["value"] == "15"
     # Lo guardado antes sigue ahí: guardar una tarjeta no borra las otras.
     assert options["app.display_name"]["value"] == "Alimentación Pepe"
-    assert options["pos.weighed_units"]["value"] == "KG,L"
+    assert options["ui.base_font_px"]["value"] == "20"
 
 
 async def test_an_unchanged_option_reports_the_registry_default(
@@ -62,8 +62,8 @@ async def test_an_unchanged_option_reports_the_registry_default(
 
     options = await _options(client)
 
-    assert options["pos.weighed_units"]["value"] == "KG"
-    assert options["pos.weighed_units"]["default"] == "KG"
+    assert options["ui.base_font_px"]["value"] == "18"
+    assert options["ui.base_font_px"]["default"] == "18"
     assert options["business.timezone"]["value"] == "Europe/Madrid"
     assert options["business.timezone"]["default"] == "Europe/Madrid"
 

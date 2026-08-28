@@ -25,6 +25,7 @@ def category_to_read(category: ProductCategory) -> ProductCategoryRead:
         price_formula=category.price_formula,
         tracks_stock=category.tracks_stock,
         is_sold_by_weight=category.is_sold_by_weight,
+        quick_price_edit=category.quick_price_edit,
         default_unit_name=category.default_unit_name,
         taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in category.taxes],
     )

@@ -36,6 +36,9 @@ export const productCategorySchema = z.object({
   // Durante un despliegue escalonado puede llegar una respuesta del backend
   // anterior a la migración; ausente equivale al comportamiento histórico.
   is_sold_by_weight: z.boolean().optional(),
+  // Ayuda de administración independiente de la venta al peso. Ausente se
+  // interpreta como desactivada durante un despliegue escalonado.
+  quick_price_edit: z.boolean().optional(),
   default_unit_name: z.string().nullable().optional(),
   taxes: z.array(productTaxSchema),
 });
@@ -54,6 +57,7 @@ export interface ProductCategoryCreate {
   name: string;
   tracks_stock: boolean;
   is_sold_by_weight: boolean;
+  quick_price_edit: boolean;
   default_unit_name: string | null;
   margin_rate: string | null;
   margin_amount: string | null;
@@ -79,6 +83,7 @@ export async function updateProductCategory(
     name: string;
     tracks_stock: boolean;
     is_sold_by_weight: boolean;
+    quick_price_edit: boolean;
     default_unit_name: string | null;
   },
 ): Promise<ProductCategory> {
