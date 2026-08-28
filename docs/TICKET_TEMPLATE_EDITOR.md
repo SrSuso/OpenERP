@@ -47,9 +47,10 @@ ancho, los márgenes, la fuente ni el centrado.
 ### Impresión directa con QZ Tray
 
 La ruta principal de impresión requiere QZ Tray abierto en el ordenador Windows
-de la caja. OpenERP busca el nombre exacto **`POSPrinter POS-80`** y envía la
-imagen como ESC/POS por la cola RAW de Windows. El trabajo incluye inicio de
-impresora, la imagen, avance final y corte.
+configurado en **Terminales POS → Impresión mediante QZ Tray**. OpenERP se
+conecta al host y puerto WSS guardados, busca el nombre exacto de impresora y
+envía la imagen como ESC/POS por la cola RAW de Windows. El trabajo incluye
+inicio de impresora, la imagen, avance final y corte.
 
 En el primer uso QZ Tray puede pedir autorización para que el sitio de OpenERP
 imprima. Debe aceptarse. Si QZ Tray no está abierto, no encuentra la impresora o
@@ -59,6 +60,13 @@ No existe una ruta térmica alternativa mediante `window.print()`: un ticket
 nuevo, una reimpresión de venta, una Z recién cerrada y una reimpresión de Z
 utilizan la misma imagen y el mismo adaptador QZ. Así no pueden reaparecer por
 accidente las páginas A4, escalas o márgenes del diálogo de Chrome.
+
+La conexión puede apuntar a `localhost` cuando el TPV y QZ están en el mismo PC,
+o a la IP fija del PC de caja para imprimir desde Administración. En el segundo
+caso hay que habilitar WSS remoto, instalar la CA de QZ y limitar el firewall y
+el origen autorizado. La guía completa, incluida la firma que elimina los
+avisos repetidos, está en
+[`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-la-caja-impresión-térmica-con-qz-tray).
 
 ## Editor estándar
 

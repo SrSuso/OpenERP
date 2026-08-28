@@ -11,8 +11,48 @@ import {
 } from '@/features/pos/api';
 import {
   POS_TERMINAL_SETTING_KEYS,
+  QZ_PRINT_SETTING_KEYS,
   SettingsOptionsPanel,
 } from '@/features/settings/SettingsOptionsPanel';
+import { useSettledQzPrintConfig } from '@/features/tickets/qzConfig';
+import { testQzPrinterConnection } from '@/features/tickets/qzPrinter';
+
+function QzConnectionTest() {
+  const config = useSettledQzPrintConfig();
+  const test = useMutation({
+    mutationFn: async () => {
+      if (config === undefined) throw new Error('La configuración todavía no está disponible.');
+      return testQzPrinterConnection(config);
+    },
+  });
+
+  return (
+    <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
+      <button
+        type="button"
+        disabled={config === undefined || test.isPending}
+        onClick={() => test.mutate()}
+        className="rounded border border-brand-700 px-4 py-2 text-sm font-medium text-brand-700 disabled:opacity-40"
+      >
+        {test.isPending ? 'Comprobando QZ…' : 'Probar conexión e impresora guardadas'}
+      </button>
+      {test.isSuccess && (
+        <p role="status" className="mt-2 text-sm font-medium text-green-700">
+          Conexión correcta. QZ encuentra «{test.data.printerName}». Firma silenciosa:{' '}
+          {test.data.signingEnabled ? 'activa' : 'no configurada'}.
+        </p>
+      )}
+      {test.isError && (
+        <p role="alert" className="mt-2 text-sm text-red-700">
+          {test.error instanceof Error ? test.error.message : 'No se ha podido conectar con QZ.'}
+        </p>
+      )}
+      <p className="mt-2 text-xs text-slate-500">
+        La prueba utiliza los valores ya guardados. Guarda cualquier cambio antes de probar.
+      </p>
+    </div>
+  );
+}
 
 function TerminalRow({ terminal }: { terminal: PosTerminal }) {
   const queryClient = useQueryClient();
@@ -173,17 +213,32 @@ export function PosTerminalsPage() {
       </form>
 
       {hasPermission('settings.read') && (
-        <section className="border-t border-slate-200 pt-6">
-          <h2 className="text-lg font-semibold text-slate-900">Pantalla y botones del TPV</h2>
-          <p className="mb-4 mt-1 text-sm text-slate-600">
-            Estos ajustes se aplican a todas las cajas de la tienda. El buscador táctil se activa
-            individualmente en cada terminal, en la tabla de arriba.
-          </p>
-          <SettingsOptionsPanel
-            canManage={hasPermission('settings.manage')}
-            includeKeys={POS_TERMINAL_SETTING_KEYS}
-          />
-        </section>
+        <>
+          <section className="border-t border-slate-200 pt-6">
+            <h2 className="text-lg font-semibold text-slate-900">Impresión mediante QZ Tray</h2>
+            <p className="mb-4 mt-1 text-sm text-slate-600">
+              Indica el PC Windows que controla la impresora. La misma configuración se utiliza
+              desde el TPV, Ventas, Devoluciones y Cierres Z.
+            </p>
+            <SettingsOptionsPanel
+              canManage={hasPermission('settings.manage')}
+              includeKeys={QZ_PRINT_SETTING_KEYS}
+            />
+            <QzConnectionTest />
+          </section>
+
+          <section className="border-t border-slate-200 pt-6">
+            <h2 className="text-lg font-semibold text-slate-900">Pantalla y botones del TPV</h2>
+            <p className="mb-4 mt-1 text-sm text-slate-600">
+              Estos ajustes se aplican a todas las cajas de la tienda. El buscador táctil se activa
+              individualmente en cada terminal, en la tabla de arriba.
+            </p>
+            <SettingsOptionsPanel
+              canManage={hasPermission('settings.manage')}
+              includeKeys={POS_TERMINAL_SETTING_KEYS}
+            />
+          </section>
+        </>
       )}
     </div>
   );

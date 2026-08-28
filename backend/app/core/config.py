@@ -153,6 +153,13 @@ class Settings(BaseSettings):
     # through GET /incidents either way.
     notification_recipient_email: str | None = None
 
+    # --- QZ Tray request signing -------------------------------------------
+    # The public certificate and private key are deployment secrets/files,
+    # never functional settings in PostgreSQL. The editable QZ host, port and
+    # printer name are deliberately separate (app.settings.registry).
+    qz_signing_certificate: str | None = Field(default=None, repr=False)
+    qz_signing_private_key: str | None = Field(default=None, repr=False)
+
     # --- security (phase 19) ------------------------------------------------
     # POST /auth/login is rate-limited independently by the email being
     # attempted and by client IP, so neither many IPs hammering one account
@@ -198,6 +205,10 @@ class Settings(BaseSettings):
     def is_testing(self) -> bool:
         return self.environment in ("test", "ci")
 
+    @property
+    def qz_signing_enabled(self) -> bool:
+        return bool(self.qz_signing_certificate and self.qz_signing_private_key)
+
     def validate_runtime(self) -> None:
         """Fail before serving traffic when process infrastructure is unsafe.
 
@@ -211,6 +222,11 @@ class Settings(BaseSettings):
         if self.environment == "production" and self.cors_origins:
             raise ValueError(
                 "OPENERP_CORS_ORIGINS must be empty in production; SPA and API are same-origin."
+            )
+        if bool(self.qz_signing_certificate) != bool(self.qz_signing_private_key):
+            raise ValueError(
+                "QZ signing requires both OPENERP_QZ_SIGNING_CERTIFICATE and "
+                "OPENERP_QZ_SIGNING_PRIVATE_KEY (or their _FILE forms)."
             )
 
 

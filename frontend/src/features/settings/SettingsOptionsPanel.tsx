@@ -50,6 +50,12 @@ export const POS_TERMINAL_SETTING_KEYS = [
   'ui.pos_button_color',
 ] as const;
 
+export const QZ_PRINT_SETTING_KEYS = [
+  'pos.qz_host',
+  'pos.qz_secure_port',
+  'pos.qz_printer_name',
+] as const;
+
 interface SettingsOptionsPanelProps {
   canManage: boolean;
   /** Muestra sólo estas opciones: útil cuando una pantalla concreta es su

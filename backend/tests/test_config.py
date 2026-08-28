@@ -147,8 +147,17 @@ def test_secret_infrastructure_values_are_excluded_from_repr() -> None:
         "database_url": "postgresql://fake-db-user:fake-db-password@db/application",
         "bootstrap_admin_password": "fake-bootstrap-password",
         "smtp_password": "fake-smtp-password",
+        "qz_signing_certificate": "fake-qz-certificate",
+        "qz_signing_private_key": "fake-qz-private-key",
     }
 
     rendered = repr(Settings(**secrets))  # type: ignore[arg-type]
 
     assert all(secret not in rendered for secret in secrets.values())
+
+
+def test_qz_signing_requires_certificate_and_private_key_together() -> None:
+    settings = _settings(qz_signing_certificate="certificate-only")
+
+    with pytest.raises(ValueError, match="QZ signing requires both"):
+        settings.validate_runtime()

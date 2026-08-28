@@ -27,6 +27,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from ipaddress import ip_address
 from typing import Any
 
 from app.core.business_time import parse_timezone
@@ -38,6 +39,8 @@ class SettingType(StrEnum):
     DECIMAL = "DECIMAL"
     #: One line of text.
     STRING = "STRING"
+    #: IP address, localhost or a fully qualified DNS name, without scheme/port.
+    HOST = "HOST"
     #: Several lines (the panel renders a textarea).
     TEXT = "TEXT"
     #: One of `SettingDef.choices`.
@@ -52,6 +55,28 @@ class SettingType(StrEnum):
     #: connection strings must never be registered here; they come from the
     #: environment through app.core.config.Settings.
     SECRET = "SECRET"
+
+
+_DNS_LABEL_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+
+def _parse_host(raw: str) -> str:
+    value = raw.strip()
+    if not value:
+        raise ValueError("No puede quedar vacío.")
+    if value.lower() == "localhost":
+        return "localhost"
+    try:
+        ip_address(value)
+        return value
+    except ValueError:
+        pass
+    labels = value.removesuffix(".").split(".")
+    if len(labels) < 2 or len(value) > 253 or any(not _DNS_LABEL_RE.fullmatch(x) for x in labels):
+        raise ValueError(
+            "Usa una IP o un nombre DNS completo, sin https://, ruta, puerto ni espacios."
+        )
+    return value
 
 
 @dataclass(frozen=True)
@@ -76,6 +101,8 @@ class SettingDef:
     #: Shown as a warning next to the field. For the handful of options
     #: that change what the till charges or what the law requires.
     caution: str | None = None
+    #: Most labels/texts may intentionally be empty. Connection endpoints may not.
+    allow_blank: bool = True
 
     def parse(self, raw: str) -> Any:
         """Turn the stored string into the value the app uses. Raises
@@ -110,6 +137,14 @@ class SettingDef:
         if self.type is SettingType.TIMEZONE:
             parse_timezone(raw)
             return raw
+        if self.type is SettingType.HOST:
+            return _parse_host(raw)
+        if (
+            self.type in (SettingType.STRING, SettingType.TEXT)
+            and not self.allow_blank
+            and not raw.strip()
+        ):
+            raise ValueError("No puede quedar vacío.")
         return raw
 
     def _check_range(self, value: Decimal) -> None:
@@ -126,6 +161,7 @@ class SettingDef:
 
 GROUP_STORE = "Datos de la tienda"
 GROUP_POS = "Caja (TPV)"
+GROUP_QZ = "Impresión QZ Tray"
 GROUP_SALES = "Ventas"
 GROUP_CATALOG = "Productos"
 GROUP_NOTIFICATIONS = "Avisos"
@@ -244,6 +280,47 @@ SETTINGS: tuple[SettingDef, ...] = (
         default=18,
         minimum=Decimal(14),
         maximum=Decimal(28),
+    ),
+    SettingDef(
+        key="pos.qz_host",
+        group=GROUP_QZ,
+        label="Servidor QZ (IP o nombre completo)",
+        help=(
+            "Equipo Windows donde se ejecuta QZ Tray. Usa localhost si este navegador está "
+            "en la caja, o una IP fija/nombre DNS completo para imprimir desde otro PC. "
+            "No escribas https:// ni el puerto."
+        ),
+        type=SettingType.HOST,
+        default="localhost",
+    ),
+    SettingDef(
+        key="pos.qz_secure_port",
+        group=GROUP_QZ,
+        label="Puerto seguro de QZ",
+        help=(
+            "Puerto WSS que escucha QZ Tray. Empieza por 8181 y usa otro únicamente si "
+            "QZ indica que ese puerto ya está ocupado."
+        ),
+        type=SettingType.ENUM,
+        default="8181",
+        choices=(
+            Choice("8181", "8181 (principal)"),
+            Choice("8282", "8282"),
+            Choice("8383", "8383"),
+            Choice("8484", "8484"),
+        ),
+    ),
+    SettingDef(
+        key="pos.qz_printer_name",
+        group=GROUP_QZ,
+        label="Nombre de la impresora en Windows",
+        help=(
+            "Debe coincidir exactamente con el nombre que aparece en Impresoras y escáneres "
+            "del PC donde se ejecuta QZ Tray."
+        ),
+        type=SettingType.STRING,
+        default="POSPrinter POS-80",
+        allow_blank=False,
     ),
     # --- ventas ------------------------------------------------------------
     SettingDef(

@@ -1,24 +1,47 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const qzMocks = vi.hoisted(() => ({
-  isActive: vi.fn(() => true),
+  isActive: vi.fn(() => false),
   connect: vi.fn(() => Promise.resolve()),
-  find: vi.fn(() => Promise.resolve('POSPrinter POS-80')),
-  create: vi.fn(() => ({ printer: 'POSPrinter POS-80' })),
+  disconnect: vi.fn(() => Promise.resolve()),
+  getConnectionInfo: vi.fn(() => ({ host: '192.168.1.50', port: 8181, socket: '' })),
+  find: vi.fn(() => Promise.resolve('Caja charcutería')),
+  create: vi.fn(() => ({ printer: 'Caja charcutería' })),
   print: vi.fn(() => Promise.resolve()),
   raster: vi.fn(() => Promise.resolve('data:image/png;base64,TICKET')),
+  certificate: vi.fn(),
+  algorithm: vi.fn(),
+  signature: vi.fn(),
+  getSecurity: vi.fn(() =>
+    Promise.resolve({ enabled: true, certificate: '-----BEGIN CERTIFICATE-----\nPUBLIC\n' }),
+  ),
+  sign: vi.fn(() => Promise.resolve('SIGNED')),
 }));
 
 vi.mock('qz-tray', () => ({
-  websocket: { isActive: qzMocks.isActive, connect: qzMocks.connect },
+  websocket: {
+    isActive: qzMocks.isActive,
+    connect: qzMocks.connect,
+    disconnect: qzMocks.disconnect,
+    getConnectionInfo: qzMocks.getConnectionInfo,
+  },
   printers: { find: qzMocks.find },
   configs: { create: qzMocks.create },
+  security: {
+    setCertificatePromise: qzMocks.certificate,
+    setSignatureAlgorithm: qzMocks.algorithm,
+    setSignaturePromise: qzMocks.signature,
+  },
   print: qzMocks.print,
 }));
 
 vi.mock('./ticketRaster', () => ({ ticketRasterPngUrl: qzMocks.raster }));
+vi.mock('./qzSecurityApi', () => ({
+  getQzSecurity: qzMocks.getSecurity,
+  signQzDigest: qzMocks.sign,
+}));
 
-import { printThermalTicket } from './qzPrinter';
+import { printThermalTicket, testQzPrinterConnection } from './qzPrinter';
 
 const PROFILE = {
   printable_width_mm: 72,
@@ -33,17 +56,34 @@ const PROFILE = {
 };
 
 describe('QZ thermal printer adapter', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    qzMocks.isActive.mockReturnValue(false);
+  });
 
   it('sends the preview raster to the exact Windows printer as ESC/POS and cuts once', async () => {
-    await printThermalTicket('TOTAL 1.25 €', PROFILE);
+    await printThermalTicket('TOTAL 1.25 €', PROFILE, {
+      host: '192.168.1.50',
+      securePort: 8282,
+      printerName: 'Caja charcutería',
+    });
 
-    expect(qzMocks.find).toHaveBeenCalledWith('POSPrinter POS-80');
+    expect(qzMocks.certificate).toHaveBeenCalledOnce();
+    expect(qzMocks.algorithm).toHaveBeenCalledWith('SHA512');
+    expect(qzMocks.signature).toHaveBeenCalledWith(qzMocks.sign);
+    expect(qzMocks.connect).toHaveBeenCalledWith({
+      host: '192.168.1.50',
+      port: { secure: [8282], insecure: [] },
+      usingSecure: true,
+      retries: 2,
+      delay: 1,
+    });
+    expect(qzMocks.find).toHaveBeenCalledWith('Caja charcutería');
     expect(qzMocks.create).toHaveBeenCalledWith(
-      'POSPrinter POS-80',
+      'Caja charcutería',
       expect.objectContaining({ jobName: 'OpenERP ticket' }),
     );
-    expect(qzMocks.print).toHaveBeenCalledWith({ printer: 'POSPrinter POS-80' }, [
+    expect(qzMocks.print).toHaveBeenCalledWith({ printer: 'Caja charcutería' }, [
       '\x1b\x40',
       {
         type: 'raw',
@@ -58,5 +98,23 @@ describe('QZ thermal printer adapter', () => {
       '\n\n\n',
       '\x1d\x56\x00',
     ]);
+  });
+
+  it('disconnects a previous QZ destination before using the saved remote host', async () => {
+    qzMocks.isActive.mockReturnValue(true);
+    qzMocks.getConnectionInfo.mockReturnValue({
+      host: 'localhost',
+      port: 8181,
+      socket: 'wss',
+    });
+
+    await testQzPrinterConnection({
+      host: '192.168.1.50',
+      securePort: 8181,
+      printerName: 'Caja charcutería',
+    });
+
+    expect(qzMocks.disconnect).toHaveBeenCalledOnce();
+    expect(qzMocks.connect).toHaveBeenCalledWith(expect.objectContaining({ host: '192.168.1.50' }));
   });
 });

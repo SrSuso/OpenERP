@@ -11,14 +11,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import SessionDep, SettingsDep
+from app.core.errors import ServiceUnavailableError
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import SALE_READ, TICKET_MANAGE
-from app.tickets import service
+from app.tickets import qz_signing, service
 from app.tickets.presenters import template_to_print_profile as _template_to_print_profile
 from app.tickets.presenters import template_to_read as _template_to_read
 from app.tickets.presenters import ticket_to_read as _ticket_to_read
 from app.tickets.schemas import (
+    QzSecurityRead,
+    QzSignatureRead,
+    QzSignRequest,
     TicketPrintProfileRead,
     TicketRead,
     TicketTemplateCreate,
@@ -115,3 +119,32 @@ async def generate_ticket(sale_id: int, session: SessionDep) -> TicketRead:
 @router.get("/sales/{sale_id}/ticket", response_model=TicketRead, dependencies=[_require_sale_read])
 async def get_ticket(sale_id: int, session: SessionDep) -> TicketRead:
     return _ticket_to_read(await service.get_ticket(session, sale_id))
+
+
+@router.get(
+    "/printing/qz/security", response_model=QzSecurityRead, dependencies=[_require_sale_read]
+)
+async def get_qz_security(settings: SettingsDep) -> QzSecurityRead:
+    return QzSecurityRead(
+        enabled=settings.qz_signing_enabled,
+        certificate=settings.qz_signing_certificate if settings.qz_signing_enabled else None,
+    )
+
+
+@router.post("/printing/qz/sign", response_model=QzSignatureRead, dependencies=[_require_sale_read])
+async def sign_qz_request(payload: QzSignRequest, settings: SettingsDep) -> QzSignatureRead:
+    if not settings.qz_signing_enabled:
+        raise ServiceUnavailableError("La firma silenciosa de QZ Tray no está configurada.")
+    assert settings.qz_signing_certificate is not None
+    assert settings.qz_signing_private_key is not None
+    try:
+        signature = qz_signing.sign_digest(
+            settings.qz_signing_certificate,
+            settings.qz_signing_private_key,
+            payload.digest,
+        )
+    except ValueError as exc:
+        raise ServiceUnavailableError(
+            "El certificado de firma QZ configurado en el servidor no es válido."
+        ) from exc
+    return QzSignatureRead(signature=signature)

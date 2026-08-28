@@ -148,3 +148,16 @@ class TicketRead(BaseModel):
     margin_bottom_mm: int
     rendered_text: str
     created_at: datetime
+
+
+class QzSecurityRead(BaseModel):
+    enabled: bool
+    certificate: str | None
+
+
+class QzSignRequest(BaseModel):
+    digest: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+
+
+class QzSignatureRead(BaseModel):
+    signature: str

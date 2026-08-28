@@ -269,7 +269,11 @@ describe('PosLayout', () => {
 
     await waitFor(() => expect(backend.ticketCalls).toEqual(['/api/v1/sales/42/tickets']));
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
-    expect(printMocks.thermal).toHaveBeenCalledWith('TICKET ANTERIOR', expect.any(Object));
+    expect(printMocks.thermal).toHaveBeenCalledWith(
+      'TICKET ANTERIOR',
+      expect.any(Object),
+      expect.any(Object),
+    );
   });
 
   it('signs out the cashier without closing the till or discarding its terminal', async () => {
@@ -307,6 +311,7 @@ describe('PosLayout', () => {
     expect(printMocks.thermal).toHaveBeenCalledWith(
       expect.stringContaining('CIERRE Z'),
       PRINT_PROFILE,
+      expect.any(Object),
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Volver al TPV' }));

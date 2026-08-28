@@ -13,6 +13,7 @@ export const settingTypeSchema = z.enum([
   'INT',
   'DECIMAL',
   'STRING',
+  'HOST',
   'TEXT',
   'ENUM',
   'TIMEZONE',

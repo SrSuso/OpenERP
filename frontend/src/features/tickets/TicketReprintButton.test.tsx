@@ -57,6 +57,7 @@ describe('TicketReprintButton', () => {
       expect(printMocks.thermal).toHaveBeenCalledWith(
         'TICKET 101',
         expect.objectContaining({ sale_id: 101 }),
+        expect.any(Object),
       ),
     );
     expect(screen.getByRole('button', { name: 'Ticket 101' })).toBeInTheDocument();
@@ -66,6 +67,7 @@ describe('TicketReprintButton', () => {
     expect(printMocks.thermal).toHaveBeenLastCalledWith(
       'TICKET 102',
       expect.objectContaining({ sale_id: 102 }),
+      expect.any(Object),
     );
     expect(document.querySelectorAll('[data-ticket-paper-preview]')).toHaveLength(0);
   });

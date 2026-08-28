@@ -322,6 +322,10 @@ describe('ReturnsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reimprimir ticket' }));
 
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
-    expect(printMocks.thermal).toHaveBeenCalledWith('Venta #42\nTOTAL 10.00\n', expect.any(Object));
+    expect(printMocks.thermal).toHaveBeenCalledWith(
+      'Venta #42\nTOTAL 10.00\n',
+      expect.any(Object),
+      expect.any(Object),
+    );
   });
 });

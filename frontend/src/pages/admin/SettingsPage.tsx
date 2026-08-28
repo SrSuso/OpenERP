@@ -1,6 +1,7 @@
 import { useAuth } from '@/features/auth/useAuth';
 import {
   POS_TERMINAL_SETTING_KEYS,
+  QZ_PRINT_SETTING_KEYS,
   SettingsOptionsPanel,
 } from '@/features/settings/SettingsOptionsPanel';
 
@@ -22,7 +23,7 @@ export function SettingsPage() {
 
       <SettingsOptionsPanel
         canManage={canManage}
-        excludeKeys={[...POS_TERMINAL_SETTING_KEYS, 'catalog.sku_prefix']}
+        excludeKeys={[...POS_TERMINAL_SETTING_KEYS, ...QZ_PRINT_SETTING_KEYS, 'catalog.sku_prefix']}
       />
     </section>
   );

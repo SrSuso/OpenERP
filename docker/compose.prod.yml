@@ -63,6 +63,12 @@ services:
       context: ../backend
     image: openerp-backend:${OPENERP_VERSION:-latest}
     env_file: ../.env.production
+    group_add:
+      # Lets the non-root `openerp` user read host-mounted secrets that are
+      # owner/group-readable only. Set this to `id -g` on the Docker host.
+      - ${OPENERP_HOST_SECRET_GID:-1000}
+    volumes:
+      - ../deploy/qz-signing:/run/secrets/qz-signing:ro
     command: ['uv', 'run', 'alembic', 'upgrade', 'head']
     depends_on:
       postgres:
@@ -77,6 +83,10 @@ services:
       context: ../backend
     image: openerp-backend:${OPENERP_VERSION:-latest}
     env_file: ../.env.production
+    group_add:
+      - ${OPENERP_HOST_SECRET_GID:-1000}
+    volumes:
+      - ../deploy/qz-signing:/run/secrets/qz-signing:ro
     command:
       - uv
       - run
@@ -108,6 +118,10 @@ services:
       context: ../backend
     image: openerp-backend:${OPENERP_VERSION:-latest}
     env_file: ../.env.production
+    group_add:
+      - ${OPENERP_HOST_SECRET_GID:-1000}
+    volumes:
+      - ../deploy/qz-signing:/run/secrets/qz-signing:ro
     command: ['uv', 'run', 'python', '-m', 'app.jobs.worker']
     depends_on:
       postgres:

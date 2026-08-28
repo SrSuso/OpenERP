@@ -67,6 +67,7 @@ describe('ZReportReprintButton', () => {
     expect(printMocks.thermal).toHaveBeenCalledWith(
       expect.stringMatching(/CIERRE Z Nº 7[\s\S]*TOTAL COBRADO/),
       expect.objectContaining({ printable_width_mm: 72 }),
+      expect.any(Object),
     );
   });
 });

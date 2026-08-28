@@ -294,23 +294,24 @@ Nginx emite estos headers en SPA, assets, API, errores y mantenimiento:
 
 | Header | Valor |
 | --- | --- |
-| `Content-Security-Policy` | Recursos del propio servidor; además, `connect-src` permite sólo los puertos WSS locales 8181/8282/8383/8484 que usa QZ Tray. |
+| `Content-Security-Policy` | Recursos del propio servidor; además, `connect-src` permite WSS sólo en los cuatro puertos reservados de QZ Tray: 8181/8282/8383/8484. |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `camera=(), geolocation=(), microphone=(), payment=(), usb=()` |
 | `Strict-Transport-Security` | `max-age=31536000` |
 
-La CSP no permite scripts inline ni `unsafe-eval`. Las conexiones WSS añadidas
-apuntan exclusivamente a `localhost` para comunicar el navegador con QZ Tray en
-la propia caja; no exponen un servicio remoto. `style-src 'unsafe-inline'`
-es la única excepción: React usa estilos calculados para colores/alturas y
-ECharts CanvasRenderer posiciona su canvas mediante atributos `style`. Scripts,
-API, imágenes y fuentes permanecen same-origin; `data:` sólo se abre para
-imágenes. HSTS se emite únicamente en el servidor HTTPS, sin `includeSubDomains`
-ni `preload`. El despliegue soportado termina TLS en este Nginx. Si TLS termina
-en otro proxy, configura explícitamente esa topología antes de exponerla; no
-confíes en un `X-Forwarded-Proto` enviado por el cliente.
+La CSP no permite scripts inline ni `unsafe-eval`. Las conexiones WSS sólo
+pueden salir hacia los puertos seguros 8181/8282/8383/8484 de QZ; el destino
+concreto se valida y guarda en **Terminales POS**, y QZ restringe además el
+origen autorizado. No abras esos puertos fuera de la LAN. `style-src
+'unsafe-inline'` es la única excepción: React usa estilos calculados para
+colores/alturas y ECharts CanvasRenderer posiciona su canvas mediante atributos
+`style`. Scripts, API, imágenes y fuentes permanecen same-origin; `data:` sólo
+se abre para imágenes. HSTS se emite únicamente en el servidor HTTPS, sin
+`includeSubDomains` ni `preload`. El despliegue soportado termina TLS en este
+Nginx. Si TLS termina en otro proxy, configura explícitamente esa topología
+antes de exponerla; no confíes en un `X-Forwarded-Proto` enviado por el cliente.
 
 Producción exige la lista CORS vacía y falla antes del downtime si una
 configuración antigua todavía contiene orígenes. Desarrollo conserva el origen
@@ -356,15 +357,75 @@ La impresión habitual no usa el diálogo de Chrome. El servidor Ubuntu entrega
 el ticket a la web y QZ Tray, instalado en el ordenador Windows de la caja,
 envía una imagen ESC/POS directamente a la impresora USB local.
 
-Configuración del ordenador de la caja:
+### QZ en el mismo ordenador que abre el TPV
+
+Configuración mínima del ordenador de la caja:
 
 1. Instala el controlador de la POSPrinter y comprueba en Windows que su nombre
    es exactamente **`POSPrinter POS-80`**.
 2. Instala QZ Tray, ábrelo y activa su inicio automático con Windows.
-3. Abre OpenERP en ese mismo ordenador. En el primer trabajo, acepta la
+3. En **Configuración de la tienda → Terminales POS → Impresión mediante QZ
+   Tray**, guarda `localhost`, puerto `8181` y el nombre exacto de la impresora.
+4. Pulsa **Probar conexión e impresora guardadas**. En el primer uso, acepta la
    autorización que muestre QZ Tray.
-4. Cobra una venta de prueba. OpenERP debe mostrar «Enviando a POSPrinter
-   POS-80 mediante QZ Tray» y la impresora debe cortar un único ticket.
+5. Cobra una venta de prueba. OpenERP debe mostrar el destino configurado y la
+   impresora debe cortar un único ticket.
+
+### Imprimir desde otro ordenador de administración
+
+El navegador siempre habla directamente con QZ. Para reimprimir desde un PC de
+administración, éste se conecta por WSS al PC Windows que tiene la impresora; el
+servidor Ubuntu no actúa como puente de impresión. Reserva una IP fija para el
+PC de caja (en estos ejemplos, `192.168.1.50`) y haz lo siguiente en ese PC:
+
+1. Abre **Símbolo del sistema como administrador** y genera el certificado WSS
+   de QZ incluyendo la IP fija:
+
+   ```bat
+   cd "%PROGRAMFILES%\QZ Tray"
+   qz-tray-console.exe certgen --host "192.168.1.50"
+   ```
+
+   Si se usa un nombre DNS estable, genera el certificado para ese nombre y
+   guarda exactamente el mismo nombre en OpenERP. Reinicia QZ después.
+2. Desde el menú avanzado de QZ abre su **directorio compartido**, localiza
+   `qz-tray.properties` y conserva estas propiedades (sustituye el origen por
+   la URL exacta con la que abres OpenERP, sin ruta final):
+
+   ```properties
+   security.wss.host=0.0.0.0
+   security.wss.httpsonly=true
+   security.wss.alloworigin=https://192.168.1.11
+   ```
+
+   Reinicia QZ. No uses `*` en `alloworigin`.
+3. En Firewall de Windows permite entrada TCP al puerto 8181 sólo desde los PCs
+   que deban imprimir. Por ejemplo, desde PowerShell como administrador, si el
+   PC de administración es `192.168.1.20`:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "QZ Tray WSS 8181 desde OpenERP" `
+     -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8181 `
+     -RemoteAddress 192.168.1.20 -Profile Private
+   ```
+
+   Añade la IP del propio TPV si ese navegador también se conectará mediante la
+   IP remota. No publiques este puerto en el router ni en Internet.
+4. Copia `root-ca.crt` del directorio compartido de QZ a cada PC que vaya a
+   abrir OpenERP e instálalo en **Equipo local → Entidades de certificación raíz
+   de confianza**. Permite al navegador confiar en el WSS privado; no contiene
+   la clave privada de firma descrita más abajo.
+5. En **Terminales POS → Impresión mediante QZ Tray**, guarda:
+   - servidor QZ: `192.168.1.50`;
+   - puerto seguro: `8181`;
+   - impresora: `POSPrinter POS-80` (o su nombre exacto en Windows).
+6. Guarda primero y pulsa **Probar conexión e impresora guardadas**. El botón
+   confirma por separado la conexión WSS, la cola de Windows y si la firma
+   silenciosa está activa.
+
+La configuración es común para TPV, Ventas, Devoluciones y Cierres Z. Si sólo
+hay una impresora de caja es el comportamiento deseado. No se introducen claves
+privadas ni certificados en ese panel.
 
 OpenERP genera una imagen de **576 puntos**: el ancho real del cabezal de esta
 impresora (72 mm a 203 dpi). La misma imagen se muestra en la vista previa y se
@@ -386,9 +447,39 @@ usan el mismo envío ESC/POS mediante QZ. Si QZ falla, se muestra el error y deb
 corregirse o reintentarse; no se cambia silenciosamente a un documento A4.
 
 QZ Tray puede advertir sobre trabajos sin firma. La firma con certificado es el
-paso operativo necesario para eliminar avisos en un puesto definitivo; la clave
-privada no debe guardarse en el navegador ni en Git. La explicación del modelo
-físico, los márgenes y el editor está en
+paso operativo necesario para eliminar sus mensajes **Allow** en un puesto
+definitivo. Es distinta del certificado WSS `root-ca.crt`: usa el certificado
+de firma y `private-key.pem` obtenidos mediante QZ Site Manager o un certificado
+oficial de QZ. La clave privada queda exclusivamente en Ubuntu:
+
+```bash
+cd /home/su_admin/OpenERP
+install -d -m 750 deploy/qz-signing
+install -m 640 /ruta/segura/digital-certificate.txt deploy/qz-signing/
+install -m 640 /ruta/segura/private-key.pem deploy/qz-signing/
+id -g
+```
+
+Pon el número mostrado por `id -g` en `OPENERP_HOST_SECRET_GID` y activa en
+`.env.production`:
+
+```dotenv
+OPENERP_HOST_SECRET_GID=1000
+OPENERP_QZ_SIGNING_CERTIFICATE_FILE=/run/secrets/qz-signing/digital-certificate.txt
+OPENERP_QZ_SIGNING_PRIVATE_KEY_FILE=/run/secrets/qz-signing/private-key.pem
+```
+
+Los ficheros de `deploy/qz-signing/` están ignorados por Git. Reinicia API y
+worker mediante el despliegue soportado; el API entrega sólo el certificado
+público al navegador y firma cada digest en el servidor. Nunca copies
+`private-key.pem` al frontend, al panel ni al repositorio. En QZ debe confiarse
+una vez en ese certificado; después el botón de prueba muestra **Firma
+silenciosa: activa** y las llamadas protegidas ya no provocan avisos repetidos.
+El permiso de acceso a la red local que pueda pedir Chrome/Edge es independiente
+de QZ: se concede una vez al sitio o mediante la política corporativa del
+navegador, no se puede ocultar desde JavaScript.
+
+La explicación del modelo físico, los márgenes y el editor está en
 [`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md).
 
 ### 3.5. Mantener las plantillas de ticket

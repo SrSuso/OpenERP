@@ -50,6 +50,27 @@ def test_keys_are_unique() -> None:
     assert len(SETTINGS_BY_KEY) == len(SETTINGS)
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("localhost", "localhost"),
+        (" 192.168.1.50 ", "192.168.1.50"),
+        ("caja.tienda.local", "caja.tienda.local"),
+    ],
+)
+def test_qz_host_accepts_only_an_unambiguous_connection_host(raw: str, expected: str) -> None:
+    assert SETTINGS_BY_KEY["pos.qz_host"].parse(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["", "caja", "https://192.168.1.50", "192.168.1.50:8181", "host con espacios"],
+)
+def test_qz_host_rejects_schemes_ports_paths_and_ambiguous_names(raw: str) -> None:
+    with pytest.raises(ValueError, match=r"IP|vacío"):
+        SETTINGS_BY_KEY["pos.qz_host"].parse(raw)
+
+
 @pytest.mark.parametrize("definition", SETTINGS, ids=lambda d: d.key)
 def test_default_round_trips_through_its_own_type(definition: SettingDef) -> None:
     """`serialise` then `parse` has to give back the same value — that pair

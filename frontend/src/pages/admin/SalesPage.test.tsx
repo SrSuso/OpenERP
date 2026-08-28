@@ -143,7 +143,11 @@ describe('SalesPage', () => {
 
     expect(backend.ticketCalls).toEqual([1043]);
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
-    expect(printMocks.thermal).toHaveBeenCalledWith('TICKET DE PRUEBA', expect.any(Object));
+    expect(printMocks.thermal).toHaveBeenCalledWith(
+      'TICKET DE PRUEBA',
+      expect.any(Object),
+      expect.any(Object),
+    );
     expect(within(charged).getByRole('button', { name: 'Reimprimir ticket' })).toBeInTheDocument();
   });
 

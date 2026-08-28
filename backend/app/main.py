@@ -31,6 +31,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.db.session import dispose_engine
+from app.tickets.qz_signing import validate_signing_material
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     settings.validate_runtime()
+    if settings.qz_signing_enabled:
+        assert settings.qz_signing_certificate is not None
+        assert settings.qz_signing_private_key is not None
+        validate_signing_material(settings.qz_signing_certificate, settings.qz_signing_private_key)
     configure_logging(level=settings.log_level, fmt=settings.log_format)
 
     publish_docs = settings.environment != "production"

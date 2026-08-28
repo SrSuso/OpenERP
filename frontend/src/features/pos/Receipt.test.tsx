@@ -156,6 +156,7 @@ describe('Receipt', () => {
       expect(printMocks.thermal).toHaveBeenCalledWith(
         'Venta #1\nTOTAL 20.00\n',
         expect.objectContaining({ printable_width_mm: 48 }),
+        expect.any(Object),
       ),
     );
   });

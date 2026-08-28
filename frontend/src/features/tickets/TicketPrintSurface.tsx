@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { TicketRasterPreview } from '@/features/tickets/TicketRasterPreview';
+import { useSettledQzPrintConfig } from '@/features/tickets/qzConfig';
 import { printThermalTicket } from '@/features/tickets/qzPrinter';
 import { type TicketPrintProfile } from '@/features/tickets/printProfile';
 
@@ -11,7 +12,7 @@ interface TicketPrintSurfaceProps {
   onPrinted?: () => void;
 }
 
-type PrintStatus = 'printing' | 'error';
+type PrintStatus = 'loading' | 'printing' | 'error';
 
 /** Every thermal output uses the same QZ/ESC-POS path. */
 export function TicketPrintSurface({
@@ -20,15 +21,17 @@ export function TicketPrintSurface({
   onDismiss,
   onPrinted = onDismiss,
 }: TicketPrintSurfaceProps) {
-  const [status, setStatus] = useState<PrintStatus>('printing');
+  const config = useSettledQzPrintConfig();
+  const [status, setStatus] = useState<PrintStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
 
   const printWithQz = useCallback(async () => {
+    if (config === undefined) return;
     setStatus('printing');
     setError(null);
     try {
-      await printThermalTicket(text, profile);
+      await printThermalTicket(text, profile, config);
       onPrinted();
     } catch (printError) {
       setStatus('error');
@@ -36,21 +39,26 @@ export function TicketPrintSurface({
         printError instanceof Error ? printError.message : 'No se ha podido imprimir el ticket.',
       );
     }
-  }, [onPrinted, profile, text]);
+  }, [config, onPrinted, profile, text]);
 
   useEffect(() => {
-    if (started.current) return;
+    if (config === undefined || started.current) return;
     started.current = true;
     void printWithQz();
-  }, [printWithQz]);
+  }, [config, printWithQz]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4">
       <div className="flex max-h-full max-w-3xl flex-col items-center gap-4 overflow-auto rounded-xl bg-slate-100 p-5 shadow-2xl">
         <TicketRasterPreview text={text} profile={profile} compact />
-        {status === 'printing' && (
+        {status === 'loading' && (
           <p role="status" className="text-sm font-medium text-slate-700">
-            Enviando a POSPrinter POS-80 mediante QZ Tray…
+            Cargando la configuración de impresión…
+          </p>
+        )}
+        {status === 'printing' && config !== undefined && (
+          <p role="status" className="text-sm font-medium text-slate-700">
+            Enviando a {config.printerName} mediante QZ Tray ({config.host}:{config.securePort})…
           </p>
         )}
         {error !== null && (

@@ -136,6 +136,20 @@ export function SettingField({
         />
       );
       break;
+    case 'HOST':
+      control = (
+        <input
+          id={inputId}
+          type="text"
+          value={value}
+          disabled={disabled}
+          spellCheck={false}
+          placeholder="192.168.1.50 o caja.example.local"
+          onChange={(event) => onChange(event.target.value)}
+          className={`${inputClass} font-mono`}
+        />
+      );
+      break;
     default:
       control = (
         <input

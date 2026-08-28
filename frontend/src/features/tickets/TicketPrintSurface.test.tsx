@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -27,7 +28,19 @@ describe('TicketPrintSurface', () => {
     const onDismiss = vi.fn();
     const browserPrint = vi.fn();
     vi.stubGlobal('print', browserPrint);
-    render(<TicketPrintSurface text={'TOTAL 1.25 €\n'} profile={PROFILE} onDismiss={onDismiss} />);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(['settings', 'values'], {
+      'pos.qz_host': '192.168.1.50',
+      'pos.qz_secure_port': '8181',
+      'pos.qz_printer_name': 'POSPrinter POS-80',
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TicketPrintSurface text={'TOTAL 1.25 €\n'} profile={PROFILE} onDismiss={onDismiss} />
+      </QueryClientProvider>,
+    );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('QZ no disponible');
     expect(screen.getByAltText('Vista previa exacta del ticket térmico')).toHaveAttribute(
@@ -37,6 +50,11 @@ describe('TicketPrintSurface', () => {
 
     expect(screen.queryByRole('button', { name: /navegador/i })).not.toBeInTheDocument();
     expect(browserPrint).not.toHaveBeenCalled();
+    expect(printMocks.thermal).toHaveBeenCalledWith('TOTAL 1.25 €\n', PROFILE, {
+      host: '192.168.1.50',
+      securePort: 8181,
+      printerName: 'POSPrinter POS-80',
+    });
 
     printMocks.thermal.mockResolvedValueOnce(undefined);
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar con QZ Tray' }));

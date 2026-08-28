@@ -120,11 +120,16 @@ de la tienda, el ticket se imprime automáticamente o mediante **Imprimir
 ticket**. Si se repite la impresión se reutiliza el ticket congelado, no se
 genera uno con nombres o precios actuales.
 
-La impresión principal usa QZ Tray abierto en el ordenador Windows de la caja y
+La impresión principal usa QZ Tray abierto en el ordenador Windows configurado y
 la impresora `POSPrinter POS-80`. La primera vez puede pedir autorización. Si
 QZ o la impresora no están disponibles se muestra el motivo y se permite
 reintentar. La preparación está en
 [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-la-caja-impresión-térmica-con-qz-tray).
+
+Un administrador configura la dirección del PC de impresión, el puerto seguro y
+el nombre exacto de la impresora en **Configuración de la tienda → Terminales POS
+→ Impresión mediante QZ Tray**. Después de guardar, el botón de prueba confirma
+si QZ es accesible, si encuentra la cola y si la firma silenciosa está activa.
 
 La impresión del ticket recién cobrado, las reimpresiones de Ventas y
 Devoluciones, el cierre Z y la reimpresión de cierres usan siempre QZ Tray. No

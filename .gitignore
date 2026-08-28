@@ -32,6 +32,9 @@ test-results/
 # Never commit private keys. scripts/gen-internal-cert.sh writes here.
 /deploy/certs/*
 !/deploy/certs/.gitkeep
+# QZ's private signing key is a deployment secret, never source code.
+/deploy/qz-signing/*
+!/deploy/qz-signing/.gitkeep
 /deploy/maintenance/enabled
 /deploy/state/
 
