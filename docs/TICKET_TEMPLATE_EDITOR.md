@@ -37,13 +37,14 @@ desplaza a la derecha dentro de la misma bobina; la vista previa no cambia a A4
 ni adquiere una barra de desplazamiento horizontal.
 
 OpenERP genera un único documento de impresión aislado del resto de la página.
-Entrega los márgenes configurados como márgenes físicos de página (`@page`) y
-el texto ocupa directamente el ancho imprimible restante. No coloca otra caja
-de 80 mm con los mismos márgenes dentro: eso haría que el controlador redujera
-el ticket dos veces. Tampoco fija una altura ficticia; la impresora trabaja con
-una bobina continua y su controlador corta al terminar el contenido. Así se
-evita también que el menú, las tablas o impresiones canceladas dejen páginas en
-blanco delante del ticket.
+El preset `80(72)` de la PcCom POS-80 ya entrega a Chrome los 72 mm del cabezal:
+sus 4 mm físicos de cada lado ya están descontados. OpenERP no vuelve a añadir
+esos 4 mm dentro de la página. Sólo convierte en margen de página (`@page`) la
+parte configurada que supere ese mínimo; por ejemplo, un margen de 10 mm añade
+6 mm dentro del cabezal. Repetir `4 + 4 mm` sobre la página de 72 mm dejaría 64
+mm y obligaría a Chrome a reducir el ticket. OpenERP tampoco fija una altura
+ficticia: la impresora trabaja con una bobina continua y su controlador corta
+al terminar el contenido.
 
 ### Configuración del controlador de impresión
 
@@ -58,11 +59,11 @@ su controlador:
 - márgenes adicionales del controlador **ninguno**;
 - cabeceras y pies del navegador desactivados.
 
-OpenERP controla el área imprimible, los márgenes de página, la fuente y el
-interlineado. El controlador controla la bobina exterior de 80 mm, la longitud
-continua, el corte y el límite físico que admite el cabezal. No configures otros
-4 mm en el controlador: los márgenes de la plantilla ya se envían como margen de
-página y duplicarlos volvería a estrechar el texto.
+OpenERP controla el ancho de contenido, cualquier margen adicional, la fuente y
+el interlineado. El controlador controla la bobina exterior de 80 mm, sus 72 mm
+imprimibles, la longitud continua y el corte. No configures otros márgenes en el
+controlador ni selecciones un ancho inferior a 72 mm: volvería a estrechar el
+texto.
 
 Si se selecciona «Microsoft Print to PDF» u otra impresora configurada como A4,
 la vista del sistema mostrará una hoja A4. Eso describe el papel del destino

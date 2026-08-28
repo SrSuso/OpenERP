@@ -27,6 +27,16 @@ const FONT_STACKS: Record<TicketFontFamily, string> = {
  */
 export const THERMAL_PAPER_WIDTH_MM = 80;
 
+/**
+ * The PcCom POS-80 Windows preset is named `80(72)`: it consumes the physical
+ * 4 mm at each side itself and exposes a 72 mm page to Chromium. Template side
+ * margins are expressed against the complete 80 mm roll, so only the part
+ * above those driver margins must enter `@page`.
+ */
+export const THERMAL_DRIVER_PRINTABLE_WIDTH_MM = 72;
+const THERMAL_DRIVER_SIDE_MARGIN_MM =
+  (THERMAL_PAPER_WIDTH_MM - THERMAL_DRIVER_PRINTABLE_WIDTH_MM) / 2;
+
 /** Known values only: a template cannot inject arbitrary CSS into printing. */
 export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
   return {
@@ -43,17 +53,18 @@ export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
 }
 
 /**
- * Physical margins belong to the printer page, not to an 80 mm element inside
- * that page. Thermal drivers already expose a printable area smaller than the
- * roll; applying the same margins to an 80 mm element makes Chromium shrink
- * the whole ticket a second time. A per-document rule lets the browser
- * reconcile the requested margins with the driver's non-printable area.
+ * The POS-80 driver has already removed its physical side margins before the
+ * page reaches Chromium. Subtract that baseline and apply only any additional
+ * margin requested by the template. Passing 4 + 4 mm again would leave a 64 mm
+ * page and make Chromium scale the intended 72 mm ticket down to fit it.
  *
  * The driver still owns the paper format and continuous roll length. Setting a
  * fixed CSS page height here would split or pad receipts unnecessarily.
  */
 export function ticketPageStyle(profile: TicketPrintProfile): string {
-  return `@media print { @page { margin: ${profile.margin_top_mm}mm ${profile.margin_right_mm}mm ${profile.margin_bottom_mm}mm ${profile.margin_left_mm}mm; } }`;
+  const pageMarginLeft = Math.max(0, profile.margin_left_mm - THERMAL_DRIVER_SIDE_MARGIN_MM);
+  const pageMarginRight = Math.max(0, profile.margin_right_mm - THERMAL_DRIVER_SIDE_MARGIN_MM);
+  return `@media print { @page { margin: ${profile.margin_top_mm}mm ${pageMarginRight}mm ${profile.margin_bottom_mm}mm ${pageMarginLeft}mm; } }`;
 }
 
 /** The editor preview uses the same safe font settings before print CSS applies. */
