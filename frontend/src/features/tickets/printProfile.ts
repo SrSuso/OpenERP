@@ -88,7 +88,10 @@ export function ticketPreviewStyle(profile: TicketPrintProfile): CSSProperties {
 export function printableCharacters(
   profile: Pick<TicketPrintProfile, 'printable_width_mm' | 'font_size_px' | 'font_weight'>,
 ): number {
-  const characterWidthEm = profile.font_weight === 'BOLD' ? 0.65 : 0.62;
+  // All supported monospace stacks retain their advance in bold. Their real
+  // value is about 0.60 em; 0.61 keeps a small no-wrap safety margin without
+  // throwing away a complete column.
+  const characterWidthEm = 0.61;
   return Math.max(
     16,
     Math.floor(

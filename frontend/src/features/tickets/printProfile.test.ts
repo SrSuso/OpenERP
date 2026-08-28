@@ -49,6 +49,6 @@ describe('ticket print page profile', () => {
   });
 
   it('calculates a conservative line width without imposing a roll height', () => {
-    expect(printableCharacters(PROFILE)).toBe(48);
+    expect(printableCharacters(PROFILE)).toBe(49);
   });
 });

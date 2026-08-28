@@ -20,11 +20,13 @@ from app.tickets.models import TicketFontWeight, TicketLayoutMode, TicketTaxDisp
 #: come in these two widths in practice.
 _CSS_PIXELS_PER_INCH = Decimal(96)
 _MM_PER_INCH = Decimal("25.4")
-# Conservative monospace glyph widths. A bold glyph is a fraction wider, so
-# reserve more room and never let a backend-composed row wrap in the browser.
+# Conservative advance shared by the supported monospace fonts. Courier New,
+# Liberation Mono and DejaVu Sans Mono keep the same character advance in bold;
+# 0.61 em leaves a small safety margin over their roughly 0.60 em real width
+# without wasting a complete receipt column.
 _CHARACTER_WIDTH_EM = {
-    TicketFontWeight.NORMAL: Decimal("0.62"),
-    TicketFontWeight.BOLD: Decimal("0.65"),
+    TicketFontWeight.NORMAL: Decimal("0.61"),
+    TicketFontWeight.BOLD: Decimal("0.61"),
 }
 
 

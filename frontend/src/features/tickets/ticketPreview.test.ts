@@ -37,7 +37,7 @@ describe('renderTicketPreview', () => {
 
     expect(lines[0]!.trim()).toBe('Mi Tienda');
     expect(lines[1]!.trim()).toBe('Gracias');
-    expect(lines[2]).toBe('-'.repeat(32)); // 48mm útiles -> 32 caracteres
+    expect(lines[2]).toBe('-'.repeat(33)); // 48mm útiles -> 33 caracteres
   });
 
   it('omits the header rule entirely when there is no header text', () => {
@@ -53,13 +53,13 @@ describe('renderTicketPreview', () => {
     expect(utc).toContain('12/08/2026, 22:30');
   });
 
-  it('widens to 48 characters for a 72mm printable area', () => {
+  it('uses the calibrated monospace capacity for a 72mm printable area', () => {
     const preview = renderTicketPreview({
       ...BASE_FIELDS,
       printable_width_mm: 72,
       header_text: 'X',
     });
-    expect(preview.split('\n')[1]).toBe('-'.repeat(48));
+    expect(preview.split('\n')[1]).toBe('-'.repeat(49));
   });
 
   it('shows nothing about tax under NONE', () => {
