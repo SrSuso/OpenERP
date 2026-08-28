@@ -28,9 +28,8 @@ explica también en [`../ADMIN_GUIDE.md`](../ADMIN_GUIDE.md#5-gestión-de-usuari
 El funcionamiento de los dos editores de ticket, los márgenes de 80 mm y todas
 las variables disponibles está en
 [`../TICKET_TEMPLATE_EDITOR.md`](../TICKET_TEMPLATE_EDITOR.md).
-La instalación de QZ Tray y la comprobación de la impresora Windows
-`POSPrinter POS-80` están en
-[`../ADMIN_GUIDE.md`](../ADMIN_GUIDE.md#34-la-caja-impresión-térmica-con-qz-tray).
+La instalación de QZ Tray, la impresora Windows, la impresión remota y la firma
+silenciosa están en [`../QZ_TRAY_POS_SETUP.md`](../QZ_TRAY_POS_SETUP.md).
 
 ## Límites importantes
 

@@ -353,6 +353,11 @@ terminales.
 
 ## 3.4. La caja: impresión térmica con QZ Tray
 
+El procedimiento completo de instalación del PC de caja, impresión remota,
+certificados WSS, firewall y firma silenciosa está en
+[`QZ_TRAY_POS_SETUP.md`](QZ_TRAY_POS_SETUP.md). Esta sección conserva el resumen
+operativo de la integración.
+
 La impresión habitual no usa el diálogo de Chrome. El servidor Ubuntu entrega
 el ticket a la web y QZ Tray, instalado en el ordenador Windows de la caja,
 envía una imagen ESC/POS directamente a la impresora USB local.

@@ -48,6 +48,7 @@ La documentación normativa se divide por audiencia:
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Tareas que cajeros, encargados y administradores realizan en la UI. |
 | [`docs/roles/`](docs/roles/README.md) | Manuales separados para cajero, encargado y administrador. |
 | [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) | Administración funcional, despliegue, upgrade, backup, restore y rollback. |
+| [`docs/QZ_TRAY_POS_SETUP.md`](docs/QZ_TRAY_POS_SETUP.md) | Instalación de QZ Tray en la caja, impresión remota, certificados y firma silenciosa. |
 | [`docs/USAGE.md`](docs/USAGE.md) | Preparación del entorno local de desarrollo. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Diseño técnico y límites del sistema actual. |
 | [`docs/TESTING.md`](docs/TESTING.md) | Política FAST/DOMAIN/FULL y comandos de pruebas. |
