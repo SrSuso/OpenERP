@@ -63,10 +63,14 @@ function stubBackend({
   canManage = true,
   empty = false,
   failFirstConsume = false,
+  lotCount,
+  failSecondPage = false,
 }: {
   canManage?: boolean;
   empty?: boolean;
   failFirstConsume?: boolean;
+  lotCount?: number;
+  failSecondPage?: boolean;
 } = {}) {
   const products = [
     product({}),
@@ -79,40 +83,48 @@ function stubBackend({
       track_expiration: false,
     }),
   ];
+  const defaultLots: Lot[] = [
+    {
+      id: 1,
+      product_id: 10,
+      lot_number: 'YG-CADUCADO',
+      manufacturing_date: null,
+      expiration_date: isoFromToday(-2),
+      supplier_id: 1,
+      purchase_order_id: null,
+    },
+    {
+      id: 2,
+      product_id: 20,
+      lot_number: 'LE-AVISO',
+      manufacturing_date: null,
+      expiration_date: isoFromToday(4),
+      supplier_id: 1,
+      purchase_order_id: null,
+    },
+    {
+      id: 3,
+      product_id: 10,
+      lot_number: 'YG-SIN-FECHA',
+      manufacturing_date: null,
+      expiration_date: null,
+      supplier_id: null,
+      purchase_order_id: null,
+    },
+  ];
   const lots: Lot[] = empty
     ? []
-    : [
-        {
-          id: 1,
-          product_id: 10,
-          product_sku: 'P000010',
-          lot_number: 'YG-CADUCADO',
+    : lotCount === undefined
+      ? defaultLots
+      : Array.from({ length: lotCount }, (_, index) => ({
+          id: index + 1,
+          product_id: index === lotCount - 1 ? 20 : 10,
+          lot_number: `LOTE-${String(index + 1).padStart(3, '0')}`,
           manufacturing_date: null,
-          expiration_date: isoFromToday(-2),
-          supplier_id: 1,
-          purchase_order_id: null,
-        },
-        {
-          id: 2,
-          product_id: 20,
-          product_sku: 'P000020',
-          lot_number: 'LE-AVISO',
-          manufacturing_date: null,
-          expiration_date: isoFromToday(4),
-          supplier_id: 1,
-          purchase_order_id: null,
-        },
-        {
-          id: 3,
-          product_id: 10,
-          product_sku: 'P000010',
-          lot_number: 'YG-SIN-FECHA',
-          manufacturing_date: null,
-          expiration_date: null,
+          expiration_date: isoFromToday(index + 1),
           supplier_id: null,
           purchase_order_id: null,
-        },
-      ];
+        }));
   let nextLotId = 10;
   const consumeKeys: string[] = [];
   const lotRequests: string[] = [];
@@ -184,7 +196,39 @@ function stubBackend({
       }
       if (method === 'GET' && /\/lots\?/.test(url)) {
         lotRequests.push(url);
-        return Promise.resolve(jsonResponse(lots));
+        const parsed = new URL(url, 'http://test');
+        const offset = Number(parsed.searchParams.get('offset') ?? 0);
+        const limit = Number(parsed.searchParams.get('limit') ?? 100);
+        if (failSecondPage && offset === 100) {
+          return Promise.resolve(jsonResponse({ error: 'page failed' }, { status: 500 }));
+        }
+        const requestedProduct = parsed.searchParams.get('product_id');
+        const requestedSearch = (parsed.searchParams.get('search') ?? '').toLocaleLowerCase('es');
+        const requestedExpiration = parsed.searchParams.get('expiration_status') ?? 'all';
+        const today = isoFromToday(0);
+        const filtered = lots
+          .filter((lot) => {
+            const productName = products.find((item) => item.id === lot.product_id)?.name ?? '';
+            return (
+              (!requestedProduct || lot.product_id === Number(requestedProduct)) &&
+              (!requestedSearch ||
+                lot.lot_number.toLocaleLowerCase('es').includes(requestedSearch) ||
+                productName.toLocaleLowerCase('es').includes(requestedSearch)) &&
+              (requestedExpiration === 'all' ||
+                (requestedExpiration === 'alert' && lot.id === 2) ||
+                (requestedExpiration === 'expired' &&
+                  lot.expiration_date !== null &&
+                  lot.expiration_date < today) ||
+                (requestedExpiration === 'undated' && lot.expiration_date === null))
+            );
+          })
+          .sort((left, right) => {
+            if (left.expiration_date === null)
+              return right.expiration_date === null ? left.id - right.id : 1;
+            if (right.expiration_date === null) return -1;
+            return left.expiration_date.localeCompare(right.expiration_date) || left.id - right.id;
+          });
+        return Promise.resolve(jsonResponse(filtered.slice(offset, offset + limit)));
       }
       if (method === 'POST' && /\/lots$/.test(url)) {
         const payload = body();
@@ -192,7 +236,6 @@ function stubBackend({
         const created: Lot = {
           id: nextLotId++,
           product_id: payload['product_id'] as number,
-          product_sku: products.find((item) => item.id === payload['product_id'])!.sku,
           lot_number: payload['lot_number'] as string,
           manufacturing_date: (payload['manufacturing_date'] as string | null) ?? null,
           expiration_date: (payload['expiration_date'] as string | null) ?? null,
@@ -256,7 +299,7 @@ function renderPage() {
 }
 
 describe('LotsPage V2', () => {
-  it('loads every lot immediately, shows product names and orders expiry before undated lots', async () => {
+  it('loads the first page, shows product names and keeps backend expiry order', async () => {
     const backend = stubBackend();
     renderPage();
     expect(await screen.findByText('YG-CADUCADO')).toBeInTheDocument();
@@ -274,6 +317,72 @@ describe('LotsPage V2', () => {
     expect(new URL(backend.lotRequests[0]!, 'http://test').searchParams.has('product_id')).toBe(
       false,
     );
+  });
+
+  it('loads subsequent pages without replacing earlier lots and hides the button at the end', async () => {
+    const backend = stubBackend({ lotCount: 205 });
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('LOTE-001')).toBeInTheDocument();
+    expect(screen.getByText('LOTE-100')).toBeInTheDocument();
+    expect(screen.queryByText('LOTE-101')).not.toBeInTheDocument();
+    expect(screen.getByText('Mostrando 100 lotes')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cargar más' }));
+    expect(await screen.findByText('LOTE-200')).toBeInTheDocument();
+    expect(screen.getByText('LOTE-001')).toBeInTheDocument();
+    expect(screen.getByText('Mostrando 200 lotes')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cargar más' }));
+    expect(await screen.findByText('LOTE-205')).toBeInTheDocument();
+    expect(screen.getByText('LOTE-001')).toBeInTheDocument();
+    expect(screen.getByText('Mostrando 205 lotes')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(
+      backend.lotRequests.map(
+        (request) => new URL(request, 'http://test').searchParams.get('offset') ?? '0',
+      ),
+    ).toEqual(['0', '100', '200']);
+  });
+
+  it('keeps the first page visible when loading the next page fails', async () => {
+    stubBackend({ lotCount: 205, failSecondPage: true });
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('LOTE-001')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cargar más' }));
+    expect(await screen.findByText(/No se han podido cargar más lotes/)).toBeInTheDocument();
+    expect(screen.getByText('LOTE-001')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+  });
+
+  it('searches outside the first page on the server and resets loaded pages for new filters', async () => {
+    const backend = stubBackend({ lotCount: 205 });
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('LOTE-001')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cargar más' }));
+    expect(await screen.findByText('LOTE-150')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Buscar producto o lote'), 'LOTE-205');
+    expect(await screen.findByText('LOTE-205')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('LOTE-001')).not.toBeInTheDocument());
+    const searchRequest = backend.lotRequests.find((request) =>
+      new URL(request, 'http://test').searchParams.has('search'),
+    );
+    expect(new URL(searchRequest!, 'http://test').searchParams.get('offset')).toBe('0');
+
+    await user.clear(screen.getByLabelText('Buscar producto o lote'));
+    await user.selectOptions(screen.getByLabelText('Producto'), '20');
+    expect(await screen.findByText('LOTE-205')).toBeInTheDocument();
+    expect(screen.queryByText('LOTE-001')).not.toBeInTheDocument();
+    const productRequest = backend.lotRequests.find((request) =>
+      new URL(request, 'http://test').searchParams.has('product_id'),
+    );
+    expect(new URL(productRequest!, 'http://test').searchParams.get('offset')).toBe('0');
   });
 
   it('filters by product name, lot number and expiration state', async () => {
@@ -346,6 +455,43 @@ describe('LotsPage V2', () => {
     expect(screen.queryByLabelText('Cantidad')).not.toBeInTheDocument();
   });
 
+  it('closes stock explicitly or when filters exclude it and switches context directly', async () => {
+    stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('YG-CADUCADO');
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Ver existencias de Yogur natural, lote YG-CADUCADO',
+      }),
+    );
+    expect(await screen.findByText('Lote YG-CADUCADO')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByRole('heading', { name: 'Existencias por lote' })).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Ver existencias de Leche entera, lote LE-AVISO' }),
+    );
+    expect(await screen.findByText('Lote LE-AVISO')).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Ver existencias de Yogur natural, lote YG-SIN-FECHA',
+      }),
+    );
+    expect(await screen.findByText('Lote YG-SIN-FECHA')).toBeInTheDocument();
+    expect(screen.queryByText('Lote LE-AVISO')).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Producto'), '10');
+    expect(screen.getByRole('heading', { name: 'Existencias por lote' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Producto'), '20');
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { name: 'Existencias por lote' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it('previews and confirms a friendly output flow while preserving its retry key', async () => {
     const backend = stubBackend({ failFirstConsume: true });
     renderPage();
@@ -376,7 +522,7 @@ describe('LotsPage V2', () => {
   it('respects read-only permissions and renders an empty state', async () => {
     stubBackend({ canManage: false, empty: true });
     renderPage();
-    expect(await screen.findByText('Todavía no hay lotes')).toBeInTheDocument();
+    expect(await screen.findByText('Todavía no hay lotes registrados')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '+ Nuevo lote' })).not.toBeInTheDocument();
   });
 });

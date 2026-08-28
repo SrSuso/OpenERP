@@ -17,15 +17,19 @@ import { formatQuantity } from '@/lib/format';
 interface LotBalancesPanelProps {
   productId: number;
   productName: string;
+  selectedLotNumber?: string;
   selectedLotId?: number | null;
   canManage: boolean;
+  onClose?: () => void;
 }
 
 export function LotBalancesPanel({
   productId,
   productName,
+  selectedLotNumber,
   selectedLotId = null,
   canManage,
+  onClose,
 }: LotBalancesPanelProps) {
   const [warehouseId, setWarehouseId] = useState('');
   const [locationId, setLocationId] = useState('');
@@ -105,18 +109,28 @@ export function LotBalancesPanel({
         <div>
           <h2 className="text-lg font-bold text-slate-900">Existencias por lote</h2>
           <p className="mt-1 text-sm text-slate-600">{productName}</p>
+          {selectedLotNumber && (
+            <p className="mt-0.5 text-sm font-semibold text-slate-700">Lote {selectedLotNumber}</p>
+          )}
         </div>
-        {canManage && warehouseId && locationId && !registering && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setRegistering(true);
-              setSuccess(null);
-            }}
-          >
-            Registrar salida
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canManage && warehouseId && locationId && !registering && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setRegistering(true);
+                setSuccess(null);
+              }}
+            >
+              Registrar salida
+            </Button>
+          )}
+          {onClose && (
+            <Button variant="ghost" onClick={onClose}>
+              Cerrar
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">

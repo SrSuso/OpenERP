@@ -1,10 +1,6 @@
 import { Button } from '@/components/ui';
 import { type Lot } from '@/features/lots/api';
-import {
-  expirationDays,
-  localExpirationDate,
-  sortLotsForExpiration,
-} from '@/features/lots/expiration';
+import { expirationDays, localExpirationDate } from '@/features/lots/expiration';
 
 function formatDate(iso: string | null): string {
   if (iso === null) return '—';
@@ -70,7 +66,7 @@ export function LotsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {sortLotsForExpiration(lots).map((lot) => {
+          {lots.map((lot) => {
             const status = statusFor(lot, alertDaysByLot.get(lot.id));
             return (
               <tr

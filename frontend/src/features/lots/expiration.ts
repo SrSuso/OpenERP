@@ -29,14 +29,3 @@ export function matchesExpirationFilter(
   if (filter === 'expired') return (expirationDays(lot) ?? 0) < 0 && lot.expiration_date !== null;
   return lot.expiration_date === null;
 }
-
-export function sortLotsForExpiration(lots: Lot[]): Lot[] {
-  return [...lots].sort((left, right) => {
-    if (left.expiration_date === null && right.expiration_date !== null) return 1;
-    if (left.expiration_date !== null && right.expiration_date === null) return -1;
-    if (left.expiration_date !== right.expiration_date) {
-      return (left.expiration_date ?? '').localeCompare(right.expiration_date ?? '');
-    }
-    return left.id - right.id;
-  });
-}

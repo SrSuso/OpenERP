@@ -8,17 +8,26 @@ at 0 and B at 7.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.lots.models import Lot
+from app.notifications.models import Incident, NotificationRule
+from app.notifications.rules import RuleType
 
 
-async def _create_product(client: AsyncClient, sku: str = "LOT-TEST-1") -> int:
+async def _create_product(
+    client: AsyncClient, sku: str = "LOT-TEST-1", name: str = "Leche 1L"
+) -> int:
     response = await client.post(
         "/api/v1/products",
         json={
             "sku": sku,
-            "name": "Leche 1L",
+            "name": name,
             "base_unit_name": "BRIK",
             "cost": "0.60",
             "list_price": "0.95",
@@ -92,6 +101,136 @@ async def test_create_lot_and_look_it_up(
     assert body["lot_number"] == "LOTE-A"
     assert body["expiration_date"] == "2026-08-14"
     assert body["product_id"] == product_id
+    assert "product_sku" not in body
+
+
+async def test_lot_listing_paginates_and_searches_beyond_the_first_hundred(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    regular_product = await _create_product(client, "LOT-PAGE-REGULAR", "Producto habitual")
+    special_product = await _create_product(client, "LOT-PAGE-SPECIAL", "Queso singular")
+    expiration = datetime.now(ZoneInfo("Europe/Madrid")).date() + timedelta(days=60)
+    created = [
+        Lot(
+            product_id=regular_product if index < 104 else special_product,
+            lot_number=f"PAG-{index + 1:03d}",
+            expiration_date=expiration,
+        )
+        for index in range(108)
+    ]
+    db_session.add_all(created)
+    await db_session.flush()
+
+    first = await client.get("/api/v1/lots", params={"limit": 100, "offset": 0})
+    second = await client.get("/api/v1/lots", params={"limit": 100, "offset": 100})
+
+    assert first.status_code == second.status_code == 200
+    first_ids = [item["id"] for item in first.json()]
+    second_ids = [item["id"] for item in second.json()]
+    assert len(first_ids) == 100
+    assert len(second_ids) == 8
+    assert set(first_ids).isdisjoint(second_ids)
+    assert first_ids + second_ids == [lot.id for lot in created]
+
+    by_number = await client.get("/api/v1/lots", params={"search": "PAG-108"})
+    assert [item["lot_number"] for item in by_number.json()] == ["PAG-108"]
+
+    by_product_name = await client.get("/api/v1/lots", params={"search": "queso singular"})
+    assert [item["lot_number"] for item in by_product_name.json()] == [
+        "PAG-105",
+        "PAG-106",
+        "PAG-107",
+        "PAG-108",
+    ]
+
+    product_page_1 = await client.get(
+        "/api/v1/lots", params={"product_id": special_product, "limit": 2, "offset": 0}
+    )
+    product_page_2 = await client.get(
+        "/api/v1/lots", params={"product_id": special_product, "limit": 2, "offset": 2}
+    )
+    filtered = product_page_1.json() + product_page_2.json()
+    assert [item["lot_number"] for item in filtered] == [
+        "PAG-105",
+        "PAG-106",
+        "PAG-107",
+        "PAG-108",
+    ]
+    assert {item["product_id"] for item in filtered} == {special_product}
+
+
+async def test_lot_listing_orders_expiry_before_pagination_with_stable_ties(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client, "LOT-ORDER", "Producto ordenado")
+    today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+    expired_1 = await _create_lot(
+        client, product_id, "CADUCADO-1", (today - timedelta(days=2)).isoformat()
+    )
+    expired_2 = await _create_lot(
+        client, product_id, "CADUCADO-2", (today - timedelta(days=2)).isoformat()
+    )
+    tomorrow = await _create_lot(
+        client, product_id, "MANANA", (today + timedelta(days=1)).isoformat()
+    )
+    later = await _create_lot(
+        client, product_id, "MAS-TARDE", (today + timedelta(days=30)).isoformat()
+    )
+    undated = await _create_lot(client, product_id, "SIN-FECHA", None)
+
+    response = await client.get("/api/v1/lots", params={"product_id": product_id})
+    assert [item["id"] for item in response.json()] == [
+        expired_1,
+        expired_2,
+        tomorrow,
+        later,
+        undated,
+    ]
+
+    expired = await client.get(
+        "/api/v1/lots",
+        params={"product_id": product_id, "expiration_status": "expired"},
+    )
+    assert [item["id"] for item in expired.json()] == [expired_1, expired_2]
+
+    no_date = await client.get(
+        "/api/v1/lots",
+        params={"product_id": product_id, "expiration_status": "undated"},
+    )
+    assert [item["id"] for item in no_date.json()] == [undated]
+
+    rule = NotificationRule(
+        name="Aviso dirigido del test",
+        rule_type=RuleType.EXPIRING_LOT,
+        params={"days_before_expiration": 7},
+        is_active=True,
+    )
+    db_session.add(rule)
+    await db_session.flush()
+    detected_at = datetime.now(UTC)
+    db_session.add(
+        Incident(
+            rule_id=rule.id,
+            subject_type="lot",
+            subject_id=tomorrow,
+            message="Caduca mañana",
+            status="OPEN",
+            first_detected_at=detected_at,
+            last_seen_at=detected_at,
+        )
+    )
+    await db_session.flush()
+    alerted = await client.get(
+        "/api/v1/lots",
+        params={"product_id": product_id, "expiration_status": "alert"},
+    )
+    assert [item["id"] for item in alerted.json()] == [tomorrow]
 
 
 async def test_duplicate_lot_number_for_same_product_is_a_conflict(

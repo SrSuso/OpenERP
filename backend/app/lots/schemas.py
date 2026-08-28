@@ -21,7 +21,6 @@ class LotCreate(BaseModel):
 class LotRead(BaseModel):
     id: int
     product_id: int
-    product_sku: str
     lot_number: str
     manufacturing_date: date | None
     expiration_date: date | None

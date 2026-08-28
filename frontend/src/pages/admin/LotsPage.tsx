@@ -1,18 +1,20 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Alert, Button, Card, EmptyState, Input, PageHeader } from '@/components/ui';
 import { useAuth } from '@/features/auth/useAuth';
 import { productsQuery } from '@/features/catalog/api';
 import { CreateLotForm } from '@/features/lots/CreateLotForm';
-import {
-  matchesExpirationFilter,
-  sortLotsForExpiration,
-  type ExpirationFilter,
-} from '@/features/lots/expiration';
+import { matchesExpirationFilter, type ExpirationFilter } from '@/features/lots/expiration';
 import { LotBalancesPanel } from '@/features/lots/LotBalancesPanel';
 import { LotsTable } from '@/features/lots/LotsTable';
-import { createLot, lotsQuery, type Lot, type LotCreateInput } from '@/features/lots/api';
+import {
+  createLot,
+  LOT_PAGE_SIZE,
+  lotsInfiniteQuery,
+  type Lot,
+  type LotCreateInput,
+} from '@/features/lots/api';
 import { activeAlertsQuery } from '@/features/notifications/api';
 import { suppliersQuery } from '@/features/suppliers/api';
 
@@ -33,7 +35,12 @@ export function LotsPage() {
   // activos que realmente controlan lotes.
   const products = useQuery(productsQuery({ activeOnly: false }));
   const suppliers = useQuery(suppliersQuery(true));
-  const lots = useQuery(lotsQuery(null));
+  const lotFilters = {
+    ...(search.trim() ? { search: search.trim() } : {}),
+    ...(productFilter ? { productId: Number(productFilter) } : {}),
+    expirationStatus: expirationFilter,
+  };
+  const lots = useInfiniteQuery(lotsInfiniteQuery(lotFilters));
   const alerts = useQuery({ ...activeAlertsQuery, enabled: canSeeAlerts });
   const queryClient = useQueryClient();
 
@@ -42,30 +49,50 @@ export function LotsPage() {
     () => new Map((products.data ?? []).map((product) => [product.id, product.name])),
     [products.data],
   );
-  const expirationAlerts = (alerts.data ?? []).filter(
-    (alert) => alert.kind === 'EXPIRATION' && alert.lot_id !== null,
+  const expirationAlerts = useMemo(
+    () =>
+      (alerts.data ?? []).filter((alert) => alert.kind === 'EXPIRATION' && alert.lot_id !== null),
+    [alerts.data],
   );
-  const alertedLotIds = new Set(expirationAlerts.map((alert) => alert.lot_id!));
-  const alertDaysByLot = new Map(
-    expirationAlerts
-      .filter((alert) => alert.days_remaining !== null)
-      .map((alert) => [alert.lot_id!, alert.days_remaining!]),
+  const alertedLotIds = useMemo(
+    () => new Set(expirationAlerts.map((alert) => alert.lot_id!)),
+    [expirationAlerts],
+  );
+  const alertDaysByLot = useMemo(
+    () =>
+      new Map(
+        expirationAlerts
+          .filter((alert) => alert.days_remaining !== null)
+          .map((alert) => [alert.lot_id!, alert.days_remaining!]),
+      ),
+    [expirationAlerts],
   );
 
   const normalizedSearch = search.trim().toLocaleLowerCase('es');
-  const visibleLots = sortLotsForExpiration(
-    (lots.data ?? []).filter((lot) => {
-      const productName = productNames.get(lot.product_id) ?? '';
-      return (
-        (!normalizedSearch ||
-          productName.toLocaleLowerCase('es').includes(normalizedSearch) ||
-          lot.lot_number.toLocaleLowerCase('es').includes(normalizedSearch)) &&
-        (!productFilter || lot.product_id === Number(productFilter)) &&
-        matchesExpirationFilter(lot, expirationFilter, alertedLotIds)
-      );
-    }),
-  );
+  const visibleLots = (lots.data?.pages ?? []).flatMap((page) => page.slice(0, LOT_PAGE_SIZE));
   const hasFilters = Boolean(search.trim() || productFilter || expirationFilter !== 'all');
+
+  useEffect(() => {
+    if (!selectedLot) return;
+    const productName = productNames.get(selectedLot.product_id) ?? '';
+    const matchesSearch =
+      !normalizedSearch ||
+      productName.toLocaleLowerCase('es').includes(normalizedSearch) ||
+      selectedLot.lot_number.toLocaleLowerCase('es').includes(normalizedSearch);
+    const matchesProduct = !productFilter || selectedLot.product_id === Number(productFilter);
+    const expirationReady = expirationFilter !== 'alert' || alerts.isSuccess;
+    const matchesExpiration =
+      !expirationReady || matchesExpirationFilter(selectedLot, expirationFilter, alertedLotIds);
+    if (!matchesSearch || !matchesProduct || !matchesExpiration) setSelectedLot(null);
+  }, [
+    alertedLotIds,
+    alerts.isSuccess,
+    expirationFilter,
+    normalizedSearch,
+    productFilter,
+    productNames,
+    selectedLot,
+  ]);
 
   const createMutation = useMutation({
     mutationFn: (payload: LotCreateInput) => createLot(payload),
@@ -155,7 +182,7 @@ export function LotsPage() {
               className="mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
             >
               <option value="all">Todos</option>
-              <option value="alert">Con aviso de caducidad</option>
+              {canSeeAlerts && <option value="alert">Con aviso de caducidad</option>}
               <option value="expired">Caducados</option>
               <option value="undated">Sin fecha</option>
             </select>
@@ -182,7 +209,11 @@ export function LotsPage() {
       {lots.isError && <Alert tone="error">No se han podido cargar los lotes.</Alert>}
       {lots.isSuccess && visibleLots.length === 0 && (
         <EmptyState
-          title={hasFilters ? 'No hay lotes para estos filtros' : 'Todavía no hay lotes'}
+          title={
+            hasFilters
+              ? 'No se encontraron lotes con estos filtros'
+              : 'Todavía no hay lotes registrados'
+          }
           description={
             hasFilters
               ? 'Prueba otra búsqueda o limpia los filtros.'
@@ -191,22 +222,47 @@ export function LotsPage() {
         />
       )}
       {visibleLots.length > 0 && (
-        <LotsTable
-          lots={visibleLots}
-          productNames={productNames}
-          alertDaysByLot={alertDaysByLot}
-          selectedLotId={selectedLot?.id ?? null}
-          onInspect={setSelectedLot}
-        />
+        <>
+          <LotsTable
+            lots={visibleLots}
+            productNames={productNames}
+            alertDaysByLot={alertDaysByLot}
+            selectedLotId={selectedLot?.id ?? null}
+            onInspect={setSelectedLot}
+          />
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-600">Mostrando {visibleLots.length} lotes</p>
+            {lots.hasNextPage && (
+              <Button
+                variant="secondary"
+                disabled={lots.isFetchingNextPage}
+                onClick={() => void lots.fetchNextPage()}
+              >
+                {lots.isFetchingNextPage
+                  ? 'Cargando…'
+                  : lots.isFetchNextPageError
+                    ? 'Reintentar'
+                    : 'Cargar más'}
+              </Button>
+            )}
+          </div>
+          {lots.isFetchNextPageError && (
+            <Alert tone="error">
+              No se han podido cargar más lotes. Los resultados ya cargados siguen disponibles.
+            </Alert>
+          )}
+        </>
       )}
 
       {selectedLot && selectedProduct && (
         <LotBalancesPanel
           key={selectedProduct.id}
           productId={selectedProduct.id}
-          productName={`${selectedProduct.name} · lote ${selectedLot.lot_number}`}
+          productName={selectedProduct.name}
+          selectedLotNumber={selectedLot.lot_number}
           selectedLotId={selectedLot.id}
           canManage={canManage}
+          onClose={() => setSelectedLot(null)}
         />
       )}
     </div>

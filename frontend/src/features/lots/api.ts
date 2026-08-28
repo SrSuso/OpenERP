@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query';
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { API_V1, apiFetch } from '@/lib/api';
@@ -8,7 +8,6 @@ import { API_V1, apiFetch } from '@/lib/api';
 export const lotSchema = z.object({
   id: z.number(),
   product_id: z.number(),
-  product_sku: z.string(),
   lot_number: z.string(),
   manufacturing_date: z.string().nullable(),
   expiration_date: z.string().nullable(),
@@ -17,14 +16,48 @@ export const lotSchema = z.object({
 });
 export type Lot = z.infer<typeof lotSchema>;
 
+export const LOT_PAGE_SIZE = 100;
+
+export interface LotFilters {
+  search?: string;
+  productId?: number;
+  expirationStatus?: 'all' | 'alert' | 'expired' | 'undated';
+}
+
+function lotParams(filters: LotFilters, limit: number, offset: number): URLSearchParams {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (filters.search) params.set('search', filters.search);
+  if (filters.productId !== undefined) params.set('product_id', String(filters.productId));
+  if (filters.expirationStatus && filters.expirationStatus !== 'all') {
+    params.set('expiration_status', filters.expirationStatus);
+  }
+  return params;
+}
+
 export function lotsQuery(productId: number | null) {
-  const params = new URLSearchParams();
-  if (productId !== null) params.set('product_id', String(productId));
+  const filters = productId === null ? {} : { productId };
+  const params = lotParams(filters, LOT_PAGE_SIZE, 0);
 
   return queryOptions({
     queryKey: ['lots', 'list', productId] as const,
     queryFn: ({ signal }) =>
       apiFetch(`${API_V1}/lots?${params.toString()}`, { schema: z.array(lotSchema), signal }),
+  });
+}
+
+/** The extra row answers "is there another page?" without adding a count
+ * query. Each visible page still contains exactly LOT_PAGE_SIZE rows. */
+export function lotsInfiniteQuery(filters: LotFilters) {
+  return infiniteQueryOptions({
+    queryKey: ['lots', 'list', 'incremental', filters] as const,
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) =>
+      apiFetch(`${API_V1}/lots?${lotParams(filters, LOT_PAGE_SIZE + 1, pageParam).toString()}`, {
+        schema: z.array(lotSchema),
+        signal,
+      }),
+    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
+      lastPage.length > LOT_PAGE_SIZE ? lastPageParam + LOT_PAGE_SIZE : undefined,
   });
 }
 

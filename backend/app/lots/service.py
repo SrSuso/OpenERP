@@ -11,10 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
@@ -27,6 +28,8 @@ from app.inventory import service as inventory_service
 from app.inventory.models import StockBalance, StockMovement
 from app.lots.models import Lot
 from app.lots.schemas import FefoConsumeRequest, LotCreate
+from app.notifications.models import Incident, NotificationRule
+from app.notifications.rules import RuleType
 from app.purchasing.models import PurchaseOrder
 from app.suppliers.models import Supplier
 
@@ -122,17 +125,39 @@ async def list_lots(
     session: AsyncSession,
     *,
     product_id: int | None = None,
+    search: str | None = None,
+    expiration_status: Literal["all", "alert", "expired", "undated"] = "all",
+    today: date | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[Lot]:
-    stmt = (
-        select(Lot)
-        .order_by(Lot.expiration_date.asc().nulls_last(), Lot.id)
-        .limit(limit)
-        .offset(offset)
-    )
+    stmt = select(Lot)
     if product_id is not None:
         stmt = stmt.where(Lot.product_id == product_id)
+    normalized_search = search.strip() if search else ""
+    if normalized_search:
+        pattern = f"%{normalized_search}%"
+        stmt = stmt.join(Product, Product.id == Lot.product_id).where(
+            or_(Lot.lot_number.ilike(pattern), Product.name.ilike(pattern))
+        )
+    if expiration_status == "alert":
+        alerted_lots = (
+            select(Incident.subject_id)
+            .join(NotificationRule, NotificationRule.id == Incident.rule_id)
+            .where(
+                Incident.status == "OPEN",
+                Incident.subject_type == "lot",
+                NotificationRule.rule_type == RuleType.EXPIRING_LOT,
+            )
+        )
+        stmt = stmt.where(Lot.id.in_(alerted_lots))
+    elif expiration_status == "expired":
+        if today is None:
+            raise ValueError("today is required for the expired lot filter")
+        stmt = stmt.where(Lot.expiration_date < today)
+    elif expiration_status == "undated":
+        stmt = stmt.where(Lot.expiration_date.is_(None))
+    stmt = stmt.order_by(Lot.expiration_date.asc().nulls_last(), Lot.id).limit(limit).offset(offset)
     return list((await session.execute(stmt)).scalars())
 
 
