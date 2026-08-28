@@ -30,6 +30,8 @@ export function ThermalPrintDocument({
   profile,
   onDismiss,
 }: ThermalPrintDocumentProps) {
+  const lineCount = Math.max(1, text.split('\n').length);
+
   useLayoutEffect(() => {
     if (!active) return;
     document.body.classList.add('printing-thermal-document');
@@ -49,7 +51,7 @@ export function ThermalPrintDocument({
       data-ticket-width={profile.printable_width_mm}
       style={ticketPrintStyle(profile)}
     >
-      <style data-ticket-page-style>{ticketPageStyle(profile)}</style>
+      <style data-ticket-page-style>{ticketPageStyle(profile, lineCount)}</style>
       <pre
         className={
           onDismiss === undefined

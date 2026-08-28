@@ -27,16 +27,6 @@ const FONT_STACKS: Record<TicketFontFamily, string> = {
  */
 export const THERMAL_PAPER_WIDTH_MM = 80;
 
-/**
- * The PcCom POS-80 Windows preset is named `80(72)`: it consumes the physical
- * 4 mm at each side itself and exposes a 72 mm page to Chromium. Template side
- * margins are expressed against the complete 80 mm roll, so only the part
- * above those driver margins must enter `@page`.
- */
-export const THERMAL_DRIVER_PRINTABLE_WIDTH_MM = 72;
-const THERMAL_DRIVER_SIDE_MARGIN_MM =
-  (THERMAL_PAPER_WIDTH_MM - THERMAL_DRIVER_PRINTABLE_WIDTH_MM) / 2;
-
 /** Known values only: a template cannot inject arbitrary CSS into printing. */
 export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
   return {
@@ -53,18 +43,24 @@ export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
 }
 
 /**
- * The POS-80 driver has already removed its physical side margins before the
- * page reaches Chromium. Subtract that baseline and apply only any additional
- * margin requested by the template. Passing 4 + 4 mm again would leave a 64 mm
- * page and make Chromium scale the intended 72 mm ticket down to fit it.
- *
- * The driver still owns the paper format and continuous roll length. Setting a
- * fixed CSS page height here would split or pad receipts unnecessarily.
+ * Define the same physical page LibreOffice sends successfully to POS-80:
+ * an explicit 80 mm sheet with the template margins inside it. The height is
+ * calculated from the receipt instead of using a fixed 200 mm sheet, so the
+ * thermal driver can cut immediately after the content without blank feed.
  */
-export function ticketPageStyle(profile: TicketPrintProfile): string {
-  const pageMarginLeft = Math.max(0, profile.margin_left_mm - THERMAL_DRIVER_SIDE_MARGIN_MM);
-  const pageMarginRight = Math.max(0, profile.margin_right_mm - THERMAL_DRIVER_SIDE_MARGIN_MM);
-  return `@media print { @page { margin: ${profile.margin_top_mm}mm ${pageMarginRight}mm ${profile.margin_bottom_mm}mm ${pageMarginLeft}mm; } }`;
+export function ticketPageHeightMm(
+  profile: Pick<TicketPrintProfile, 'line_height_px' | 'margin_top_mm' | 'margin_bottom_mm'>,
+  lineCount: number,
+): number {
+  const lineHeightMm = (profile.line_height_px * 25.4) / 96;
+  const contentHeight =
+    profile.margin_top_mm + Math.max(1, lineCount) * lineHeightMm + profile.margin_bottom_mm;
+  return Math.max(25, Math.ceil((contentHeight + 4) * 10) / 10);
+}
+
+export function ticketPageStyle(profile: TicketPrintProfile, lineCount: number): string {
+  const height = ticketPageHeightMm(profile, lineCount);
+  return `@media print { @page { size: ${THERMAL_PAPER_WIDTH_MM}mm ${height}mm; margin: ${profile.margin_top_mm}mm ${profile.margin_right_mm}mm ${profile.margin_bottom_mm}mm ${profile.margin_left_mm}mm; } }`;
 }
 
 /** The editor preview uses the same safe font settings before print CSS applies. */

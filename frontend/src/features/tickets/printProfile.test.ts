@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   printableCharacters,
-  THERMAL_DRIVER_PRINTABLE_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
+  ticketPageHeightMm,
   ticketPageStyle,
   ticketPreviewStyle,
   ticketPrintStyle,
@@ -24,7 +24,6 @@ const PROFILE = {
 describe('ticket print page profile', () => {
   it('keeps the configured printable area and margins inside the 80 mm roll', () => {
     expect(THERMAL_PAPER_WIDTH_MM).toBe(80);
-    expect(THERMAL_DRIVER_PRINTABLE_WIDTH_MM).toBe(72);
     expect(ticketPreviewStyle(PROFILE)).toMatchObject({
       width: '72mm',
       marginLeft: '4mm',
@@ -34,18 +33,24 @@ describe('ticket print page profile', () => {
       '--ticket-margin-left': '4mm',
       '--ticket-margin-right': '4mm',
     });
-    expect(ticketPageStyle(PROFILE)).toBe('@media print { @page { margin: 2mm 0mm 3mm 0mm; } }');
+    expect(ticketPageHeightMm(PROFILE, 20)).toBe(72.5);
+    expect(ticketPageStyle(PROFILE, 20)).toBe(
+      '@media print { @page { size: 80mm 72.5mm; margin: 2mm 4mm 3mm 4mm; } }',
+    );
   });
 
-  it('adds only template margins beyond the four millimetres already owned by POS-80', () => {
+  it('keeps wider template margins inside the explicit 80mm page', () => {
     expect(
-      ticketPageStyle({
-        ...PROFILE,
-        printable_width_mm: 60,
-        margin_left_mm: 10,
-        margin_right_mm: 10,
-      }),
-    ).toBe('@media print { @page { margin: 2mm 6mm 3mm 6mm; } }');
+      ticketPageStyle(
+        {
+          ...PROFILE,
+          printable_width_mm: 60,
+          margin_left_mm: 10,
+          margin_right_mm: 10,
+        },
+        20,
+      ),
+    ).toBe('@media print { @page { size: 80mm 72.5mm; margin: 2mm 10mm 3mm 10mm; } }');
   });
 
   it('calculates a conservative line width without imposing a roll height', () => {

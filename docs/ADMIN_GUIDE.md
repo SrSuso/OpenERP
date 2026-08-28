@@ -357,11 +357,11 @@ papel. No hay forma de programarlo desde la aplicación.
 
 Antes de usar la caja, configura el controlador con bobina de **80 mm**,
 orientación vertical, escala **100 %**, sin márgenes adicionales y sin cabeceras
-ni pies. En la PcCom POS-80 selecciona el preset `80(72)` y una anchura de
-impresión de **72 mm**: esos 4 mm físicos de cada lado ya los descuenta el
-controlador. OpenERP sólo añade dentro del cabezal la parte de los márgenes de la
-plantilla que supere esos 4 mm. El controlador de la térmica controla también la
-longitud continua y el corte. Una
+ni pies. OpenERP envía explícitamente una página de 80 mm, igual que un documento
+de LibreOffice configurado a 8 cm, y coloca dentro los márgenes de la plantilla.
+El alto se ajusta al contenido para no alimentar papel en blanco. En el
+controlador no añadas otros márgenes ni reducción de escala. El controlador de la
+térmica controla la longitud continua y el corte. Una
 impresora PDF configurada como A4 mostrará A4 aunque el contenido mida 80 mm.
 La explicación completa y las opciones disponibles están en
 [`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md).
