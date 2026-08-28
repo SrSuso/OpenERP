@@ -1,12 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthContext, type AuthContextValue } from '@/features/auth/AuthContext';
-import { dashboardsQuery, type Dashboard, type Widget } from '@/features/dashboards/api';
+import { type Product } from '@/features/catalog/api';
+import { type Incident } from '@/features/notifications/api';
+import { type PurchaseOrder } from '@/features/purchasing/api';
+import { formatMoney } from '@/lib/format';
 
 import { AdminHomePage } from './AdminHomePage';
+
+vi.mock('@/features/dashboards/SalesOverTimeChart', () => ({
+  SalesOverTimeChart: () => <div data-testid="sales-chart">Gráfica de ventas</div>,
+}));
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -15,258 +22,222 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
-const USER_A = {
+const ALL_METRIC_PERMISSIONS = [
+  'report.read',
+  'product.read',
+  'inventory.read',
+  'purchase.read',
+  'notification.read',
+];
+
+const USER = {
   id: 1,
-  email: 'admin-a@example.com',
-  full_name: 'Admin A',
-  role: 'ADMIN',
-  permissions: ['admin.access', 'dashboard.read', 'dashboard.manage'],
+  email: 'manager@example.com',
+  full_name: 'Encargada Uno',
+  role: 'MANAGER',
+  permissions: ALL_METRIC_PERMISSIONS,
   must_change_password: false,
 };
-const USER_B = { ...USER_A, id: 2, email: 'admin-b@example.com', full_name: 'Admin B' };
 
-function emptyDashboard(id: number, name = 'Mi panel', ownerUserId = 1): Dashboard {
-  return { id, name, owner_user_id: ownerUserId, widgets: [] };
-}
+const LOW_STOCK_PRODUCT: Product = {
+  id: 10,
+  sku: 'P000010',
+  name: 'Leche',
+  description: '',
+  category_id: null,
+  category_name: null,
+  pos_category_id: null,
+  pos_category_name: null,
+  pos_display_order: 0,
+  is_open_price: false,
+  is_sold_by_weight: false,
+  base_unit_name: 'UDS.',
+  cost: '0.700000',
+  list_price: '1.000000',
+  tax_rate: '4.000000',
+  surcharge_rate: '0.000000',
+  effective_tax_rate: '4.000000',
+  margin_rate: null,
+  margin_amount: null,
+  taxes: [],
+  price_formula: null,
+  min_stock: '5.000000',
+  track_lots: false,
+  track_expiration: false,
+  tracks_stock: true,
+  effective_tracks_stock: true,
+  is_active: true,
+  packages: [],
+};
 
-function authValue(user = USER_A): AuthContextValue {
+const PENDING_ORDER: PurchaseOrder = {
+  id: 20,
+  supplier_id: 2,
+  supplier_name: 'Proveedor Uno',
+  status: 'PARTIALLY_RECEIVED',
+  notes: '',
+  ordered_at: '2026-08-27T10:00:00Z',
+  created_at: '2026-08-27T09:00:00Z',
+  lines: [],
+  total: '12.000000',
+};
+
+const LOT_INCIDENT: Incident = {
+  id: 30,
+  rule_id: 4,
+  rule_name: 'Caducidad próxima',
+  severity: 'MEDIUM_HIGH',
+  subject_type: 'lot',
+  subject_id: 5,
+  message: 'El lote caduca pronto.',
+  status: 'OPEN',
+  first_detected_at: '2026-08-27T10:00:00Z',
+  last_seen_at: '2026-08-27T10:00:00Z',
+  resolved_at: null,
+};
+
+function authValue(permissions = ALL_METRIC_PERMISSIONS): AuthContextValue {
+  const user = { ...USER, permissions };
   return {
     user,
     isLoading: false,
-    hasPermission: (key) => user.permissions.includes(key),
+    hasPermission: (key) => permissions.includes(key),
     login: vi.fn(),
     logout: vi.fn(),
     markPasswordChanged: vi.fn(),
   };
 }
 
-/** A minimal stand-in backend, tracked so tests can assert on how many
- * times a mutating endpoint was hit — same style as
- * `frontend/src/pages/pos/PosHomePage.test.tsx`. */
 function stubBackend(
   options: {
-    existingDashboard?: Dashboard;
-    existingDashboards?: Dashboard[];
-    rejectWidgetForDashboardId?: number;
+    empty?: boolean;
+    reportError?: boolean;
+    pendingReport?: boolean;
   } = {},
 ) {
-  let dashboards: Dashboard[] =
-    options.existingDashboards ?? (options.existingDashboard ? [options.existingDashboard] : []);
-  let nextWidgetId = 1;
-  const createDashboardCalls = { count: 0 };
-
+  const requestedUrls: string[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      const method = init?.method ?? 'GET';
+      requestedUrls.push(url);
 
-      if (url.includes('/auth/me')) {
-        return Promise.resolve(jsonResponse(USER_A));
+      if (url.includes('/settings/values')) {
+        return Promise.resolve(jsonResponse({ 'business.timezone': 'Europe/Madrid' }));
       }
-      if (url.includes('/warehouses')) {
-        return Promise.resolve(
-          jsonResponse([{ id: 1, name: 'Tienda principal', is_active: true }]),
-        );
-      }
-      if (method === 'GET' && /\/dashboards$/.test(url)) {
-        return Promise.resolve(jsonResponse(dashboards));
-      }
-      if (method === 'POST' && /\/dashboards$/.test(url)) {
-        createDashboardCalls.count += 1;
-        const dashboard = emptyDashboard(Math.max(0, ...dashboards.map((item) => item.id)) + 1);
-        dashboards = [...dashboards, dashboard];
-        return Promise.resolve(jsonResponse(dashboard, { status: 201 }));
-      }
-      if (method === 'POST' && /\/dashboards\/\d+\/widgets$/.test(url)) {
-        const dashboardId = Number(/\/dashboards\/(\d+)\/widgets$/.exec(url)![1]);
-        if (dashboardId === options.rejectWidgetForDashboardId) {
+      if (url.includes('/reports/run')) {
+        if (options.pendingReport) return new Promise<Response>(() => undefined);
+        if (options.reportError) {
           return Promise.resolve(
             jsonResponse(
-              { error: { code: 'not_found', message: 'Dashboard not found.' } },
-              { status: 404 },
+              { error: { code: 'internal_error', message: 'database connection detail' } },
+              { status: 500 },
             ),
           );
         }
-        const body = init?.body ? (JSON.parse(init.body as string) as Partial<Widget>) : {};
-        const widget: Widget = {
-          id: nextWidgetId++,
-          dashboard_id: dashboardId,
-          metric: body.metric!,
-          title: body.title!,
-          params: body.params ?? {},
-          chart_type: body.chart_type!,
-          display_order: 0,
+        if (typeof init?.body !== 'string') throw new Error('Expected a JSON request body');
+        const body = JSON.parse(init.body) as {
+          filters: { date_from: string; date_to: string };
         };
-        const dashboard = dashboards.find((item) => item.id === dashboardId)!;
-        const updated = { ...dashboard, widgets: [...dashboard.widgets, widget] };
-        dashboards = dashboards.map((item) => (item.id === dashboardId ? updated : item));
-        return Promise.resolve(jsonResponse(updated, { status: 201 }));
+        return Promise.resolve(
+          jsonResponse({
+            columns: ['date', 'revenue', 'tickets'],
+            rows: options.empty
+              ? []
+              : [
+                  {
+                    date: body.filters.date_to,
+                    revenue: '1248.320000',
+                    tickets: 83,
+                  },
+                ],
+          }),
+        );
       }
-      if (method === 'DELETE' && /\/dashboards\/\d+\/widgets\/\d+$/.test(url)) {
-        const dashboardId = Number(/\/dashboards\/(\d+)\/widgets\/\d+$/.exec(url)![1]);
-        const dashboard = dashboards.find((item) => item.id === dashboardId)!;
-        const updated = { ...dashboard, widgets: [] };
-        dashboards = dashboards.map((item) => (item.id === dashboardId ? updated : item));
-        return Promise.resolve(jsonResponse(updated));
+      if (url.includes('/products?')) {
+        return Promise.resolve(jsonResponse(options.empty ? [] : [LOW_STOCK_PRODUCT]));
       }
-      if (method === 'GET' && /\/widgets\/\d+\/data$/.test(url)) {
-        return Promise.resolve(jsonResponse({ data: { stock_value: '0.000000' } }));
+      if (url.includes('/stock-balance/totals')) {
+        return Promise.resolve(
+          jsonResponse(options.empty ? [] : [{ product_id: 10, quantity: '2.000000' }]),
+        );
       }
-
-      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
+      if (url.includes('/purchase-orders?')) {
+        return Promise.resolve(jsonResponse(options.empty ? [] : [PENDING_ORDER]));
+      }
+      if (url.includes('/incidents?status=OPEN')) {
+        return Promise.resolve(jsonResponse(options.empty ? [] : [LOT_INCIDENT]));
+      }
+      return Promise.reject(new Error(`Unexpected fetch to ${url}`));
     }),
   );
-
-  return {
-    createDashboardCalls,
-    setDashboards(next: Dashboard[]) {
-      dashboards = next;
-    },
-  };
+  return requestedUrls;
 }
 
-function renderPage(user = USER_A) {
+function renderPage(permissions = ALL_METRIC_PERMISSIONS) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const view = render(
+  return render(
     <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider value={authValue(user)}>
-        <AdminHomePage />
+      <AuthContext.Provider value={authValue(permissions)}>
+        <MemoryRouter>
+          <AdminHomePage />
+        </MemoryRouter>
       </AuthContext.Provider>
     </QueryClientProvider>,
   );
-  return { ...view, queryClient };
 }
 
 describe('AdminHomePage', () => {
-  it('shows the API health status', async () => {
-    stubBackend();
+  it('shows a fixed operational overview using existing APIs', async () => {
+    const requestedUrls = stubBackend();
     renderPage();
 
-    expect(await screen.findByText('ok · OpenERP · sesión autenticada')).toBeInTheDocument();
+    expect(await screen.findByText(formatMoney('1248.32'))).toBeInTheDocument();
+    expect(screen.getByText('83')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Necesita atención' })).toBeInTheDocument();
+    expect(screen.getByText('Productos con stock bajo')).toBeInTheDocument();
+    expect(screen.getByText('Avisos sobre lotes')).toBeInTheDocument();
+    expect(screen.getByText('Recepciones pendientes')).toBeInTheDocument();
+    expect(screen.getByTestId('sales-chart')).toBeInTheDocument();
+    expect(requestedUrls.some((url) => url.includes('/dashboards'))).toBe(false);
   });
 
-  it('creates a default dashboard when none exists yet', async () => {
-    const backend = stubBackend();
-    const { queryClient } = renderPage();
-
-    await screen.findByText(/todavía no hay widgets/i);
-
-    expect(backend.createDashboardCalls.count).toBe(1);
-    expect(queryClient.getQueryData<Dashboard[]>(dashboardsQuery(USER_A.id).queryKey)).toHaveLength(
-      1,
-    );
-  });
-
-  it('does not create a second dashboard when one already exists', async () => {
-    const backend = stubBackend({ existingDashboard: emptyDashboard(7) });
+  it('does not expose API health or dashboard and widget controls', async () => {
+    stubBackend({ empty: true });
     renderPage();
 
-    await screen.findByText(/todavía no hay widgets/i);
-
-    expect(backend.createDashboardCalls.count).toBe(0);
+    expect(
+      await screen.findByText('No hay ventas registradas en los últimos 7 días'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/estado de la api/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/dashboard activo/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /añadir widget/i })).not.toBeInTheDocument();
+    expect(screen.getByText('No hay asuntos pendientes')).toBeInTheDocument();
   });
 
-  it('adding a widget shows it on the dashboard', async () => {
-    stubBackend({ existingDashboard: emptyDashboard(7) });
-    renderPage();
-    await screen.findByText(/todavía no hay widgets/i);
+  it('shows clear loading and error states without backend details', async () => {
+    stubBackend({ pendingReport: true });
+    const view = renderPage(['report.read']);
+    expect(await screen.findByText('Cargando evolución de ventas…')).toBeInTheDocument();
+    view.unmount();
 
-    await userEvent.click(screen.getByRole('button', { name: /añadir widget/i }));
-    await userEvent.selectOptions(screen.getByLabelText(/métrica/i), 'Valor del inventario');
-    await userEvent.click(screen.getByRole('button', { name: /^añadir$/i }));
-
-    expect(await screen.findByText('Valor del inventario')).toBeInTheDocument();
-    expect(screen.queryByText(/todavía no hay widgets/i)).not.toBeInTheDocument();
+    stubBackend({ reportError: true });
+    renderPage(['report.read']);
+    expect(
+      await screen.findByText('No se ha podido cargar la evolución de ventas.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/database connection detail/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
   });
 
-  it('removing the only widget shows the empty state again', async () => {
-    const dashboardWithWidget: Dashboard = {
-      ...emptyDashboard(7),
-      widgets: [
-        {
-          id: 1,
-          dashboard_id: 7,
-          metric: 'stock_value',
-          title: 'Valor de inventario',
-          params: {},
-          chart_type: 'kpi',
-          display_order: 0,
-        },
-      ],
-    };
-    stubBackend({ existingDashboard: dashboardWithWidget });
-    renderPage();
-    await screen.findByText('Valor de inventario');
+  it('does not request or render metrics without their permissions', async () => {
+    const requestedUrls = stubBackend();
+    renderPage([]);
 
-    await userEvent.click(screen.getByRole('button', { name: /quitar valor de inventario/i }));
-
-    expect(await screen.findByText(/todavía no hay widgets/i)).toBeInTheDocument();
-  });
-
-  it('keeps every dashboard in cache when one is edited', async () => {
-    const first = emptyDashboard(7, 'Principal');
-    const second = emptyDashboard(8, 'Operaciones');
-    stubBackend({ existingDashboards: [first, second] });
-    const { queryClient } = renderPage();
-    await screen.findByRole('combobox', { name: /dashboard activo/i });
-
-    await userEvent.click(screen.getByRole('button', { name: /añadir widget/i }));
-    await userEvent.selectOptions(screen.getByLabelText(/métrica/i), 'Valor del inventario');
-    await userEvent.click(screen.getByRole('button', { name: /^añadir$/i }));
-    await screen.findByText('Valor del inventario');
-
-    const cached = queryClient.getQueryData<Dashboard[]>(dashboardsQuery(USER_A.id).queryKey);
-    expect(cached?.map((dashboard) => dashboard.id)).toEqual([7, 8]);
-    expect(cached?.find((dashboard) => dashboard.id === 7)?.widgets).toHaveLength(1);
-    expect(cached?.find((dashboard) => dashboard.id === 8)?.widgets).toHaveLength(0);
-  });
-
-  it('keeps the selected dashboard active after a refetch', async () => {
-    stubBackend({
-      existingDashboards: [emptyDashboard(7, 'Principal'), emptyDashboard(8, 'Operaciones')],
-    });
-    const { queryClient } = renderPage();
-    const selector = await screen.findByRole('combobox', { name: /dashboard activo/i });
-    await userEvent.selectOptions(selector, 'Operaciones');
-    expect(selector).toHaveValue('8');
-
-    await queryClient.invalidateQueries({ queryKey: dashboardsQuery(USER_A.id).queryKey });
-
-    expect(await screen.findByRole('combobox', { name: /dashboard activo/i })).toHaveValue('8');
-    expect(screen.getByRole('heading', { name: 'Operaciones' })).toBeInTheDocument();
-  });
-
-  it('never shows user A cache while user B dashboards load', async () => {
-    const backend = stubBackend({ existingDashboards: [emptyDashboard(7, 'Panel A')] });
-    const { queryClient, rerender } = renderPage(USER_A);
-    expect(await screen.findByRole('heading', { name: 'Panel A' })).toBeInTheDocument();
-
-    backend.setDashboards([emptyDashboard(9, 'Panel B', USER_B.id)]);
-    rerender(
-      <QueryClientProvider client={queryClient}>
-        <AuthContext.Provider value={authValue(USER_B)}>
-          <AdminHomePage />
-        </AuthContext.Provider>
-      </QueryClientProvider>,
-    );
-
-    expect(screen.queryByRole('heading', { name: 'Panel A' })).not.toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: 'Panel B' })).toBeInTheDocument();
-  });
-
-  it('does not alter the collection when a foreign dashboard mutation returns 404', async () => {
-    const first = emptyDashboard(7, 'Principal');
-    const second = emptyDashboard(8, 'Operaciones');
-    stubBackend({ existingDashboards: [first, second], rejectWidgetForDashboardId: first.id });
-    const { queryClient } = renderPage();
-    await screen.findByRole('combobox', { name: /dashboard activo/i });
-
-    await userEvent.click(screen.getByRole('button', { name: /añadir widget/i }));
-    await userEvent.selectOptions(screen.getByLabelText(/métrica/i), 'Valor del inventario');
-    await userEvent.click(screen.getByRole('button', { name: /^añadir$/i }));
-
-    const cached = queryClient.getQueryData<Dashboard[]>(dashboardsQuery(USER_A.id).queryKey);
-    expect(cached).toEqual([first, second]);
+    expect(await screen.findByText('No hay información operativa disponible')).toBeInTheDocument();
+    expect(screen.queryByText('Ventas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stock bajo')).not.toBeInTheDocument();
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain('/settings/values');
   });
 });

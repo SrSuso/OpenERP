@@ -116,7 +116,8 @@ describe('AdminLayout', () => {
       '/admin/reports',
       '/admin/settings',
     ]);
-    expect(badge).toHaveClass('bg-red-100', 'animate-pulse');
+    expect(badge).toHaveClass('bg-red-100');
+    expect(badge).not.toHaveClass('animate-pulse');
   });
 
   it('does not show administration to a manager, even if an existing permission allows a direct route', async () => {
@@ -167,5 +168,21 @@ describe('AdminLayout', () => {
       'href',
       '/admin/z-reports',
     );
+  });
+
+  it('keeps a fixed, scrollable sidebar and a non-overlapping content column', async () => {
+    renderLayout();
+
+    const account = await screen.findByRole('link', { name: 'Cuenta de Admin Uno' });
+    const sidebar = screen.getByLabelText('Barra lateral');
+    const navigation = screen.getByRole('navigation', { name: 'Navegación principal' });
+    const main = screen.getByRole('main');
+
+    expect(sidebar).toHaveClass('w-60', 'lg:w-64', 'shrink-0', 'overflow-hidden');
+    expect(navigation).toHaveClass('overflow-y-auto');
+    expect(main.parentElement).toHaveClass('min-w-0', 'overflow-hidden');
+    expect(main).toHaveClass('overflow-y-auto');
+    expect(account).toHaveAttribute('href', '/admin/account');
+    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
   });
 });

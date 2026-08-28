@@ -1,153 +1,384 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { NavLink } from 'react-router';
 
+import { Alert, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { useAuth } from '@/features/auth/useAuth';
-import { AddWidgetForm } from '@/features/dashboards/AddWidgetForm';
-import {
-  addWidget,
-  createDashboard,
-  dashboardsQuery,
-  removeWidget,
-  type Dashboard,
-  type WidgetCreate,
-} from '@/features/dashboards/api';
-import { Widget } from '@/features/dashboards/Widget';
-import { healthQuery } from '@/features/health/api';
+import { productsQuery } from '@/features/catalog/api';
+import { type SalesOverTimePoint } from '@/features/dashboards/api';
+import { SalesOverTimeChart } from '@/features/dashboards/SalesOverTimeChart';
+import { stockTotalsQuery } from '@/features/inventory/api';
+import { incidentsQuery } from '@/features/notifications/api';
+import { purchaseOrdersQuery } from '@/features/purchasing/api';
+import { runReport } from '@/features/reports/api';
+import { useBusinessTimezone } from '@/features/settings/useShopSettings';
+import { businessDateAt } from '@/lib/businessTime';
+import { formatMoney } from '@/lib/format';
 
-import { pageTitleRow, primaryAction } from './pageActions';
+function shiftDate(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year!, month! - 1, day! + days));
+  return shifted.toISOString().slice(0, 10);
+}
 
-/**
- * The admin home is the default dashboard (phase 16): a saved arrangement
- * of widgets, each running one metric from the whitelist in
- * `app.dashboards.metrics` live, on every visit — nothing here is ever
- * cached data quietly going stale.
- */
-export function AdminHomePage() {
-  const { user } = useAuth();
-  const health = useQuery(healthQuery);
-  const dashboardQuery = dashboardsQuery(user?.id ?? 0);
-  const dashboards = useQuery({ ...dashboardQuery, enabled: user != null });
-  const queryClient = useQueryClient();
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [activeDashboardId, setActiveDashboardId] = useState<number | null>(null);
+function datesBetween(dateFrom: string, dateTo: string): string[] {
+  const dates: string[] = [];
+  for (let date = dateFrom; date <= dateTo; date = shiftDate(date, 1)) dates.push(date);
+  return dates;
+}
 
-  const cacheDashboard = (updated: Dashboard) => {
-    queryClient.setQueryData<Dashboard[]>(dashboardQuery.queryKey, (current = []) => {
-      const exists = current.some((dashboard) => dashboard.id === updated.id);
-      return exists
-        ? current.map((dashboard) => (dashboard.id === updated.id ? updated : dashboard))
-        : [...current, updated];
-    });
-  };
+function dateLabel(date: string): string {
+  return new Intl.DateTimeFormat('es-ES', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(`${date}T12:00:00Z`));
+}
 
-  const createDashboardMutation = useMutation({
-    mutationFn: () => createDashboard('Mi panel'),
-    onSuccess: cacheDashboard,
-  });
+function numericValue(value: string | number | null | undefined): number {
+  if (typeof value === 'number') return value;
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
-  useEffect(() => {
-    const available = dashboards.data ?? [];
-    setActiveDashboardId((current) =>
-      current !== null && available.some((dashboard) => dashboard.id === current)
-        ? current
-        : (available[0]?.id ?? null),
-    );
-  }, [dashboards.data, user?.id]);
+interface MetricCardProps {
+  label: string;
+  value: string;
+  detail: string;
+  isPending: boolean;
+  isError: boolean;
+  to?: string;
+  warning?: boolean;
+}
 
-  const dashboard = dashboards.data?.find((item) => item.id === activeDashboardId);
-  const dashboardReady = dashboards.isSuccess;
-
-  if (dashboardReady && dashboards.data.length === 0 && createDashboardMutation.isIdle) {
-    createDashboardMutation.mutate();
-  }
-
-  const addWidgetMutation = useMutation({
-    mutationFn: (widget: WidgetCreate) => addWidget(dashboard!.id, widget),
-    onSuccess: (updated) => {
-      cacheDashboard(updated);
-      setShowAddForm(false);
-    },
-  });
-
-  const removeWidgetMutation = useMutation({
-    mutationFn: (widgetId: number) => removeWidget(dashboard!.id, widgetId),
-    onSuccess: cacheDashboard,
-  });
-
+function MetricCard({
+  label,
+  value,
+  detail,
+  isPending,
+  isError,
+  to,
+  warning = false,
+}: MetricCardProps) {
   return (
-    <section>
-      <h1 className="text-2xl font-semibold">Panel de administración</h1>
-
-      <dl className="mt-4 max-w-sm rounded-lg border border-slate-200 bg-white p-4 text-sm">
-        <dt className="font-medium text-slate-500">Estado de la API</dt>
-        <dd className="mt-1" data-testid="api-status">
-          {health.isPending && 'Comprobando…'}
-          {health.isError && `Sin conexión (${health.error.message})`}
-          {health.data && `${health.data.status} · ${health.data.app} · ${health.data.environment}`}
-        </dd>
-      </dl>
-
-      <div className="mt-8">
-        <div className={pageTitleRow}>
-          <h2 className="text-lg font-semibold text-slate-800">{dashboard?.name ?? 'Mi panel'}</h2>
-          {dashboard && !showAddForm && (
-            <button type="button" onClick={() => setShowAddForm(true)} className={primaryAction}>
-              Añadir widget
-            </button>
-          )}
-        </div>
-
-        {dashboards.data && dashboards.data.length > 1 && (
-          <label className="mb-4 block max-w-xs text-sm text-slate-600">
-            Dashboard activo
-            <select
-              aria-label="Dashboard activo"
-              value={activeDashboardId ?? ''}
-              onChange={(event) => {
-                setActiveDashboardId(Number(event.target.value));
-                setShowAddForm(false);
-              }}
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+    <Card className="flex min-h-40 flex-col p-5">
+      <p className="text-sm font-semibold text-slate-600">{label}</p>
+      <div className="mt-3 flex-1">
+        {isPending && <p className="text-sm text-slate-500">Cargando…</p>}
+        {isError && <p className="text-sm font-medium text-red-700">No disponible</p>}
+        {!isPending && !isError && (
+          <>
+            <p
+              className={`text-3xl font-bold tracking-tight ${warning ? 'text-amber-700' : 'text-slate-950'}`}
             >
-              {dashboards.data.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {!dashboard && <p className="text-sm text-slate-500">Preparando el panel…</p>}
-
-        {dashboard && showAddForm && (
-          <AddWidgetForm
-            isPending={addWidgetMutation.isPending}
-            onCancel={() => setShowAddForm(false)}
-            onSubmit={(widget) => addWidgetMutation.mutate(widget)}
-          />
-        )}
-
-        {dashboard && dashboard.widgets.length === 0 && !showAddForm && (
-          <p className="text-sm text-slate-500">
-            Todavía no hay widgets. Toca «Añadir widget» para elegir una métrica.
-          </p>
-        )}
-
-        {dashboard && dashboard.widgets.length > 0 && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {dashboard.widgets.map((widget) => (
-              <Widget
-                key={widget.id}
-                dashboardId={dashboard.id}
-                widget={widget}
-                isRemoving={removeWidgetMutation.isPending}
-                onRemove={() => removeWidgetMutation.mutate(widget.id)}
-              />
-            ))}
-          </div>
+              {value}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">{detail}</p>
+          </>
         )}
       </div>
-    </section>
+      {to && !isPending && !isError && (
+        <NavLink
+          to={to}
+          className="mt-4 w-fit rounded text-sm font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          Ver detalle
+        </NavLink>
+      )}
+    </Card>
+  );
+}
+
+interface AttentionItemProps {
+  label: string;
+  count: number;
+  detail: string;
+  to: string;
+}
+
+function AttentionItem({ label, count, detail, to }: AttentionItemProps) {
+  return (
+    <li>
+      <NavLink
+        to={to}
+        className="group flex items-center justify-between gap-4 rounded-lg border border-slate-200 px-4 py-3 hover:border-brand-200 hover:bg-brand-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <span className="min-w-0">
+          <span className="block font-semibold text-slate-800 group-hover:text-brand-700">
+            {label}
+          </span>
+          <span className="mt-0.5 block text-sm text-slate-500">{detail}</span>
+        </span>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm font-bold text-amber-900">
+          {count}
+        </span>
+      </NavLink>
+    </li>
+  );
+}
+
+/** Fixed operational overview. The configurable-dashboard backend remains
+ * available for compatibility, but the store home no longer exposes its
+ * technical builder or asks an operator to design their own starting page. */
+export function AdminHomePage() {
+  const { hasPermission } = useAuth();
+  const timezone = useBusinessTimezone();
+  const today = businessDateAt(timezone);
+  const dateFrom = shiftDate(today, -6);
+
+  const canSeeSales = hasPermission('report.read');
+  const salesDetailRoute = hasPermission('sale.read') ? '/admin/sales' : '/admin/reports';
+  const canSeeInventory = hasPermission('product.read') && hasPermission('inventory.read');
+  const canSeePurchasing = hasPermission('purchase.read');
+  const canSeeIncidents = hasPermission('notification.read');
+
+  const sales = useQuery({
+    queryKey: ['admin-home', 'sales', dateFrom, today],
+    queryFn: ({ signal }) =>
+      runReport(
+        {
+          subject: 'SALES',
+          dimensions: ['date'],
+          metrics: ['revenue', 'tickets'],
+          filters: { date_from: dateFrom, date_to: today },
+        },
+        signal,
+      ),
+    enabled: canSeeSales,
+  });
+  const products = useQuery({
+    ...productsQuery({ activeOnly: true }),
+    enabled: canSeeInventory,
+  });
+  const stockTotals = useQuery({ ...stockTotalsQuery, enabled: canSeeInventory });
+  const purchaseOrders = useQuery({
+    ...purchaseOrdersQuery({}),
+    enabled: canSeePurchasing,
+  });
+  const incidents = useQuery({
+    ...incidentsQuery({ status: 'OPEN' }),
+    enabled: canSeeIncidents,
+  });
+
+  const salesRows = sales.data?.rows ?? [];
+  const todaySales = salesRows.find((row) => row.date === today);
+  const todayRevenue = numericValue(todaySales?.revenue);
+  const todayOperations = numericValue(todaySales?.tickets);
+  const salesPoints: SalesOverTimePoint[] = datesBetween(dateFrom, today).map((date) => {
+    const row = salesRows.find((item) => item.date === date);
+    return {
+      date: dateLabel(date),
+      sales_count: numericValue(row?.tickets),
+      total: String(numericValue(row?.revenue)),
+    };
+  });
+  const hasRecentSales = salesRows.some((row) => numericValue(row.revenue) > 0);
+
+  const stockByProduct = new Map(
+    (stockTotals.data ?? []).map((total) => [total.product_id, numericValue(total.quantity)]),
+  );
+  const lowStockCount = (products.data ?? []).filter(
+    (product) =>
+      product.effective_tracks_stock &&
+      numericValue(product.min_stock) > 0 &&
+      (stockByProduct.get(product.id) ?? 0) < numericValue(product.min_stock),
+  ).length;
+  const inventoryPending = products.isPending || stockTotals.isPending;
+  const inventoryError = products.isError || stockTotals.isError;
+
+  const pendingReceipts = (purchaseOrders.data ?? []).filter((order) =>
+    ['ORDERED', 'PARTIALLY_RECEIVED'].includes(order.status),
+  ).length;
+  const openIncidents = incidents.data ?? [];
+  const lotIncidents = openIncidents.filter((incident) => incident.subject_type === 'lot').length;
+
+  const attentionItems = [
+    ...(canSeeInventory && !inventoryPending && !inventoryError && lowStockCount > 0
+      ? [
+          {
+            label: 'Productos con stock bajo',
+            count: lowStockCount,
+            detail: 'Necesitan reposición o revisar su stock mínimo.',
+            to: '/admin/inventory/products',
+          },
+        ]
+      : []),
+    ...(canSeeIncidents && incidents.isSuccess && lotIncidents > 0
+      ? [
+          {
+            label: 'Avisos sobre lotes',
+            count: lotIncidents,
+            detail: 'Revisa caducidades y condiciones configuradas para lotes.',
+            to: '/admin/notifications',
+          },
+        ]
+      : []),
+    ...(canSeePurchasing && purchaseOrders.isSuccess && pendingReceipts > 0
+      ? [
+          {
+            label: 'Recepciones pendientes',
+            count: pendingReceipts,
+            detail: 'Pedidos enviados que todavía no se han recibido por completo.',
+            to: '/admin/purchasing',
+          },
+        ]
+      : []),
+    ...(canSeeIncidents && incidents.isSuccess && openIncidents.length > 0
+      ? [
+          {
+            label: 'Avisos abiertos',
+            count: openIncidents.length,
+            detail: 'Incidencias que siguen necesitando revisión.',
+            to: '/admin/notifications',
+          },
+        ]
+      : []),
+  ];
+  const attentionPending =
+    (canSeeInventory && inventoryPending) ||
+    (canSeePurchasing && purchaseOrders.isPending) ||
+    (canSeeIncidents && incidents.isPending);
+  const attentionError =
+    (canSeeInventory && inventoryError) ||
+    (canSeePurchasing && purchaseOrders.isError) ||
+    (canSeeIncidents && incidents.isError);
+  const hasAnyMetricPermission =
+    canSeeSales || canSeeInventory || canSeePurchasing || canSeeIncidents;
+
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        title="Inicio"
+        description="Resumen de la actividad de la tienda y de lo que necesita atención."
+      />
+
+      {!hasAnyMetricPermission && (
+        <EmptyState
+          title="No hay información operativa disponible"
+          description="Tu perfil no tiene acceso a las métricas de ventas, inventario, compras o avisos."
+        />
+      )}
+
+      {hasAnyMetricPermission && (
+        <>
+          <section aria-labelledby="today-heading">
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 id="today-heading" className="text-lg font-bold text-slate-900">
+                Hoy
+              </h2>
+              <p className="text-sm text-slate-500">Fecha comercial: {dateLabel(today)}</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {canSeeSales && (
+                <MetricCard
+                  label="Ventas"
+                  value={formatMoney(String(todayRevenue))}
+                  detail={
+                    todayRevenue > 0
+                      ? 'Facturación confirmada hoy'
+                      : 'Todavía no hay ventas registradas hoy'
+                  }
+                  isPending={sales.isPending}
+                  isError={sales.isError}
+                  to={salesDetailRoute}
+                />
+              )}
+              {canSeeSales && (
+                <MetricCard
+                  label="Operaciones"
+                  value={String(todayOperations)}
+                  detail={
+                    todayOperations === 1 ? 'Ticket completado hoy' : 'Tickets completados hoy'
+                  }
+                  isPending={sales.isPending}
+                  isError={sales.isError}
+                  to={salesDetailRoute}
+                />
+              )}
+              {canSeeInventory && (
+                <MetricCard
+                  label="Stock bajo"
+                  value={String(lowStockCount)}
+                  detail={
+                    lowStockCount > 0
+                      ? 'Productos por debajo del mínimo'
+                      : 'No hay productos con stock bajo'
+                  }
+                  isPending={inventoryPending}
+                  isError={inventoryError}
+                  to="/admin/inventory/products"
+                  warning={lowStockCount > 0}
+                />
+              )}
+            </div>
+          </section>
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+            {canSeeSales && (
+              <Card className="min-w-0 p-5 sm:p-6">
+                <div className="mb-5">
+                  <h2 className="text-lg font-bold text-slate-900">Ventas de los últimos 7 días</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Importe diario de ventas completadas.
+                  </p>
+                </div>
+                {sales.isPending && (
+                  <div
+                    className="flex h-60 items-center justify-center text-sm text-slate-500"
+                    aria-live="polite"
+                  >
+                    Cargando evolución de ventas…
+                  </div>
+                )}
+                {sales.isError && (
+                  <Alert tone="error">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span>No se ha podido cargar la evolución de ventas.</span>
+                      <Button variant="secondary" onClick={() => void sales.refetch()}>
+                        Reintentar
+                      </Button>
+                    </div>
+                  </Alert>
+                )}
+                {sales.isSuccess && !hasRecentSales && (
+                  <EmptyState title="No hay ventas registradas en los últimos 7 días" />
+                )}
+                {sales.isSuccess && hasRecentSales && <SalesOverTimeChart points={salesPoints} />}
+              </Card>
+            )}
+
+            {(canSeeInventory || canSeePurchasing || canSeeIncidents) && (
+              <Card className="p-5 sm:p-6">
+                <div className="mb-5">
+                  <h2 className="text-lg font-bold text-slate-900">Necesita atención</h2>
+                  <p className="mt-1 text-sm text-slate-500">Asuntos pendientes de la tienda.</p>
+                </div>
+                {attentionPending && (
+                  <p className="py-8 text-center text-sm text-slate-500" aria-live="polite">
+                    Comprobando asuntos pendientes…
+                  </p>
+                )}
+                {!attentionPending && attentionError && (
+                  <Alert tone="error">No se ha podido cargar toda la información pendiente.</Alert>
+                )}
+                {!attentionPending && attentionItems.length === 0 && !attentionError && (
+                  <EmptyState
+                    title="No hay asuntos pendientes"
+                    description="No hay stock bajo, recepciones ni avisos que requieran atención."
+                  />
+                )}
+                {!attentionPending && attentionItems.length > 0 && (
+                  <ul className="space-y-3">
+                    {attentionItems.map((item) => (
+                      <AttentionItem key={item.label} {...item} />
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

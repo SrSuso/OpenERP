@@ -20,6 +20,13 @@ const SEVERITY_ORDER: Severity[] = ['LOW', 'MEDIUM_LOW', 'MEDIUM_HIGH', 'HIGH'];
 export function AdminLayout() {
   const { user, hasPermission, logout } = useAuth();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
+  const userInitials = user?.full_name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+  const roleLabel =
+    user?.role === 'ADMIN' ? 'Administrador' : user?.role === 'MANAGER' ? 'Encargado' : user?.role;
 
   // Un aviso abierto tiene que verse desde cualquier pantalla, no sólo si
   // alguien entra en Avisos — es justo lo que hacía que se olvidaran.
@@ -37,33 +44,58 @@ export function AdminLayout() {
   ).at(-1);
 
   return (
-    <div className="flex h-full">
-      <aside className="flex h-full w-56 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white p-4">
-        <p className="mb-6 shrink-0 text-lg font-semibold text-brand-700">{shopName}</p>
-        <AdminNavigation
-          hasPermission={hasPermission}
-          isAdministrator={user?.role === 'ADMIN'}
-          alertsCount={incidents.length}
-          worstAlertSeverity={worst}
-        />
+    <div className="flex h-full min-h-0 bg-slate-100">
+      <aside
+        aria-label="Barra lateral"
+        className="flex h-full w-60 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white lg:w-64"
+      >
+        <div className="shrink-0 border-b border-slate-100 px-5 py-5">
+          <p className="truncate text-lg font-bold tracking-tight text-brand-700">{shopName}</p>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">Administración de la tienda</p>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col px-3 py-3">
+          <AdminNavigation
+            hasPermission={hasPermission}
+            isAdministrator={user?.role === 'ADMIN'}
+            alertsCount={incidents.length}
+            worstAlertSeverity={worst}
+          />
+        </div>
       </aside>
-      <div className="flex flex-1 flex-col overflow-auto">
-        <header className="flex items-center justify-end gap-3 border-b border-slate-200 px-8 py-3 text-sm text-slate-600">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center justify-end gap-3 border-b border-slate-200 bg-white px-4 text-sm sm:px-6 lg:px-8">
           {user && (
-            <NavLink to="/admin/account" className="hover:text-brand-700 hover:underline">
-              {user.full_name} · <span className="text-slate-400">{user.role}</span>
+            <NavLink
+              to="/admin/account"
+              aria-label={`Cuenta de ${user.full_name}`}
+              className="group flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <span
+                aria-hidden="true"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700"
+              >
+                {userInitials}
+              </span>
+              <span className="hidden min-w-0 sm:block">
+                <span className="block truncate font-semibold text-slate-800 group-hover:text-brand-700">
+                  {user.full_name}
+                </span>
+                <span className="block text-xs text-slate-500">{roleLabel}</span>
+              </span>
             </NavLink>
           )}
           <button
             type="button"
             onClick={() => void logout()}
-            className="font-medium text-brand-700 hover:underline"
+            className="rounded-lg px-3 py-2 font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           >
-            Salir
+            Cerrar sesión
           </button>
         </header>
-        <main className="flex-1 p-8">
-          <Outlet />
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

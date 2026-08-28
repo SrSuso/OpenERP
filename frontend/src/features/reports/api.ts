@@ -53,11 +53,15 @@ export interface ReportRunRequest {
   filters: ReportFilters;
 }
 
-export async function runReport(payload: ReportRunRequest): Promise<ReportRunResult> {
+export async function runReport(
+  payload: ReportRunRequest,
+  signal?: AbortSignal,
+): Promise<ReportRunResult> {
   return apiFetch(`${API_V1}/reports/run`, {
     method: 'POST',
     schema: reportRunResultSchema,
     body: payload,
+    ...(signal === undefined ? {} : { signal }),
   });
 }
 
