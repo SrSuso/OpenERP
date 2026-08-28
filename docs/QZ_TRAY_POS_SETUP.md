@@ -177,6 +177,29 @@ install -m 640 /ruta/segura/private-key.pem deploy/qz-signing/
 id -g
 ```
 
+`/ruta/segura/` en el ejemplo anterior sólo representa el lugar temporal desde
+el que se copiaron las claves al servidor. Si ya existen en
+`/home/su_admin/OpenERP/deploy/qz-signing/`, **no hay que copiarlas ni moverlas
+otra vez**. Compruébalo sin mostrar su contenido:
+
+```bash
+cd /home/su_admin/OpenERP
+test -r deploy/qz-signing/digital-certificate.txt && echo "certificado OK"
+test -r deploy/qz-signing/private-key.pem && echo "clave OK"
+id -g
+```
+
+Docker monta el directorio de producción dentro de API, worker y migrate. Las
+rutas no son intercambiables:
+
+| Lugar             | Ruta del certificado                                               |
+| ----------------- | ------------------------------------------------------------------ |
+| Servidor Ubuntu   | `/home/su_admin/OpenERP/deploy/qz-signing/digital-certificate.txt` |
+| Contenedor Docker | `/run/secrets/qz-signing/digital-certificate.txt`                  |
+
+`deploy` sólo forma parte de la ruta del **servidor**. Nunca forma parte de la
+ruta `/run/secrets/...` interna del contenedor.
+
 Edita `/home/su_admin/OpenERP/.env.production` y añade, sustituyendo `1000` por
 el resultado de `id -g`:
 
@@ -184,6 +207,12 @@ el resultado de `id -g`:
 OPENERP_HOST_SECRET_GID=1000
 OPENERP_QZ_SIGNING_CERTIFICATE_FILE=/run/secrets/qz-signing/digital-certificate.txt
 OPENERP_QZ_SIGNING_PRIVATE_KEY_FILE=/run/secrets/qz-signing/private-key.pem
+```
+
+En particular, esta ruta es incorrecta y hace fallar el preflight del despliegue:
+
+```dotenv
+OPENERP_QZ_SIGNING_CERTIFICATE_FILE=/run/secrets/deploy/qz-signing/digital-certificate.txt
 ```
 
 Despliega para que API, worker y la comprobación de migración reciban los
@@ -215,16 +244,17 @@ volver a pedir autorización.
 
 ## 6. Diagnóstico rápido
 
-| Síntoma                            | Acción                                                                                         |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------- |
-| No conecta con QZ                  | Comprueba que QZ está abierto, IP/puerto guardados, certificado instalado y firewall 8181.     |
-| La prueba queda comprobando        | Tras 12 s muestra un error. Responde cualquier aviso de QZ y revisa autorización, firma y red. |
-| WSS no confiable                   | Repite `certgen --host` con la IP real, reinicia QZ y reinstala el nuevo `root-ca.crt`.        |
-| `Acceso denegado` con `certgen`    | Cierra QZ y abre CMD como administrador; no cambies permisos de `Program Files`.               |
-| No encuentra impresora             | Copia el nombre literal de la cola de Windows, no sólo el modelo de la carcasa.                |
-| QZ pregunta en cada ticket         | Falta la firma del apartado 4 o el servidor todavía no se ha desplegado.                       |
-| Chrome/Edge pregunta por red local | Es un permiso independiente del navegador; concédelo una vez para el sitio.                    |
-| Sale A4 o diálogo del navegador    | No es la ruta térmica: revisa que OpenERP y QZ estén desplegados y conectados.                 |
+| Síntoma                                          | Acción                                                                                                         |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| No conecta con QZ                                | Comprueba que QZ está abierto, IP/puerto guardados, certificado instalado y firewall 8181.                     |
+| La prueba queda comprobando                      | Tras 12 s muestra un error. Responde cualquier aviso de QZ y revisa autorización, firma y red.                 |
+| Preflight no encuentra `/run/secrets/deploy/...` | Quita `deploy` de las variables `OPENERP_QZ_SIGNING_*_FILE`: la ruta interna es `/run/secrets/qz-signing/...`. |
+| WSS no confiable                                 | Repite `certgen --host` con la IP real, reinicia QZ y reinstala el nuevo `root-ca.crt`.                        |
+| `Acceso denegado` con `certgen`                  | Cierra QZ y abre CMD como administrador; no cambies permisos de `Program Files`.                               |
+| No encuentra impresora                           | Copia el nombre literal de la cola de Windows, no sólo el modelo de la carcasa.                                |
+| QZ pregunta en cada ticket                       | Falta la firma del apartado 4 o el servidor todavía no se ha desplegado.                                       |
+| Chrome/Edge pregunta por red local               | Es un permiso independiente del navegador; concédelo una vez para el sitio.                                    |
+| Sale A4 o diálogo del navegador                  | No es la ruta térmica: revisa que OpenERP y QZ estén desplegados y conectados.                                 |
 
 ## 7. Mantenimiento y seguridad
 
