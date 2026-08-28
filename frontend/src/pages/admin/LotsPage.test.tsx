@@ -320,7 +320,7 @@ describe('LotsPage V2', () => {
   });
 
   it('loads subsequent pages without replacing earlier lots and hides the button at the end', async () => {
-    const backend = stubBackend({ lotCount: 205 });
+    const backend = stubBackend({ lotCount: 250 });
     renderPage();
     const user = userEvent.setup();
 
@@ -335,9 +335,9 @@ describe('LotsPage V2', () => {
     expect(screen.getByText('Mostrando 200 lotes')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Cargar más' }));
-    expect(await screen.findByText('LOTE-205')).toBeInTheDocument();
+    expect(await screen.findByText('LOTE-250')).toBeInTheDocument();
     expect(screen.getByText('LOTE-001')).toBeInTheDocument();
-    expect(screen.getByText('Mostrando 205 lotes')).toBeInTheDocument();
+    expect(screen.getByText('Mostrando 250 lotes')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
     expect(
       backend.lotRequests.map(
@@ -359,7 +359,7 @@ describe('LotsPage V2', () => {
   });
 
   it('searches outside the first page on the server and resets loaded pages for new filters', async () => {
-    const backend = stubBackend({ lotCount: 205 });
+    const backend = stubBackend({ lotCount: 250 });
     renderPage();
     const user = userEvent.setup();
 
@@ -367,17 +367,19 @@ describe('LotsPage V2', () => {
     await user.click(screen.getByRole('button', { name: 'Cargar más' }));
     expect(await screen.findByText('LOTE-150')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Buscar producto o lote'), 'LOTE-205');
-    expect(await screen.findByText('LOTE-205')).toBeInTheDocument();
+    const search = screen.getByLabelText('Buscar producto o lote');
+    await user.click(search);
+    await user.paste('LOTE-180');
+    expect(await screen.findByText('LOTE-180')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('LOTE-001')).not.toBeInTheDocument());
     const searchRequest = backend.lotRequests.find((request) =>
       new URL(request, 'http://test').searchParams.has('search'),
     );
     expect(new URL(searchRequest!, 'http://test').searchParams.get('offset')).toBe('0');
 
-    await user.clear(screen.getByLabelText('Buscar producto o lote'));
+    await user.clear(search);
     await user.selectOptions(screen.getByLabelText('Producto'), '20');
-    expect(await screen.findByText('LOTE-205')).toBeInTheDocument();
+    expect(await screen.findByText('LOTE-250')).toBeInTheDocument();
     expect(screen.queryByText('LOTE-001')).not.toBeInTheDocument();
     const productRequest = backend.lotRequests.find((request) =>
       new URL(request, 'http://test').searchParams.has('product_id'),
