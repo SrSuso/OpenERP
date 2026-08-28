@@ -7,6 +7,7 @@ database drift apart.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 
@@ -78,6 +79,153 @@ async def test_database_is_at_head(connection: AsyncConnection) -> None:
     version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
 
     assert version, "test database was not migrated"
+
+
+def test_v2_alert_migration_preserves_product_behaviour_and_purges_legacy(
+    fresh_database: Callable[[], str],
+) -> None:
+    url = fresh_database()
+    run_alembic(url, "upgrade", "e8b3c7d5a2f1")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        custom_product_id = connection.scalar(
+            text(
+                "INSERT INTO products "
+                "(sku, name, description, base_unit_name, cost, list_price, tax_rate, min_stock, "
+                "track_lots, track_expiration, is_active, created_at, updated_at) VALUES "
+                "('MIG-ALERT-CUSTOM', 'Con mínimo', '', 'UDS.', 1, 2, 0, 10, false, false, "
+                "true, now(), now()) RETURNING id"
+            )
+        )
+        disabled_product_id = connection.scalar(
+            text(
+                "INSERT INTO products "
+                "(sku, name, description, base_unit_name, cost, list_price, tax_rate, min_stock, "
+                "track_lots, track_expiration, is_active, created_at, updated_at) VALUES "
+                "('MIG-ALERT-OFF', 'Sin mínimo', '', 'UDS.', 1, 2, 0, 0, false, false, "
+                "true, now(), now()) RETURNING id"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO settings (key, value, created_at, updated_at) VALUES "
+                "('catalog.default_min_stock', '6.5', now(), now()), "
+                "('notifications.default_expiration_days', '9', now(), now())"
+            )
+        )
+
+        def add_rule(name: str, rule_type: str, params: dict[str, object]) -> int:
+            return int(
+                connection.scalar(
+                    text(
+                        "INSERT INTO notification_rules "
+                        "(name, rule_type, params, severity, is_active, created_at, updated_at) "
+                        "VALUES (:name, :rule_type, CAST(:params AS jsonb), 'LOW', true, now(), "
+                        "now()) RETURNING id"
+                    ),
+                    {"name": name, "rule_type": rule_type, "params": json.dumps(params)},
+                )
+            )
+
+        managed_low_id = add_rule("Stock V2", "LOW_STOCK", {"automatic": True})
+        legacy_low_id = add_rule("Stock antiguo", "LOW_STOCK", {})
+        condition_id = add_rule(
+            "Condición antigua",
+            "CONDITION",
+            {"subject": "products", "conditions": []},
+        )
+        general_expiration_id = add_rule(
+            "Caducidad general",
+            "EXPIRING_LOT",
+            {"managed": True, "product_id": None, "days_before_expiration": 5},
+        )
+        specific_expiration_id = add_rule(
+            "Caducidad específica",
+            "EXPIRING_LOT",
+            {
+                "managed": True,
+                "product_id": custom_product_id,
+                "days_before_expiration": 2,
+            },
+        )
+        duplicate_specific_id = add_rule(
+            "Caducidad duplicada",
+            "EXPIRING_LOT",
+            {
+                "managed": True,
+                "product_id": custom_product_id,
+                "days_before_expiration": 3,
+            },
+        )
+        legacy_expiration_id = add_rule(
+            "Caducidad antigua",
+            "EXPIRING_LOT",
+            {"days_before_expiration": 15},
+        )
+        all_rule_ids = [
+            managed_low_id,
+            legacy_low_id,
+            condition_id,
+            general_expiration_id,
+            specific_expiration_id,
+            duplicate_specific_id,
+            legacy_expiration_id,
+        ]
+        for rule_id in all_rule_ids:
+            connection.execute(
+                text(
+                    "INSERT INTO incidents "
+                    "(rule_id, subject_type, subject_id, message, status, first_detected_at, "
+                    "last_seen_at, created_at, updated_at) VALUES "
+                    "(:rule_id, 'product', :subject_id, 'legacy', 'OPEN', "
+                    "now(), now(), now(), now())"
+                ),
+                {"rule_id": rule_id, "subject_id": rule_id},
+            )
+
+    run_alembic(url, "upgrade", "f4c2a8d91e73")
+    with engine.begin() as connection:
+        products = connection.execute(
+            text(
+                "SELECT id, stock_alert_mode, min_stock FROM products "
+                "WHERE id IN (:custom_id, :disabled_id) ORDER BY id"
+            ),
+            {"custom_id": custom_product_id, "disabled_id": disabled_product_id},
+        ).all()
+        kept_rules = connection.execute(
+            text("SELECT id, rule_type, params FROM notification_rules ORDER BY id")
+        ).all()
+        incident_rule_ids = set(connection.execute(text("SELECT rule_id FROM incidents")).scalars())
+        retired_settings = connection.scalar(
+            text(
+                "SELECT count(*) FROM settings WHERE key IN "
+                "('catalog.default_min_stock', 'notifications.default_expiration_days')"
+            )
+        )
+
+    assert products == [
+        (custom_product_id, "CUSTOM", 10),
+        (disabled_product_id, "DISABLED", 0),
+    ]
+    assert [row.id for row in kept_rules] == [
+        managed_low_id,
+        general_expiration_id,
+        specific_expiration_id,
+    ]
+    low_params = next(row.params for row in kept_rules if row.id == managed_low_id)
+    assert low_params == {
+        "automatic": True,
+        "warehouse_id": None,
+        "enabled": True,
+        "min_stock": "6.5",
+    }
+    assert incident_rule_ids == {
+        managed_low_id,
+        general_expiration_id,
+        specific_expiration_id,
+    }
+    assert retired_settings == 0
+    engine.dispose()
 
 
 def test_there_is_exactly_one_head(alembic_runner: AlembicRunner) -> None:

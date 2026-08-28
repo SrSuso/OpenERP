@@ -439,7 +439,7 @@ async def test_low_stock_count_counts_products_below_their_minimum(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
-    low = await _create_product(client, sku="DASH-LOW", min_stock="100")
+    low = await _create_product(client, sku="DASH-LOW", min_stock="100", stock_alert_mode="CUSTOM")
     warehouse_id, location_id = await _default_location(client)
     await _stock(
         client,
@@ -448,7 +448,7 @@ async def test_low_stock_count_counts_products_below_their_minimum(
         location_id=location_id,
         quantity="5",
     )
-    ok = await _create_product(client, sku="DASH-OK", min_stock="1")
+    ok = await _create_product(client, sku="DASH-OK", min_stock="1", stock_alert_mode="CUSTOM")
     await _stock(
         client,
         product_id=ok["id"],

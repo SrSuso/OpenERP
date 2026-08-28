@@ -10,6 +10,7 @@ import {
   notificationSettingsQuery,
   removeProductExpiration,
   updateGeneralExpiration,
+  updateGeneralStock,
   updateProductExpiration,
   type ActiveAlert,
   type NotificationSettings,
@@ -275,9 +276,7 @@ function ExpirationProductForm({
   );
 }
 
-/** Store-facing alerts: current conditions first, configuration second.
- * Generic CONDITION rules remain compatible in the backend but their
- * technical constructor is deliberately absent from this V2 workflow. */
+/** Store-facing alerts: current conditions first, simple settings second. */
 export function NotificationsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('notification.manage');
@@ -287,6 +286,8 @@ export function NotificationsPage() {
   const [showProductForm, setShowProductForm] = useState(false);
   const [generalEnabled, setGeneralEnabled] = useState(false);
   const [generalDays, setGeneralDays] = useState('7');
+  const [stockEnabled, setStockEnabled] = useState(false);
+  const [stockMinimum, setStockMinimum] = useState('0');
   const [feedback, setFeedback] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const alerts = useQuery(activeAlertsQuery);
@@ -296,6 +297,8 @@ export function NotificationsPage() {
     if (!settings.data) return;
     setGeneralEnabled(settings.data.general_expiration.enabled);
     setGeneralDays(String(settings.data.general_expiration.days_before_expiration));
+    setStockEnabled(settings.data.stock_general.enabled);
+    setStockMinimum(settings.data.stock_general.min_stock);
   }, [settings.data]);
 
   const cacheSettings = (updated: NotificationSettings) => {
@@ -318,6 +321,22 @@ export function NotificationsPage() {
       setFeedback('Configuración general guardada.');
     },
   });
+  const stockMutation = useMutation({
+    mutationFn: () => {
+      const parsedMinimum = Number(stockMinimum.replace(',', '.'));
+      if (!Number.isFinite(parsedMinimum) || parsedMinimum < 0) {
+        throw new Error('Introduce un mínimo de stock válido.');
+      }
+      return updateGeneralStock({
+        enabled: stockEnabled,
+        min_stock: String(parsedMinimum),
+      });
+    },
+    onSuccess: (updated) => {
+      cacheSettings(updated);
+      setFeedback('Configuración general de stock guardada.');
+    },
+  });
   const productMutation = useMutation({
     mutationFn: ({ product, days }: { product: Product; days: number }) =>
       updateProductExpiration(product.id, days),
@@ -338,14 +357,18 @@ export function NotificationsPage() {
   const active = alerts.data ?? [];
   const lowStock = active.filter((alert) => alert.kind === 'LOW_STOCK');
   const expiration = active.filter((alert) => alert.kind === 'EXPIRATION');
-  const other = active.filter((alert) => alert.kind === 'OTHER');
   const configuredProductIds = new Set(
     (settings.data?.product_expirations ?? []).map((item) => item.product_id),
   );
   const mutationError =
-    generalMutation.error ?? productMutation.error ?? removeMutation.error ?? null;
+    stockMutation.error ??
+    generalMutation.error ??
+    productMutation.error ??
+    removeMutation.error ??
+    null;
   const mutationErrorMessage =
-    mutationError?.message === 'Introduce un número de días entre 0 y 365.'
+    mutationError?.message === 'Introduce un número de días entre 0 y 365.' ||
+    mutationError?.message === 'Introduce un mínimo de stock válido.'
       ? mutationError.message
       : 'No se ha podido guardar la configuración.';
 
@@ -353,7 +376,7 @@ export function NotificationsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Avisos"
-        description="Consulta lo que necesita atención y configura cuándo avisar de caducidades."
+        description="Consulta lo que necesita atención y configura los avisos de la tienda."
       />
 
       <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" aria-label="Avisos">
@@ -382,7 +405,7 @@ export function NotificationsPage() {
           {alerts.isSuccess && active.length === 0 && (
             <EmptyState
               title="No hay avisos activos"
-              description="No hay productos con stock bajo, lotes próximos a caducar ni otros asuntos pendientes."
+              description="No hay productos con stock bajo ni lotes próximos a caducar."
             />
           )}
           <AlertGroup title="Stock bajo" alerts={lowStock}>
@@ -393,14 +416,6 @@ export function NotificationsPage() {
           <AlertGroup title="Caducidad" alerts={expiration}>
             {(alert) => (
               <ExpirationAlertCard key={alert.id} alert={alert} canOpenLots={canOpenLots} />
-            )}
-          </AlertGroup>
-          <AlertGroup title="Otros avisos" alerts={other}>
-            {(alert) => (
-              <Card key={alert.id} className="p-5">
-                <h3 className="font-bold text-slate-900">{alert.title}</h3>
-                {alert.message && <p className="mt-2 text-sm text-slate-600">{alert.message}</p>}
-              </Card>
             )}
           </AlertGroup>
         </div>
@@ -420,11 +435,10 @@ export function NotificationsPage() {
               <Card className="p-5 sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">Stock mínimo</h2>
-                    <p className="mt-1 font-semibold text-emerald-700">Automático</p>
-                    <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                      OpenERP avisa cuando el stock actual es inferior al mínimo configurado en la
-                      ficha del producto. El aviso desaparece automáticamente al reponerlo.
+                    <h2 className="text-lg font-bold text-slate-900">Stock bajo</h2>
+                    <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                      Este mínimo se aplica a los productos configurados para usar el valor general.
+                      Cada producto puede sustituirlo o desactivar su aviso desde su ficha.
                     </p>
                   </div>
                   {canOpenProducts && (
@@ -436,6 +450,52 @@ export function NotificationsPage() {
                     </NavLink>
                   )}
                 </div>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    setFeedback(null);
+                    stockMutation.mutate();
+                  }}
+                  className="mt-6 border-t border-slate-200 pt-5"
+                >
+                  <label className="flex max-w-xl items-start gap-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={stockEnabled}
+                      onChange={(event) => setStockEnabled(event.target.checked)}
+                      disabled={!canManage}
+                      className="mt-0.5 size-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span>
+                      <span className="block font-semibold">Avisar cuando haya poco stock</span>
+                      <span className="mt-1 block text-slate-500">
+                        Los avisos desaparecen automáticamente al reponer existencias.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="mt-4 max-w-48">
+                    <FormField
+                      label="Mínimo general"
+                      htmlFor="general-stock-minimum"
+                      hint="Unidades disponibles."
+                    >
+                      <Input
+                        id="general-stock-minimum"
+                        inputMode="decimal"
+                        value={stockMinimum}
+                        onChange={(event) => setStockMinimum(event.target.value)}
+                        disabled={!canManage || !stockEnabled}
+                      />
+                    </FormField>
+                  </div>
+                  {canManage && (
+                    <div className="mt-5">
+                      <Button type="submit" disabled={stockMutation.isPending}>
+                        {stockMutation.isPending ? 'Guardando…' : 'Guardar stock general'}
+                      </Button>
+                    </div>
+                  )}
+                </form>
               </Card>
 
               <Card className="p-5 sm:p-6">
@@ -557,27 +617,6 @@ export function NotificationsPage() {
                   </div>
                 </section>
               </Card>
-
-              {settings.data.custom_rules.length > 0 && (
-                <Card className="p-5 sm:p-6">
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Reglas personalizadas existentes
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Se conservan por compatibilidad. V2 no permite crear nuevas reglas técnicas.
-                  </p>
-                  <ul className="mt-4 divide-y divide-slate-100">
-                    {settings.data.custom_rules.map((rule) => (
-                      <li key={rule.name} className="flex items-center justify-between gap-4 py-3">
-                        <span className="font-medium text-slate-800">{rule.name}</span>
-                        <span className="text-sm text-slate-500">
-                          {rule.is_active ? 'Activa' : 'Inactiva'}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              )}
             </>
           )}
         </div>

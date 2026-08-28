@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router';
 
 import { useAuth } from '@/features/auth/useAuth';
 import { AdminNavigation } from '@/pages/admin/AdminNavigation';
-import { incidentsQuery, type Severity } from '@/features/notifications/api';
+import { activeAlertsQuery } from '@/features/notifications/api';
 import { useShopSetting } from '@/features/settings/useShopSettings';
 
 /**
@@ -13,10 +13,6 @@ import { useShopSetting } from '@/features/settings/useShopSettings';
  * routes.tsx is the second line of defence if someone navigates there
  * directly.
  */
-/** La más alta de las criticidades abiertas, para el contador del menú.
- * Ordenadas de menos a más: la última que aparezca gana. */
-const SEVERITY_ORDER: Severity[] = ['LOW', 'MEDIUM_LOW', 'MEDIUM_HIGH', 'HIGH'];
-
 export function AdminLayout() {
   const { user, hasPermission, logout } = useAuth();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
@@ -31,17 +27,14 @@ export function AdminLayout() {
   // Un aviso abierto tiene que verse desde cualquier pantalla, no sólo si
   // alguien entra en Avisos — es justo lo que hacía que se olvidaran.
   const canSeeIncidents = hasPermission('notification.read');
-  const openIncidents = useQuery({
-    ...incidentsQuery({ status: 'OPEN' }),
+  const openAlerts = useQuery({
+    ...activeAlertsQuery,
     enabled: canSeeIncidents,
     // El menú está siempre en pantalla: se refresca solo cada minuto para
     // que un aviso nuevo aparezca sin tener que recargar.
     refetchInterval: 60_000,
   });
-  const incidents = openIncidents.data ?? [];
-  const worst = SEVERITY_ORDER.filter((level) =>
-    incidents.some((incident) => incident.severity === level),
-  ).at(-1);
+  const alerts = openAlerts.data ?? [];
 
   return (
     <div className="flex h-full min-h-0 bg-slate-100">
@@ -57,8 +50,7 @@ export function AdminLayout() {
           <AdminNavigation
             hasPermission={hasPermission}
             isAdministrator={user?.role === 'ADMIN'}
-            alertsCount={incidents.length}
-            worstAlertSeverity={worst}
+            alertsCount={alerts.length}
           />
         </div>
       </aside>

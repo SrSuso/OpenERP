@@ -48,6 +48,7 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
     taxes: [],
     price_formula: null,
     min_stock: '0',
+    stock_alert_mode: 'GENERAL',
     track_lots: true,
     track_expiration: true,
     tracks_stock: null,

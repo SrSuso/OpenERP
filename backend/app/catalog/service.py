@@ -18,6 +18,7 @@ from app.catalog.models import (
     ProductBarcode,
     ProductCategory,
     ProductPackage,
+    StockAlertMode,
     Unit,
 )
 from app.catalog.schemas import (
@@ -90,6 +91,7 @@ def _snapshot(product: Product) -> dict[str, Any]:
         ),
         "price_formula": product.price_formula,
         "min_stock": str(product.min_stock),
+        "stock_alert_mode": product.stock_alert_mode,
         "track_lots": product.track_lots,
         "track_expiration": product.track_expiration,
         "is_active": product.is_active,
@@ -728,7 +730,9 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         await _pos_category_or_422(session, payload.pos_category_id)
     if payload.base_barcode is not None:
         await _assert_barcode_free(session, payload.base_barcode)
-    # `catalog.sku_prefix`/`catalog.default_min_stock` (app.settings.registry).
+    # The SKU prefix remains a store setting. Stock thresholds now belong to
+    # the V2 notifications configuration and are never inferred from a magic
+    # numeric product default.
     shop = await settings_store.get_values(session)
     sku_prefix = str(shop["catalog.sku_prefix"])
 
@@ -752,9 +756,10 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         surcharge_rate=payload.surcharge_rate,
         margin_rate=payload.margin_rate,
         margin_amount=payload.margin_amount,
-        min_stock=payload.min_stock
-        if "min_stock" in payload.model_fields_set
-        else Decimal(str(shop["catalog.default_min_stock"])),
+        min_stock=(
+            payload.min_stock if payload.stock_alert_mode == StockAlertMode.CUSTOM else Decimal(0)
+        ),
+        stock_alert_mode=payload.stock_alert_mode,
         track_lots=payload.track_lots,
         track_expiration=payload.track_expiration,
         tracks_stock=payload.tracks_stock,
@@ -831,6 +836,13 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
             raise ConflictError("El producto no tiene un formato base que se pueda corregir.")
         product.base_unit_name = unit_name
         base_package.name = unit_name
+    target_stock_alert_mode = payload.stock_alert_mode or StockAlertMode(product.stock_alert_mode)
+    if payload.min_stock is not None and target_stock_alert_mode != StockAlertMode.CUSTOM:
+        raise ValidationError("El stock mínimo propio requiere el modo de aviso personalizado.")
+    if payload.stock_alert_mode is not None:
+        product.stock_alert_mode = payload.stock_alert_mode
+        if payload.stock_alert_mode != StockAlertMode.CUSTOM:
+            product.min_stock = Decimal(0)
     if payload.min_stock is not None:
         product.min_stock = payload.min_stock
     if payload.track_lots is not None:

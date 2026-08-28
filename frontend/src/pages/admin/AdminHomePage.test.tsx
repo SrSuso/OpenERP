@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthContext, type AuthContextValue } from '@/features/auth/AuthContext';
-import { type Incident } from '@/features/notifications/api';
+import { type ActiveAlert } from '@/features/notifications/api';
 import { type PurchaseOrder } from '@/features/purchasing/api';
 import { formatMoney } from '@/lib/format';
 
@@ -50,41 +50,35 @@ const PENDING_ORDER: PurchaseOrder = {
   total: '12.000000',
 };
 
-const LOT_INCIDENT: Incident = {
+const LOT_ALERT: ActiveAlert = {
   id: 30,
-  rule_id: 4,
-  rule_name: 'Caducidad próxima',
-  rule_type: 'EXPIRING_LOT',
-  severity: 'MEDIUM_HIGH',
-  subject_type: 'lot',
-  subject_id: 5,
-  message: 'El lote caduca pronto.',
-  status: 'OPEN',
-  first_detected_at: '2026-08-27T10:00:00Z',
-  last_seen_at: '2026-08-27T10:00:00Z',
-  resolved_at: null,
+  kind: 'EXPIRATION',
+  title: 'Yogur',
+  product_id: 5,
+  stock_current: null,
+  min_stock: null,
+  replenish: null,
+  lot_id: 5,
+  lot_number: 'L-5',
+  expiration_date: '2026-08-30',
+  days_remaining: 2,
+  quantity_remaining: '3',
 };
 
-const LOW_STOCK_INCIDENT: Incident = {
-  ...LOT_INCIDENT,
+const LOW_STOCK_ALERT: ActiveAlert = {
+  ...LOT_ALERT,
   id: 29,
-  rule_id: 2,
-  rule_name: 'Stock mínimo automático',
-  rule_type: 'LOW_STOCK',
-  subject_type: 'product',
-  subject_id: 10,
-  message: 'Leche: stock actual 2, mínimo 5, reponer 3.',
-};
-
-const OTHER_INCIDENT: Incident = {
-  ...LOT_INCIDENT,
-  id: 31,
-  rule_id: 5,
-  rule_name: 'Regla personalizada',
-  rule_type: 'CONDITION',
-  subject_type: 'product',
-  subject_id: 11,
-  message: 'Revisión personalizada.',
+  kind: 'LOW_STOCK',
+  title: 'Leche',
+  product_id: 10,
+  stock_current: '2',
+  min_stock: '5',
+  replenish: '3',
+  lot_id: null,
+  lot_number: null,
+  expiration_date: null,
+  days_remaining: null,
+  quantity_remaining: null,
 };
 
 function authValue(permissions = ALL_METRIC_PERMISSIONS): AuthContextValue {
@@ -148,10 +142,8 @@ function stubBackend(
       if (url.includes('/purchase-orders?')) {
         return Promise.resolve(jsonResponse(options.empty ? [] : [PENDING_ORDER]));
       }
-      if (url.includes('/incidents?status=OPEN')) {
-        return Promise.resolve(
-          jsonResponse(options.empty ? [] : [LOW_STOCK_INCIDENT, LOT_INCIDENT, OTHER_INCIDENT]),
-        );
+      if (url.endsWith('/alerts')) {
+        return Promise.resolve(jsonResponse(options.empty ? [] : [LOW_STOCK_ALERT, LOT_ALERT]));
       }
       return Promise.reject(new Error(`Unexpected fetch to ${url}`));
     }),
@@ -184,7 +176,7 @@ describe('AdminHomePage', () => {
     expect(attentionCard).not.toBeNull();
     expect(within(attentionCard!).getByText('Stock bajo')).toBeInTheDocument();
     expect(within(attentionCard!).getByText('Caducidades')).toBeInTheDocument();
-    expect(within(attentionCard!).getByText('Otros avisos')).toBeInTheDocument();
+    expect(within(attentionCard!).queryByText('Otros avisos')).not.toBeInTheDocument();
     expect(within(attentionCard!).getByText('Recepciones pendientes')).toBeInTheDocument();
     expect(within(attentionCard!).queryByText('Avisos abiertos')).not.toBeInTheDocument();
     expect(within(attentionCard!).queryByText('Avisos sobre lotes')).not.toBeInTheDocument();

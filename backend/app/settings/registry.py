@@ -281,18 +281,6 @@ SETTINGS: tuple[SettingDef, ...] = (
         type=SettingType.STRING,
         default="P",
     ),
-    SettingDef(
-        key="catalog.default_min_stock",
-        group=GROUP_CATALOG,
-        label="Stock mínimo por defecto",
-        help=(
-            "Con el que nace un producto nuevo si no le pones otro. Déjalo en 0 y no "
-            "avisará de falta de existencias hasta que se lo pongas a mano."
-        ),
-        type=SettingType.DECIMAL,
-        default=Decimal(0),
-        minimum=Decimal(0),
-    ),
     # --- avisos ------------------------------------------------------------
     SettingDef(
         key="notifications.email_subject_prefix",
@@ -301,16 +289,6 @@ SETTINGS: tuple[SettingDef, ...] = (
         help='Los correos de aviso llegan como "[OpenERP] Falta de stock". Cambia esa etiqueta.',
         type=SettingType.STRING,
         default="[OpenERP]",
-    ),
-    SettingDef(
-        key="notifications.default_expiration_days",
-        group=GROUP_NOTIFICATIONS,
-        label="Días de antelación para avisar de caducidades",
-        help="Con el que se crea una regla de caducidad nueva. Cada regla puede llevar el suyo.",
-        type=SettingType.INT,
-        default=7,
-        minimum=Decimal(0),
-        maximum=Decimal(365),
     ),
     # --- pantalla ----------------------------------------------------------
     SettingDef(

@@ -268,6 +268,7 @@ export const productSchema = z.object({
   taxes: z.array(productTaxSchema),
   price_formula: z.string().nullable(),
   min_stock: z.string(),
+  stock_alert_mode: z.enum(['GENERAL', 'CUSTOM', 'DISABLED']),
   track_lots: z.boolean(),
   track_expiration: z.boolean(),
   // Lo elegido en el producto; `null` = hereda de su categoría.
@@ -336,8 +337,10 @@ export interface ProductCreateInput {
   margin_rate: string | null;
   margin_amount: string | null;
   min_stock: string;
+  stock_alert_mode: 'GENERAL' | 'CUSTOM' | 'DISABLED';
   track_lots: boolean;
   track_expiration: boolean;
+  tracks_stock: boolean | null;
 }
 
 export async function createProduct(payload: ProductCreateInput): Promise<Product> {
@@ -362,6 +365,7 @@ export interface ProductUpdateInput {
   /** Corrige la etiqueta de unidad actual; no convierte datos históricos. */
   base_unit_name?: string;
   min_stock?: string;
+  stock_alert_mode?: 'GENERAL' | 'CUSTOM' | 'DISABLED';
   track_lots?: boolean;
   track_expiration?: boolean;
   /** Fija el control de existencias en el producto. */

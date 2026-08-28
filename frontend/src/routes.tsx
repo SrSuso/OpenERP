@@ -24,6 +24,7 @@ import { LotsPage } from '@/pages/admin/LotsPage';
 import { NotificationsPage } from '@/pages/admin/NotificationsPage';
 import { OutboxPage } from '@/pages/admin/OutboxPage';
 import { ProductDetailPage } from '@/pages/admin/ProductDetailPage';
+import { NewProductPage } from '@/pages/admin/NewProductPage';
 import { ReportsPage } from '@/pages/admin/ReportsPage';
 import { ReturnsPage } from '@/pages/admin/ReturnsPage';
 import { SalesPage } from '@/pages/admin/SalesPage';
@@ -151,6 +152,10 @@ export const routes: RouteObject[] = [
                   // Fuera del Outlet de InventoryPage a propósito — la
                   // ficha de un producto es su propia pantalla, no una
                   // pestaña más (ver ProductDetailPage).
+                  {
+                    element: <RequirePermission permission="product.manage" />,
+                    children: [{ path: 'products/new', element: <NewProductPage /> }],
+                  },
                   { path: 'products/:productId', element: <ProductDetailPage /> },
                 ],
               },

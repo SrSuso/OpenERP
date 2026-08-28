@@ -29,6 +29,9 @@ async def test_options_serve_the_catalogue_with_current_values(
     assert "Caja (TPV)" in body["groups"]
     total = body["settings"][0]
     assert {"key", "group", "label", "help", "type", "value", "default"} <= set(total)
+    keys = {setting["key"] for setting in body["settings"]}
+    assert "catalog.default_min_stock" not in keys
+    assert "notifications.default_expiration_days" not in keys
 
 
 async def test_saving_only_touches_the_keys_sent(
@@ -87,12 +90,12 @@ async def test_a_bad_value_is_rejected_with_a_message_for_a_human(
 
     response = await client.put(
         "/api/v1/settings/options",
-        json={"values": {"notifications.default_expiration_days": "no soy un número"}},
+        json={"values": {"ui.base_font_px": "no soy un número"}},
     )
 
     assert response.status_code == 422
     message = response.json()["error"]["message"]
-    assert "Días de antelación" in message
+    assert "Tamaño de la letra" in message
     assert "número entero" in message
 
 

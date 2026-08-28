@@ -5,7 +5,7 @@ import { Alert, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { useAuth } from '@/features/auth/useAuth';
 import { type SalesOverTimePoint } from '@/features/dashboards/api';
 import { SalesOverTimeChart } from '@/features/dashboards/SalesOverTimeChart';
-import { incidentsQuery } from '@/features/notifications/api';
+import { activeAlertsQuery } from '@/features/notifications/api';
 import { purchaseOrdersQuery } from '@/features/purchasing/api';
 import { runReport } from '@/features/reports/api';
 import { useBusinessTimezone } from '@/features/settings/useShopSettings';
@@ -127,7 +127,7 @@ export function AdminHomePage() {
   const canSeeSales = hasPermission('report.read');
   const salesDetailRoute = hasPermission('sale.read') ? '/admin/sales' : '/admin/reports';
   const canSeePurchasing = hasPermission('purchase.read');
-  const canSeeIncidents = hasPermission('notification.read');
+  const canSeeAlerts = hasPermission('notification.read');
 
   const sales = useQuery({
     queryKey: ['admin-home', 'sales', dateFrom, today],
@@ -147,9 +147,9 @@ export function AdminHomePage() {
     ...purchaseOrdersQuery({}),
     enabled: canSeePurchasing,
   });
-  const incidents = useQuery({
-    ...incidentsQuery({ status: 'OPEN' }),
-    enabled: canSeeIncidents,
+  const alerts = useQuery({
+    ...activeAlertsQuery,
+    enabled: canSeeAlerts,
   });
 
   const salesRows = sales.data?.rows ?? [];
@@ -169,17 +169,12 @@ export function AdminHomePage() {
   const pendingReceipts = (purchaseOrders.data ?? []).filter((order) =>
     ['ORDERED', 'PARTIALLY_RECEIVED'].includes(order.status),
   ).length;
-  const openIncidents = incidents.data ?? [];
-  const lowStockCount = openIncidents.filter(
-    (incident) => incident.rule_type === 'LOW_STOCK',
-  ).length;
-  const expirationCount = openIncidents.filter(
-    (incident) => incident.rule_type === 'EXPIRING_LOT',
-  ).length;
-  const otherCount = openIncidents.filter((incident) => incident.rule_type === 'CONDITION').length;
+  const activeAlerts = alerts.data ?? [];
+  const lowStockCount = activeAlerts.filter((alert) => alert.kind === 'LOW_STOCK').length;
+  const expirationCount = activeAlerts.filter((alert) => alert.kind === 'EXPIRATION').length;
 
   const attentionItems = [
-    ...(canSeeIncidents && incidents.isSuccess && lowStockCount > 0
+    ...(canSeeAlerts && alerts.isSuccess && lowStockCount > 0
       ? [
           {
             label: 'Stock bajo',
@@ -189,7 +184,7 @@ export function AdminHomePage() {
           },
         ]
       : []),
-    ...(canSeeIncidents && incidents.isSuccess && expirationCount > 0
+    ...(canSeeAlerts && alerts.isSuccess && expirationCount > 0
       ? [
           {
             label: 'Caducidades',
@@ -209,22 +204,12 @@ export function AdminHomePage() {
           },
         ]
       : []),
-    ...(canSeeIncidents && incidents.isSuccess && otherCount > 0
-      ? [
-          {
-            label: 'Otros avisos',
-            count: otherCount,
-            detail: 'Reglas personalizadas que requieren revisión.',
-            to: '/admin/notifications',
-          },
-        ]
-      : []),
   ];
   const attentionPending =
-    (canSeePurchasing && purchaseOrders.isPending) || (canSeeIncidents && incidents.isPending);
+    (canSeePurchasing && purchaseOrders.isPending) || (canSeeAlerts && alerts.isPending);
   const attentionError =
-    (canSeePurchasing && purchaseOrders.isError) || (canSeeIncidents && incidents.isError);
-  const hasAnyMetricPermission = canSeeSales || canSeePurchasing || canSeeIncidents;
+    (canSeePurchasing && purchaseOrders.isError) || (canSeeAlerts && alerts.isError);
+  const hasAnyMetricPermission = canSeeSales || canSeePurchasing || canSeeAlerts;
 
   return (
     <div className="space-y-8">
@@ -276,7 +261,7 @@ export function AdminHomePage() {
                   to={salesDetailRoute}
                 />
               )}
-              {canSeeIncidents && (
+              {canSeeAlerts && (
                 <MetricCard
                   label="Stock bajo"
                   value={String(lowStockCount)}
@@ -285,8 +270,8 @@ export function AdminHomePage() {
                       ? 'Productos por debajo del mínimo'
                       : 'No hay productos con stock bajo'
                   }
-                  isPending={incidents.isPending}
-                  isError={incidents.isError}
+                  isPending={alerts.isPending}
+                  isError={alerts.isError}
                   to="/admin/notifications"
                   warning={lowStockCount > 0}
                 />
@@ -328,7 +313,7 @@ export function AdminHomePage() {
               </Card>
             )}
 
-            {(canSeePurchasing || canSeeIncidents) && (
+            {(canSeePurchasing || canSeeAlerts) && (
               <Card className="p-5 sm:p-6">
                 <div className="mb-5">
                   <h2 className="text-lg font-bold text-slate-900">Necesita atención</h2>

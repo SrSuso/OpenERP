@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
-import { type Incident } from '@/features/notifications/api';
+import { type ActiveAlert } from '@/features/notifications/api';
 
 import { AdminLayout } from './AdminLayout';
 
@@ -47,20 +47,20 @@ const MANAGER = {
   role: 'MANAGER',
 };
 
-const OPEN_INCIDENTS: Incident[] = [
+const OPEN_ALERTS: ActiveAlert[] = [
   {
     id: 1,
-    rule_id: 1,
-    rule_name: 'Stock bajo',
-    rule_type: 'LOW_STOCK',
-    severity: 'HIGH',
-    subject_type: 'product',
-    subject_id: 10,
-    message: 'Quedan dos unidades.',
-    status: 'OPEN',
-    first_detected_at: '2026-08-17T10:00:00Z',
-    last_seen_at: '2026-08-17T10:00:00Z',
-    resolved_at: null,
+    kind: 'LOW_STOCK',
+    title: 'Leche',
+    product_id: 10,
+    stock_current: '2',
+    min_stock: '5',
+    replenish: '3',
+    lot_id: null,
+    lot_number: null,
+    expiration_date: null,
+    days_remaining: null,
+    quantity_remaining: null,
   },
 ];
 
@@ -73,8 +73,7 @@ function renderLayout(user = ME, initialPath = '/admin') {
       if (url.includes('/settings/values')) {
         return Promise.resolve(jsonResponse({ 'app.display_name': 'Mi tienda' }));
       }
-      if (url.includes('/incidents?status=OPEN'))
-        return Promise.resolve(jsonResponse(OPEN_INCIDENTS));
+      if (url.endsWith('/alerts')) return Promise.resolve(jsonResponse(OPEN_ALERTS));
       return Promise.reject(new Error(`Unexpected fetch to ${url}`));
     }),
   );
@@ -118,7 +117,7 @@ describe('AdminLayout', () => {
       '/admin/reports',
       '/admin/settings',
     ]);
-    expect(badge).toHaveClass('bg-red-100');
+    expect(badge).toHaveClass('bg-amber-100');
     expect(badge).not.toHaveClass('animate-pulse');
   });
 

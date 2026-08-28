@@ -269,10 +269,8 @@ NOTIFICATION_READ = "notification.read"
 NOTIFICATION_MANAGE = "notification.manage"
 
 PHASE_17_PERMISSIONS: tuple[PermissionDef, ...] = (
-    PermissionDef(NOTIFICATION_READ, "View notification rules and incidents."),
-    PermissionDef(
-        NOTIFICATION_MANAGE, "Create/edit notification rules, evaluate them, resolve incidents."
-    ),
+    PermissionDef(NOTIFICATION_READ, "View active stock and expiration alerts."),
+    PermissionDef(NOTIFICATION_MANAGE, "Configure automatic stock and expiration alerts."),
 )
 
 #: Frozen grants for the phase 17 migration only.

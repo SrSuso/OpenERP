@@ -20,6 +20,10 @@ from decimal import Decimal
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings
+from app.notifications import service as notification_service
 
 LoginFn = Callable[..., Awaitable[dict[str, Any]]]
 
@@ -32,7 +36,12 @@ async def _default_location(client: AsyncClient) -> tuple[int, int]:
     return warehouse["id"], location["id"]
 
 
-async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: LoginFn) -> None:
+async def test_full_business_lifecycle_end_to_end(
+    client: AsyncClient,
+    login: LoginFn,
+    db_session: AsyncSession,
+    settings: Settings,
+) -> None:
     await login(role_name="ADMIN")
     warehouse_id, location_id = await _default_location(client)
 
@@ -48,6 +57,7 @@ async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: Lo
                 "list_price": "10.00",
                 "tax_rate": "21",
                 "min_stock": "10",  # deliberately high — triggers LOW_STOCK below
+                "stock_alert_mode": "CUSTOM",
             },
         )
     ).json()
@@ -210,38 +220,22 @@ async def test_full_business_lifecycle_end_to_end(client: AsyncClient, login: Lo
     assert widget_data.json()["data"]["low_stock_count"] >= 1  # our product qualifies
 
     # --- notifications: the same low-stock condition, detected and deduped
-    rule = (
-        await client.post(
-            "/api/v1/notification-rules",
-            json={"name": "Stock bajo (aceptación)", "rule_type": "LOW_STOCK", "params": {}},
-        )
-    ).json()
-    incidents = (await client.post("/api/v1/notifications/evaluate")).json()
-    our_incident = next(
-        (
-            i
-            for i in incidents
-            if i["rule_id"] == rule["id"]
-            and i["subject_type"] == "product"
-            and i["subject_id"] == product["id"]
-        ),
-        None,
+    await notification_service.evaluate_rules(db_session, settings)
+    our_alert = next(
+        item
+        for item in (await client.get("/api/v1/alerts")).json()
+        if item["product_id"] == product["id"] and item["kind"] == "LOW_STOCK"
     )
-    assert our_incident is not None
-    assert our_incident["status"] == "OPEN"
 
     # Re-evaluating without any further change must not open a duplicate —
     # the partial unique index from fase 17, exercised for real here.
-    incidents_again = (await client.post("/api/v1/notifications/evaluate")).json()
-    dupes = [
-        i
-        for i in incidents_again
-        if i["rule_id"] == rule["id"]
-        and i["subject_type"] == "product"
-        and i["subject_id"] == product["id"]
-        and i["status"] == "OPEN"
+    await notification_service.evaluate_rules(db_session, settings)
+    duplicates = [
+        item
+        for item in (await client.get("/api/v1/alerts")).json()
+        if item["product_id"] == product["id"] and item["kind"] == "LOW_STOCK"
     ]
-    assert len(dupes) <= 1
+    assert [item["id"] for item in duplicates] == [our_alert["id"]]
 
     # --- audit trail: every mutating step above left a record ---------------
     audit_log = (await client.get("/api/v1/audit-log")).json()
@@ -282,7 +276,7 @@ async def test_permission_boundaries_hold_across_the_whole_lifecycle(
         ("GET", "/api/v1/purchase-orders"),
         ("GET", "/api/v1/sales"),
         ("GET", "/api/v1/dashboards"),
-        ("GET", "/api/v1/incidents"),
+        ("GET", "/api/v1/alerts"),
         ("GET", "/api/v1/audit-log"),
         ("GET", "/api/v1/outbox"),
     ]
@@ -298,7 +292,11 @@ async def test_permission_boundaries_hold_across_the_whole_lifecycle(
         ("POST", "/api/v1/suppliers", {"name": "x"}),
         ("POST", "/api/v1/purchase-orders", {"supplier_id": 1}),
         ("POST", "/api/v1/dashboards", {"name": "x"}),
-        ("POST", "/api/v1/notification-rules", {"name": "x", "rule_type": "LOW_STOCK"}),
+        (
+            "PUT",
+            "/api/v1/notification-settings/stock",
+            {"enabled": True, "min_stock": "5"},
+        ),
     ]
     for method, path, body in cashier_forbidden:
         response = await client.request(method, path, json=body)

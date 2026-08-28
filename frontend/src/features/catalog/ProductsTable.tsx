@@ -1,222 +1,93 @@
-import { useState } from 'react';
 import { Link } from 'react-router';
 
 import { type Product } from '@/features/catalog/api';
-import { decimalInputValue, decimalString } from '@/lib/decimal';
 import { formatMoney, formatQuantity } from '@/lib/format';
 
 interface ProductsTableProps {
   products: Product[];
-  canManagePricing: boolean;
-  /** Cuánto hay de cada producto, por id. Ausente = todavía cargando, o
-   * sin permiso para verlo (`inventory.read`). */
   stockByProduct: Map<number, string> | null;
-  /** Precio de venta tecleado en la propia fila — `listPrice` ya viene
-   * normalizado (coma → punto) por `decimalString`. No guarda: la página
-   * pregunta antes, porque el precio nuevo se aplica también a lo que ya
-   * está en la estantería (ver `PriceChangeDialog`). */
-  onSetPrice: (product: Product, listPrice: string) => void;
-  savingPriceId: number | null;
-  savedPriceId: number | null;
-  /** Lo mismo con el coste: se teclea lo que ha costado y el PVP se
-   * recalcula solo con el margen del producto (o el de su categoría). */
-  onSetCost: (product: Product, cost: string) => void;
-  savingCostId: number | null;
-  savedCostId: number | null;
+  lowStockProductIds: Set<number>;
 }
 
-/** El nombre de cada producto es el enlace a su ficha
- * (`/admin/inventory/products/:id`, ver `ProductDetailPage`), que es donde
- * se hace la configuración del catálogo: datos generales, categoría POS,
- * precio, presentaciones, proveedores, lotes, y desactivarlo o reactivarlo.
- * La lista no repite esas acciones en cada fila; para eso está la ficha.
- *
- * El SKU no se enseña: es una referencia interna que genera el propio
- * programa para que ventas, compras e inventario se entiendan entre ellos,
- * y en una tienda pequeña no significa nada para quien mira la lista. Se
- * sigue pudiendo buscar por él. */
 export function ProductsTable({
   products,
-  canManagePricing,
   stockByProduct,
-  onSetPrice,
-  savingPriceId,
-  savedPriceId,
-  onSetCost,
-  savingCostId,
-  savedCostId,
+  lowStockProductIds,
 }: ProductsTableProps) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <table className="w-full min-w-[760px] text-left text-sm">
+        <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
           <tr>
-            <th className="px-4 py-2 font-medium">Producto</th>
-            <th className="px-4 py-2 font-medium">Categoría</th>
-            <th className="px-4 py-2 font-medium">Categoría POS</th>
-            <th className="px-4 py-2 font-medium">Stock</th>
-            {/* Lo que cuesta el género es cosa de quien pone los precios:
-                el rol de caja tiene `product.read` y llegaría a ver esta
-                lista, pero no tiene por qué saber el margen de la tienda. */}
-            {canManagePricing && <th className="px-4 py-2 font-medium">Coste (por unidad base)</th>}
-            <th className="px-4 py-2 font-medium">PVP de venta (por unidad base)</th>
-            <th className="px-4 py-2 font-medium">Estado</th>
+            <th className="px-5 py-3">Producto</th>
+            <th className="px-5 py-3">Categoría</th>
+            <th className="px-5 py-3">PVP</th>
+            <th className="px-5 py-3">Stock</th>
+            <th className="px-5 py-3">Estado</th>
+            <th className="px-5 py-3">Disponibilidad</th>
           </tr>
         </thead>
-        <tbody>
-          {products.map((product) => (
-            <tr key={product.id} className="border-b border-slate-100 last:border-0">
-              <td className="px-4 py-2">
-                <Link
-                  to={`/admin/inventory/products/${product.id}`}
-                  className="font-medium text-brand-700 hover:underline"
-                >
-                  {product.name}
-                </Link>
-              </td>
-              <td className="px-4 py-2">{product.category_name ?? '—'}</td>
-              <td className="px-4 py-2">{product.pos_category_name ?? '—'}</td>
-              <td className="px-4 py-2 whitespace-nowrap">
-                {!product.effective_tracks_stock ? (
-                  // Un «0» aquí se lee como «se ha terminado», que es justo
-                  // lo contrario: este producto no se agota nunca.
-                  <span className="text-xs text-slate-400" title="No lleva control de existencias">
-                    sin control
+        <tbody className="divide-y divide-slate-100">
+          {products.map((product) => {
+            const hasLowStock = lowStockProductIds.has(product.id);
+            return (
+              <tr key={product.id} className="hover:bg-brand-50/40">
+                <td className="px-5 py-4">
+                  <Link
+                    to={`/admin/inventory/products/${product.id}`}
+                    className="block rounded font-semibold text-slate-900 hover:text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    {product.name}
+                  </Link>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {product.base_unit_name}
+                    {product.pos_category_name ? ` · ${product.pos_category_name}` : ''}
                   </span>
-                ) : stockByProduct === null ? (
-                  <span className="text-slate-400">—</span>
-                ) : (
-                  <>
-                    {/* Sin fila de saldo es que no hay ninguno, no que se
-                        desconozca: el saldo se borra al llegar a cero. */}
-                    {formatQuantity(stockByProduct.get(product.id) ?? '0')}
-                    <span className="ml-1 text-xs text-slate-400">{product.base_unit_name}</span>
-                  </>
-                )}
-              </td>
-              {canManagePricing && (
-                <td className="px-4 py-2">
-                  {product.is_sold_by_weight ? (
-                    <MoneyCell
-                      // Se remonta cuando el servidor devuelve otro coste.
-                      key={product.cost}
-                      product={product}
-                      label={`Coste de ${product.name}`}
-                      value={product.cost}
-                      onSave={onSetCost}
-                      isSaving={savingCostId === product.id}
-                      isSaved={savedCostId === product.id}
-                    />
+                </td>
+                <td className="px-5 py-4 text-slate-700">
+                  {product.category_name ?? 'Sin categoría'}
+                </td>
+                <td className="px-5 py-4 font-semibold text-slate-900">
+                  {formatMoney(product.list_price)}
+                </td>
+                <td className="px-5 py-4 whitespace-nowrap text-slate-700">
+                  {!product.effective_tracks_stock ? (
+                    <span className="text-slate-500">Sin control</span>
+                  ) : stockByProduct === null ? (
+                    '—'
                   ) : (
-                    <>
-                      {formatMoney(product.cost)}
-                      <span className="ml-1 text-xs text-slate-400">/{product.base_unit_name}</span>
-                    </>
+                    `${formatQuantity(stockByProduct.get(product.id) ?? '0')} ${product.base_unit_name}`
                   )}
                 </td>
-              )}
-              <td className="px-4 py-2">
-                {canManagePricing && product.is_sold_by_weight ? (
-                  <MoneyCell
-                    // Se remonta cuando el servidor devuelve otro precio, así
-                    // el recuadro parte siempre de lo que hay guardado.
-                    key={product.list_price}
-                    product={product}
-                    label={`PVP de venta de ${product.name}`}
-                    value={product.list_price}
-                    onSave={onSetPrice}
-                    isSaving={savingPriceId === product.id}
-                    isSaved={savedPriceId === product.id}
-                  />
-                ) : (
-                  <>
-                    {formatMoney(product.list_price)}
-                    <span className="ml-1 text-xs text-slate-400">/{product.base_unit_name}</span>
-                  </>
-                )}
-              </td>
-              <td className="px-4 py-2">
-                {product.is_active ? (
-                  <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
-                    Activo
+                <td className="px-5 py-4">
+                  {hasLowStock ? (
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">
+                      Stock bajo
+                    </span>
+                  ) : product.effective_tracks_stock ? (
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      Correcto
+                    </span>
+                  ) : (
+                    <span className="text-sm text-slate-500">No aplica</span>
+                  )}
+                </td>
+                <td className="px-5 py-4">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      product.is_active
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {product.is_active ? 'Activo' : 'Inactivo'}
                   </span>
-                ) : (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-                    Inactivo
-                  </span>
-                )}
-              </td>
-            </tr>
-          ))}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
-  );
-}
-
-/** Un importe tecleado en la propia fila para los productos que se venden
- * al peso: permite repasar el PVP del día de fruta, carne o charcutería de
- * un tirón. Intro o salir del recuadro guarda; Escape deshace.
- *
- * Sirve para las dos columnas que se editan aquí. El PVP se fija tal cual,
- * sin pasar por el margen ni la fórmula (eso es `setManualPrice`); el coste,
- * al revés, recalcula el PVP con el margen del producto o el de su
- * categoría — que es justo lo que se quiere al apuntar lo que ha costado
- * el género de hoy. Quién hace qué lo decide la página, aquí sólo se
- * teclea. */
-function MoneyCell({
-  product,
-  label,
-  value,
-  onSave,
-  isSaving,
-  isSaved,
-}: {
-  product: Product;
-  label: string;
-  value: string;
-  onSave: (product: Product, value: string) => void;
-  isSaving: boolean;
-  isSaved: boolean;
-}) {
-  const saved = decimalInputValue(value);
-  const [draft, setDraft] = useState(saved);
-
-  const parsed = decimalString({ min: 0 }).safeParse(draft);
-  const isValid = parsed.success;
-
-  function save() {
-    if (!parsed.success || parsed.data === value) return;
-    // Mismo número escrito de otra forma ("1,68" frente a "1.680000") no es
-    // un cambio: proponerlo sólo sacaría un aviso para nada.
-    if (Number(parsed.data) === Number(value)) return;
-    onSave(product, parsed.data);
-  }
-
-  return (
-    <span className="flex items-center gap-1">
-      <input
-        type="text"
-        inputMode="decimal"
-        aria-label={label}
-        value={draft}
-        disabled={isSaving}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={save}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            event.currentTarget.blur();
-          }
-          if (event.key === 'Escape') setDraft(saved);
-        }}
-        className={`w-20 rounded border px-2 py-1 text-right text-sm disabled:opacity-50 ${
-          isValid ? 'border-slate-300' : 'border-red-400 bg-red-50'
-        }`}
-      />
-      <span className="text-xs text-slate-400">€/{product.base_unit_name}</span>
-      {isSaving && <span className="text-xs text-slate-400">Guardando…</span>}
-      {!isSaving && isSaved && <span className="text-xs font-medium text-green-700">Guardado</span>}
-    </span>
   );
 }

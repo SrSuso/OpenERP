@@ -1,8 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 
-import { SEVERITY_STYLES, type Severity } from '@/features/notifications/api';
-
 type NavigationIconName =
   'home' | 'alerts' | 'inventory' | 'purchasing' | 'sales' | 'reports' | 'settings';
 
@@ -170,15 +168,7 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
   );
 }
 
-function NavigationEntry({
-  entry,
-  alertsCount,
-  worstAlertSeverity,
-}: {
-  entry: VisibleNavEntry;
-  alertsCount: number;
-  worstAlertSeverity: Severity | undefined;
-}) {
+function NavigationEntry({ entry, alertsCount }: { entry: VisibleNavEntry; alertsCount: number }) {
   const location = useLocation();
   const [expanded, setExpanded] = useState(() => location.pathname.startsWith(entry.to));
   const hasChildren = entry.children.length > 0;
@@ -206,12 +196,10 @@ function NavigationEntry({
             {entry.icon && <NavigationIcon name={entry.icon} />}
             <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
               <span className="truncate">{entry.label}</span>
-              {isAlerts && worstAlertSeverity && (
+              {isAlerts && alertsCount > 0 && (
                 <span
                   aria-label={`${alertsCount} avisos sin resolver`}
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    SEVERITY_STYLES[worstAlertSeverity].badge
-                  }`}
+                  className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
                 >
                   {alertsCount}
                 </span>
@@ -246,12 +234,7 @@ function NavigationEntry({
       {showChildren && (
         <div className="ml-5 mt-1 border-l border-slate-200 pl-2">
           {entry.children.map((child) => (
-            <NavigationEntry
-              key={child.to}
-              entry={child}
-              alertsCount={alertsCount}
-              worstAlertSeverity={worstAlertSeverity}
-            />
+            <NavigationEntry key={child.to} entry={child} alertsCount={alertsCount} />
           ))}
         </div>
       )}
@@ -266,12 +249,10 @@ export function AdminNavigation({
   hasPermission,
   isAdministrator,
   alertsCount,
-  worstAlertSeverity,
 }: {
   hasPermission: (permission: string) => boolean;
   isAdministrator: boolean;
   alertsCount: number;
-  worstAlertSeverity: Severity | undefined;
 }) {
   const sections = [OPERATION_SECTION, ...(isAdministrator ? [ADMINISTRATION_SECTION] : [])]
     .map((section) => ({ ...section, entries: visibleEntries(section.entries, hasPermission) }))
@@ -289,12 +270,7 @@ export function AdminNavigation({
               {section.title}
             </p>
             {section.entries.map((entry) => (
-              <NavigationEntry
-                key={entry.to}
-                entry={entry}
-                alertsCount={alertsCount}
-                worstAlertSeverity={worstAlertSeverity}
-              />
+              <NavigationEntry key={entry.to} entry={entry} alertsCount={alertsCount} />
             ))}
           </div>
         ))}

@@ -25,6 +25,7 @@ def _product_payload(**overrides: Any) -> dict[str, Any]:
         "list_price": "0.95",
         "tax_rate": "4",
         "min_stock": "10",
+        "stock_alert_mode": "CUSTOM",
         "track_lots": True,
         "track_expiration": True,
     }
@@ -42,6 +43,8 @@ async def test_admin_can_create_a_product_with_its_base_package(
     assert response.status_code == 201
     body = response.json()
     assert body["sku"] == "MILK-1L"
+    assert body["stock_alert_mode"] == "CUSTOM"
+    assert body["min_stock"] == "10.000000"
     assert body["is_active"] is True
     assert len(body["packages"]) == 1
     base = body["packages"][0]
@@ -264,6 +267,19 @@ async def test_update_product_and_deactivate(
     update_response = await client.patch(f"/api/v1/products/{product_id}", json={"min_stock": "25"})
     assert update_response.status_code == 200
     assert update_response.json()["min_stock"] == "25.000000"
+
+    uses_general = await client.patch(
+        f"/api/v1/products/{product_id}", json={"stock_alert_mode": "GENERAL"}
+    )
+    assert uses_general.status_code == 200
+    assert uses_general.json()["stock_alert_mode"] == "GENERAL"
+    assert uses_general.json()["min_stock"] == "0.000000"
+
+    invalid_general_minimum = await client.patch(
+        f"/api/v1/products/{product_id}",
+        json={"stock_alert_mode": "GENERAL", "min_stock": "3"},
+    )
+    assert invalid_general_minimum.status_code == 422
 
     deactivate_response = await client.post(f"/api/v1/products/{product_id}/deactivate")
     assert deactivate_response.status_code == 200

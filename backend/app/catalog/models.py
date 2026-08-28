@@ -11,11 +11,13 @@ rewrites ledger quantities or their package/price snapshots.
 from __future__ import annotations
 
 from decimal import Decimal
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Integer,
     LargeBinary,
@@ -116,8 +118,22 @@ class PosCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 
+class StockAlertMode(StrEnum):
+    """How a product obtains (or deliberately avoids) its stock threshold."""
+
+    GENERAL = "GENERAL"
+    CUSTOM = "CUSTOM"
+    DISABLED = "DISABLED"
+
+
 class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint(
+            "stock_alert_mode IN ('GENERAL', 'CUSTOM', 'DISABLED')",
+            name="ck_products_stock_alert_mode",
+        ),
+    )
 
     sku: Mapped[str] = mapped_column(String(50), unique=True)
     name: Mapped[str] = mapped_column(String(255))
@@ -199,7 +215,12 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: `app.pricing.service.recompute_list_price`.
     price_formula: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    #: Only meaningful when ``stock_alert_mode`` is CUSTOM.  GENERAL reads
+    #: the store threshold from notifications; DISABLED never alerts.
     min_stock: Mapped[Quantity]
+    stock_alert_mode: Mapped[str] = mapped_column(
+        String(10), default=StockAlertMode.GENERAL, server_default=StockAlertMode.GENERAL
+    )
     track_lots: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     track_expiration: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     #: Los productos con historia se desactivan para conservar los documentos;

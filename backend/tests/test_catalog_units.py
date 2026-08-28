@@ -19,6 +19,7 @@ def _product_payload(**overrides: Any) -> dict[str, Any]:
         "cost": "0.60",
         "list_price": "0.95",
         "min_stock": "10",
+        "stock_alert_mode": "CUSTOM",
     }
     payload.update(overrides)
     return payload

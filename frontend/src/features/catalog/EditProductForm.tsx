@@ -3,19 +3,16 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { Button, Card, FormField, Input } from '@/components/ui';
 import {
+  type PosCategory,
   type Product,
   type ProductCategory,
   type ProductUpdateInput,
-  type PosCategory,
   type Unit,
 } from '@/features/catalog/api';
-import { decimalString } from '@/lib/decimal';
 import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
-// Mirrors backend/app/catalog/schemas.py's ProductUpdate exactly — no
-// cost/price/tax here on purpose, see that schema's own docstring
-// (features/pricing, a later module, is the only write path for those).
 const editProductSchema = z.object({
   name: z.string().min(1, 'Introduce un nombre.').max(255),
   description: z.string().max(2000).optional(),
@@ -25,11 +22,6 @@ const editProductSchema = z.object({
   is_open_price: z.boolean(),
   base_barcode: z.string().max(64).optional(),
   base_unit_name: z.string().min(1, 'Elige una unidad base.'),
-  min_stock: decimalString({ min: 0 }),
-  track_lots: z.boolean(),
-  track_expiration: z.boolean(),
-  // Tres estados: heredar de la categoría, o decirlo aquí.
-  tracks_stock: z.enum(['inherit', 'yes', 'no']),
 });
 
 type EditProductFormValues = z.infer<typeof editProductSchema>;
@@ -57,12 +49,7 @@ export function EditProductForm({
   submitError,
   onDirtyChange,
 }: EditProductFormProps) {
-  const basePackage = product.packages.find((item) => item.is_base);
-  const baseBarcode = basePackage?.barcodes[0]?.barcode ?? '';
-  // Para poder decir en el desplegable qué se hereda exactamente.
-  const inheritedTracksStock =
-    categories.find((category) => category.id === product.category_id)?.tracks_stock ?? null;
-
+  const baseBarcode = product.packages.find((item) => item.is_base)?.barcodes[0]?.barcode ?? '';
   const {
     register,
     handleSubmit,
@@ -78,235 +65,132 @@ export function EditProductForm({
       is_open_price: product.is_open_price ?? false,
       base_barcode: baseBarcode,
       base_unit_name: product.base_unit_name,
-      min_stock: product.min_stock,
-      track_lots: product.track_lots,
-      track_expiration: product.track_expiration,
-      tracks_stock: product.tracks_stock === null ? 'inherit' : product.tracks_stock ? 'yes' : 'no',
     },
   });
 
   useUnsavedWarning(isDirty);
-
-  // La ficha vive dentro de una pestaña: el padre necesita saber si puede
-  // desmontarla sin perder lo que se está editando.
-  useEffect(() => {
-    onDirtyChange?.(isDirty);
-  }, [isDirty, onDirtyChange]);
+  useEffect(() => onDirtyChange?.(isDirty), [isDirty, onDirtyChange]);
 
   const submit = handleSubmit((values) =>
     onSubmit({
       name: values.name,
       description: values.description ?? '',
-      category_id: values.category_id === '' ? null : Number(values.category_id),
-      pos_category_id: values.pos_category_id === '' ? null : Number(values.pos_category_id),
+      category_id: values.category_id ? Number(values.category_id) : null,
+      pos_category_id: values.pos_category_id ? Number(values.pos_category_id) : null,
       pos_display_order: values.pos_display_order,
       is_open_price: values.is_open_price,
       base_barcode: values.base_barcode?.trim() || null,
       base_unit_name: values.base_unit_name,
-      min_stock: values.min_stock,
-      track_lots: values.track_lots,
-      track_expiration: values.track_expiration,
-      ...(values.tracks_stock === 'inherit'
-        ? { inherit_tracks_stock: true }
-        : { tracks_stock: values.tracks_stock === 'yes' }),
     }),
   );
 
   return (
-    <form
-      onSubmit={(event) => void submit(event)}
-      noValidate
-      className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-4"
-    >
-      <h4 className="mb-3 text-sm font-semibold text-slate-700">Editar «{product.name}»</h4>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="text-sm text-slate-600 sm:col-span-2">
-          Nombre
-          <input
-            type="text"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('name')}
-          />
-          {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
-        </label>
-
-        <label className="text-sm text-slate-600">
-          Orden en el TPV
-          <input
-            type="number"
-            min={0}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('pos_display_order')}
-          />
-        </label>
-
-        <label className="text-sm text-slate-600 sm:col-span-3">
-          Descripción
-          <input
-            type="text"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('description')}
-          />
-        </label>
-
-        <div className="text-sm text-slate-600">
-          <label>
-            Código de barras
-            <input
-              type="text"
-              inputMode="numeric"
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              {...register('base_barcode')}
-            />
-          </label>
-          <span className="mt-1 block text-xs text-slate-400">
-            Código principal del formato base. Los adicionales se gestionan en Formatos.
-          </span>
-          {errors.base_barcode && (
-            <p className="mt-1 text-sm text-red-600">{errors.base_barcode.message}</p>
-          )}
-        </div>
-
-        <label className="text-sm text-slate-600">
-          Categoría
-          <select
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('category_id')}
+    <form onSubmit={(event) => void submit(event)} noValidate className="space-y-5">
+      <Card className="p-5 sm:p-6">
+        <h2 className="text-lg font-bold text-slate-900">Información general</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Nombre, organización y datos visibles en la tienda.
+        </p>
+        <div className="mt-5 grid gap-5 sm:grid-cols-2">
+          <FormField
+            label="Nombre"
+            htmlFor="edit-product-name"
+            error={errors.name?.message ?? null}
           >
-            <option value="">Sin categoría</option>
-            {/* Una categoría oculta deja de ofrecerse, pero sigue visible
-                si es la que el producto ya tenía: si no, parecería que no
-                tiene ninguna. */}
-            {categories
-              .filter((category) => category.is_active || category.id === product.category_id)
-              .map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
+            <Input id="edit-product-name" {...register('name')} />
+          </FormField>
+          <FormField
+            label="Código de barras"
+            htmlFor="edit-product-barcode"
+            hint="Código principal del formato base."
+          >
+            <Input id="edit-product-barcode" {...register('base_barcode')} />
+          </FormField>
+          <div className="sm:col-span-2">
+            <FormField label="Descripción" htmlFor="edit-product-description">
+              <Input id="edit-product-description" {...register('description')} />
+            </FormField>
+          </div>
+          <label className="text-sm font-semibold text-slate-700">
+            Categoría
+            <select
+              {...register('category_id')}
+              className="mt-1.5 block min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
+            >
+              <option value="">Sin categoría</option>
+              {categories
+                .filter((item) => item.is_active || item.id === product.category_id)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            Categoría POS
+            <select
+              {...register('pos_category_id')}
+              className="mt-1.5 block min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
+            >
+              <option value="">Sin categoría POS</option>
+              {posCategories.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
               ))}
-          </select>
-        </label>
-
-        <label className="text-sm text-slate-600">
-          Categoría POS
-          <select
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('pos_category_id')}
-          >
-            <option value="">Sin categoría POS</option>
-            {posCategories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="text-sm text-slate-600">
-          Stock mínimo
-          <input
-            type="text"
-            inputMode="decimal"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('min_stock')}
-          />
-          {errors.min_stock && (
-            <p className="mt-1 text-sm text-red-600">{errors.min_stock.message}</p>
-          )}
-        </label>
-
-        <div className="text-sm text-slate-600">
-          <label>
+            </select>
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
             Unidad base
             <select
-              className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('base_unit_name')}
+              className="mt-1.5 block min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
             >
-              {/* Un producto antiguo puede conservar una unidad que aún no
-                  se haya añadido a la lista; mantenerla visible evita que
-                  editar otro campo cambie la selección por accidente. */}
-              {!units.some((unit) => unit.name === product.base_unit_name) && (
+              {!units.some((item) => item.name === product.base_unit_name) && (
                 <option value={product.base_unit_name}>{product.base_unit_name}</option>
               )}
-              {units.map((unit) => (
-                <option key={unit.id} value={unit.name}>
-                  {unit.name}
+              {units.map((item) => (
+                <option key={item.id} value={item.name}>
+                  {item.name}
                 </option>
               ))}
             </select>
+            {errors.base_unit_name && (
+              <span className="mt-1 block text-sm text-red-700">
+                {errors.base_unit_name.message}
+              </span>
+            )}
           </label>
-          <span className="mt-1 block text-xs text-slate-400">
-            Puedes corregirla aunque ya tenga historial. Es una corrección de etiqueta: no convierte
-            cantidades, precios ni movimientos ya registrados.
-          </span>
-          {errors.base_unit_name && (
-            <p className="mt-1 text-sm text-red-600">{errors.base_unit_name.message}</p>
-          )}
-        </div>
-
-        {/* La ayuda va fuera del <label>: dentro pasaría a formar parte
-            del nombre accesible del desplegable. */}
-        <div className="text-sm text-slate-600 sm:col-span-2">
-          <label>
-            Control de existencias
-            <select
-              className="mt-1 block w-64 rounded border border-slate-300 px-3 py-2 text-sm"
-              {...register('tracks_stock')}
-            >
-              <option value="inherit">
-                Lo que diga su categoría{' '}
-                {inheritedTracksStock === null ? '' : inheritedTracksStock ? '(sí)' : '(no)'}
-              </option>
-              <option value="yes">Sí, llevar stock</option>
-              <option value="no">No, no se agota nunca</option>
-            </select>
+          <FormField label="Orden en el TPV" htmlFor="edit-product-order">
+            <Input
+              id="edit-product-order"
+              type="number"
+              min={0}
+              {...register('pos_display_order')}
+            />
+          </FormField>
+          <label className="flex items-start gap-3 text-sm text-slate-700 sm:col-span-2">
+            <input type="checkbox" className="mt-1" {...register('is_open_price')} />
+            <span>
+              <strong className="block">Precio libre en TPV</strong>El importe se pedirá al añadir
+              este producto a la venta.
+            </span>
           </label>
-          <span className="mt-1 block text-xs text-slate-400">
-            «No se agota» es para lo que se repone del saco sin contarlo: se vende sin comprobar ni
-            descontar existencias, así que la caja nunca se planta por falta de stock.
-          </span>
         </div>
-
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('track_lots')} />
-          Controla lotes
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('track_expiration')} />
-          Controla caducidad
-        </label>
-
-        <div className="text-sm text-slate-600 sm:col-span-3">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" {...register('is_open_price')} />
-            Precio libre en TPV
-          </label>
-          <p className="mt-1 text-xs text-slate-400">
-            El botón pedirá el importe total al venderlo. El nombre que edites aquí se verá en caja
-            y en el ticket.
-          </p>
-        </div>
-      </div>
-
-      {submitError && <p className="mt-3 text-sm text-red-600">{submitError}</p>}
-
-      <div className="mt-4 flex gap-2">
-        <button
-          type="submit"
-          disabled={isPending}
-          className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {isPending ? 'Guardando…' : 'Guardar'}
-        </button>
-        <button
-          type="button"
-          onClick={cancelWithConfirm(isDirty, onCancel)}
-          className="rounded px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-        >
-          Cancelar
-        </button>
+      </Card>
+      {submitError && (
+        <p role="alert" className="text-sm font-medium text-red-700">
+          {submitError}
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-3">
+        <Button variant="ghost" onClick={cancelWithConfirm(isDirty, onCancel)} disabled={isPending}>
+          Descartar
+        </Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending ? 'Guardando…' : 'Guardar cambios'}
+        </Button>
       </div>
     </form>
   );

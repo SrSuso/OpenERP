@@ -54,6 +54,7 @@ function stubBackend() {
     taxes: [],
     price_formula: null,
     min_stock: '0',
+    stock_alert_mode: 'GENERAL',
     track_lots: false,
     track_expiration: false,
     tracks_stock: null,

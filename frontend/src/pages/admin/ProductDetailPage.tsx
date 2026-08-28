@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 
+import { Alert, Button, Card } from '@/components/ui';
 import { useAuth } from '@/features/auth/useAuth';
 import {
   activateProduct,
@@ -19,6 +20,10 @@ import {
   type ProductUpdateInput,
 } from '@/features/catalog/api';
 import { EditProductForm } from '@/features/catalog/EditProductForm';
+import {
+  ProductInventoryAlertsForm,
+  type ProductAlertUpdateConfig,
+} from '@/features/catalog/ProductInventoryAlertsForm';
 import { PackagesPanel } from '@/features/catalog/PackagesPanel';
 import { ProductPurchaseHistoryTable } from '@/features/catalog/ProductPurchaseHistoryTable';
 import { SupplierPurchaseSummary } from '@/features/catalog/SupplierPurchaseSummary';
@@ -41,11 +46,16 @@ import { suppliersQuery } from '@/features/suppliers/api';
 import { ApiError } from '@/lib/api';
 import { ImagePicker } from '@/features/images/ImagePicker';
 import { formatQuantity } from '@/lib/format';
+import {
+  activeAlertsQuery,
+  notificationSettingsQuery,
+  removeProductExpiration,
+  updateProductExpiration,
+} from '@/features/notifications/api';
 
-import { dangerAction, pageTitleRow, primaryAction } from './pageActions';
 import { confirmDiscard } from '@/lib/unsaved';
 
-type Tab = 'general' | 'pricing' | 'packages' | 'lots' | 'purchases';
+type Tab = 'general' | 'pricing' | 'inventory' | 'packages' | 'purchases';
 
 const tabClassName = (active: boolean) =>
   `border-b-2 px-4 py-2 text-sm font-medium ${
@@ -69,25 +79,33 @@ export function ProductDetailPage() {
   const canManageProduct = hasPermission('product.manage');
   const canManagePricing = hasPermission('pricing.manage');
   const canManageLots = hasPermission('lot.manage');
+  const canReadNotifications = hasPermission('notification.read');
+  const canManageNotifications = hasPermission('notification.manage');
 
   const [tab, setTab] = useState<Tab>('general');
   // General y precios se teclean y no se guardan solos: cambiar de pestaña
   // los desmontaría sin decir nada.
   const [generalDirty, setGeneralDirty] = useState(false);
   const [pricingDirty, setPricingDirty] = useState(false);
+  const [inventoryDirty, setInventoryDirty] = useState(false);
   const goToTab = (next: Tab) => {
     if (next === tab) return;
     const hasUnsavedChanges =
-      (tab === 'general' && generalDirty) || (tab === 'pricing' && pricingDirty);
+      (tab === 'general' && generalDirty) ||
+      (tab === 'pricing' && pricingDirty) ||
+      (tab === 'inventory' && inventoryDirty);
     if (hasUnsavedChanges && !confirmDiscard()) return;
     if (tab === 'general') setGeneralDirty(false);
     if (tab === 'pricing') setPricingDirty(false);
+    if (tab === 'inventory') setInventoryDirty(false);
     setTab(next);
   };
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [createLotError, setCreateLotError] = useState<string | null>(null);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const [inventoryFeedback, setInventoryFeedback] = useState<string | null>(null);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
 
   const product = useQuery(productQuery(productId));
   const categories = useQuery(productCategoriesQuery);
@@ -96,11 +114,16 @@ export function ProductDetailPage() {
   const taxes = useQuery(taxesQuery);
   const suppliers = useQuery(suppliersQuery(true));
   const stockBalances = useQuery(stockBalanceQuery({ productId }));
+  const notificationSettings = useQuery({
+    ...notificationSettingsQuery,
+    enabled: canReadNotifications,
+  });
+  const activeAlerts = useQuery({ ...activeAlertsQuery, enabled: canReadNotifications });
   const purchaseHistory = useQuery({
     ...productPurchaseHistoryQuery(productId),
     enabled: tab === 'purchases',
   });
-  const lots = useQuery({ ...lotsQuery(productId), enabled: tab === 'lots' });
+  const lots = useQuery({ ...lotsQuery(productId), enabled: tab === 'inventory' });
   const queryClient = useQueryClient();
 
   const invalidateProduct = () => {
@@ -118,6 +141,7 @@ export function ProductDetailPage() {
   // sólo al guardar, no en cada recarga de la ficha: escribir mientras
   // llega una respuesta de fondo no borra nada.
   const [savedGeneral, setSavedGeneral] = useState(0);
+  const [savedInventory, setSavedInventory] = useState(0);
 
   const updateMutation = useMutation({
     mutationFn: (payload: ProductUpdateInput) => updateProduct(productId, payload),
@@ -137,6 +161,58 @@ export function ProductDetailPage() {
     },
     onError: (err: unknown) =>
       setEditError(err instanceof ApiError ? err.message : 'No se ha podido guardar el producto.'),
+  });
+
+  const inventoryMutation = useMutation({
+    mutationFn: async ({
+      productPayload,
+      alerts,
+    }: {
+      productPayload: ProductUpdateInput;
+      alerts: ProductAlertUpdateConfig;
+    }) => {
+      const saved =
+        Object.keys(productPayload).length > 0
+          ? await updateProduct(productId, productPayload)
+          : product.data!;
+      if (canManageNotifications) {
+        const currentSpecific = notificationSettings.data?.product_expirations.some(
+          (item) => item.product_id === productId,
+        );
+        try {
+          if (saved.track_expiration && alerts.expirationMode === 'CUSTOM') {
+            await updateProductExpiration(productId, alerts.expirationDays);
+          } else if (currentSpecific) {
+            await removeProductExpiration(productId);
+          }
+        } catch {
+          return {
+            saved,
+            warning:
+              'Los datos de inventario se han guardado, pero no el aviso de caducidad. Vuelve a intentarlo.',
+          };
+        }
+      }
+      return { saved, warning: null };
+    },
+    onSuccess: ({ saved, warning }) => {
+      queryClient.setQueryData(productQuery(productId).queryKey, saved);
+      invalidateProduct();
+      void queryClient.invalidateQueries({ queryKey: notificationSettingsQuery.queryKey });
+      void queryClient.invalidateQueries({ queryKey: activeAlertsQuery.queryKey });
+      setInventoryDirty(false);
+      setInventoryError(warning);
+      setInventoryFeedback(warning ? null : 'Inventario y avisos guardados.');
+      setSavedInventory((count) => count + 1);
+    },
+    onError: (err: unknown) => {
+      setInventoryFeedback(null);
+      setInventoryError(
+        err instanceof ApiError
+          ? err.message
+          : 'No se han podido guardar el inventario y los avisos.',
+      );
+    },
   });
 
   const deactivateMutation = useMutation({
@@ -265,13 +341,13 @@ export function ProductDetailPage() {
     <section>
       <Link
         to="/admin/inventory/products"
-        className="mb-2 inline-block text-sm text-brand-700 hover:underline"
+        className="mb-4 inline-block rounded text-sm font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       >
-        ← Volver a productos
+        ← Productos
       </Link>
 
-      <div className={pageTitleRow}>
-        <div className="flex items-center gap-3">
+      <Card className="mb-6 p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <ImagePicker
             ownerType="product"
             ownerId={data.id}
@@ -279,58 +355,23 @@ export function ProductDetailPage() {
             canManage={canManageProduct}
             size="lg"
           />
-          <div>
-            <h1 className="text-2xl font-semibold">{data.name}</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {data.category_name ?? 'Sin categoría'} · {data.is_active ? 'Activo' : 'Inactivo'} ·{' '}
-              Stock: {totalStock === null ? '…' : `${formatQuantity(String(totalStock))} uds.`}
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-bold text-slate-950 sm:text-3xl">{data.name}</h1>
+            <p className="mt-1 text-sm text-slate-600">{data.category_name ?? 'Sin categoría'}</p>
+            <p className="mt-2 text-sm font-semibold text-slate-800">
+              Stock:{' '}
+              {totalStock === null
+                ? '—'
+                : `${formatQuantity(String(totalStock))} ${data.base_unit_name}`}
+              {!data.is_active && (
+                <span className="ml-3 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                  Inactivo
+                </span>
+              )}
             </p>
           </div>
         </div>
-        {canManageProduct && data.is_active && (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm(`¿Desactivar «${data.name}»? Dejará de venderse en el TPV.`)) {
-                deactivateMutation.mutate();
-              }
-            }}
-            disabled={deactivateMutation.isPending}
-            className={dangerAction}
-          >
-            Desactivar
-          </button>
-        )}
-        {canManageProduct && !data.is_active && (
-          <button
-            type="button"
-            onClick={() => activateMutation.mutate()}
-            disabled={activateMutation.isPending}
-            className={primaryAction}
-          >
-            Reactivar
-          </button>
-        )}
-        {canManageProduct && (
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  `¿Eliminar definitivamente «${data.name}»? Sólo es posible si aún no tiene ventas, compras, stock, devoluciones ni lotes.`,
-                )
-              ) {
-                setDeleteError(null);
-                deleteMutation.mutate();
-              }
-            }}
-            disabled={deleteMutation.isPending}
-            className={dangerAction}
-          >
-            Eliminar
-          </button>
-        )}
-      </div>
+      </Card>
 
       {deleteError && (
         <p role="alert" className="mb-4 text-sm text-red-600">
@@ -349,6 +390,13 @@ export function ProductDetailPage() {
         >
           General
         </button>
+        <button
+          type="button"
+          onClick={() => goToTab('inventory')}
+          className={tabClassName(tab === 'inventory')}
+        >
+          Inventario y avisos
+        </button>
         {canManagePricing && (
           <button
             type="button"
@@ -365,15 +413,6 @@ export function ProductDetailPage() {
         >
           Formatos
         </button>
-        {data.track_lots && (
-          <button
-            type="button"
-            onClick={() => goToTab('lots')}
-            className={tabClassName(tab === 'lots')}
-          >
-            Lotes
-          </button>
-        )}
         <button
           type="button"
           onClick={() => goToTab('purchases')}
@@ -384,18 +423,133 @@ export function ProductDetailPage() {
       </nav>
 
       {tab === 'general' && (
-        <EditProductForm
-          key={savedGeneral}
-          product={data}
-          categories={categories.data ?? []}
-          posCategories={posCategories.data ?? []}
-          units={units.data ?? []}
-          isPending={updateMutation.isPending}
-          submitError={editError}
-          onCancel={() => setEditError(null)}
-          onDirtyChange={setGeneralDirty}
-          onSubmit={(payload) => updateMutation.mutate(payload)}
-        />
+        <div className="space-y-6">
+          <EditProductForm
+            key={savedGeneral}
+            product={data}
+            categories={categories.data ?? []}
+            posCategories={posCategories.data ?? []}
+            units={units.data ?? []}
+            isPending={updateMutation.isPending}
+            submitError={editError}
+            onCancel={() => setEditError(null)}
+            onDirtyChange={setGeneralDirty}
+            onSubmit={(payload) => updateMutation.mutate(payload)}
+          />
+          {canManageProduct && (
+            <Card className="border-red-100 p-5 sm:p-6">
+              <h2 className="text-lg font-bold text-slate-900">Estado y acciones avanzadas</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Estas acciones no forman parte de la edición habitual del producto.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {data.is_active ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      if (
+                        window.confirm(`¿Desactivar «${data.name}»? Dejará de venderse en el TPV.`)
+                      ) {
+                        deactivateMutation.mutate();
+                      }
+                    }}
+                    disabled={deactivateMutation.isPending}
+                  >
+                    Desactivar producto
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => activateMutation.mutate()}
+                    disabled={activateMutation.isPending}
+                  >
+                    Reactivar producto
+                  </Button>
+                )}
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `¿Eliminar definitivamente «${data.name}»? Sólo es posible si no tiene historial ni existencias.`,
+                      )
+                    ) {
+                      setDeleteError(null);
+                      deleteMutation.mutate();
+                    }
+                  }}
+                  disabled={deleteMutation.isPending}
+                >
+                  Eliminar definitivamente
+                </Button>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {tab === 'inventory' && (
+        <div className="space-y-6">
+          {!canReadNotifications && (
+            <Alert tone="warning">
+              Tu perfil no puede ver la configuración de avisos. Los controles de inventario siguen
+              disponibles desde un perfil autorizado.
+            </Alert>
+          )}
+          {canReadNotifications && notificationSettings.isPending && (
+            <p className="text-sm text-slate-500">Cargando inventario y avisos…</p>
+          )}
+          {canReadNotifications && notificationSettings.isError && (
+            <Alert tone="error">No se ha podido cargar la configuración de avisos.</Alert>
+          )}
+          {(notificationSettings.data || !canReadNotifications) && (
+            <ProductInventoryAlertsForm
+              key={savedInventory}
+              product={data}
+              category={categories.data?.find((item) => item.id === data.category_id)}
+              settings={
+                notificationSettings.data ?? {
+                  stock_general: { enabled: false, min_stock: '0' },
+                  general_expiration: { enabled: false, days_before_expiration: 7 },
+                  product_expirations: [],
+                }
+              }
+              totalStock={totalStock}
+              hasLowStockAlert={(activeAlerts.data ?? []).some(
+                (alert) => alert.kind === 'LOW_STOCK' && alert.product_id === data.id,
+              )}
+              canManageProduct={canManageProduct}
+              canReadNotifications={canReadNotifications}
+              canManageNotifications={canManageNotifications}
+              isPending={inventoryMutation.isPending}
+              feedback={inventoryFeedback}
+              submitError={inventoryError}
+              onDirtyChange={setInventoryDirty}
+              onSubmit={(productPayload, alerts) => {
+                setInventoryFeedback(null);
+                setInventoryError(null);
+                inventoryMutation.mutate({ productPayload, alerts });
+              }}
+            />
+          )}
+          {data.track_lots && (
+            <Card className="p-5 sm:p-6">
+              <h2 className="text-lg font-bold text-slate-900">Lotes del producto</h2>
+              <div className="mt-5 space-y-4">
+                {canManageLots && (
+                  <CreateLotForm
+                    productId={productId}
+                    suppliers={suppliers.data ?? []}
+                    isPending={createLotMutation.isPending}
+                    submitError={createLotError}
+                    onSubmit={(payload) => createLotMutation.mutate(payload)}
+                  />
+                )}
+                {lots.data && <LotsTable lots={lots.data} />}
+                <LotBalancesPanel productId={productId} canManage={canManageLots} />
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {proposedPricing !== null && proposedPricing.cost !== undefined && (
@@ -460,22 +614,6 @@ export function ProductDetailPage() {
               deleteBarcodeMutation.mutate({ packageId, barcodeId })
             }
           />
-        </div>
-      )}
-
-      {tab === 'lots' && data.track_lots && (
-        <div className="space-y-4">
-          {canManageLots && (
-            <CreateLotForm
-              productId={productId}
-              suppliers={suppliers.data ?? []}
-              isPending={createLotMutation.isPending}
-              submitError={createLotError}
-              onSubmit={(payload) => createLotMutation.mutate(payload)}
-            />
-          )}
-          {lots.data && <LotsTable lots={lots.data} />}
-          <LotBalancesPanel productId={productId} canManage={canManageLots} />
         </div>
       )}
 

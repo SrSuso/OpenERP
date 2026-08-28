@@ -1,219 +1,179 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
-import {
-  type PosCategory,
-  type Product,
-  type ProductCategory,
-  type Unit,
-} from '@/features/catalog/api';
-import { type Tax } from '@/features/pricing/api';
+import { type Product } from '@/features/catalog/api';
 
 import { ProductsPage } from './ProductsPage';
 
-function jsonResponse(body: unknown, init?: ResponseInit): Response {
-  return new Response(JSON.stringify(body), {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
+function response(body: unknown): Response {
+  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 }
 
-const ME = {
-  id: 1,
-  email: 'admin@example.com',
-  full_name: 'Admin Uno',
-  role: 'ADMIN',
-  permissions: [
-    'admin.access',
-    'product.read',
-    'product.manage',
-    'pricing.manage',
-    'inventory.read',
-  ],
-};
-
-const TAXES: Tax[] = [
-  { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
-];
-// La categoría ya trae un impuesto propio — así una prueba puede comprobar
-// que se muestra heredado (marcado) al elegirla, sin tocar nada más.
-const CATEGORIES: ProductCategory[] = [
+const PRODUCTS: Product[] = [
   {
     id: 1,
-    name: 'Bebidas',
-    is_active: true,
-    margin_rate: '30',
-    margin_amount: null,
-    price_formula: null,
-    tracks_stock: true,
-    default_unit_name: 'KG',
-    taxes: [TAXES[0]!],
-  },
-];
-const POS_CATEGORIES: PosCategory[] = [
-  { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
-];
-const UNITS: Unit[] = [
-  { id: 1, name: 'UNIT', display_order: 0 },
-  { id: 2, name: 'KG', display_order: 1 },
-];
-
-function baseProduct(): Product {
-  return {
-    id: 1,
     sku: 'P000001',
-    name: 'Agua 1L',
+    name: 'Leche entera',
     description: '',
     category_id: 1,
-    category_name: 'Bebidas',
-    pos_category_id: null,
-    pos_category_name: null,
+    category_name: 'Refrigerados',
+    pos_category_id: 2,
+    pos_category_name: 'Bebidas',
     pos_display_order: 0,
-    base_unit_name: 'UNIT',
-    cost: '0.300000',
-    list_price: '0.600000',
-    tax_rate: '0.000000',
-    effective_tax_rate: '0.000000',
-    surcharge_rate: '0.000000',
+    is_open_price: false,
+    is_sold_by_weight: false,
+    base_unit_name: 'UDS.',
+    cost: '0.70',
+    list_price: '1.20',
+    tax_rate: '4',
+    surcharge_rate: '0',
+    effective_tax_rate: '4',
     margin_rate: null,
     margin_amount: null,
     taxes: [],
     price_formula: null,
-    min_stock: '10.000000',
+    min_stock: '10',
+    stock_alert_mode: 'CUSTOM',
+    track_lots: true,
+    track_expiration: true,
+    tracks_stock: null,
+    effective_tracks_stock: true,
+    is_active: true,
+    packages: [],
+  },
+  {
+    id: 2,
+    sku: 'P000002',
+    name: 'Galletas',
+    description: '',
+    category_id: null,
+    category_name: null,
+    pos_category_id: null,
+    pos_category_name: null,
+    pos_display_order: 0,
+    is_open_price: false,
+    is_sold_by_weight: false,
+    base_unit_name: 'KG',
+    cost: '2',
+    list_price: '3.50',
+    tax_rate: '10',
+    surcharge_rate: '0',
+    effective_tax_rate: '10',
+    margin_rate: null,
+    margin_amount: null,
+    taxes: [],
+    price_formula: null,
+    min_stock: '0',
+    stock_alert_mode: 'GENERAL',
     track_lots: false,
     track_expiration: false,
     tracks_stock: null,
     effective_tracks_stock: true,
-    is_active: true,
-    packages: [{ id: 1, name: 'UNIT', factor: '1.000000', is_base: true, barcodes: [] }],
-  };
-}
+    is_active: false,
+    packages: [],
+  },
+];
 
-function stubBackend(options: { products?: Product[] } = {}) {
-  const products: Product[] = options.products ?? [baseProduct()];
-  const createCalls: Record<string, unknown>[] = [];
-  const deactivateCalls: number[] = [];
-  const activateCalls: number[] = [];
-  const pricingCalls: { id: number; body: Record<string, unknown> }[] = [];
-  const manualPriceCalls: { id: number; listPrice: string }[] = [];
-
+function stubBackend() {
   vi.stubGlobal(
     'fetch',
-    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    vi.fn((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      const method = init?.method ?? 'GET';
-
-      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
-      if (method === 'GET' && url.includes('/product-categories')) {
-        return Promise.resolve(jsonResponse(CATEGORIES));
-      }
-      if (method === 'GET' && url.includes('/pos-categories')) {
-        return Promise.resolve(jsonResponse(POS_CATEGORIES));
-      }
-      if (method === 'GET' && url.includes('/stock-balance/totals')) {
+      if (url.includes('/auth/me')) {
         return Promise.resolve(
-          jsonResponse([
-            { product_id: 1, quantity: '24.000000' },
-            { product_id: 2, quantity: '14.500000' },
-          ]),
+          response({
+            id: 1,
+            email: 'admin@example.com',
+            full_name: 'Admin',
+            role: 'ADMIN',
+            permissions: [
+              'admin.access',
+              'product.read',
+              'product.manage',
+              'inventory.read',
+              'notification.read',
+            ],
+          }),
         );
       }
-      if (method === 'GET' && url.includes('/units')) {
-        return Promise.resolve(jsonResponse(UNITS));
-      }
-      if (method === 'GET' && url.includes('/taxes')) {
-        return Promise.resolve(jsonResponse(TAXES));
-      }
-      if (method === 'POST' && url.includes('/pricing/preview')) {
-        return Promise.resolve(jsonResponse({ result: '1.000000' }));
-      }
-      if (method === 'GET' && url.includes('/products?')) {
-        return Promise.resolve(jsonResponse(products));
-      }
-      if (method === 'POST' && /\/products$/.test(url.split('?')[0]!)) {
-        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
-        createCalls.push(body);
-        const created: Product = {
-          ...baseProduct(),
-          id: 99,
-          sku: 'P000099',
-          name: body['name'] as string,
-          packages: [
+      if (url.includes('/product-categories'))
+        return Promise.resolve(
+          response([
             {
-              id: 2,
-              name: body['base_unit_name'] as string,
-              factor: '1.000000',
-              is_base: true,
-              barcodes: [],
+              id: 1,
+              name: 'Refrigerados',
+              is_active: true,
+              margin_rate: null,
+              margin_amount: null,
+              price_formula: null,
+              tracks_stock: true,
+              is_sold_by_weight: false,
+              default_unit_name: null,
+              taxes: [],
             },
-          ],
-        };
-        products.push(created);
-        return Promise.resolve(jsonResponse(created, { status: 201 }));
+          ]),
+        );
+      if (url.includes('/pos-categories'))
+        return Promise.resolve(
+          response([
+            { id: 2, name: 'Bebidas', color: '#123456', display_order: 0, is_active: true },
+          ]),
+        );
+      if (url.includes('/units'))
+        return Promise.resolve(
+          response([
+            { id: 1, name: 'UDS.', display_order: 0 },
+            { id: 2, name: 'KG', display_order: 1 },
+          ]),
+        );
+      if (url.includes('/stock-balance/totals'))
+        return Promise.resolve(
+          response([
+            { product_id: 1, quantity: '8' },
+            { product_id: 2, quantity: '20' },
+          ]),
+        );
+      if (url.endsWith('/alerts'))
+        return Promise.resolve(
+          response([
+            {
+              id: 10,
+              kind: 'LOW_STOCK',
+              title: 'Leche entera',
+              product_id: 1,
+              stock_current: '8',
+              min_stock: '10',
+              replenish: '2',
+              lot_id: null,
+              lot_number: null,
+              expiration_date: null,
+              days_remaining: null,
+              quantity_remaining: null,
+            },
+          ]),
+        );
+      if (url.includes('/products?')) {
+        const query =
+          new URL(url, 'http://test').searchParams.get('search')?.toLocaleLowerCase('es') ?? '';
+        return Promise.resolve(
+          response(
+            PRODUCTS.filter((product) => product.name.toLocaleLowerCase('es').includes(query)),
+          ),
+        );
       }
-      if (method === 'POST' && /\/products\/(\d+)\/deactivate$/.test(url)) {
-        const id = Number(/\/products\/(\d+)\/deactivate$/.exec(url)![1]);
-        deactivateCalls.push(id);
-        const product = products.find((p) => p.id === id)!;
-        product.is_active = false;
-        return Promise.resolve(jsonResponse(product));
-      }
-      if (method === 'POST' && /\/products\/(\d+)\/activate$/.test(url)) {
-        const id = Number(/\/products\/(\d+)\/activate$/.exec(url)![1]);
-        activateCalls.push(id);
-        const product = products.find((p) => p.id === id)!;
-        product.is_active = true;
-        return Promise.resolve(jsonResponse(product));
-      }
-      if (method === 'PUT' && /\/products\/(\d+)\/pricing\/manual-price$/.test(url)) {
-        const id = Number(/\/products\/(\d+)\/pricing\/manual-price$/.exec(url)![1]);
-        const body = init?.body
-          ? (JSON.parse(init.body as string) as { list_price: string })
-          : { list_price: '' };
-        manualPriceCalls.push({ id, listPrice: body.list_price });
-        const product = products.find((p) => p.id === id)!;
-        product.list_price = `${Number(body.list_price).toFixed(6)}`;
-        return Promise.resolve(jsonResponse(product));
-      }
-      if (method === 'PATCH' && /\/products\/(\d+)\/pricing$/.test(url)) {
-        const id = Number(/\/products\/(\d+)\/pricing$/.exec(url)![1]);
-        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
-        pricingCalls.push({ id, body });
-        const product = products.find((p) => p.id === id)!;
-        if ('tax_ids' in body) {
-          const ids = body['tax_ids'] as number[];
-          product.taxes = TAXES.filter((t) => ids.includes(t.id));
-        }
-        if ('cost' in body) {
-          product.cost = `${Number(body['cost']).toFixed(6)}`;
-          // Como el backend: cambiar el coste recalcula el PVP con el
-          // margen heredado de "Bebidas" (30%). No se teclea.
-          product.list_price = `${(Number(body['cost']) * 1.3).toFixed(6)}`;
-        }
-        return Promise.resolve(jsonResponse(product));
-      }
-
-      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
+      return Promise.reject(new Error(`Unexpected fetch ${url}`));
     }),
   );
-
-  return {
-    createCalls,
-    deactivateCalls,
-    activateCalls,
-    pricingCalls,
-    manualPriceCalls,
-  };
 }
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={client}>
       <AuthProvider>
         <MemoryRouter initialEntries={['/admin/inventory/products']}>
           <ProductsPage />
@@ -223,363 +183,65 @@ function renderPage() {
   );
 }
 
-describe('ProductsPage', () => {
-  it('lists the existing products, no SKU field to fill in when creating', async () => {
+describe('ProductsPage V2', () => {
+  it('uses a dedicated creation route and contains no inline creation or pricing controls', async () => {
     stubBackend();
     renderPage();
-
-    expect(await screen.findByText('Agua 1L')).toBeInTheDocument();
-    // El SKU es una referencia interna: ya no se enseña en la lista.
+    expect(await screen.findByText('Leche entera')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '+ Nuevo producto' })).toHaveAttribute(
+      'href',
+      '/admin/inventory/products/new',
+    );
+    expect(screen.queryByRole('heading', { name: 'Nuevo producto' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/coste de/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/pvp de venta de/i)).not.toBeInTheDocument();
     expect(screen.queryByText('P000001')).not.toBeInTheDocument();
-    // Cuánto hay de cada uno, sin tener que ir a Saldos.
-    expect(await screen.findByText('24')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    expect(screen.queryByLabelText('SKU')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/^IVA/)).not.toBeInTheDocument();
   });
 
-  it('creates a product picking the unit from the dropdown', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Refresco 33cl');
-    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
-    const cost = screen.getByLabelText('Coste');
-    await userEvent.clear(cost);
-    await userEvent.type(cost, '0.5');
-    const price = screen.getByLabelText('Precio de venta');
-    await userEvent.clear(price);
-    await userEvent.type(price, '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
-
-    expect(await screen.findByText('Refresco 33cl')).toBeInTheDocument();
-    expect(backend.createCalls).toHaveLength(1);
-    expect(backend.createCalls[0]).toMatchObject({
-      name: 'Refresco 33cl',
-      base_unit_name: 'UNIT',
-      cost: '0.5',
-      list_price: '1',
-      margin_rate: null,
-    });
-    expect(backend.createCalls[0]).not.toHaveProperty('sku');
-    expect(backend.createCalls[0]).not.toHaveProperty('tax_rate');
-    // Sin ningún impuesto elegido, no hay PATCH .../pricing de más.
-    expect(backend.pricingCalls).toEqual([]);
-  });
-
-  it('does not submit a new product when a barcode scanner sends Enter', async () => {
-    const backend = stubBackend();
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await user.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await user.type(screen.getByLabelText('Nombre'), 'Refresco 33cl');
-    await user.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
-    const price = screen.getByLabelText('Precio de venta');
-    await user.clear(price);
-    await user.type(price, '1');
-
-    const barcode = screen.getByLabelText('Código de barras (opcional)');
-    await user.type(barcode, '8412345678901{Enter}');
-
-    expect(barcode).toHaveValue('8412345678901');
-    expect(backend.createCalls).toEqual([]);
-    expect(screen.getByRole('heading', { name: 'Nuevo producto' })).toBeInTheDocument();
-  });
-
-  it('creates a named open-price button for the POS', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Charcutería');
-    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
-    await userEvent.click(screen.getByLabelText('Precio libre en TPV'));
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
-
-    expect(await screen.findByText('Charcutería')).toBeInTheDocument();
-    expect(backend.createCalls[0]).toMatchObject({
-      name: 'Charcutería',
-      is_open_price: true,
-    });
-  });
-
-  it('assigns the chosen taxes right after creating the product', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Con IVA');
-    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
-    const price = screen.getByLabelText('Precio de venta');
-    await userEvent.clear(price);
-    await userEvent.type(price, '1');
-    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
-
-    await screen.findByText('Con IVA');
-    expect(backend.pricingCalls).toEqual([{ id: 99, body: { tax_ids: [1] } }]);
-  });
-
-  it('shows the category-inherited taxes pre-checked when creating, without sending them', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await userEvent.selectOptions(screen.getByLabelText('Categoría (estantería)'), '1');
-
-    expect(screen.getByRole('button', { name: /IVA general/, pressed: true })).toBeInTheDocument();
-
-    await userEvent.type(screen.getByLabelText('Nombre'), 'Sin tocar impuestos');
-    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
-    const price = screen.getByLabelText('Precio de venta');
-    await userEvent.clear(price);
-    await userEvent.type(price, '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
-
-    await screen.findByText('Sin tocar impuestos');
-    // Sigue heredando: no hay PATCH .../pricing de más, igual que si no
-    // hubiese categoría con impuestos.
-    expect(backend.pricingCalls).toEqual([]);
-  });
-
-  it('uses the category default unit when that category is selected', async () => {
+  it('shows useful stock state and opens the product detail from its name', async () => {
     stubBackend();
     renderPage();
-    await screen.findByText('Agua 1L');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await userEvent.selectOptions(screen.getByLabelText('Categoría (estantería)'), '1');
-
-    expect(screen.getByLabelText('Unidad base')).toHaveValue('KG');
-  });
-
-  it('shows the POS category in the list without allowing it to be changed there', async () => {
-    stubBackend({
-      products: [
-        {
-          ...baseProduct(),
-          pos_category_id: 1,
-          pos_category_name: 'Ofertas',
-        },
-      ],
-    });
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    expect(screen.getAllByText('Ofertas')).not.toHaveLength(0);
-    expect(screen.queryByLabelText('Categoría POS de Agua 1L')).not.toBeInTheDocument();
-  });
-
-  it('narrows the list to the products still missing a POS category', async () => {
-    stubBackend({
-      products: [
-        baseProduct(),
-        {
-          ...baseProduct(),
-          id: 2,
-          sku: 'P000002',
-          name: 'Tomate',
-          pos_category_id: 1,
-          pos_category_name: 'Ofertas',
-        },
-      ],
-    });
-    renderPage();
-    await screen.findByText('Tomate');
-
-    await userEvent.selectOptions(screen.getByLabelText('Categoría POS'), 'none');
-
-    expect(screen.getByText('Agua 1L')).toBeInTheDocument();
-    expect(screen.queryByText('Tomate')).not.toBeInTheDocument();
-  });
-
-  it('opens the product detail from its own name', async () => {
-    stubBackend();
-    renderPage();
-    await screen.findByText('Agua 1L');
-
-    expect(screen.getByRole('link', { name: 'Agua 1L' })).toHaveAttribute(
+    const row = (await screen.findByText('Leche entera')).closest('tr')!;
+    expect(await within(row).findByText('8 UDS.')).toBeInTheDocument();
+    expect(await within(row).findByText('Stock bajo')).toBeInTheDocument();
+    expect(within(row).getByRole('link', { name: 'Leche entera' })).toHaveAttribute(
       'href',
       '/admin/inventory/products/1',
     );
   });
 
-  it('does not offer to create a product without product.manage, but the detail link stays', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL) => {
-        const url =
-          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        if (url.includes('/auth/me')) {
-          return Promise.resolve(
-            jsonResponse({ ...ME, permissions: ['admin.access', 'product.read'] }),
-          );
-        }
-        if (url.includes('/product-categories')) return Promise.resolve(jsonResponse(CATEGORIES));
-        if (url.includes('/pos-categories')) return Promise.resolve(jsonResponse(POS_CATEGORIES));
-        if (url.includes('/settings/values')) return Promise.resolve(jsonResponse({}));
-        if (url.includes('/stock-balance/totals')) return Promise.resolve(jsonResponse([]));
-        if (url.includes('/units')) return Promise.resolve(jsonResponse(UNITS));
-        if (url.includes('/taxes')) return Promise.resolve(jsonResponse(TAXES));
-        if (url.includes('/products?')) return Promise.resolve(jsonResponse([baseProduct()]));
-        return Promise.reject(new Error(`Unexpected fetch to ${url} in test`));
-      }),
+  it('filters by unit, makes active filters visible and clears them', async () => {
+    stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('Leche entera');
+    await user.click(screen.getByRole('button', { name: 'Filtros' }));
+    await user.selectOptions(screen.getByLabelText('Unidad'), 'KG');
+    expect(screen.queryByText('Leche entera')).not.toBeInTheDocument();
+    expect(screen.getByText('Galletas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quitar filtro Unidad: KG' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+    expect(await screen.findByText('Leche entera')).toBeInTheDocument();
+  });
+
+  it('searches products by their visible name', async () => {
+    stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('Leche entera');
+    await user.type(screen.getByLabelText('Buscar productos'), 'Galletas');
+    expect(await screen.findByText('Galletas')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Leche entera')).not.toBeInTheDocument());
+  });
+
+  it('uses a responsive filter grid instead of a single crowded row', async () => {
+    stubBackend();
+    renderPage();
+    await screen.findByText('Leche entera');
+    await userEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+    expect(screen.getByLabelText('Categoría').parentElement?.parentElement).toHaveClass(
+      'sm:grid-cols-2',
+      'lg:grid-cols-4',
     );
-    renderPage();
-
-    await screen.findByText('Agua 1L');
-
-    expect(screen.queryByRole('button', { name: 'Nuevo producto' })).not.toBeInTheDocument();
-    // Se puede seguir mirando la ficha, que es de sólo lectura sin permisos.
-    expect(screen.getByRole('link', { name: 'Agua 1L' })).toBeInTheDocument();
-    // Sin pricing.manage el precio se ve, pero no se teclea.
-    expect(screen.queryByLabelText('PVP de venta de Agua 1L')).not.toBeInTheDocument();
-    // Y el coste no se ve siquiera: lo que cuesta el género es cosa de
-    // quien pone los precios, no de quien sólo mira el catálogo.
-    expect(screen.queryByText('Coste (por unidad base)')).not.toBeInTheDocument();
-    expect(screen.queryByText('0,30 €')).not.toBeInTheDocument();
-  });
-
-  it('only products marked as sold by weight get their selling PVP editable in the row', async () => {
-    const backend = stubBackend({
-      products: [
-        baseProduct(),
-        {
-          ...baseProduct(),
-          id: 2,
-          sku: 'P000002',
-          name: 'Tomate',
-          base_unit_name: 'KG',
-          is_sold_by_weight: true,
-        },
-      ],
-    });
-    renderPage();
-    await screen.findByText('Tomate');
-
-    // "Agua 1L" se vende por unidades: su precio se ve, no se teclea.
-    expect(screen.queryByLabelText('PVP de venta de Agua 1L')).not.toBeInTheDocument();
-    expect(screen.getByText('0,60 €')).toBeInTheDocument();
-
-    const price = screen.getByLabelText('PVP de venta de Tomate');
-    await userEvent.clear(price);
-    await userEvent.type(price, '1,68{Enter}');
-
-    // No se guarda a la primera: el precio nuevo se aplica también a lo que
-    // ya está en la estantería, así que avisa antes.
-    const dialog = await screen.findByRole('dialog', { name: /cambiar el pvp de tomate/i });
-    expect(backend.manualPriceCalls).toEqual([]);
-    expect(within(dialog).getByText(/14,5 KG en almacén/)).toBeInTheDocument();
-
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cambiar' }));
-
-    expect(backend.manualPriceCalls).toEqual([{ id: 2, listPrice: '1.68' }]);
-    expect(await screen.findByText('Guardado')).toBeInTheDocument();
-  });
-
-  it('typing a new cost in the row recomputes the price from the margin', async () => {
-    const backend = stubBackend({
-      products: [
-        {
-          ...baseProduct(),
-          id: 2,
-          name: 'Tomate',
-          base_unit_name: 'KG',
-          cost: '1.000000',
-          is_sold_by_weight: true,
-        },
-      ],
-    });
-    renderPage();
-    await screen.findByText('Tomate');
-
-    const cost = screen.getByLabelText('Coste de Tomate');
-    await userEvent.clear(cost);
-    await userEvent.type(cost, '2{Enter}');
-
-    // Avisa igual que con el PVP: lo que ya está en la estantería pasa a
-    // venderse al precio nuevo.
-    const dialog = await screen.findByRole('dialog', { name: /cambiar el coste de tomate/i });
-    expect(backend.pricingCalls).toEqual([]);
-    expect(within(dialog).getByText(/El PVP se recalculará solo/)).toBeInTheDocument();
-
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cambiar' }));
-
-    // Y no se toca el PVP a mano: se pide que lo recalcule el margen.
-    expect(backend.pricingCalls).toEqual([{ id: 2, body: { cost: '2' } }]);
-    expect(backend.manualPriceCalls).toEqual([]);
-    // 2 € de coste con el 30% de "Bebidas" = 2,60 € en la propia fila.
-    expect(await screen.findByDisplayValue('2,6')).toBeInTheDocument();
-  });
-
-  it('says "sin control" instead of zero for what never runs out', async () => {
-    stubBackend({
-      products: [
-        {
-          ...baseProduct(),
-          id: 2,
-          name: 'Tomate',
-          base_unit_name: 'KG',
-          effective_tracks_stock: false,
-        },
-      ],
-    });
-    renderPage();
-    await screen.findByText('Tomate');
-
-    // Un «0» aquí se lee como «se ha terminado», y es justo lo contrario.
-    expect(screen.getByText('sin control')).toBeInTheDocument();
-    expect(screen.queryByText('0')).not.toBeInTheDocument();
-  });
-
-  it('filters the list by base unit', async () => {
-    stubBackend({
-      products: [
-        baseProduct(),
-        {
-          ...baseProduct(),
-          id: 2,
-          sku: 'P000002',
-          name: 'Tomate',
-          base_unit_name: 'KG',
-          is_sold_by_weight: true,
-        },
-      ],
-    });
-    renderPage();
-    await screen.findByText('Tomate');
-
-    await userEvent.selectOptions(screen.getByLabelText('Unidad'), 'KG');
-
-    expect(screen.queryByText('Agua 1L')).not.toBeInTheDocument();
-    // Coste y PVP, los dos tecleables en la fila para un producto al peso.
-    expect(screen.getAllByText('€/KG')).toHaveLength(2);
-  });
-
-  it('does not save a price that has not really changed', async () => {
-    const backend = stubBackend({
-      products: [
-        { ...baseProduct(), name: 'Tomate', base_unit_name: 'KG', is_sold_by_weight: true },
-      ],
-    });
-    renderPage();
-    await screen.findByText('Tomate');
-
-    const price = screen.getByLabelText('PVP de venta de Tomate');
-    await userEvent.clear(price);
-    // "0,60" es lo mismo que el "0.600000" guardado: no hay nada que guardar,
-    // y una entrada de más en el histórico de precios sería ruido.
-    await userEvent.type(price, '0,60{Enter}');
-
-    expect(backend.manualPriceCalls).toEqual([]);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

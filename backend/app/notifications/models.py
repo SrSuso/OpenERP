@@ -1,12 +1,7 @@
-"""Notification rules and the incidents they detect, deduplicated.
+"""Internal settings and deduplicated incidents for the two V2 alerts.
 
-A rule watches one fixed condition (``RuleType`` — same whitelist spirit as
-``app.dashboards.metrics.MetricKey``, rule 13's philosophy applied here
-too: a rule can only ever point at one of a small set of hand-written,
-parameterised detector queries, never arbitrary logic). Evaluating the
-rules (``app.notifications.service.evaluate_rules``) is what actually
-finds/creates/resolves ``Incident`` rows. The existing worker invokes it
-periodically on a cadence independent from transactional-outbox polling.
+``NotificationRule`` is deliberately not a public rule builder. It stores
+the stock and expiration parameters consumed by the scheduled worker.
 
 Deduplication is enforced by the database, not just application logic: at
 most one ``OPEN`` incident may exist for a given ``(rule_id, subject_type,
@@ -32,11 +27,11 @@ class NotificationRule(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "notification_rules"
 
     name: Mapped[str] = mapped_column(String(100))
-    #: One of ``app.notifications.rules.RuleType``.
+    #: LOW_STOCK or EXPIRING_LOT; both are internal implementation details.
     rule_type: Mapped[str] = mapped_column(String(30))
     params: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    #: Cuánto corre. Sólo cambia cómo se presenta el aviso (color, y si
-    #: parpadea en el menú) — ver `app.notifications.rules.Severity`.
+    #: Retained in the table to avoid a migration with no business benefit.
+    #: V2 neither exposes nor configures it.
     severity: Mapped[str] = mapped_column(
         String(20), default="MEDIUM_LOW", server_default="MEDIUM_LOW"
     )

@@ -148,9 +148,8 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = Field(default=None, repr=False)
     smtp_from_email: str = "no-reply@openerp.local"
-    # Who gets emailed when a notification rule (phase 17) opens a brand-new
-    # incident. Unset means "queue nothing" — notifications still work purely
-    # through GET /incidents either way.
+    # Who gets emailed when a stock or expiration alert opens for the first
+    # time. Unset means "queue nothing"; the alerts remain visible in /alerts.
     notification_recipient_email: str | None = None
     # Independent from the SMTP outbox poll: store conditions change much
     # less often than queued email and need no five-second polling loop.

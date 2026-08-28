@@ -1,62 +1,33 @@
-"""The rule whitelist itself — same shape as ``app.dashboards.metrics``:
-one ``RuleType``, one Pydantic params model, one hand-written detector
-query per type. ``evaluate_rules`` (in ``app.notifications.service``) can
-only ever dispatch to one of these, never anything a rule's stored
-``params`` JSON could turn into arbitrary SQL.
-
-Each detector returns ``(subject_type, subject_id, message)`` triples for
-whatever currently matches — deciding what to do with that list (open a
-new incident, touch an existing one, resolve one that no longer matches)
-is the service's job, not the detector's.
-"""
+"""The two internal detectors used by V2: low stock and expiration."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog import stock as catalog_stock
-from app.catalog.models import Product
+from app.catalog.models import Product, StockAlertMode
 from app.inventory.models import StockBalance
 from app.lots.models import Lot
-from app.notifications import conditions
-
-
-class Severity(StrEnum):
-    """Cuatro niveles, pedidos así: el panel pinta cada uno de un color y
-    hace parpadear los dos altos para que no pasen desapercibidos."""
-
-    LOW = "LOW"
-    MEDIUM_LOW = "MEDIUM_LOW"
-    MEDIUM_HIGH = "MEDIUM_HIGH"
-    HIGH = "HIGH"
 
 
 class RuleType(StrEnum):
     LOW_STOCK = "LOW_STOCK"
     EXPIRING_LOT = "EXPIRING_LOT"
-    #: Regla genérica conservada para compatibilidad — ver
-    #: `app.notifications.conditions`. La interfaz V2 no expone su
-    #: constructor técnico, aunque la API sigue evaluando las ya guardadas.
-    CONDITION = "CONDITION"
-
-
-class ConditionParams(BaseModel):
-    subject: str
-    #: `[{"field": ..., "operator": ..., "value": ...}]`; se valida contra
-    #: la lista blanca en `app.notifications.conditions.apply_conditions`.
-    conditions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LowStockParams(BaseModel):
     warehouse_id: int | None = None
-    automatic: bool = False
+    automatic: bool = True
+    enabled: bool = False
+    min_stock: Decimal = Field(default=Decimal(0), ge=0)
 
 
 class ExpiringLotParams(BaseModel):
@@ -68,7 +39,6 @@ class ExpiringLotParams(BaseModel):
 PARAMS_BY_RULE_TYPE: dict[RuleType, type[BaseModel]] = {
     RuleType.LOW_STOCK: LowStockParams,
     RuleType.EXPIRING_LOT: ExpiringLotParams,
-    RuleType.CONDITION: ConditionParams,
 }
 
 
@@ -91,12 +61,19 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
         balance_stmt = balance_stmt.where(StockBalance.warehouse_id == params.warehouse_id)
     balances = balance_stmt.subquery()
 
+    effective_minimum = case(
+        (Product.stock_alert_mode == StockAlertMode.CUSTOM, Product.min_stock),
+        else_=params.min_stock,
+    )
+    evaluated_modes = [StockAlertMode.CUSTOM]
+    if params.enabled:
+        evaluated_modes.append(StockAlertMode.GENERAL)
     stmt = (
         select(
             Product.id,
             Product.name,
             func.coalesce(balances.c.quantity, 0).label("quantity"),
-            Product.min_stock,
+            effective_minimum.label("min_stock"),
         )
         .select_from(Product)
         .outerjoin(balances, balances.c.product_id == Product.id)
@@ -107,8 +84,9 @@ async def _detect_low_stock(session: AsyncSession, params: LowStockParams) -> li
             # quedaría abierto para siempre (y mandando correo) hasta que
             # nadie mire ninguno. Ver `app.catalog.stock`.
             catalog_stock.tracks_stock_column().is_(True),
-            Product.min_stock > 0,
-            func.coalesce(balances.c.quantity, 0) < Product.min_stock,
+            Product.stock_alert_mode.in_(evaluated_modes),
+            effective_minimum > 0,
+            func.coalesce(balances.c.quantity, 0) < effective_minimum,
         )
     )
     rows = (await session.execute(stmt)).all()
@@ -154,6 +132,7 @@ async def _detect_expiring_lots(
         .join(balances, balances.c.lot_id == Lot.id)
         .where(
             Product.is_active.is_(True),
+            Product.track_expiration.is_(True),
             Lot.expiration_date.is_not(None),
             Lot.expiration_date <= threshold,
         )
@@ -186,14 +165,6 @@ async def detect(
     excluded_product_ids: frozenset[int] = frozenset(),
 ) -> list[Detection]:
     params = validate_params(rule_type, raw_params)
-    if rule_type == RuleType.CONDITION:
-        assert isinstance(params, ConditionParams)
-        return [
-            Detection(subject_type=subject_type, subject_id=subject_id, message=message)
-            for subject_type, subject_id, message in await conditions.detect(
-                session, params.subject, params.conditions
-            )
-        ]
     if rule_type == RuleType.LOW_STOCK:
         assert isinstance(params, LowStockParams)
         return await _detect_low_stock(session, params)

@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.catalog.models import StockAlertMode
+
 
 class ProductCategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
@@ -201,6 +203,7 @@ class ProductCreate(BaseModel):
     #: `app.catalog.models.Product.margin_amount`.
     margin_amount: Decimal | None = Field(default=None, ge=0)
     min_stock: Decimal = Field(default=Decimal(0), ge=0)
+    stock_alert_mode: StockAlertMode = StockAlertMode.GENERAL
     track_lots: bool = False
     track_expiration: bool = False
     #: ``None`` = lo que diga su categoría. Ver `app.catalog.stock`.
@@ -226,6 +229,7 @@ class ProductUpdate(BaseModel):
     #: para que un cambio no reinterprete cantidades ya guardadas.
     base_unit_name: str | None = Field(default=None, min_length=1, max_length=20)
     min_stock: Decimal | None = Field(default=None, ge=0)
+    stock_alert_mode: StockAlertMode | None = None
     track_lots: bool | None = None
     track_expiration: bool | None = None
     #: Tres estados: `True`/`False` lo fijan en el producto, y omitirlo lo
@@ -269,6 +273,7 @@ class ProductRead(BaseModel):
     taxes: list[ProductTaxRead]
     price_formula: str | None
     min_stock: Decimal
+    stock_alert_mode: StockAlertMode
     track_lots: bool
     track_expiration: bool
     #: Lo elegido en este producto; `None` = hereda de su categoría.
