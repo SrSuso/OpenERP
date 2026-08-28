@@ -398,8 +398,9 @@ e impresión automática del TPV.
 
 Con `ticket.manage` se crean, revisan, activan y eliminan plantillas. Sólo una
 plantilla está activa globalmente. La vista previa conserva siempre los **80
-mm** de la bobina; el ancho imprimible y los márgenes izquierdo/derecho mueven
-el texto dentro de ella y juntos no pueden superar 80 mm. También se configuran
+mm** de la bobina; los márgenes izquierdo/derecho mueven el texto dentro de
+ella y el ancho imprimible se calcula automáticamente restándolos de 80 mm.
+Los márgenes nunca escalan la letra. También se configuran
 fuente, tamaño, interlineado, márgenes verticales, datos de tienda y campos
 visibles.
 

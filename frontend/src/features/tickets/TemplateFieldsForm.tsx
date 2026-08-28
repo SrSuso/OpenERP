@@ -23,6 +23,7 @@ import {
 } from '@/features/tickets/layoutTemplate';
 import {
   THERMAL_PAPER_WIDTH_MM,
+  printableWidthFromMargins,
   ticketPreviewStyle,
   ticketPrintStyle,
 } from '@/features/tickets/printProfile';
@@ -31,7 +32,6 @@ import { renderTicketPreview } from '@/features/tickets/ticketPreview';
 const fieldsSchema = z
   .object({
     name: z.string().max(100).optional(),
-    printable_width_mm: z.coerce.number().int().min(25).max(80),
     margin_left_mm: z.coerce.number().int().min(0).max(55),
     margin_right_mm: z.coerce.number().int().min(0).max(55),
     font_family: ticketFontFamilySchema,
@@ -65,13 +65,12 @@ const fieldsSchema = z
     tax_note: z.string().max(200).optional(),
   })
   .superRefine((values, context) => {
-    const occupiedWidth =
-      values.margin_left_mm + values.printable_width_mm + values.margin_right_mm;
-    if (occupiedWidth > THERMAL_PAPER_WIDTH_MM) {
+    const printableWidth = printableWidthFromMargins(values.margin_left_mm, values.margin_right_mm);
+    if (printableWidth < 25) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['printable_width_mm'],
-        message: `El área completa ocupa ${occupiedWidth} mm y el papel mide 80 mm.`,
+        path: ['margin_right_mm'],
+        message: 'Los márgenes deben dejar al menos 25 mm para el texto.',
       });
     }
     if (values.layout_mode === 'CUSTOM' && !values.layout_template.trim()) {
@@ -124,7 +123,6 @@ export function TemplateFieldsForm({
     resolver: zodResolver(fieldsSchema),
     defaultValues: {
       name: defaults?.name ?? '',
-      printable_width_mm: defaults?.printable_width_mm ?? 72,
       margin_left_mm: defaults?.margin_left_mm ?? 4,
       margin_right_mm: defaults?.margin_right_mm ?? 4,
       font_family: defaults?.font_family ?? 'COURIER_NEW',
@@ -160,10 +158,13 @@ export function TemplateFieldsForm({
   // A number input is temporarily empty while it is being replaced. Keep
   // preview calculation safe for that short editing state; Zod still blocks
   // an invalid value when the form is submitted.
+  const marginLeftMm = previewNumber(watch('margin_left_mm'), 4);
+  const marginRightMm = previewNumber(watch('margin_right_mm'), 4);
+  const printableWidthMm = Math.max(25, printableWidthFromMargins(marginLeftMm, marginRightMm));
   const printProfile = {
-    printable_width_mm: previewNumber(watch('printable_width_mm'), 72, 25),
-    margin_left_mm: previewNumber(watch('margin_left_mm'), 4),
-    margin_right_mm: previewNumber(watch('margin_right_mm'), 4),
+    printable_width_mm: printableWidthMm,
+    margin_left_mm: marginLeftMm,
+    margin_right_mm: marginRightMm,
     font_family: watch('font_family') ?? 'COURIER_NEW',
     font_size_px: previewNumber(watch('font_size_px'), 9, 6),
     line_height_px: previewNumber(watch('line_height_px'), 12, 8),
@@ -235,7 +236,7 @@ export function TemplateFieldsForm({
     }
     onSubmit({
       name: values.name.trim(),
-      printable_width_mm: values.printable_width_mm,
+      printable_width_mm: printableWidthFromMargins(values.margin_left_mm, values.margin_right_mm),
       margin_left_mm: values.margin_left_mm,
       margin_right_mm: values.margin_right_mm,
       font_family: values.font_family,
@@ -323,14 +324,10 @@ export function TemplateFieldsForm({
               )}
             </label>
             <label className="text-sm text-slate-600">
-              Ancho imprimible (mm)
-              <input
-                type="number"
-                min="25"
-                max="80"
-                className="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
-                {...register('printable_width_mm')}
-              />
+              Ancho útil calculado (mm)
+              <output className="mt-1 block w-28 rounded border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                {printableWidthMm}
+              </output>
             </label>
             <label className="text-sm text-slate-600">
               Margen derecho (mm)
@@ -347,14 +344,10 @@ export function TemplateFieldsForm({
                 </span>
               )}
             </label>
-            {errors.printable_width_mm && (
-              <p className="text-sm text-red-600 sm:col-span-3">
-                {errors.printable_width_mm.message}
-              </p>
-            )}
             <p className="text-xs text-slate-500 sm:col-span-3">
-              La bobina siempre mide 80 mm. Los dos márgenes y el ancho imprimible deben sumar 80 mm
-              o menos.
+              Como en LibreOffice, la bobina permanece en 80 mm y el ancho útil se calcula como 80
+              menos los dos márgenes. Los márgenes mueven y estrechan el área de texto; nunca
+              cambian el tamaño de letra.
             </p>
           </fieldset>
 

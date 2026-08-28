@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   printableCharacters,
+  printableWidthFromMargins,
   THERMAL_PAPER_WIDTH_MM,
   ticketPageHeightMm,
   ticketPageStyle,
@@ -40,6 +41,7 @@ describe('ticket print page profile', () => {
   });
 
   it('keeps wider template margins inside the explicit 80mm page', () => {
+    expect(printableWidthFromMargins(10, 10)).toBe(60);
     expect(
       ticketPageStyle(
         {

@@ -27,6 +27,16 @@ const FONT_STACKS: Record<TicketFontFamily, string> = {
  */
 export const THERMAL_PAPER_WIDTH_MM = 80;
 
+/**
+ * Same model as LibreOffice's page dialog: the roll width is fixed and the
+ * content area is whatever remains between the physical side margins. Keeping
+ * this calculation in one place prevents the editor from treating width as a
+ * third, independent scaling control.
+ */
+export function printableWidthFromMargins(leftMm: number, rightMm: number): number {
+  return THERMAL_PAPER_WIDTH_MM - leftMm - rightMm;
+}
+
 /** Known values only: a template cannot inject arbitrary CSS into printing. */
 export function ticketPrintStyle(profile: TicketPrintProfile): CSSProperties {
   return {

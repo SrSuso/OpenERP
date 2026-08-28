@@ -168,8 +168,10 @@ describe('TicketTemplatesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Crear plantilla' }));
 
     await userEvent.type(screen.getByLabelText('Nombre'), 'Tienda principal');
-    await userEvent.clear(screen.getByLabelText('Ancho imprimible (mm)'));
-    await userEvent.type(screen.getByLabelText('Ancho imprimible (mm)'), '48');
+    await userEvent.clear(screen.getByLabelText('Margen izquierdo (mm)'));
+    await userEvent.type(screen.getByLabelText('Margen izquierdo (mm)'), '16');
+    await userEvent.clear(screen.getByLabelText('Margen derecho (mm)'));
+    await userEvent.type(screen.getByLabelText('Margen derecho (mm)'), '16');
     await userEvent.selectOptions(screen.getByLabelText('Tipo de letra'), 'LIBERATION_MONO');
     await userEvent.clear(screen.getByLabelText('Tamaño de letra (px)'));
     await userEvent.type(screen.getByLabelText('Tamaño de letra (px)'), '10');
@@ -194,8 +196,8 @@ describe('TicketTemplatesPage', () => {
       {
         name: 'Tienda principal',
         printable_width_mm: 48,
-        margin_left_mm: 4,
-        margin_right_mm: 4,
+        margin_left_mm: 16,
+        margin_right_mm: 16,
         font_family: 'LIBERATION_MONO',
         font_size_px: 10,
         line_height_px: 14,
@@ -239,8 +241,8 @@ describe('TicketTemplatesPage', () => {
         body: {
           name: 'Tienda principal',
           printable_width_mm: 48,
-          margin_left_mm: 4,
-          margin_right_mm: 4,
+          margin_left_mm: 16,
+          margin_right_mm: 16,
           font_family: 'LIBERATION_MONO',
           font_size_px: 10,
           line_height_px: 14,
@@ -291,7 +293,24 @@ describe('TicketTemplatesPage', () => {
     await userEvent.type(screen.getByLabelText('Margen derecho (mm)'), '2');
 
     expect(paper).toHaveStyle({ width: '80mm' });
-    expect(content).toHaveStyle({ width: '72mm', marginLeft: '6mm', marginRight: '2mm' });
+    expect(content).toHaveStyle({
+      width: '72mm',
+      marginLeft: '6mm',
+      marginRight: '2mm',
+      fontSize: '9px',
+    });
+
+    await userEvent.clear(screen.getByLabelText('Margen derecho (mm)'));
+    await userEvent.type(screen.getByLabelText('Margen derecho (mm)'), '10');
+
+    expect(paper).toHaveStyle({ width: '80mm' });
+    expect(content).toHaveStyle({
+      width: '64mm',
+      marginLeft: '6mm',
+      marginRight: '10mm',
+      fontSize: '9px',
+    });
+    expect(screen.getByText('64', { selector: 'output' })).toBeInTheDocument();
   });
 
   it('switches between the standard and variable editors without losing custom source', async () => {

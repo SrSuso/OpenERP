@@ -427,8 +427,10 @@ inicio de sesión del escritorio.
 ### 3.5. Mantener las plantillas de ticket
 
 En **Configuración de la tienda → Plantillas de ticket**, crea o revisa la
-plantilla que imprime la caja. La vista previa permite ajustar ancho imprimible,
-fuente, tamaño, grosor, interlineado, márgenes laterales y verticales, cabecera,
+plantilla que imprime la caja. La vista previa permite ajustar los márgenes
+laterales y verticales; el ancho útil se calcula restando los laterales de los
+80 mm del papel, igual que en LibreOffice. También permite ajustar fuente,
+tamaño, grosor, interlineado, cabecera,
 pie, datos fiscales, fecha, textos y líneas que se muestran. Se puede elegir el
 editor estándar o el editor seguro con variables documentado en
 [`TICKET_TEMPLATE_EDITOR.md`](TICKET_TEMPLATE_EDITOR.md). Sólo una plantilla

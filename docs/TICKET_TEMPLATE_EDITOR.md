@@ -21,20 +21,22 @@ ella, el área punteada representa el texto que puede imprimir el cabezal.
 Se pueden modificar:
 
 - margen izquierdo;
-- ancho imprimible;
 - margen derecho;
 - margen superior e inferior;
 - familia, tamaño, grosor e interlineado de la fuente.
 
-La regla es:
+El ancho imprimible no es un control de escala independiente. Como en el
+diálogo de página de LibreOffice, OpenERP lo muestra calculado mediante:
 
 ```text
-margen izquierdo + ancho imprimible + margen derecho <= 80 mm
+ancho útil = 80 mm - margen izquierdo - margen derecho
 ```
 
 Por ejemplo, `4 + 72 + 4 = 80 mm`. Al subir el margen izquierdo, el texto se
 desplaza a la derecha dentro de la misma bobina; la vista previa no cambia a A4
-ni adquiere una barra de desplazamiento horizontal.
+ni adquiere una barra de desplazamiento horizontal. Aumentar un margen reduce
+el área disponible y puede recomponer las líneas, pero no cambia ni amplía el
+tamaño de la fuente.
 
 OpenERP genera un único documento de impresión aislado del resto de la página.
 OpenERP envía el mismo modelo físico que funciona desde LibreOffice: una página
@@ -166,4 +168,4 @@ activar o eliminar una plantilla no altera una reimpresión histórica.
 
 Antes de usar una plantilla nueva en caja conviene imprimir una venta de prueba
 en la impresora real y, si el cabezal corta caracteres, aumentar el margen
-correspondiente o reducir el ancho imprimible.
+correspondiente; OpenERP reducirá automáticamente el ancho útil.
