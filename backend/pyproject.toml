@@ -1,6 +1,6 @@
 [project]
 name = "openerp-backend"
-version = "0.1.0"
+version = "0.8.0"
 description = "OpenERP - modular monolith backend (FastAPI + SQLAlchemy + PostgreSQL)"
 requires-python = ">=3.13"
 dependencies = [

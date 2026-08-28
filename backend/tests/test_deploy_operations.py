@@ -78,9 +78,9 @@ exit 0
     return root, scripts / "deploy-update.sh", command_log, env
 
 
-def _run_deploy(script: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_deploy(script: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [str(script), "--force"],
+        [str(script), *args, "--force"],
         env=env,
         capture_output=True,
         text=True,
@@ -173,6 +173,45 @@ def test_deploy_stops_all_writers_before_backup_and_migration(tmp_path: Path) ->
     assert not (root / "deploy" / "maintenance" / "enabled").exists()
     assert (root / "deploy" / "state" / "previous-version").read_text().strip() == "1" * 40
     assert (root / "deploy" / "state" / "current-version").read_text().strip() == "2" * 40
+
+
+def test_deploy_can_select_a_remote_branch_before_updating(tmp_path: Path) -> None:
+    _root, script, _command_log, env = _deploy_fixture(tmp_path)
+    git_log = tmp_path / "git-commands.log"
+    fake_git = Path(env["PATH"].split(":", maxsplit=1)[0]) / "git"
+    fake_git.write_text(
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$*" >> "$OPENERP_TEST_GIT_COMMAND_LOG"\n'
+        'case "$*" in\n'
+        "  'status --porcelain') exit 0 ;;\n"
+        "  'rev-parse --abbrev-ref HEAD') printf '%s\\n' main ;;\n"
+        "  'rev-parse HEAD')\n"
+        '    if [ -e "$OPENERP_TEST_GIT_STATE" ]; then\n'
+        "      printf '%s\\n' 2222222222222222222222222222222222222222\n"
+        "    else\n"
+        '      : > "$OPENERP_TEST_GIT_STATE"\n'
+        "      printf '%s\\n' 1111111111111111111111111111111111111111\n"
+        "    fi ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n"
+    )
+    fake_git.chmod(0o700)
+    env["OPENERP_TEST_GIT_COMMAND_LOG"] = str(git_log)
+
+    result = _run_deploy(script, env, "--branch", "v2")
+
+    assert result.returncode == 0, result.stderr
+    assert git_log.read_text().splitlines() == [
+        "status --porcelain",
+        "rev-parse --abbrev-ref HEAD",
+        "check-ref-format --branch v2",
+        "fetch --quiet origin refs/heads/v2:refs/remotes/origin/v2",
+        "show-ref --verify --quiet refs/heads/v2",
+        "switch v2",
+        "rev-parse HEAD",
+        "pull --ff-only origin v2",
+        "rev-parse HEAD",
+    ]
 
 
 def test_backup_failure_never_migrates_or_starts_target_version(tmp_path: Path) -> None:

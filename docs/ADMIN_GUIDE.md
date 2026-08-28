@@ -195,7 +195,23 @@ comprueba readiness, revisión Alembic y Nginx sin realizar escrituras.
 ```bash
 make prod-deploy          # actualización normal, con backup obligatorio
 make prod-deploy force=1  # reconstruye aunque el commit ya esté desplegado
+make prod-deploy branch=v2 # cambia a la rama remota v2 y despliega su último commit
 ```
+
+`branch=<nombre>` es una selección explícita de rama remota: el script valida
+el nombre, obtiene `origin/<nombre>`, cambia el checkout a esa rama y hace un
+`pull --ff-only` de ella antes de construir. Sin `branch=`, conserva el
+comportamiento habitual: actualiza la rama ya seleccionada. El checkout queda
+en la rama desplegada para que el siguiente despliegue sea coherente y el
+script sigue rechazando cambios locales.
+
+OpenERP **0.8** es el cierre de la primera versión. Para desarrollar y probar
+v2, crea y publica una rama de v2 y usa este parámetro únicamente desde un
+checkout y un entorno de prueba separados. El parámetro no crea una base de
+datos, volúmenes ni red independientes: usarlo contra la instalación que
+atiende la tienda aplicaría el código y las migraciones de v2 sobre sus datos.
+Nunca se debe usar como una vista previa de v2 sobre la base de producción de
+0.8.
 
 No ejecutes `prod-migrate` por separado con la tienda abierta. El script usa
 un lock local para impedir dos deploys simultáneos y sigue este orden:

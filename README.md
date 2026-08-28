@@ -4,6 +4,12 @@ ERP web para tienda minorista, con panel de administración (`/admin`) y punto
 de venta táctil (`/pos`). Es un monolito modular: FastAPI y React comparten una
 base PostgreSQL; un worker independiente entrega el correo encolado.
 
+## Versión 0.8
+
+La versión actual es **0.8**, cierre del desarrollo de la primera versión del
+producto. Las mejoras posteriores se desarrollan en ramas de v2 y se validan
+antes de incorporarlas a la rama estable.
+
 | Capa | Tecnología |
 | --- | --- |
 | Backend | Python 3.13+, FastAPI, SQLAlchemy async, Alembic, Pydantic, psycopg 3 |
@@ -143,6 +149,12 @@ Las actualizaciones posteriores se realizan únicamente con:
 ```bash
 make prod-deploy
 ```
+
+Para desplegar una rama remota concreta, por ejemplo una rama de trabajo de
+v2, usa `make prod-deploy branch=v2`. Esa opción cambia el checkout a la rama
+indicada y despliega su último commit; consulta el procedimiento y las
+precauciones de entorno separado en
+[`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md#31-desplegar-una-actualización-de-código).
 
 No improvises migraciones o restores a partir de este resumen. El procedimiento
 canónico de upgrade, restore y rollback está en

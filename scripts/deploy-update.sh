@@ -5,7 +5,7 @@
 # writer is stopped before the mandatory backup and migration. Any failure from
 # that point leaves maintenance enabled and stops API/worker again.
 #
-# Usage: scripts/deploy-update.sh [--force]
+# Usage: scripts/deploy-update.sh [--branch <remote-branch>] [--force]
 set -Eeuo pipefail
 
 log() { printf '\033[36m==>\033[0m %s\n' "$*"; }
@@ -14,11 +14,22 @@ die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+usage() { die "usage: $0 [--branch <remote-branch>] [--force]"; }
+
 FORCE=0
-for arg in "$@"; do
-  case "${arg}" in
-    --force) FORCE=1 ;;
-    *) die "usage: $0 [--force]" ;;
+DEPLOY_BRANCH=""
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --force)
+      FORCE=1
+      shift
+      ;;
+    --branch)
+      [[ "$#" -ge 2 && -n "$2" && "$2" != -* ]] || usage
+      DEPLOY_BRANCH="$2"
+      shift 2
+      ;;
+    *) usage ;;
   esac
 done
 
@@ -62,6 +73,21 @@ on_exit() {
 trap on_exit EXIT
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ -n "${DEPLOY_BRANCH}" ]]; then
+  git check-ref-format --branch "${DEPLOY_BRANCH}" >/dev/null \
+    || die "invalid branch name: ${DEPLOY_BRANCH}"
+  log "fetching requested branch origin/${DEPLOY_BRANCH}"
+  git fetch --quiet origin "refs/heads/${DEPLOY_BRANCH}:refs/remotes/origin/${DEPLOY_BRANCH}" \
+    || die "remote branch origin/${DEPLOY_BRANCH} does not exist or cannot be fetched"
+  if git show-ref --verify --quiet "refs/heads/${DEPLOY_BRANCH}"; then
+    git switch "${DEPLOY_BRANCH}"
+  else
+    git switch --track --create "${DEPLOY_BRANCH}" "origin/${DEPLOY_BRANCH}"
+  fi
+  BRANCH="${DEPLOY_BRANCH}"
+elif [[ "${BRANCH}" == "HEAD" ]]; then
+  die "checkout is detached; pass --branch <remote-branch>"
+fi
 CHECKOUT_BEFORE="$(git rev-parse HEAD)"
 if [[ -s "${STATE_DIR}/current-version" ]]; then
   DEPLOYED_BEFORE="$(<"${STATE_DIR}/current-version")"
@@ -70,8 +96,8 @@ else
 fi
 log "preparing checkout ${ROOT_DIR} (branch ${BRANCH}, deployed ${DEPLOYED_BEFORE:0:12})"
 
-log "git pull --ff-only"
-git pull --ff-only
+log "git pull --ff-only origin ${BRANCH}"
+git pull --ff-only origin "${BRANCH}"
 TARGET_VERSION="$(git rev-parse HEAD)"
 
 if [[ "${DEPLOYED_BEFORE}" == "${TARGET_VERSION}" && "${FORCE}" -eq 0 ]]; then

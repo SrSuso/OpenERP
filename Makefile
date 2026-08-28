@@ -391,5 +391,5 @@ prod-restore: prod-writers-stopped  ## Restore into a new DB only: make prod-res
 	./scripts/production-database.sh restore "$(f)" --target-database "$(target)"
 
 .PHONY: prod-deploy
-prod-deploy:  ## Safe pull/build/mandatory-backup/migrate deploy: make prod-deploy [force=1]
-	./scripts/deploy-update.sh $(if $(force),--force)
+prod-deploy:  ## Safe deploy: make prod-deploy [branch=<remote-branch>] [force=1]
+	./scripts/deploy-update.sh $(if $(branch),--branch "$(branch)") $(if $(force),--force)
