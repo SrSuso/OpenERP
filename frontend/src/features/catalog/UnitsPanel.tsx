@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
+import { Alert, Button, Card, EmptyState, FormField, Input } from '@/components/ui';
 import {
   createUnit,
   deleteUnit,
@@ -10,38 +11,39 @@ import {
   type Unit,
 } from '@/features/catalog/api';
 import { ApiError } from '@/lib/api';
+import { useUnsavedWarning } from '@/lib/unsaved';
 
-/** Catálogo de unidades que alimenta los desplegables de categorías y
- * productos. La unidad por defecto se elige explícitamente en cada
- * categoría; esta lista no expresa ninguna prioridad. */
-export function UnitsPanel({ canManage }: { canManage: boolean }) {
+export function UnitsPanel({
+  canManage,
+  onDirtyChange,
+}: {
+  canManage: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const units = useQuery(unitsQuery);
   const queryClient = useQueryClient();
-  const [name, setName] = useState('');
+  const [newName, setNewName] = useState<string | null>(null);
   const [editing, setEditing] = useState<Unit | null>(null);
   const [editedName, setEditedName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: unitsQuery.queryKey });
   const createMutation = useMutation({
-    mutationFn: (value: string) => createUnit(value),
+    mutationFn: createUnit,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: unitsQuery.queryKey });
-      setName('');
+      refresh();
+      setNewName(null);
       setError(null);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown) =>
       setError(
         err instanceof ApiError && err.code === 'conflict'
           ? 'Ya existe una unidad con ese nombre.'
           : 'No se ha podido crear la unidad.',
-      );
-    },
+      ),
   });
-
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: unitsQuery.queryKey });
-
   const updateMutation = useMutation({
-    mutationFn: ({ id, value }: { id: number; value: string }) => updateUnit(id, value),
+    mutationFn: ({ id, name }: { id: number; name: string }) => updateUnit(id, name),
     onSuccess: () => {
       refresh();
       setEditing(null);
@@ -51,146 +53,178 @@ export function UnitsPanel({ canManage }: { canManage: boolean }) {
     onError: (err: unknown) =>
       setError(err instanceof ApiError ? err.message : 'No se ha podido modificar la unidad.'),
   });
-
   const deleteMutation = useMutation({
     mutationFn: deleteUnit,
     onSuccess: () => {
       refresh();
-      // Borrar una unidad limpia el valor por defecto de las categorías que
-      // la proponían; refrescarlas evita que la pantalla conserve ese valor
-      // antiguo en caché.
       void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
+      setEditing(null);
       setError(null);
     },
     onError: (err: unknown) =>
       setError(err instanceof ApiError ? err.message : 'No se ha podido borrar la unidad.'),
   });
 
-  function submit(event: FormEvent) {
+  const standardNames = new Set(['KG', 'L', 'UDS']);
+  const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const dirty =
+    (newName !== null && newName.trim() !== '') ||
+    (editing !== null && editedName.trim() !== editing.name);
+  useUnsavedWarning(dirty);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
+
+  function create(event: FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return;
-    createMutation.mutate(name.trim().toUpperCase());
+    const value = newName?.trim().toUpperCase();
+    if (value) createMutation.mutate(value);
   }
 
-  const list = units.data ?? [];
-  const isStandard = (unit: Unit) => ['KG', 'L', 'UDS'].includes(unit.name);
-  const busy = updateMutation.isPending || deleteMutation.isPending;
-
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold text-slate-700">Unidades</h3>
+    <div className="space-y-5">
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Unidades</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Son las unidades base disponibles al crear y configurar productos.
+            </p>
+          </div>
+          {canManage && newName === null && editing === null && (
+            <Button onClick={() => setNewName('')}>+ Nueva unidad</Button>
+          )}
+        </div>
 
-      {units.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
-
-      <ul className="mb-3 flex flex-col gap-1">
-        {list.map((unit) => (
-          <li
-            key={unit.id}
-            className="flex items-center gap-2 rounded border border-slate-200 px-3 py-1.5 text-sm"
-          >
-            {editing?.id === unit.id ? (
-              <input
-                type="text"
-                aria-label={`Nombre de la unidad «${unit.name}»`}
-                value={editedName}
-                onChange={(event) => setEditedName(event.target.value)}
-                className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
-              />
-            ) : (
-              <span className="text-slate-700">{unit.name}</span>
-            )}
-            {isStandard(unit) && <span className="text-xs text-slate-400">Estándar</span>}
-            {canManage && !isStandard(unit) && (
-              <span className="ml-auto flex items-center gap-2">
-                {editing?.id === unit.id ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={busy || editedName.trim() === ''}
-                      onClick={() =>
-                        updateMutation.mutate({
-                          id: unit.id,
-                          value: editedName.trim().toUpperCase(),
-                        })
-                      }
-                      className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50"
-                    >
-                      Guardar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setEditing(null);
-                        setEditedName('');
-                      }}
-                      className="text-xs font-medium text-slate-600 hover:underline disabled:opacity-50"
-                    >
-                      Cancelar
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      aria-label={`Editar unidad «${unit.name}»`}
-                      onClick={() => {
-                        setEditing(unit);
-                        setEditedName(unit.name);
-                        setError(null);
-                      }}
-                      className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      aria-label={`Borrar unidad «${unit.name}»`}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `¿Borrar la unidad «${unit.name}»? Las categorías dejarán de usarla por defecto; los productos existentes conservarán su unidad histórica.`,
-                          )
-                        ) {
-                          deleteMutation.mutate(unit.id);
-                        }
-                      }}
-                      className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
-                    >
-                      Borrar
-                    </button>
-                  </>
-                )}
-              </span>
-            )}
-          </li>
-        ))}
-        {list.length === 0 && !units.isPending && (
-          <p className="text-sm text-slate-500">Todavía no hay ninguna.</p>
+        {units.isPending && <p className="p-5 text-sm text-slate-500">Cargando…</p>}
+        {units.isError && (
+          <div className="p-5">
+            <Alert tone="error">No se han podido cargar las unidades.</Alert>
+          </div>
         )}
-      </ul>
+        {units.isSuccess && units.data.length === 0 && (
+          <div className="p-5">
+            <EmptyState title="Todavía no hay unidades" />
+          </div>
+        )}
+        {units.data && units.data.length > 0 && (
+          <div className="divide-y divide-slate-100">
+            {units.data.map((unit) => {
+              const standard = standardNames.has(unit.name);
+              return (
+                <div key={unit.id} className="flex items-center gap-3 px-5 py-4">
+                  {editing?.id === unit.id ? (
+                    <Input
+                      autoFocus
+                      aria-label={`Nombre de la unidad «${unit.name}»`}
+                      value={editedName}
+                      className="max-w-xs"
+                      onChange={(event) => setEditedName(event.target.value)}
+                    />
+                  ) : (
+                    <span className="min-w-0 flex-1 font-semibold text-slate-900">{unit.name}</span>
+                  )}
+                  {standard && (
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                      Estándar
+                    </span>
+                  )}
+                  {canManage && !standard && (
+                    <div className="ml-auto flex flex-wrap gap-1">
+                      {editing?.id === unit.id ? (
+                        <>
+                          <Button
+                            className="min-h-8 px-3 py-1"
+                            disabled={busy || !editedName.trim()}
+                            onClick={() =>
+                              updateMutation.mutate({
+                                id: unit.id,
+                                name: editedName.trim().toUpperCase(),
+                              })
+                            }
+                          >
+                            Guardar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className="min-h-8 px-3 py-1"
+                            onClick={() => setEditing(null)}
+                          >
+                            Cancelar
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="ghost"
+                            className="min-h-8 px-3 py-1"
+                            aria-label={`Editar unidad «${unit.name}»`}
+                            onClick={() => {
+                              setEditing(unit);
+                              setEditedName(unit.name);
+                              setError(null);
+                            }}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="min-h-8 px-3 py-1"
+                            aria-label={`Borrar unidad «${unit.name}»`}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `¿Borrar la unidad «${unit.name}»? Las categorías dejarán de proponerla; los productos existentes conservarán su unidad histórica.`,
+                                )
+                              ) {
+                                deleteMutation.mutate(unit.id);
+                              }
+                            }}
+                          >
+                            Borrar
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
-      {canManage && (
-        <form onSubmit={submit} className="flex gap-2">
-          <input
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="UNIT, KG, L…"
-            className="w-32 rounded border border-slate-300 px-3 py-1.5 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={createMutation.isPending}
-            className="rounded bg-brand-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            Añadir
-          </button>
-        </form>
+      {newName !== null && (
+        <Card className="p-5 sm:p-6">
+          <form onSubmit={create} className="max-w-lg space-y-5">
+            <h2 className="text-lg font-bold text-slate-900">Nueva unidad</h2>
+            {error && <Alert tone="error">{error}</Alert>}
+            <FormField
+              label="Nombre corto"
+              htmlFor="new-unit-name"
+              hint="Por ejemplo: CAJA, BOTELLA o BANDEJA. Se guardará en mayúsculas."
+            >
+              <Input
+                id="new-unit-name"
+                autoFocus
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+              />
+            </FormField>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy || !newName.trim()}>
+                {createMutation.isPending ? 'Creando…' : 'Crear unidad'}
+              </Button>
+              <Button variant="ghost" onClick={() => setNewName(null)}>
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      {error && newName === null && <Alert tone="error">{error}</Alert>}
     </div>
   );
 }

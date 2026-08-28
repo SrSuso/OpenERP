@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type FormEvent } from 'react';
 
+import { Alert, Button, Card, EmptyState, FormField, Input } from '@/components/ui';
 import {
   activateProductCategory,
   createProductCategory,
@@ -14,344 +15,162 @@ import {
 import { setCategoryPricing, taxesQuery, type Tax } from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
 import { ApiError } from '@/lib/api';
-import { cancelWithConfirm, confirmDiscard, useUnsavedWarning } from '@/lib/unsaved';
+import { confirmDiscard, useUnsavedWarning } from '@/lib/unsaved';
 
-/** Categorías de estantería (independientes de las categorías POS del TPV
- * — ver `PosCategoriesPanel`).
- *
- * Una fila por categoría, con un único botón «Editar» que abre todo lo que
- * se puede hacer con ella: el nombre, el margen y los impuestos
- * que heredan sus productos, y las acciones de ocultarla o borrarla. Antes
- * era un botón por acción en la propia fila, y con cuatro categorías la
- * pantalla ya era una pared de enlaces. */
-export function ProductCategoriesPanel({ canManage }: { canManage: boolean }) {
-  const categories = useQuery(productCategoriesQuery);
-  const units = useQuery(unitsQuery);
-  const taxes = useQuery(taxesQuery);
-  const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [tracksStock, setTracksStock] = useState(true);
-  const [isSoldByWeight, setIsSoldByWeight] = useState(false);
-  const [defaultUnitName, setDefaultUnitName] = useState('');
-  const [marginInput, setMarginInput] = useState('');
-  const [amountInput, setAmountInput] = useState('');
-  const [formulaInput, setFormulaInput] = useState('');
-  const [taxIds, setTaxIds] = useState<Set<number>>(new Set());
-  const createFormulaFieldId = useId();
-  const [error, setError] = useState<string | null>(null);
-  //: Cuál está abierta para editar (ninguna = null).
-  const [editingId, setEditingId] = useState<number | null>(null);
-  //: Si lo abierto tiene algo tecleado sin guardar, para preguntar antes
-  //: de cerrarlo o de saltar a otra categoría.
-  const [editorDirty, setEditorDirty] = useState(false);
+interface CategoryValues {
+  name: string;
+  tracksStock: boolean;
+  isSoldByWeight: boolean;
+  quickPriceEdit: boolean;
+  defaultUnitName: string;
+  margin: string;
+  amount: string;
+  formula: string;
+  taxIds: Set<number>;
+}
 
-  const closeEditor = (next: number | null) => {
-    if (editorDirty && !confirmDiscard()) return;
-    setEditorDirty(false);
-    setEditingId(next);
-    setError(null);
+const EMPTY_VALUES: CategoryValues = {
+  name: '',
+  tracksStock: true,
+  isSoldByWeight: false,
+  quickPriceEdit: false,
+  defaultUnitName: '',
+  margin: '',
+  amount: '',
+  formula: '',
+  taxIds: new Set(),
+};
+
+function valuesFor(category: ProductCategory): CategoryValues {
+  return {
+    name: category.name,
+    tracksStock: category.tracks_stock,
+    isSoldByWeight: category.is_sold_by_weight ?? false,
+    quickPriceEdit: category.quick_price_edit ?? false,
+    defaultUnitName: category.default_unit_name ?? '',
+    margin: category.margin_rate ?? '',
+    amount: category.margin_amount ?? '',
+    formula: category.price_formula ?? '',
+    taxIds: new Set(category.taxes.map((tax) => tax.id)),
   };
+}
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
-    // El nombre de la categoría se ve en la lista de productos, y su
-    // margen/impuestos cambian el PVP de los que la heredan.
-    void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
-  };
-
-  const createMutation = useMutation({
-    mutationFn: createProductCategory,
-    onSuccess: () => {
-      invalidate();
-      setName('');
-      setTracksStock(true);
-      setIsSoldByWeight(false);
-      setDefaultUnitName('');
-      setMarginInput('');
-      setAmountInput('');
-      setFormulaInput('');
-      setTaxIds(new Set());
-      setError(null);
-    },
-    onError: (err: unknown) => {
-      setError(
-        err instanceof ApiError && err.code === 'conflict'
-          ? 'Ya existe una categoría con ese nombre.'
-          : 'No se ha podido crear la categoría.',
-      );
-    },
-  });
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!name.trim()) return;
-    createMutation.mutate({
-      name: name.trim(),
-      tracks_stock: tracksStock,
-      is_sold_by_weight: isSoldByWeight,
-      default_unit_name: defaultUnitName || null,
-      margin_rate: marginInput.trim() === '' ? null : marginInput,
-      margin_amount: amountInput.trim() === '' ? null : amountInput,
-      price_formula: formulaInput.trim() === '' ? null : formulaInput.trim(),
-      tax_ids: [...taxIds],
-    });
-  }
-
+function sameValues(left: CategoryValues, right: CategoryValues): boolean {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold text-slate-700">Categorías de producto</h3>
-
-      {categories.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
-
-      <ul className="mb-3 flex flex-col gap-1.5">
-        {categories.data?.map((category) => (
-          <li key={category.id}>
-            <div className="flex items-center gap-2 text-sm">
-              <span
-                className={`rounded-full px-3 py-1 ${
-                  category.is_active ? 'bg-slate-100 text-slate-700' : 'bg-slate-50 text-slate-400'
-                }`}
-              >
-                {category.name}
-                {!category.is_active && <span className="ml-1 text-xs">(oculta)</span>}
-              </span>
-              {canManage && (
-                <button
-                  type="button"
-                  aria-label={`Editar «${category.name}»`}
-                  onClick={() => closeEditor(editingId === category.id ? null : category.id)}
-                  className="text-xs font-medium text-brand-700 hover:underline"
-                >
-                  {editingId === category.id ? 'Cerrar' : 'Editar'}
-                </button>
-              )}
-            </div>
-
-            {editingId === category.id && (
-              <CategoryEditor
-                category={category}
-                taxes={taxes.data ?? []}
-                units={units.data ?? []}
-                onDone={() => {
-                  setEditorDirty(false);
-                  setEditingId(null);
-                }}
-                onDirtyChange={setEditorDirty}
-                onError={setError}
-                invalidate={invalidate}
-              />
-            )}
-          </li>
-        ))}
-        {categories.data?.length === 0 && (
-          <p className="text-sm text-slate-500">Todavía no hay ninguna.</p>
-        )}
-      </ul>
-
-      {canManage && editingId === null && (
-        <form onSubmit={submit} className="rounded border border-slate-200 bg-slate-50 p-3">
-          <h4 className="text-sm font-medium text-slate-700">Nueva categoría</h4>
-          <div className="mt-3 flex flex-wrap items-start gap-4">
-            <label className="text-xs text-slate-600">
-              Nombre
-              <input
-                type="text"
-                aria-label="Nombre de la categoría"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Nombre de la categoría"
-                className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
-              />
-            </label>
-
-            <label className="text-xs text-slate-600">
-              Margen por defecto (%)
-              <input
-                type="text"
-                inputMode="decimal"
-                value={marginInput}
-                onChange={(event) => setMarginInput(event.target.value)}
-                placeholder="vacío = sin margen por defecto"
-                className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
-              />
-            </label>
-
-            <label className="text-xs text-slate-600">
-              Margen fijo por defecto (€)
-              <input
-                type="text"
-                inputMode="decimal"
-                value={amountInput}
-                onChange={(event) => setAmountInput(event.target.value)}
-                placeholder="p. ej. 0,25"
-                className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
-              />
-            </label>
-          </div>
-
-          <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={tracksStock}
-              onChange={(event) => setTracksStock(event.target.checked)}
-            />
-            <span>
-              Llevar control de existencias
-              <span className="mt-0.5 block text-slate-400">
-                Apagado, sus productos se venden sin comprobar ni descontar stock.
-              </span>
-            </span>
-          </label>
-
-          <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={isSoldByWeight}
-              onChange={(event) => setIsSoldByWeight(event.target.checked)}
-            />
-            <span>
-              Vender al peso en el TPV
-              <span className="mt-0.5 block text-slate-400">
-                Al pulsar un producto de esta categoría, la caja pedirá sus gramos y calculará el
-                importe con su precio por unidad base.
-              </span>
-            </span>
-          </label>
-
-          <label className="mt-3 block text-xs text-slate-600">
-            Unidad por defecto de sus productos
-            <select
-              aria-label="Unidad por defecto de sus productos"
-              value={defaultUnitName}
-              onChange={(event) => setDefaultUnitName(event.target.value)}
-              className="mt-1 block w-48 rounded border border-slate-300 bg-white px-2 py-1 text-sm"
-            >
-              <option value="">Sin unidad por defecto</option>
-              {(units.data ?? []).map((unit) => (
-                <option key={unit.id} value={unit.name}>
-                  {unit.name}
-                </option>
-              ))}
-            </select>
-            <span className="mt-0.5 block text-slate-400">
-              Se propone al dar de alta un producto de esta categoría; se puede cambiar en el
-              producto sin modificar la categoría.
-            </span>
-          </label>
-
-          <div className="mt-3 text-xs text-slate-600">
-            <label htmlFor={createFormulaFieldId}>Fórmula por defecto</label>
-            <input
-              id={createFormulaFieldId}
-              type="text"
-              value={formulaInput}
-              onChange={(event) => setFormulaInput(event.target.value)}
-              placeholder="vacío = la fórmula de la tienda"
-              className="mt-1 block w-full rounded border border-slate-300 px-2 py-1 font-mono text-sm"
-            />
-            <span className="mt-1 block text-slate-400">
-              Variables: cost, tax_rate, surcharge_rate, margin_rate. El margen fijo se suma aparte.
-            </span>
-          </div>
-
-          <p className="mt-3 mb-1 text-xs text-slate-600">Impuestos por defecto</p>
-          <TaxChips taxes={taxes.data ?? []} selected={taxIds} onChange={setTaxIds} />
-
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={createMutation.isPending || name.trim() === ''}
-              className="rounded bg-brand-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {createMutation.isPending ? 'Creando…' : 'Añadir'}
-            </button>
-          </div>
-        </form>
-      )}
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-    </div>
+    left.name === right.name &&
+    left.tracksStock === right.tracksStock &&
+    left.isSoldByWeight === right.isSoldByWeight &&
+    left.quickPriceEdit === right.quickPriceEdit &&
+    left.defaultUnitName === right.defaultUnitName &&
+    left.margin === right.margin &&
+    left.amount === right.amount &&
+    left.formula === right.formula &&
+    left.taxIds.size === right.taxIds.size &&
+    [...left.taxIds].every((id) => right.taxIds.has(id))
   );
 }
 
-/** Todo lo que se puede hacer con una categoría, en un sitio: su nombre,
- * el margen y los impuestos por defecto que heredan sus productos, y
- * las acciones que cuesta deshacer, apartadas abajo y con confirmación. */
-function CategoryEditor({
-  category,
-  taxes,
-  units,
-  onDone,
+export function ProductCategoriesPanel({
+  canManage,
+  canManagePricing,
   onDirtyChange,
-  onError,
-  invalidate,
 }: {
-  category: ProductCategory;
-  taxes: Tax[];
-  units: { id: number; name: string }[];
-  onDone: () => void;
-  onDirtyChange: (isDirty: boolean) => void;
-  onError: (message: string | null) => void;
-  invalidate: () => void;
+  canManage: boolean;
+  canManagePricing: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [name, setName] = useState(category.name);
-  const [tracksStock, setTracksStock] = useState(category.tracks_stock);
-  const [isSoldByWeight, setIsSoldByWeight] = useState(category.is_sold_by_weight ?? false);
-  const [defaultUnitName, setDefaultUnitName] = useState(category.default_unit_name ?? '');
-  const [marginInput, setMarginInput] = useState(category.margin_rate ?? '');
-  const [amountInput, setAmountInput] = useState(category.margin_amount ?? '');
-  const [formulaInput, setFormulaInput] = useState(category.price_formula ?? '');
-  const [taxIds, setTaxIds] = useState<Set<number>>(new Set(category.taxes.map((t) => t.id)));
-  const formulaFieldId = useId();
+  const categories = useQuery(productCategoriesQuery);
+  const units = useQuery(unitsQuery);
+  const taxes = useQuery({ ...taxesQuery, enabled: canManagePricing });
+  const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<number | 'new' | null>(null);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Lo tecleado difiere de lo guardado: cerrar ahora lo perdería.
-  const savedTaxIds = new Set(category.taxes.map((t) => t.id));
-  const isDirty =
-    name !== category.name ||
-    tracksStock !== category.tracks_stock ||
-    isSoldByWeight !== (category.is_sold_by_weight ?? false) ||
-    defaultUnitName !== (category.default_unit_name ?? '') ||
-    marginInput !== (category.margin_rate ?? '') ||
-    amountInput !== (category.margin_amount ?? '') ||
-    formulaInput !== (category.price_formula ?? '') ||
-    taxIds.size !== savedTaxIds.size ||
-    [...taxIds].some((id) => !savedTaxIds.has(id));
-  useUnsavedWarning(isDirty);
   useEffect(() => {
-    onDirtyChange(isDirty);
-  }, [isDirty, onDirtyChange]);
+    onDirtyChange?.(editorDirty);
+    return () => onDirtyChange?.(false);
+  }, [editorDirty, onDirtyChange]);
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: productCategoriesQuery.queryKey });
+    void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+  };
+
+  function closeEditor() {
+    setEditingId(null);
+    setEditorDirty(false);
+    setError(null);
+  }
+
+  function openEditor(next: number | 'new') {
+    if (editorDirty && !confirmDiscard()) return;
+    setEditingId(next);
+    setEditorDirty(false);
+    setError(null);
+  }
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (
-        name.trim() !== category.name ||
-        tracksStock !== category.tracks_stock ||
-        isSoldByWeight !== (category.is_sold_by_weight ?? false) ||
-        defaultUnitName !== (category.default_unit_name ?? '')
-      ) {
-        await updateProductCategory(category.id, {
-          name: name.trim(),
-          tracks_stock: tracksStock,
-          is_sold_by_weight: isSoldByWeight,
-          default_unit_name: defaultUnitName || null,
+    mutationFn: async ({
+      category,
+      values,
+    }: {
+      category: ProductCategory | null;
+      values: CategoryValues;
+    }) => {
+      const pricing = {
+        margin_rate: values.margin.trim() === '' ? null : values.margin,
+        margin_amount: values.amount.trim() === '' ? null : values.amount,
+        price_formula: values.formula.trim(),
+        tax_ids: [...values.taxIds],
+      };
+      if (category === null) {
+        return createProductCategory({
+          name: values.name.trim(),
+          tracks_stock: values.tracksStock,
+          is_sold_by_weight: values.isSoldByWeight,
+          quick_price_edit: values.quickPriceEdit,
+          default_unit_name: values.defaultUnitName || null,
+          margin_rate: canManagePricing ? pricing.margin_rate : null,
+          margin_amount: canManagePricing ? pricing.margin_amount : null,
+          price_formula: canManagePricing && pricing.price_formula ? pricing.price_formula : null,
+          tax_ids: canManagePricing ? pricing.tax_ids : [],
         });
       }
-      await setCategoryPricing(category.id, {
-        margin_rate: marginInput.trim() === '' ? null : marginInput,
-        margin_amount: amountInput.trim() === '' ? null : amountInput,
-        // Vacío = quitarla y volver a la fórmula de la tienda.
-        price_formula: formulaInput.trim(),
-        tax_ids: [...taxIds],
-      });
+
+      const original = valuesFor(category);
+      const baseChanged =
+        values.name.trim() !== category.name ||
+        values.tracksStock !== category.tracks_stock ||
+        values.isSoldByWeight !== (category.is_sold_by_weight ?? false) ||
+        values.quickPriceEdit !== (category.quick_price_edit ?? false) ||
+        values.defaultUnitName !== (category.default_unit_name ?? '');
+      if (baseChanged) {
+        await updateProductCategory(category.id, {
+          name: values.name.trim(),
+          tracks_stock: values.tracksStock,
+          is_sold_by_weight: values.isSoldByWeight,
+          quick_price_edit: values.quickPriceEdit,
+          default_unit_name: values.defaultUnitName || null,
+        });
+      }
+      const pricingChanged =
+        values.margin !== original.margin ||
+        values.amount !== original.amount ||
+        values.formula !== original.formula ||
+        values.taxIds.size !== original.taxIds.size ||
+        [...values.taxIds].some((id) => !original.taxIds.has(id));
+      if (canManagePricing && pricingChanged) {
+        await setCategoryPricing(category.id, pricing);
+      }
+      return category;
     },
     onSuccess: () => {
       invalidate();
-      onError(null);
-      onDone();
+      closeEditor();
     },
     onError: (err: unknown) =>
-      onError(
+      setError(
         err instanceof ApiError && err.code === 'conflict'
           ? 'Ya existe una categoría con ese nombre.'
           : 'No se ha podido guardar la categoría.',
@@ -359,200 +178,405 @@ function CategoryEditor({
   });
 
   const activeMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (category: ProductCategory) =>
       category.is_active
         ? deactivateProductCategory(category.id)
         : activateProductCategory(category.id),
     onSuccess: () => {
       invalidate();
-      onError(null);
+      closeEditor();
     },
-    onError: () => onError('No se ha podido cambiar la categoría.'),
+    onError: () => setError('No se ha podido cambiar el estado de la categoría.'),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteProductCategory(category.id),
+    mutationFn: (category: ProductCategory) => deleteProductCategory(category.id),
     onSuccess: () => {
       invalidate();
-      onError(null);
-      onDone();
+      closeEditor();
     },
-    // El 409 trae el motivo exacto (cuántos productos la usan) y ya viene
-    // en castellano: se enseña tal cual.
     onError: (err: unknown) =>
-      onError(
+      setError(
         err instanceof ApiError && err.code === 'conflict'
           ? err.message
           : 'No se ha podido borrar la categoría.',
       ),
   });
 
+  const selectedCategory =
+    typeof editingId === 'number'
+      ? ((categories.data ?? []).find((category) => category.id === editingId) ?? null)
+      : null;
   const busy = saveMutation.isPending || activeMutation.isPending || deleteMutation.isPending;
 
   return (
-    <div className="mt-1.5 rounded border border-slate-200 bg-slate-50 p-3">
-      <div className="flex flex-wrap items-start gap-4">
-        <label className="text-xs text-slate-600">
-          Nombre
-          <input
-            type="text"
-            autoFocus
-            aria-label={`Nombre de «${category.name}»`}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className="mt-1 block w-48 rounded border border-slate-300 px-2 py-1 text-sm"
-          />
-        </label>
+    <div className="space-y-5">
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Categorías de producto</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Agrupan el inventario y definen valores que pueden heredar sus productos.
+            </p>
+          </div>
+          {canManage && editingId !== 'new' && (
+            <Button onClick={() => openEditor('new')}>+ Nueva categoría</Button>
+          )}
+        </div>
 
-        <label className="text-xs text-slate-600">
-          Margen por defecto (%)
-          <input
-            type="text"
-            inputMode="decimal"
-            value={marginInput}
-            onChange={(event) => setMarginInput(event.target.value)}
-            placeholder="vacío = sin margen por defecto"
-            className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
-          />
-        </label>
-
-        <label className="text-xs text-slate-600">
-          Margen fijo por defecto (€)
-          <input
-            type="text"
-            inputMode="decimal"
-            value={amountInput}
-            onChange={(event) => setAmountInput(event.target.value)}
-            placeholder="p. ej. 0,25"
-            className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
-          />
-        </label>
-      </div>
-
-      <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={tracksStock}
-          onChange={(event) => setTracksStock(event.target.checked)}
-        />
-        <span>
-          Llevar control de existencias
-          <span className="mt-0.5 block text-slate-400">
-            Apagado, sus productos no se agotan: se venden sin comprobar ni descontar stock. Para lo
-            que se repone del saco sin contarlo. Un producto suyo puede decir lo contrario.
-          </span>
-        </span>
-      </label>
-
-      <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={isSoldByWeight}
-          onChange={(event) => setIsSoldByWeight(event.target.checked)}
-        />
-        <span>
-          Vender al peso en el TPV
-          <span className="mt-0.5 block text-slate-400">
-            La caja pedirá los gramos al añadir sus productos y calculará el importe con el precio
-            por unidad base.
-          </span>
-        </span>
-      </label>
-
-      <label className="mt-3 block text-xs text-slate-600">
-        Unidad por defecto de sus productos
-        <select
-          aria-label="Unidad por defecto de sus productos"
-          value={defaultUnitName}
-          onChange={(event) => setDefaultUnitName(event.target.value)}
-          className="mt-1 block w-48 rounded border border-slate-300 bg-white px-2 py-1 text-sm"
-        >
-          <option value="">Sin unidad por defecto</option>
-          {units.map((unit) => (
-            <option key={unit.id} value={unit.name}>
-              {unit.name}
-            </option>
-          ))}
-        </select>
-        <span className="mt-0.5 block text-slate-400">
-          Se propone al crear nuevos productos de esta categoría.
-        </span>
-      </label>
-
-      {/* La tercera forma de poner precio, para cuando ni un porcentaje ni
-          una cantidad fija valen. Va fuera de la rejilla porque es larga. */}
-      <div className="mt-3 text-xs text-slate-600">
-        <label htmlFor={formulaFieldId}>Fórmula por defecto</label>
-        <input
-          id={formulaFieldId}
-          type="text"
-          value={formulaInput}
-          onChange={(event) => setFormulaInput(event.target.value)}
-          placeholder="vacío = la fórmula de la tienda"
-          className="mt-1 block w-full rounded border border-slate-300 px-2 py-1 font-mono text-sm"
-        />
-        <span className="mt-1 block text-slate-400">
-          Se aplica a sus productos, salvo a los que tengan la suya propia. Variables: cost,
-          tax_rate, surcharge_rate, margin_rate. El margen fijo en euros se suma aparte, a lo que dé
-          la fórmula.
-        </span>
-      </div>
-
-      <p className="mt-3 mb-1 text-xs text-slate-600">Impuestos por defecto</p>
-      <TaxChips taxes={taxes} selected={taxIds} onChange={setTaxIds} />
-
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
-        <button
-          type="button"
-          onClick={() => saveMutation.mutate()}
-          disabled={busy || name.trim() === ''}
-          className="rounded bg-brand-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-        >
-          {saveMutation.isPending ? 'Guardando…' : 'Guardar'}
-        </button>
-        <button
-          type="button"
-          onClick={cancelWithConfirm(isDirty, onDone)}
-          className="rounded px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
-        >
-          Cancelar
-        </button>
-
-        {/* Apartadas a la derecha: son las que cuesta deshacer. */}
-        <span className="ml-auto flex gap-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              const question = category.is_active
-                ? `¿Ocultar «${category.name}»?\n\nDejará de poder elegirse al clasificar productos. Los que ya la tienen la conservan, y puedes volver a mostrarla cuando quieras.`
-                : `¿Volver a mostrar «${category.name}»?`;
-              if (window.confirm(question)) activeMutation.mutate();
-            }}
-            className="text-xs font-medium text-slate-600 hover:underline disabled:opacity-50"
-          >
-            {category.is_active ? 'Ocultar' : 'Mostrar'}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `¿Borrar «${category.name}» definitivamente?\n\nEsto no se puede deshacer. Si prefieres conservarla por si acaso, usa "Ocultar".`,
-                )
-              ) {
-                deleteMutation.mutate();
+        {categories.isPending && <p className="p-5 text-sm text-slate-500">Cargando…</p>}
+        {categories.isError && (
+          <div className="p-5">
+            <Alert tone="error">No se han podido cargar las categorías.</Alert>
+          </div>
+        )}
+        {categories.isSuccess && categories.data.length === 0 && (
+          <div className="p-5">
+            <EmptyState
+              title="Todavía no hay categorías de producto"
+              description="Crea una para organizar el catálogo y definir su comportamiento habitual."
+              action={
+                canManage ? (
+                  <Button onClick={() => openEditor('new')}>+ Nueva categoría</Button>
+                ) : undefined
               }
-            }}
-            className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
-          >
-            Borrar
-          </button>
-        </span>
-      </div>
+            />
+          </div>
+        )}
+        {categories.data && categories.data.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-5 py-3">Nombre</th>
+                  <th className="px-5 py-3">Comportamiento</th>
+                  <th className="px-5 py-3">Estado</th>
+                  {canManage && <th className="px-5 py-3 text-right">Acción</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {categories.data.map((category) => (
+                  <tr key={category.id} className="hover:bg-slate-50">
+                    <td className="px-5 py-4 font-semibold text-slate-900">{category.name}</td>
+                    <td className="px-5 py-4 text-slate-600">
+                      {categoryBehaviour(category).join(' · ')}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          category.is_active
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {category.is_active ? 'Activa' : 'Oculta'}
+                      </span>
+                    </td>
+                    {canManage && (
+                      <td className="px-5 py-4 text-right">
+                        <Button
+                          variant="ghost"
+                          className="min-h-8 px-3 py-1"
+                          aria-label={`Editar «${category.name}»`}
+                          onClick={() => openEditor(category.id)}
+                        >
+                          Editar
+                        </Button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {(editingId === 'new' || selectedCategory !== null) && (
+        <CategoryForm
+          key={editingId}
+          category={selectedCategory}
+          units={units.data ?? []}
+          taxes={taxes.data ?? []}
+          canManagePricing={canManagePricing}
+          isPending={busy}
+          error={error}
+          onDirtyChange={setEditorDirty}
+          onCancel={() => {
+            if (!editorDirty || confirmDiscard()) closeEditor();
+          }}
+          onSubmit={(values) => saveMutation.mutate({ category: selectedCategory, values })}
+          onToggleActive={
+            selectedCategory
+              ? () => {
+                  const question = selectedCategory.is_active
+                    ? `¿Ocultar «${selectedCategory.name}»?\n\nYa no podrá elegirse en productos nuevos, pero los productos actuales la conservarán.`
+                    : `¿Volver a mostrar «${selectedCategory.name}»?`;
+                  if (window.confirm(question)) activeMutation.mutate(selectedCategory);
+                }
+              : undefined
+          }
+          onDelete={
+            selectedCategory
+              ? () => {
+                  if (
+                    window.confirm(
+                      `¿Borrar «${selectedCategory.name}» definitivamente?\n\nEsto no se puede deshacer. Si quieres conservarla, utiliza Ocultar.`,
+                    )
+                  ) {
+                    deleteMutation.mutate(selectedCategory);
+                  }
+                }
+              : undefined
+          }
+        />
+      )}
     </div>
+  );
+}
+
+function categoryBehaviour(category: ProductCategory): string[] {
+  const labels = [category.tracks_stock ? 'Control de stock' : 'Sin control de stock'];
+  if (category.is_sold_by_weight) labels.push('Por peso');
+  if (category.quick_price_edit) labels.push('PVP rápido');
+  return labels;
+}
+
+function CategoryForm({
+  category,
+  units,
+  taxes,
+  canManagePricing,
+  isPending,
+  error,
+  onDirtyChange,
+  onCancel,
+  onSubmit,
+  onToggleActive,
+  onDelete,
+}: {
+  category: ProductCategory | null;
+  units: { id: number; name: string }[];
+  taxes: Tax[];
+  canManagePricing: boolean;
+  isPending: boolean;
+  error: string | null;
+  onDirtyChange: (dirty: boolean) => void;
+  onCancel: () => void;
+  onSubmit: (values: CategoryValues) => void;
+  onToggleActive?: (() => void) | undefined;
+  onDelete?: (() => void) | undefined;
+}) {
+  const initial = category ? valuesFor(category) : EMPTY_VALUES;
+  const [values, setValues] = useState<CategoryValues>(() => ({
+    ...initial,
+    taxIds: new Set(initial.taxIds),
+  }));
+  const formulaId = useId();
+  const nameId = useId();
+  const unitId = useId();
+  const marginId = useId();
+  const amountId = useId();
+  const dirty = !sameValues(values, initial);
+  useUnsavedWarning(dirty);
+
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!values.name.trim()) return;
+    onSubmit(values);
+  }
+
+  return (
+    <Card className="p-5 sm:p-6">
+      <form onSubmit={submit} className="space-y-7">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">
+            {category ? `Editar ${category.name}` : 'Nueva categoría de producto'}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Configura sus valores habituales. Después podrás hacer excepciones en cada producto.
+          </p>
+        </div>
+
+        {error && <Alert tone="error">{error}</Alert>}
+
+        <fieldset className="space-y-4">
+          <legend className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Información
+          </legend>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField label="Nombre" htmlFor={nameId}>
+              <Input
+                id={nameId}
+                autoFocus
+                value={values.name}
+                onChange={(event) => setValues({ ...values, name: event.target.value })}
+              />
+            </FormField>
+            <FormField
+              label="Unidad por defecto"
+              htmlFor={unitId}
+              hint="Se propone al crear productos; cada producto puede usar otra."
+            >
+              <select
+                id={unitId}
+                value={values.defaultUnitName}
+                onChange={(event) => setValues({ ...values, defaultUnitName: event.target.value })}
+                className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Sin unidad por defecto</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.name}>
+                    {unit.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Inventario y venta
+          </legend>
+          <CheckOption
+            checked={values.tracksStock}
+            onChange={(checked) => setValues({ ...values, tracksStock: checked })}
+            label="Llevar control de existencias"
+            description="Los productos de esta categoría descontarán stock por defecto."
+          />
+          <CheckOption
+            checked={values.isSoldByWeight}
+            onChange={(checked) => setValues({ ...values, isSoldByWeight: checked })}
+            label="Vender al peso en el TPV"
+            description="El TPV pedirá el peso al añadir estos productos."
+          />
+          <CheckOption
+            checked={values.quickPriceEdit}
+            onChange={(checked) => setValues({ ...values, quickPriceEdit: checked })}
+            label="Permitir cambiar el PVP desde Productos"
+            description="Útil para fruta, verdura y otros artículos cuyo precio cambia con frecuencia."
+          />
+        </fieldset>
+
+        <fieldset className="space-y-4">
+          <legend className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Precio por defecto
+          </legend>
+          {!canManagePricing && (
+            <Alert>
+              Puedes consultar estos valores, pero necesitas permiso de precios para modificarlos.
+            </Alert>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField label="Margen porcentual (%)" htmlFor={marginId}>
+              <Input
+                id={marginId}
+                inputMode="decimal"
+                disabled={!canManagePricing}
+                value={values.margin}
+                placeholder="Sin margen por defecto"
+                onChange={(event) => setValues({ ...values, margin: event.target.value })}
+              />
+            </FormField>
+            <FormField label="Margen fijo (€)" htmlFor={amountId}>
+              <Input
+                id={amountId}
+                inputMode="decimal"
+                disabled={!canManagePricing}
+                value={values.amount}
+                placeholder="Por ejemplo, 0,25"
+                onChange={(event) => setValues({ ...values, amount: event.target.value })}
+              />
+            </FormField>
+          </div>
+          <FormField
+            label="Fórmula"
+            htmlFor={formulaId}
+            hint="Déjala vacía para usar la fórmula de la tienda. Variables: cost, tax_rate, surcharge_rate y margin_rate."
+          >
+            <Input
+              id={formulaId}
+              disabled={!canManagePricing}
+              value={values.formula}
+              className="font-mono"
+              onChange={(event) => setValues({ ...values, formula: event.target.value })}
+            />
+          </FormField>
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Impuestos</p>
+            <div className={`mt-2 ${canManagePricing ? '' : 'pointer-events-none opacity-60'}`}>
+              <TaxChips
+                taxes={taxes}
+                selected={values.taxIds}
+                onChange={(taxIds) => setValues({ ...values, taxIds })}
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-5">
+          <Button type="submit" disabled={isPending || !values.name.trim() || !dirty}>
+            {isPending ? 'Guardando…' : category ? 'Guardar cambios' : 'Crear categoría'}
+          </Button>
+          <Button variant="ghost" onClick={onCancel} disabled={isPending}>
+            Cancelar
+          </Button>
+        </div>
+
+        {category && (onToggleActive || onDelete) && (
+          <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+              Acciones avanzadas
+            </summary>
+            <p className="mt-2 text-sm text-slate-600">
+              Ocultar es reversible. Borrar sólo es posible si ningún producto utiliza la categoría.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {onToggleActive && (
+                <Button variant="secondary" onClick={onToggleActive} disabled={isPending}>
+                  {category.is_active ? 'Ocultar categoría' : 'Mostrar categoría'}
+                </Button>
+              )}
+              {onDelete && (
+                <Button variant="danger" onClick={onDelete} disabled={isPending}>
+                  Borrar definitivamente
+                </Button>
+              )}
+            </div>
+          </details>
+        )}
+      </form>
+    </Card>
+  );
+}
+
+function CheckOption({
+  checked,
+  onChange,
+  label,
+  description,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  description: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-4 hover:bg-slate-50">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600"
+      />
+      <span>
+        <span className="block text-sm font-semibold text-slate-800">{label}</span>
+        <span className="mt-1 block text-sm text-slate-500">{description}</span>
+      </span>
+    </label>
   );
 }

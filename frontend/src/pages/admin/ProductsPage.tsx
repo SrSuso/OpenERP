@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Alert, Button, Card, EmptyState, Input, PageHeader } from '@/components/ui';
@@ -9,18 +9,22 @@ import {
   productCategoriesQuery,
   productsQuery,
   unitsQuery,
+  type Product,
 } from '@/features/catalog/api';
 import { ProductsTable } from '@/features/catalog/ProductsTable';
 import { stockTotalsQuery } from '@/features/inventory/api';
 import { activeAlertsQuery } from '@/features/notifications/api';
+import { PriceChangeDialog } from '@/features/pricing/PriceChangeDialog';
+import { setManualPrice } from '@/features/pricing/api';
 
 export function ProductsPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('product.manage');
   const canSeeStock = hasPermission('inventory.read');
   const canSeeAlerts = hasPermission('notification.read');
+  const canManagePricing = hasPermission('pricing.manage');
   const [search, setSearch] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [categoryId, setCategoryId] = useState('');
   const [unitName, setUnitName] = useState('');
   const [posCategoryId, setPosCategoryId] = useState('');
@@ -39,6 +43,38 @@ export function ProductsPage() {
   );
   const stockTotals = useQuery({ ...stockTotalsQuery, enabled: canSeeStock });
   const alerts = useQuery({ ...activeAlertsQuery, enabled: canSeeAlerts });
+  const queryClient = useQueryClient();
+  const [savedPriceId, setSavedPriceId] = useState<number | null>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [priceEditRevision, setPriceEditRevision] = useState(0);
+  const [proposedPrice, setProposedPrice] = useState<{
+    product: Product;
+    listPrice: string;
+  } | null>(null);
+
+  const priceMutation = useMutation({
+    mutationFn: ({ id, listPrice }: { id: number; listPrice: string }) =>
+      setManualPrice(id, listPrice),
+    onSuccess: (_product, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      setSavedPriceId(id);
+      setPriceError(null);
+      setProposedPrice(null);
+      setPriceEditRevision((current) => current + 1);
+    },
+    onError: () => {
+      setSavedPriceId(null);
+      setPriceError('No se ha podido guardar el PVP. El precio anterior no ha cambiado.');
+      setProposedPrice(null);
+      setPriceEditRevision((current) => current + 1);
+    },
+  });
+
+  useEffect(() => {
+    if (savedPriceId === null) return;
+    const timer = window.setTimeout(() => setSavedPriceId(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [savedPriceId]);
 
   const stockByProduct = stockTotals.data
     ? new Map(stockTotals.data.map((total) => [total.product_id, total.quantity]))
@@ -51,6 +87,15 @@ export function ProductsPage() {
           .map((alert) => alert.product_id),
       ),
     [alerts.data],
+  );
+  const quickPriceCategoryIds = useMemo(
+    () =>
+      new Set(
+        (categories.data ?? [])
+          .filter((category) => category.quick_price_edit === true)
+          .map((category) => category.id),
+      ),
+    [categories.data],
   );
   const visibleProducts = (products.data ?? []).filter(
     (product) =>
@@ -107,7 +152,8 @@ export function ProductsPage() {
             onClick={() => setShowFilters((current) => !current)}
             aria-expanded={showFilters}
           >
-            Filtros{hasFilters ? ' · activos' : ''}
+            {showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
+            {hasFilters ? ' · activos' : ''}
           </Button>
         </div>
 
@@ -227,6 +273,7 @@ export function ProductsPage() {
 
       {products.isPending && <p className="text-sm text-slate-500">Cargando productos…</p>}
       {products.isError && <Alert tone="error">No se han podido cargar los productos.</Alert>}
+      {priceError && <Alert tone="error">{priceError}</Alert>}
       {products.isSuccess && visibleProducts.length === 0 && (
         <EmptyState
           title={hasFilters || search ? 'No hay resultados para estos filtros' : 'No hay productos'}
@@ -242,6 +289,39 @@ export function ProductsPage() {
           products={visibleProducts}
           stockByProduct={stockByProduct}
           lowStockProductIds={lowStockProductIds}
+          canManagePricing={canManagePricing}
+          quickPriceCategoryIds={quickPriceCategoryIds}
+          onSetPrice={(product, listPrice) => {
+            setPriceError(null);
+            setProposedPrice({ product, listPrice });
+          }}
+          savingPriceId={priceMutation.isPending ? (proposedPrice?.product.id ?? null) : null}
+          savedPriceId={savedPriceId}
+          priceEditRevision={priceEditRevision}
+        />
+      )}
+
+      {proposedPrice !== null && (
+        <PriceChangeDialog
+          productName={proposedPrice.product.name}
+          what="PVP"
+          current={proposedPrice.product.list_price}
+          next={proposedPrice.listPrice}
+          unitName={proposedPrice.product.base_unit_name}
+          stock={
+            stockByProduct === null ? null : (stockByProduct.get(proposedPrice.product.id) ?? '0')
+          }
+          isPending={priceMutation.isPending}
+          onCancel={() => {
+            setProposedPrice(null);
+            setPriceEditRevision((current) => current + 1);
+          }}
+          onConfirm={() =>
+            priceMutation.mutate({
+              id: proposedPrice.product.id,
+              listPrice: proposedPrice.listPrice,
+            })
+          }
         />
       )}
     </div>

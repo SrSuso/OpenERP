@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -16,38 +16,40 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
-const ME = {
-  id: 1,
-  email: 'admin@example.com',
-  full_name: 'Admin Uno',
-  role: 'ADMIN',
-  permissions: [
-    'admin.access',
-    'product.read',
-    'product.manage',
-    'pos_category.manage',
-    'pricing.manage',
-  ],
-};
+const FULL_PERMISSIONS = [
+  'admin.access',
+  'product.read',
+  'product.manage',
+  'pos_category.manage',
+  'pricing.manage',
+];
 
-/** `inUse`: ids de categoría que el backend se negaría a borrar por tener
- * productos asignados (responde 409, igual que `service.delete_category`). */
-function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
-  const categoriesInUse = new Set(inUse);
-  const categories: ProductCategory[] = [
-    {
-      id: 1,
-      name: 'Bebidas',
-      is_active: true,
-      margin_rate: null,
-      margin_amount: null,
-      price_formula: null,
-      tracks_stock: true,
-      is_sold_by_weight: false,
-      default_unit_name: null,
-      taxes: [],
-    },
-  ];
+function stubBackend({
+  permissions = FULL_PERMISSIONS,
+  emptyCategories = false,
+  categoryInUse = false,
+}: {
+  permissions?: string[];
+  emptyCategories?: boolean;
+  categoryInUse?: boolean;
+} = {}) {
+  const categories: ProductCategory[] = emptyCategories
+    ? []
+    : [
+        {
+          id: 1,
+          name: 'Bebidas',
+          is_active: true,
+          margin_rate: null,
+          margin_amount: null,
+          price_formula: null,
+          tracks_stock: true,
+          is_sold_by_weight: false,
+          quick_price_edit: false,
+          default_unit_name: null,
+          taxes: [],
+        },
+      ];
   const posCategories: PosCategory[] = [
     { id: 1, name: 'Ofertas', color: '#64748b', display_order: 0, is_active: true },
   ];
@@ -56,203 +58,184 @@ function stubBackend({ inUse = [] }: { inUse?: number[] } = {}) {
     { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '5.2', is_active: true },
     { id: 2, name: 'IVA reducido', rate: '10', surcharge_rate: '1.4', is_active: true },
   ];
-  const createCategoryCalls: Record<string, unknown>[] = [];
-  const deleteCategoryCalls: number[] = [];
-  const updateCategoryCalls: {
-    id: number;
-    name: string;
-    tracks_stock: boolean;
-    is_sold_by_weight: boolean;
-    default_unit_name: string | null;
-  }[] = [];
-  const createPosCategoryCalls: Record<string, unknown>[] = [];
-  const deactivatePosCategoryCalls: number[] = [];
-  const createUnitCalls: string[] = [];
-  const updateUnitCalls: { id: number; name: string }[] = [];
-  const deleteUnitCalls: number[] = [];
-  const moveUnitCalls: { id: number; direction: string }[] = [];
-  const categoryPricingCalls: { id: number; body: Record<string, unknown> }[] = [];
+  const calls = {
+    createCategory: [] as Record<string, unknown>[],
+    updateCategory: [] as { id: number; body: Record<string, unknown> }[],
+    categoryPricing: [] as { id: number; body: Record<string, unknown> }[],
+    deactivateCategory: [] as number[],
+    deleteCategory: [] as number[],
+    createPos: [] as Record<string, unknown>[],
+    updatePos: [] as { id: number; body: Record<string, unknown> }[],
+    createUnit: [] as string[],
+    updateUnit: [] as { id: number; name: string }[],
+    deleteUnit: [] as number[],
+  };
 
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
+      const body = () =>
+        init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
 
-      if (url.includes('/auth/me')) return Promise.resolve(jsonResponse(ME));
-
+      if (url.includes('/auth/me')) {
+        return Promise.resolve(
+          jsonResponse({
+            id: 1,
+            email: 'admin@example.com',
+            full_name: 'Admin Uno',
+            role: 'ADMIN',
+            permissions,
+          }),
+        );
+      }
       if (method === 'GET' && url.includes('/product-categories')) {
         return Promise.resolve(jsonResponse(categories));
       }
-      if (method === 'PATCH' && /\/product-categories\/(\d+)$/.test(url)) {
-        const id = Number(/\/product-categories\/(\d+)$/.exec(url)![1]);
-        const body = init?.body
-          ? (JSON.parse(init.body as string) as {
-              name: string;
-              tracks_stock: boolean;
-              is_sold_by_weight: boolean;
-              default_unit_name: string | null;
-            })
-          : { name: '', tracks_stock: true, is_sold_by_weight: false, default_unit_name: null };
-        updateCategoryCalls.push({ id, ...body });
-        const category = categories.find((c) => c.id === id)!;
-        category.name = body.name;
-        category.tracks_stock = body.tracks_stock;
-        category.is_sold_by_weight = body.is_sold_by_weight;
-        category.default_unit_name = body.default_unit_name;
+      if (method === 'POST' && /\/product-categories$/.test(url)) {
+        const payload = body();
+        calls.createCategory.push(payload);
+        const created: ProductCategory = {
+          id: 2,
+          name: payload['name'] as string,
+          is_active: true,
+          margin_rate: (payload['margin_rate'] as string | null) ?? null,
+          margin_amount: (payload['margin_amount'] as string | null) ?? null,
+          price_formula: (payload['price_formula'] as string | null) ?? null,
+          tracks_stock: payload['tracks_stock'] as boolean,
+          is_sold_by_weight: payload['is_sold_by_weight'] as boolean,
+          quick_price_edit: payload['quick_price_edit'] as boolean,
+          default_unit_name: (payload['default_unit_name'] as string | null) ?? null,
+          taxes: taxes.filter((tax) => (payload['tax_ids'] as number[]).includes(tax.id)),
+        };
+        categories.push(created);
+        return Promise.resolve(jsonResponse(created, { status: 201 }));
+      }
+      const categoryMatch = /\/product-categories\/(\d+)$/.exec(url);
+      if (method === 'PATCH' && categoryMatch) {
+        const id = Number(categoryMatch[1]);
+        const payload = body();
+        calls.updateCategory.push({ id, body: payload });
+        const category = categories.find((item) => item.id === id)!;
+        category.name = payload['name'] as string;
+        category.tracks_stock = payload['tracks_stock'] as boolean;
+        category.is_sold_by_weight = payload['is_sold_by_weight'] as boolean;
+        category.quick_price_edit = payload['quick_price_edit'] as boolean;
+        category.default_unit_name = payload['default_unit_name'] as string | null;
         return Promise.resolve(jsonResponse(category));
       }
-      if (method === 'POST' && /\/product-categories\/(\d+)\/(de)?activate$/.test(url)) {
-        const match = /\/product-categories\/(\d+)\/(de)?activate$/.exec(url)!;
-        const category = categories.find((c) => c.id === Number(match[1]))!;
-        category.is_active = match[2] === undefined;
+      const pricingMatch = /\/product-categories\/(\d+)\/pricing$/.exec(url);
+      if (method === 'PATCH' && pricingMatch) {
+        const id = Number(pricingMatch[1]);
+        const payload = body();
+        calls.categoryPricing.push({ id, body: payload });
+        const category = categories.find((item) => item.id === id)!;
+        category.margin_rate = payload['margin_rate'] as string | null;
+        category.margin_amount = payload['margin_amount'] as string | null;
+        category.price_formula = (payload['price_formula'] as string) || null;
+        category.taxes = taxes.filter((tax) => (payload['tax_ids'] as number[]).includes(tax.id));
         return Promise.resolve(jsonResponse(category));
       }
-      if (method === 'DELETE' && /\/product-categories\/(\d+)$/.test(url)) {
-        const id = Number(/\/product-categories\/(\d+)$/.exec(url)![1]);
-        deleteCategoryCalls.push(id);
-        if (categoriesInUse.has(id)) {
+      const activeMatch = /\/product-categories\/(\d+)\/(de)?activate$/.exec(url);
+      if (method === 'POST' && activeMatch) {
+        const id = Number(activeMatch[1]);
+        const category = categories.find((item) => item.id === id)!;
+        category.is_active = activeMatch[2] === undefined;
+        if (activeMatch[2]) calls.deactivateCategory.push(id);
+        return Promise.resolve(jsonResponse(category));
+      }
+      if (method === 'DELETE' && categoryMatch) {
+        const id = Number(categoryMatch[1]);
+        calls.deleteCategory.push(id);
+        if (categoryInUse) {
           return Promise.resolve(
             jsonResponse(
-              {
-                error: {
-                  code: 'conflict',
-                  message: 'No se puede borrar «Bebidas»: la usan 3 productos.',
-                },
-              },
+              { error: { code: 'conflict', message: 'La usan 3 productos.' } },
               { status: 409 },
             ),
           );
         }
         categories.splice(
-          categories.findIndex((c) => c.id === id),
+          categories.findIndex((item) => item.id === id),
           1,
         );
         return Promise.resolve(new Response(null, { status: 204 }));
       }
-      if (method === 'POST' && url.includes('/product-categories')) {
-        const body = init?.body
-          ? (JSON.parse(init.body as string) as Record<string, unknown>)
-          : { name: '' };
-        createCategoryCalls.push(body);
-        const created: ProductCategory = {
-          id: 2,
-          name: body['name'] as string,
-          is_active: true,
-          margin_rate: (body['margin_rate'] as string | null) ?? null,
-          margin_amount: (body['margin_amount'] as string | null) ?? null,
-          price_formula: (body['price_formula'] as string | null) ?? null,
-          tracks_stock: (body['tracks_stock'] as boolean | undefined) ?? true,
-          is_sold_by_weight: (body['is_sold_by_weight'] as boolean | undefined) ?? false,
-          default_unit_name: (body['default_unit_name'] as string | null | undefined) ?? null,
-          taxes: taxes.filter((tax) => (body['tax_ids'] as number[] | undefined)?.includes(tax.id)),
-        };
-        categories.push(created);
-        return Promise.resolve(jsonResponse(created, { status: 201 }));
-      }
-      if (method === 'PATCH' && /\/product-categories\/(\d+)\/pricing$/.test(url)) {
-        const id = Number(/\/product-categories\/(\d+)\/pricing$/.exec(url)![1]);
-        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
-        categoryPricingCalls.push({ id, body });
-        const category = categories.find((c) => c.id === id)!;
-        if ('margin_rate' in body) category.margin_rate = body['margin_rate'] as string | null;
-        if ('tax_ids' in body) {
-          const ids = body['tax_ids'] as number[];
-          category.taxes = taxes.filter((t) => ids.includes(t.id));
-        }
-        return Promise.resolve(jsonResponse(category));
-      }
+
       if (method === 'GET' && url.includes('/pos-categories')) {
         return Promise.resolve(jsonResponse(posCategories));
       }
       if (method === 'POST' && /\/pos-categories$/.test(url)) {
-        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
-        createPosCategoryCalls.push(body);
+        const payload = body();
+        calls.createPos.push(payload);
         const created: PosCategory = {
           id: 2,
-          name: body['name'] as string,
-          color: body['color'] as string,
-          display_order: body['display_order'] as number,
+          name: payload['name'] as string,
+          color: payload['color'] as string,
+          display_order: payload['display_order'] as number,
           is_active: true,
         };
         posCategories.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
-      if (method === 'POST' && /\/pos-categories\/(\d+)\/deactivate$/.test(url)) {
-        const id = Number(/\/pos-categories\/(\d+)\/deactivate$/.exec(url)![1]);
-        deactivatePosCategoryCalls.push(id);
-        const category = posCategories.find((c) => c.id === id)!;
-        category.is_active = false;
+      const posMatch = /\/pos-categories\/(\d+)$/.exec(url);
+      if (method === 'PATCH' && posMatch) {
+        const id = Number(posMatch[1]);
+        const payload = body();
+        calls.updatePos.push({ id, body: payload });
+        const category = posCategories.find((item) => item.id === id)!;
+        category.name = payload['name'] as string;
+        category.color = payload['color'] as string;
+        category.display_order = payload['display_order'] as number;
         return Promise.resolve(jsonResponse(category));
       }
-      if (method === 'GET' && url.includes('/units')) {
-        return Promise.resolve(jsonResponse(units));
+      const posActive = /\/pos-categories\/(\d+)\/(de)?activate$/.exec(url);
+      if (method === 'POST' && posActive) {
+        const category = posCategories.find((item) => item.id === Number(posActive[1]))!;
+        category.is_active = posActive[2] === undefined;
+        return Promise.resolve(jsonResponse(category));
       }
+      if (method === 'DELETE' && posMatch) {
+        posCategories.splice(
+          posCategories.findIndex((item) => item.id === Number(posMatch[1])),
+          1,
+        );
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+
+      if (method === 'GET' && url.includes('/units')) return Promise.resolve(jsonResponse(units));
       if (method === 'POST' && /\/units$/.test(url)) {
-        const body = init?.body
-          ? (JSON.parse(init.body as string) as { name: string })
-          : { name: '' };
-        createUnitCalls.push(body.name);
-        const created: Unit = {
-          id: units.length + 1,
-          name: body.name,
-          display_order: units.length,
-        };
+        const name = body()['name'] as string;
+        calls.createUnit.push(name);
+        const created = { id: units.length + 1, name, display_order: units.length };
         units.push(created);
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
-      if (method === 'PATCH' && /\/units\/(\d+)$/.test(url)) {
-        const id = Number(/\/units\/(\d+)$/.exec(url)![1]);
-        const body = init?.body
-          ? (JSON.parse(init.body as string) as { name: string })
-          : { name: '' };
-        updateUnitCalls.push({ id, name: body.name });
+      const unitMatch = /\/units\/(\d+)$/.exec(url);
+      if (method === 'PATCH' && unitMatch) {
+        const id = Number(unitMatch[1]);
+        const name = body()['name'] as string;
+        calls.updateUnit.push({ id, name });
         const unit = units.find((item) => item.id === id)!;
-        unit.name = body.name;
+        unit.name = name;
         return Promise.resolve(jsonResponse(unit));
       }
-      if (method === 'DELETE' && /\/units\/(\d+)$/.test(url)) {
-        const id = Number(/\/units\/(\d+)$/.exec(url)![1]);
-        deleteUnitCalls.push(id);
+      if (method === 'DELETE' && unitMatch) {
+        const id = Number(unitMatch[1]);
+        calls.deleteUnit.push(id);
         units.splice(
           units.findIndex((item) => item.id === id),
           1,
         );
         return Promise.resolve(new Response(null, { status: 204 }));
       }
-      if (method === 'POST' && /\/units\/(\d+)\/move$/.test(url)) {
-        const id = Number(/\/units\/(\d+)\/move$/.exec(url)![1]);
-        const body = init?.body
-          ? (JSON.parse(init.body as string) as { direction: string })
-          : { direction: '' };
-        moveUnitCalls.push({ id, direction: body.direction });
-        const index = units.findIndex((u) => u.id === id);
-        const target = body.direction === 'up' ? index - 1 : index + 1;
-        if (index >= 0 && target >= 0 && target < units.length) {
-          [units[index], units[target]] = [units[target]!, units[index]!];
-        }
-        return Promise.resolve(jsonResponse(units));
-      }
-      if (method === 'GET' && url.includes('/taxes')) {
-        return Promise.resolve(jsonResponse(taxes));
-      }
-
-      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
+      if (method === 'GET' && url.includes('/taxes')) return Promise.resolve(jsonResponse(taxes));
+      return Promise.reject(new Error(`Unexpected fetch to ${method} ${url}`));
     }),
   );
 
-  return {
-    createCategoryCalls,
-    deleteCategoryCalls,
-    updateCategoryCalls,
-    createPosCategoryCalls,
-    deactivatePosCategoryCalls,
-    createUnitCalls,
-    updateUnitCalls,
-    deleteUnitCalls,
-    moveUnitCalls,
-    categoryPricingCalls,
-  };
+  return calls;
 }
 
 function renderPage() {
@@ -266,388 +249,183 @@ function renderPage() {
   );
 }
 
-describe('CategoriesPage', () => {
-  it('lists product categories, POS categories and units', async () => {
+describe('CategoriesPage V2', () => {
+  it('starts with product categories and separates TPV and units into clear sections', async () => {
     stubBackend();
     renderPage();
-
-    expect(await screen.findByText('Bebidas')).toBeInTheDocument();
-    expect(screen.getByText('Ofertas')).toBeInTheDocument();
-    expect(screen.getAllByText('UNIT')).not.toHaveLength(0);
+    expect(await screen.findByRole('heading', { name: 'Categorías' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Categorías de producto' })).toBeInTheDocument();
+    expect(await screen.findByText('Control de stock')).toBeInTheDocument();
+    expect(screen.queryByText('Ofertas')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'TPV' }));
+    expect(await screen.findByRole('heading', { name: 'Categorías del TPV' })).toBeInTheDocument();
+    expect(screen.getByText(/No cambian la categoría de inventario/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Unidades' }));
+    expect(await screen.findByRole('heading', { name: 'Unidades' })).toBeInTheDocument();
   });
 
-  it('keeps product categories in one half and POS categories with units in the other', async () => {
-    stubBackend();
+  it('creates a complete category with independent stock, weight and quick-PVP choices', async () => {
+    const calls = stubBackend();
     renderPage();
-
+    const user = userEvent.setup();
     await screen.findByText('Bebidas');
-    expect(
-      within(screen.getByTestId('product-categories-column')).getByRole('heading', {
-        name: 'Categorías de producto',
-      }),
-    ).toBeInTheDocument();
-    const settingsColumn = screen.getByTestId('catalog-settings-column');
-    expect(
-      within(settingsColumn).getByRole('heading', { name: 'Categorías POS' }),
-    ).toBeInTheDocument();
-    expect(within(settingsColumn).getByRole('heading', { name: 'Unidades' })).toBeInTheDocument();
-  });
+    await user.click(screen.getByRole('button', { name: '+ Nueva categoría' }));
+    await user.type(screen.getByLabelText('Nombre'), 'Fruta');
+    await user.selectOptions(screen.getByLabelText('Unidad por defecto'), 'UNIT');
+    await user.click(screen.getByRole('checkbox', { name: /Vender al peso/ }));
+    await user.click(screen.getByRole('checkbox', { name: /Permitir cambiar el PVP/ }));
+    await user.type(screen.getByLabelText('Margen porcentual (%)'), '25');
+    await user.type(screen.getByLabelText('Margen fijo (€)'), '0,20');
+    await user.type(screen.getByLabelText('Fórmula'), 'cost * 2');
+    await user.click(screen.getByRole('button', { name: /IVA general/ }));
+    await user.click(screen.getByRole('button', { name: 'Crear categoría' }));
 
-  it('creates a product category', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.type(screen.getByPlaceholderText('Nombre de la categoría'), 'Lácteos');
-    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
-
-    expect(await screen.findByText('Lácteos')).toBeInTheDocument();
-    expect(backend.createCategoryCalls).toEqual([
+    expect(await screen.findByText('Fruta')).toBeInTheDocument();
+    expect(calls.createCategory).toEqual([
       {
-        name: 'Lácteos',
+        name: 'Fruta',
         tracks_stock: true,
-        is_sold_by_weight: false,
-        default_unit_name: null,
-        margin_rate: null,
-        margin_amount: null,
-        price_formula: null,
-        tax_ids: [],
-      },
-    ]);
-  });
-
-  it('marks a product category to ask for grams in the POS', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.type(screen.getByPlaceholderText('Nombre de la categoría'), 'Charcutería');
-    await userEvent.click(screen.getByRole('checkbox', { name: /Vender al peso en el TPV/ }));
-    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
-
-    expect(backend.createCategoryCalls[0]).toMatchObject({
-      name: 'Charcutería',
-      is_sold_by_weight: true,
-    });
-  });
-
-  it('chooses a category default unit from a dropdown', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.type(screen.getByPlaceholderText('Nombre de la categoría'), 'Charcutería');
-    await userEvent.selectOptions(
-      screen.getByLabelText('Unidad por defecto de sus productos'),
-      'UNIT',
-    );
-    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
-
-    expect(backend.createCategoryCalls[0]).toMatchObject({
-      name: 'Charcutería',
-      default_unit_name: 'UNIT',
-    });
-  });
-
-  it('creates a product category with all its initial defaults', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.type(screen.getByLabelText('Nombre de la categoría'), 'Congelados');
-    await userEvent.type(screen.getByLabelText('Margen por defecto (%)'), '25');
-    await userEvent.type(screen.getByLabelText('Margen fijo por defecto (€)'), '0.25');
-    await userEvent.type(screen.getByLabelText('Fórmula por defecto'), 'cost * 2');
-    await userEvent.click(screen.getByRole('checkbox', { name: /Llevar control de existencias/ }));
-    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
-    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[0]!);
-
-    expect(await screen.findByText('Congelados')).toBeInTheDocument();
-    expect(backend.createCategoryCalls).toEqual([
-      {
-        name: 'Congelados',
-        tracks_stock: false,
-        is_sold_by_weight: false,
-        default_unit_name: null,
+        is_sold_by_weight: true,
+        quick_price_edit: true,
+        default_unit_name: 'UNIT',
         margin_rate: '25',
-        margin_amount: '0.25',
+        margin_amount: '0,20',
         price_formula: 'cost * 2',
         tax_ids: [1],
       },
     ]);
+    expect(screen.getByText('Control de stock · Por peso · PVP rápido')).toBeInTheDocument();
   });
 
-  it('creates a POS category with a name, color and order', async () => {
-    const backend = stubBackend();
+  it('edits all category blocks and sends quick PVP independently from weight sales', async () => {
+    const calls = stubBackend();
     renderPage();
-    await screen.findByText('Ofertas');
-
-    const posPanel = screen.getByRole('heading', { name: 'Categorías POS' }).parentElement!;
-    await userEvent.type(within(posPanel).getByLabelText('Nombre'), 'Congelados');
-    // Tres botones "Añadir" en esta página (categorías de producto, POS y
-    // unidades); el de POS es el segundo en el orden del DOM.
-    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[1]!);
-
-    await screen.findByText('Congelados');
-    expect(backend.createPosCategoryCalls).toEqual([
-      { name: 'Congelados', color: '#64748b', display_order: 0 },
-    ]);
-  });
-
-  it('deactivates a POS category', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Ofertas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Ofertas»' }));
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: 'Ocultar' }));
-    confirmSpy.mockRestore();
-
-    await screen.findByText(/Ofertas.*oculta/);
-    expect(backend.deactivatePosCategoryCalls).toEqual([1]);
-  });
-
-  it('creates a unit', async () => {
-    const backend = stubBackend();
-    renderPage();
-    const unitsPanel = screen.getByRole('heading', { name: 'Unidades' }).parentElement!;
-    await within(unitsPanel).findByText('UNIT');
-
-    await userEvent.type(screen.getByPlaceholderText('UNIT, KG, L…'), 'kg');
-    await userEvent.click(screen.getAllByRole('button', { name: 'Añadir' })[2]!);
-
-    expect(await within(unitsPanel).findByText('KG')).toBeInTheDocument();
-    expect(backend.createUnitCalls).toEqual(['KG']);
-  });
-
-  it('renames and deletes an unused custom unit', async () => {
-    const backend = stubBackend();
-    renderPage();
-    const unitsPanel = screen.getByRole('heading', { name: 'Unidades' }).parentElement!;
-    await within(unitsPanel).findByText('UNIT');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar unidad «UNIT»' }));
-    const nameInput = screen.getByLabelText('Nombre de la unidad «UNIT»');
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, 'caja');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    expect(await within(unitsPanel).findByText('CAJA')).toBeInTheDocument();
-    expect(backend.updateUnitCalls).toEqual([{ id: 1, name: 'CAJA' }]);
-
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: 'Borrar unidad «CAJA»' }));
-    expect(await within(unitsPanel).findByText('Todavía no hay ninguna.')).toBeInTheDocument();
-    expect(backend.deleteUnitCalls).toEqual([1]);
-    confirmSpy.mockRestore();
-  });
-
-  it('sets a category default margin and taxes', async () => {
-    const backend = stubBackend();
-    renderPage();
+    const user = userEvent.setup();
     await screen.findByText('Bebidas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    const marginInput = screen.getByPlaceholderText('vacío = sin margen por defecto');
-    await userEvent.type(marginInput, '25');
-    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    expect(backend.categoryPricingCalls).toEqual([
-      { id: 1, body: { margin_rate: '25', margin_amount: null, price_formula: '', tax_ids: [1] } },
-    ]);
-  });
-
-  it('renames a category already created, and can back out without saving', async () => {
-    const backend = stubBackend();
-    // Salir con algo escrito y sin guardar pregunta antes: aquí se dice
-    // que sí, que se descarte.
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    await userEvent.clear(screen.getByLabelText('Nombre de «Bebidas»'));
-    await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('no has guardado'));
-    expect(backend.updateCategoryCalls).toEqual([]);
-    expect(screen.getByText('Bebidas')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Nombre de «Bebidas»')).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    await userEvent.clear(screen.getByLabelText('Nombre de «Bebidas»'));
-    await userEvent.type(screen.getByLabelText('Nombre de «Bebidas»'), 'Refrescos');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await user.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    await user.clear(screen.getByLabelText('Nombre'));
+    await user.type(screen.getByLabelText('Nombre'), 'Refrescos');
+    await user.click(screen.getByRole('checkbox', { name: /Llevar control/ }));
+    await user.click(screen.getByRole('checkbox', { name: /Permitir cambiar el PVP/ }));
+    await user.selectOptions(screen.getByLabelText('Unidad por defecto'), 'UNIT');
+    await user.type(screen.getByLabelText('Margen fijo (€)'), '0.25');
+    await user.click(screen.getByRole('button', { name: /IVA reducido/ }));
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     expect(await screen.findByText('Refrescos')).toBeInTheDocument();
-    expect(backend.updateCategoryCalls).toEqual([
+    expect(calls.updateCategory).toEqual([
       {
         id: 1,
-        name: 'Refrescos',
-        tracks_stock: true,
-        is_sold_by_weight: false,
-        default_unit_name: null,
-      },
-    ]);
-  });
-
-  it('sets a fixed amount and a formula that its products inherit', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    // Las tres formas de poner precio conviven: porcentaje, cantidad fija
-    // en euros, y una fórmula para toda la familia.
-    await userEvent.type(screen.getByPlaceholderText('p. ej. 0,25'), '0.25');
-    await userEvent.type(screen.getByLabelText('Fórmula por defecto'), 'cost * 2');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    await waitFor(() => {
-      expect(backend.categoryPricingCalls).toEqual([
-        {
-          id: 1,
-          body: {
-            margin_rate: null,
-            margin_amount: '0.25',
-            price_formula: 'cost * 2',
-            tax_ids: [],
-          },
-        },
-      ]);
-    });
-  });
-
-  it('lets a whole category sell without stock control', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    const check = screen.getByRole('checkbox', { name: /Llevar control de existencias/ });
-    expect(check).toBeChecked();
-    await userEvent.click(check);
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    await waitFor(() => {
-      expect(backend.updateCategoryCalls).toEqual([
-        {
-          id: 1,
-          name: 'Bebidas',
+        body: {
+          name: 'Refrescos',
           tracks_stock: false,
           is_sold_by_weight: false,
-          default_unit_name: null,
+          quick_price_edit: true,
+          default_unit_name: 'UNIT',
         },
-      ]);
-    });
-  });
-
-  it('keeps what was typed when the discard confirmation is refused', async () => {
-    stubBackend();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    await userEvent.type(screen.getByPlaceholderText('p. ej. 0,25'), '0.25');
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-
-    expect(confirmSpy).toHaveBeenCalled();
-    // Sigue abierto y con lo tecleado: nadie ha perdido nada.
-    expect(screen.getByPlaceholderText('p. ej. 0,25')).toHaveValue('0.25');
-  });
-
-  it('closes without asking when nothing was touched', async () => {
-    stubBackend();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-
-    expect(confirmSpy).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText('Nombre de «Bebidas»')).not.toBeInTheDocument();
-  });
-
-  it('applies one tax at a time: choosing another replaces the one marked', async () => {
-    const backend = stubBackend();
-    renderPage();
-    await screen.findByText('Bebidas');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
-    await userEvent.click(screen.getByRole('button', { name: /IVA reducido/ }));
-
-    expect(screen.getByRole('button', { name: /IVA general/ })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
-    expect(screen.getByRole('button', { name: /IVA reducido/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    expect(backend.categoryPricingCalls).toEqual([
+      },
+    ]);
+    expect(calls.categoryPricing).toEqual([
       {
         id: 1,
-        body: { margin_rate: null, margin_amount: null, price_formula: '', tax_ids: [2] },
+        body: { margin_rate: null, margin_amount: '0.25', price_formula: '', tax_ids: [2] },
       },
     ]);
   });
 
-  it('asks before hiding a category, and does nothing if you say no', async () => {
+  it('protects unsaved edits when changing section or cancelling', async () => {
     stubBackend();
     renderPage();
-    await screen.findByText('Bebidas');
+    const user = userEvent.setup();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Ocultar' }));
-
-    expect(confirm).toHaveBeenCalledOnce();
-    expect(screen.queryByText('(oculta)')).not.toBeInTheDocument();
-
+    await screen.findByText('Bebidas');
+    await user.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    await user.type(screen.getByLabelText('Margen fijo (€)'), '0.25');
+    await waitFor(() => expect(screen.getByLabelText('Margen fijo (€)')).toHaveValue('0.25'));
+    await user.click(screen.getByRole('button', { name: 'TPV' }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Categorías de producto' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByLabelText('Margen fijo (€)')).toHaveValue('0.25');
     confirm.mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: 'Ocultar' }));
-
-    expect(await screen.findByText('(oculta)')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Mostrar' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByLabelText('Margen fijo (€)')).not.toBeInTheDocument();
     confirm.mockRestore();
   });
 
-  it('asks before deleting, and explains why it is refused when the category is in use', async () => {
-    const backend = stubBackend({ inUse: [1] });
+  it('keeps hide/delete secondary and reports a protected category', async () => {
+    const calls = stubBackend({ categoryInUse: true });
     renderPage();
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     await screen.findByText('Bebidas');
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await user.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    const advanced = screen.getByText('Acciones avanzadas').closest('details')!;
+    expect(advanced).not.toHaveAttribute('open');
+    await user.click(screen.getByText('Acciones avanzadas'));
+    expect(advanced).toHaveAttribute('open');
+    await user.click(screen.getByRole('button', { name: 'Ocultar categoría' }));
+    expect(calls.deactivateCategory).toEqual([1]);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Borrar' }));
-
-    expect(confirm).toHaveBeenCalledOnce();
-    expect(backend.deleteCategoryCalls).toEqual([]);
-
-    confirm.mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: 'Borrar' }));
-
-    expect(await screen.findByText(/la usan 3 productos/)).toBeInTheDocument();
-    expect(backend.deleteCategoryCalls).toEqual([1]);
-    expect(screen.getByText('Bebidas')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Editar «Bebidas»' }));
+    await user.click(screen.getByText('Acciones avanzadas'));
+    await user.click(screen.getByRole('button', { name: 'Borrar definitivamente' }));
+    expect(await screen.findByText('La usan 3 productos.')).toBeInTheDocument();
+    expect(calls.deleteCategory).toEqual([1]);
     confirm.mockRestore();
   });
 
-  it('lists units without presenting them as a priority order', async () => {
-    stubBackend();
+  it('respects view-only permissions and presents a useful empty state', async () => {
+    stubBackend({ permissions: ['admin.access', 'product.read'], emptyCategories: true });
     renderPage();
-    const unitsPanel = screen.getByRole('heading', { name: 'Unidades' }).parentElement!;
-    await within(unitsPanel).findByText('UNIT');
+    expect(await screen.findByText('Todavía no hay categorías de producto')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Nueva categoría' })).not.toBeInTheDocument();
+  });
 
+  it('creates and edits a TPV category in its own section', async () => {
+    const calls = stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'TPV' }));
+    await screen.findByText('Ofertas');
+    await user.click(screen.getByRole('button', { name: '+ Nueva categoría TPV' }));
+    await user.type(screen.getByLabelText('Nombre'), 'Congelados');
+    await user.clear(screen.getByLabelText('Orden'));
+    await user.type(screen.getByLabelText('Orden'), '2');
+    await user.click(screen.getByRole('button', { name: 'Crear' }));
+    expect(await screen.findByText('Congelados')).toBeInTheDocument();
+    expect(calls.createPos).toEqual([{ name: 'Congelados', color: '#64748b', display_order: 2 }]);
+
+    await user.click(screen.getByRole('button', { name: 'Editar «Ofertas»' }));
+    await user.clear(screen.getByLabelText('Nombre'));
+    await user.type(screen.getByLabelText('Nombre'), 'Promociones');
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(await screen.findByText('Promociones')).toBeInTheDocument();
+    expect(calls.updatePos[0]).toMatchObject({ id: 1, body: { name: 'Promociones' } });
+  });
+
+  it('creates, renames and deletes a custom unit without priority controls', async () => {
+    const calls = stubBackend();
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Unidades' }));
+    await screen.findByText('UNIT');
     expect(screen.queryByRole('button', { name: /Subir|Bajar/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '+ Nueva unidad' }));
+    await user.type(screen.getByLabelText('Nombre corto'), 'caja');
+    await user.click(screen.getByRole('button', { name: 'Crear unidad' }));
+    expect(await screen.findByText('CAJA')).toBeInTheDocument();
+    expect(calls.createUnit).toEqual(['CAJA']);
+
+    await user.click(screen.getByRole('button', { name: 'Editar unidad «UNIT»' }));
+    const input = screen.getByLabelText('Nombre de la unidad «UNIT»');
+    await user.clear(input);
+    await user.type(input, 'botella');
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(await screen.findByText('BOTELLA')).toBeInTheDocument();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: 'Borrar unidad «BOTELLA»' }));
+    expect(calls.deleteUnit).toEqual([1]);
+    confirm.mockRestore();
   });
 });
