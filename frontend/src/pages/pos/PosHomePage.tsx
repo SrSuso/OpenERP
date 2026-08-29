@@ -515,13 +515,6 @@ export function PosHomePage() {
                             disabled={sale === null || busy}
                             className="min-h-14 flex-1 rounded border border-slate-600 bg-slate-900 px-4 py-3 text-lg text-slate-50 disabled:opacity-50"
                           />
-                          <button
-                            type="submit"
-                            disabled={sale === null || busy || barcode.trim() === ''}
-                            className="min-h-14 rounded bg-slate-700 px-5 py-3 text-base font-medium hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            Añadir
-                          </button>
                         </form>
 
                         {lineError && (
