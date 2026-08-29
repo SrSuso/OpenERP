@@ -43,6 +43,7 @@ export function LotsPage() {
     mutationFn: (payload: LotCreateInput) => createLot(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['lots', 'list', Number(productId)] });
+      void queryClient.invalidateQueries({ queryKey: ['lots', 'balances', Number(productId)] });
       setCreateError(null);
     },
     onError: () => setCreateError('No se ha podido crear el lote.'),

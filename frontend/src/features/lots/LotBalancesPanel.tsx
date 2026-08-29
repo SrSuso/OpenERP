@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 
 import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
+import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import {
   consumeFefo,
   lotBalancesQuery,
@@ -43,6 +44,12 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
     ...lotBalancesQuery(productId, Number(warehouseId), Number(locationId)),
     enabled: warehouseId !== '' && locationId !== '',
   });
+
+  // En una tienda con una sola caja/almacén, el saldo por lote debe estar
+  // listo al abrirse. Si se cambia el almacén, la ubicación anterior se
+  // invalida y el mismo hook elige la primera de ese almacén.
+  useDefaultToFirstOption(warehouseId, warehouses.data, setWarehouseId);
+  useDefaultToFirstOption(locationId, locations.data, setLocationId);
 
   const quantityValid = decimalString({ min: 0.000001 }).safeParse(quantity).success;
   const countedQuantityValid = decimalString({ min: 0 }).safeParse(countedQuantity).success;

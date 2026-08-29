@@ -206,8 +206,8 @@ describe('LotsPage', () => {
     await waitFor(() => expect(within(form).getByLabelText('Ubicación')).toHaveValue('1'));
     await userEvent.click(within(form).getByRole('button', { name: 'Crear lote' }));
 
-    await screen.findByText('L2026-01');
-    expect(screen.getByText('2026-09-01')).toBeInTheDocument();
+    await screen.findAllByText('L2026-01');
+    expect(screen.getAllByText('2026-09-01')).not.toHaveLength(0);
     expect(lotCreateCalls).toEqual([
       expect.objectContaining({
         opening_stock: { warehouse_id: 1, location_id: 1, quantity: '10' },
@@ -216,11 +216,11 @@ describe('LotsPage', () => {
 
     // Saldo por lote + plan FEFO
     const fefoPanel = screen.getByRole('heading', { name: 'Saldo por lote y FEFO' }).parentElement!;
-    await userEvent.selectOptions(within(fefoPanel).getByLabelText('Almacén'), '1');
-    await userEvent.selectOptions(within(fefoPanel).getByLabelText('Ubicación'), '1');
+    await waitFor(() => expect(within(fefoPanel).getByLabelText('Almacén')).toHaveValue('1'));
+    await waitFor(() => expect(within(fefoPanel).getByLabelText('Ubicación')).toHaveValue('1'));
     // Aparece dos veces: en la tabla de lotes del producto y en el saldo
     // por lote del almacén/ubicación elegidos.
-    expect(await screen.findAllByText('L2026-01')).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText('L2026-01')).toHaveLength(2));
 
     await userEvent.type(screen.getByLabelText('Cantidad a sacar'), '5');
     await userEvent.click(screen.getByRole('button', { name: 'Ver plan' }));
@@ -248,16 +248,17 @@ describe('LotsPage', () => {
     await userEvent.type(within(form).getByLabelText('Nº de lote'), 'L-ORIGINAL');
     await userEvent.click(within(form).getByRole('button', { name: 'Crear lote' }));
 
-    await screen.findByText('L-ORIGINAL');
+    await screen.findAllByText('L-ORIGINAL');
     await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
-    const lotNumber = within(screen.getByRole('table')).getByLabelText('Nº de lote');
+    const lotNumber = within(screen.getAllByRole('table')[0]).getByLabelText('Nº de lote');
     await userEvent.clear(lotNumber);
     await userEvent.type(lotNumber, 'L-CORREGIDO');
     await userEvent.type(screen.getByLabelText('Caducidad'), '2026-12-31');
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
-    expect(await screen.findByText('L-CORREGIDO')).toBeInTheDocument();
-    expect(screen.getByText('2026-12-31')).toBeInTheDocument();
+    const lotsTable = screen.getAllByRole('table')[0];
+    expect(await within(lotsTable).findByText('L-CORREGIDO')).toBeInTheDocument();
+    expect(within(lotsTable).getByText('2026-12-31')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
     await screen.findByText('Este producto todavía no tiene lotes.');
   });
