@@ -51,6 +51,36 @@ async def test_admin_can_create_a_product_with_its_base_package(
     assert [b["barcode"] for b in base["barcodes"]] == ["111111"]
 
 
+async def test_expiration_always_enables_lots_and_stock(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Caducidad sin lote ni existencias deja fechas sin unidades a las que
+    asociarse, por lo que el servicio corrige también llamadas directas."""
+    await login(role_name="ADMIN")
+    created = await client.post(
+        "/api/v1/products",
+        json=_product_payload(track_lots=False, track_expiration=True, tracks_stock=False),
+    )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["track_expiration"] is True
+    assert body["track_lots"] is True
+    assert body["tracks_stock"] is True
+    assert body["effective_tracks_stock"] is True
+
+    # Tampoco puede desactivarse lotes o stock mientras siga habiendo
+    # caducidad, aunque la petición no vuelva a mencionarla.
+    incompatible = await client.patch(
+        f"/api/v1/products/{body['id']}",
+        json={"track_lots": False, "tracks_stock": False},
+    )
+    assert incompatible.status_code == 200
+    assert incompatible.json()["track_lots"] is True
+    assert incompatible.json()["tracks_stock"] is True
+    assert incompatible.json()["effective_tracks_stock"] is True
+
+
 async def test_admin_can_edit_or_clear_the_base_barcode_from_the_product(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

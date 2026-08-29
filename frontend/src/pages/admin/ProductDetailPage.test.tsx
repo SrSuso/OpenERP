@@ -428,6 +428,29 @@ describe('ProductDetailPage', () => {
     expect(backend.updateCalls[1]).not.toHaveProperty('tracks_stock');
   });
 
+  it('makes lots and stock mandatory when expiry tracking is enabled', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByDisplayValue('Agua 1L');
+    await userEvent.click(screen.getByLabelText('Controla caducidad'));
+
+    expect(screen.getByLabelText('Controla lotes')).toBeChecked();
+    expect(screen.getByLabelText('Controla lotes')).toBeDisabled();
+    const stockControl = screen.getByLabelText(/Control de existencias/);
+    expect(stockControl).toHaveValue('yes');
+    expect(stockControl).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => {
+      expect(backend.updateCalls[0]).toMatchObject({
+        track_expiration: true,
+        track_lots: true,
+        tracks_stock: true,
+      });
+    });
+  });
+
   it('allows correcting the base unit from the managed unit selector', async () => {
     const backend = stubBackend();
     renderPage();

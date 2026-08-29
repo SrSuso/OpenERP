@@ -137,7 +137,12 @@ export function CreateProductForm({
   const marginInput = watch('margin_rate');
   const amountInput = watch('margin_amount');
   const categoryId = watch('category_id');
+  const tracksExpiration = watch('track_expiration');
   const [estimatedPrice, setEstimatedPrice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tracksExpiration) setValue('track_lots', true);
+  }, [setValue, tracksExpiration]);
 
   useEffect(() => {
     const defaultUnit = categories.find(
@@ -430,15 +435,22 @@ export function CreateProductForm({
           )}
         </label>
 
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('track_lots')} />
-          Controla lotes
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('track_expiration')} />
-          Controla caducidad
-        </label>
+        <div className="text-sm text-slate-600 sm:col-span-2">
+          <p className="mb-2 text-xs font-medium uppercase text-slate-500">Trazabilidad</p>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" disabled={tracksExpiration} {...register('track_lots')} />
+              Controla lotes
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" {...register('track_expiration')} />
+              Controla caducidad
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-slate-400">
+            La caducidad requiere lotes y control de existencias; se activan automáticamente.
+          </p>
+        </div>
 
         <div className="text-sm text-slate-600 sm:col-span-3">
           <label className="flex items-center gap-2">

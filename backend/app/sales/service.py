@@ -436,7 +436,7 @@ def _new_line(
         cold_drink_surcharge=cold_drink_surcharge,
         unit_cost=product.cost,
         tracks_stock=catalog_stock.tracks_stock(product),
-        track_lots=product.track_lots,
+        track_lots=catalog_stock.tracks_lots(product),
         tax_rate=tax_rate,
         discount_rate=discount_rate,
     )

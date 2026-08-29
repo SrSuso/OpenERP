@@ -661,12 +661,12 @@ async def create_goods_receipt(
             )
 
         product = po_line.product
-        if product.track_lots and not line_payload.lot_number:
+        if catalog_stock.tracks_lots(product) and not line_payload.lot_number:
             raise ValidationError(
                 f"Line {po_line.id}: product {po_line.product_id} tracks lots; "
                 "lot_number is required."
             )
-        if not product.track_lots and line_payload.lot_number:
+        if not catalog_stock.tracks_lots(product) and line_payload.lot_number:
             raise ValidationError(
                 f"Line {po_line.id}: product {po_line.product_id} does not track lots; "
                 "lot_number is forbidden."

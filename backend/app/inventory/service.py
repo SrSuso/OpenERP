@@ -27,6 +27,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
+from app.catalog import stock as catalog_stock
 from app.catalog.models import Product
 from app.core.context import get_user_id
 from app.core.errors import NotFoundError, ValidationError
@@ -152,9 +153,9 @@ async def validate_inventory_context(
             raise ValidationError(f"Lot {lot_id} does not belong to product {product_id}.")
 
     if enforce_lot_policy:
-        if product.track_lots and lot is None:
+        if catalog_stock.tracks_lots(product) and lot is None:
             raise ValidationError(f"Product {product_id} tracks lots; lot_id is required.")
-        if not product.track_lots and lot is not None:
+        if not catalog_stock.tracks_lots(product) and lot is not None:
             raise ValidationError(f"Product {product_id} does not track lots; lot_id is forbidden.")
 
     return InventoryContext(product=product, warehouse=warehouse, location=location, lot=lot)

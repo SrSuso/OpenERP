@@ -64,7 +64,7 @@ def product_to_read(product: Product) -> ProductRead:
         taxes=[ProductTaxRead(id=t.id, name=t.name, rate=t.rate) for t in product.taxes],
         price_formula=product.price_formula,
         min_stock=product.min_stock,
-        track_lots=product.track_lots,
+        track_lots=stock.tracks_lots(product),
         track_expiration=product.track_expiration,
         tracks_stock=product.tracks_stock,
         effective_tracks_stock=stock.tracks_stock(product),

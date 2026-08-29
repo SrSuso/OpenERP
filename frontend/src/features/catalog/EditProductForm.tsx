@@ -66,6 +66,8 @@ export function EditProductForm({
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<EditProductFormValues>({
     resolver: zodResolver(editProductSchema),
@@ -84,6 +86,18 @@ export function EditProductForm({
       tracks_stock: product.tracks_stock === null ? 'inherit' : product.tracks_stock ? 'yes' : 'no',
     },
   });
+
+  const tracksExpiration = watch('track_expiration');
+
+  // No permitimos configurar una fecha sin tener qué lote ni qué unidades
+  // vigilar. Esto deja la ficha en el mismo estado que impondrá el backend
+  // aunque el producto fuera una ficha antigua e incoherente.
+  useEffect(() => {
+    if (tracksExpiration) {
+      setValue('track_lots', true);
+      setValue('tracks_stock', 'yes');
+    }
+  }, [setValue, tracksExpiration]);
 
   useUnsavedWarning(isDirty);
 
@@ -252,6 +266,7 @@ export function EditProductForm({
             Control de existencias
             <select
               className="mt-1 block w-64 rounded border border-slate-300 px-3 py-2 text-sm"
+              disabled={tracksExpiration}
               {...register('tracks_stock')}
             >
               <option value="inherit">
@@ -266,17 +281,21 @@ export function EditProductForm({
             «No se agota» es para lo que se repone del saco sin contarlo: se vende sin comprobar ni
             descontar existencias, así que la caja nunca se planta por falta de stock.
           </span>
+          <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+            <p className="text-xs font-medium uppercase text-slate-500">Trazabilidad</p>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" disabled={tracksExpiration} {...register('track_lots')} />
+              Controla lotes
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" {...register('track_expiration')} />
+              Controla caducidad
+            </label>
+            <p className="text-xs text-slate-400">
+              La caducidad requiere lotes y control de existencias; se activan automáticamente.
+            </p>
+          </div>
         </div>
-
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('track_lots')} />
-          Controla lotes
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('track_expiration')} />
-          Controla caducidad
-        </label>
 
         <div className="text-sm text-slate-600 sm:col-span-3">
           <label className="flex items-center gap-2">

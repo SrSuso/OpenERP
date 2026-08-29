@@ -18,6 +18,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
+from app.catalog import stock as catalog_stock
 from app.catalog.models import Product
 from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
@@ -155,7 +156,7 @@ async def lot_balances(
         lot_id=None,
         enforce_lot_policy=False,
     )
-    if not context.product.track_lots:
+    if not catalog_stock.tracks_lots(context.product):
         raise ValidationError(f"Product {product_id} does not track lots.")
     stmt = (
         select(StockBalance, Lot)

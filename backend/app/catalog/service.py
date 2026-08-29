@@ -755,9 +755,12 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         min_stock=payload.min_stock
         if "min_stock" in payload.model_fields_set
         else Decimal(str(shop["catalog.default_min_stock"])),
-        track_lots=payload.track_lots,
+        # Caducidad sin lote ni existencias no tiene sentido operativo:
+        # no habría a qué fecha asociar las unidades ni qué cantidad por
+        # lote controlar. Se fuerza también para llamadas directas a la API.
+        track_lots=payload.track_lots or payload.track_expiration,
         track_expiration=payload.track_expiration,
-        tracks_stock=payload.tracks_stock,
+        tracks_stock=True if payload.track_expiration else payload.tracks_stock,
     )
     session.add(product)
     await session.flush()
@@ -833,16 +836,24 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
         base_package.name = unit_name
     if payload.min_stock is not None:
         product.min_stock = payload.min_stock
-    if payload.track_lots is not None:
-        product.track_lots = payload.track_lots
     if payload.track_expiration is not None:
         product.track_expiration = payload.track_expiration
-    # Tres estados: volver a heredar de la categoría es una petición
-    # explícita, porque "no me lo mandes" ya significa "déjalo como está".
-    if payload.inherit_tracks_stock:
-        product.tracks_stock = None
-    elif payload.tracks_stock is not None:
-        product.tracks_stock = payload.tracks_stock
+    if product.track_expiration:
+        # La caducidad es trazabilidad por lote y necesita stock. Prima
+        # sobre una petición incompatible de apagar ambos controles o de
+        # heredar una categoría sin stock.
+        product.track_lots = True
+        product.tracks_stock = True
+    else:
+        if payload.track_lots is not None:
+            product.track_lots = payload.track_lots
+        # Tres estados: volver a heredar de la categoría es una petición
+        # explícita, porque "no me lo mandes" ya significa "déjalo como
+        # está".
+        if payload.inherit_tracks_stock:
+            product.tracks_stock = None
+        elif payload.tracks_stock is not None:
+            product.tracks_stock = payload.tracks_stock
 
     await session.flush()
     updated = await get_product(session, product_id)

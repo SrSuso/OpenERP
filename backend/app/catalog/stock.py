@@ -14,19 +14,34 @@ prioridad que el margen y los impuestos (`app.catalog.taxes`).
 
 from __future__ import annotations
 
-from sqlalchemy import ColumnElement, func, select, true
+from sqlalchemy import ColumnElement, func, or_, select, true
 
 from app.catalog.models import Product, ProductCategory
 
 
 def tracks_stock(product: Product) -> bool:
     """Lo que diga el producto; si no dice nada, su categoría; y sin
-    categoría, se controla (que es lo prudente)."""
+    categoría, se controla (que es lo prudente).
+
+    Un producto con caducidad siempre necesita existencias: sin stock no
+    habría cantidades por lote que comprobar ni de las que descontar.
+    """
+    if product.track_expiration:
+        return True
     if product.tracks_stock is not None:
         return product.tracks_stock
     if product.category is not None:
         return product.category.tracks_stock
     return True
+
+
+def tracks_lots(product: Product) -> bool:
+    """Los productos con caducidad siempre se tratan como loteados.
+
+    La regla cubre también filas antiguas que se hubieran guardado antes
+    de imponer esta dependencia en el formulario y en el servicio.
+    """
+    return product.track_lots or product.track_expiration
 
 
 def tracks_stock_column() -> ColumnElement[bool]:
@@ -45,4 +60,7 @@ def tracks_stock_column() -> ColumnElement[bool]:
         .where(ProductCategory.id == Product.category_id)
         .scalar_subquery()
     )
-    return func.coalesce(Product.tracks_stock, category_tracks, true())
+    return or_(
+        Product.track_expiration.is_(true()),
+        func.coalesce(Product.tracks_stock, category_tracks, true()),
+    )
