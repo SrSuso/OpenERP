@@ -79,24 +79,43 @@ interface CreateProductFormProps {
   canManageStock: boolean;
 }
 
-/** Suma de las tasas de los impuestos elegidos si hay alguno explícito;
- * si no, la de la categoría — exactamente la prioridad que resuelve
- * app.pricing.service.effective_tax_rate una vez el producto existe. */
+/** La misma prioridad producto → categoría que usa el backend. La lista
+ * maestra de impuestos aporta a la vez el IVA y su recargo de equivalencia;
+ * el resumen de categoría sólo necesita conservar sus identificadores. */
+function effectiveTaxIdsPreview(
+  categories: ProductCategory[],
+  categoryId: string,
+  selectedTaxIds: Set<number>,
+): Set<number> {
+  if (selectedTaxIds.size > 0) return selectedTaxIds;
+  const category = categories.find((c) => String(c.id) === categoryId);
+  return new Set(category?.taxes.map((tax) => tax.id) ?? []);
+}
+
 function effectiveTaxRatePreview(
   categories: ProductCategory[],
   categoryId: string,
   taxes: Tax[],
   selectedTaxIds: Set<number>,
 ): string {
-  if (selectedTaxIds.size > 0) {
-    return taxes
-      .filter((tax) => selectedTaxIds.has(tax.id))
-      .reduce((sum, tax) => sum + Number(tax.rate), 0)
-      .toString();
-  }
-  const category = categories.find((c) => String(c.id) === categoryId);
-  if (!category) return '0';
-  return category.taxes.reduce((sum, tax) => sum + Number(tax.rate), 0).toString();
+  const sourceIds = effectiveTaxIdsPreview(categories, categoryId, selectedTaxIds);
+  return taxes
+    .filter((tax) => sourceIds.has(tax.id) && tax.is_active)
+    .reduce((sum, tax) => sum + Number(tax.rate), 0)
+    .toString();
+}
+
+function effectiveSurchargeRatePreview(
+  categories: ProductCategory[],
+  categoryId: string,
+  taxes: Tax[],
+  selectedTaxIds: Set<number>,
+): string {
+  const sourceIds = effectiveTaxIdsPreview(categories, categoryId, selectedTaxIds);
+  return taxes
+    .filter((tax) => sourceIds.has(tax.id) && tax.is_active)
+    .reduce((sum, tax) => sum + Number(tax.surcharge_rate), 0)
+    .toString();
 }
 
 function categoryMarginRate(categories: ProductCategory[], categoryId: string): string {
@@ -205,6 +224,7 @@ export function CreateProductForm({
       margin_rate: string;
       margin_amount: string;
       tax_rate: string;
+      surcharge_rate: string;
     }) =>
       previewFormula({
         // Sin fórmula propia (el producto todavía no existe): usa la
@@ -214,7 +234,7 @@ export function CreateProductForm({
           '(cost + cost * tax_rate / 100 + cost * surcharge_rate / 100) * (1 + margin_rate / 100)',
         cost: input.cost,
         tax_rate: input.tax_rate,
-        surcharge_rate: '0',
+        surcharge_rate: input.surcharge_rate,
         margin_rate: input.margin_rate,
         margin_amount: input.margin_amount,
       }),
@@ -228,6 +248,7 @@ export function CreateProductForm({
     const marginAmount =
       amountInput.trim() !== '' ? amountInput : categoryMarginAmount(categories, categoryId);
     const taxRate = effectiveTaxRatePreview(categories, categoryId, taxes, taxIds);
+    const surchargeRate = effectiveSurchargeRatePreview(categories, categoryId, taxes, taxIds);
     if (!cost || Number.isNaN(Number(cost.replace(',', '.')))) {
       setEstimatedPrice(null);
       return;
@@ -238,6 +259,7 @@ export function CreateProductForm({
         margin_rate: marginRate,
         margin_amount: marginAmount.replace(',', '.'),
         tax_rate: taxRate,
+        surcharge_rate: surchargeRate,
       });
     }, 300);
     return () => clearTimeout(handle);

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -38,7 +38,7 @@ const ME = {
 };
 
 const TAXES: Tax[] = [
-  { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
+  { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '5.2', is_active: true },
 ];
 // La categoría ya trae un impuesto propio — así una prueba puede comprobar
 // que se muestra heredado (marcado) al elegirla, sin tocar nada más.
@@ -100,6 +100,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
   const deactivateCalls: number[] = [];
   const activateCalls: number[] = [];
   const pricingCalls: { id: number; body: Record<string, unknown> }[] = [];
+  const previewCalls: Record<string, unknown>[] = [];
   const manualPriceCalls: { id: number; listPrice: string }[] = [];
 
   vi.stubGlobal(
@@ -140,6 +141,9 @@ function stubBackend(options: { products?: Product[] } = {}) {
         return Promise.resolve(jsonResponse(TAXES));
       }
       if (method === 'POST' && url.includes('/pricing/preview')) {
+        previewCalls.push(
+          init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
+        );
         return Promise.resolve(jsonResponse({ result: '1.000000' }));
       }
       if (method === 'GET' && url.includes('/products?')) {
@@ -217,6 +221,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
     deactivateCalls,
     activateCalls,
     pricingCalls,
+    previewCalls,
     manualPriceCalls,
   };
 }
@@ -279,6 +284,25 @@ describe('ProductsPage', () => {
     expect(backend.createCalls[0]).not.toHaveProperty('tax_rate');
     // Sin ningún impuesto elegido, no hay PATCH .../pricing de más.
     expect(backend.pricingCalls).toEqual([]);
+  });
+
+  it('includes the selected IVA equivalence surcharge in a category-free product preview', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Producto suelto');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    await userEvent.clear(screen.getByLabelText('Coste'));
+    await userEvent.type(screen.getByLabelText('Coste'), '10');
+    await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
+
+    await waitFor(() =>
+      expect(backend.previewCalls).toContainEqual(
+        expect.objectContaining({ tax_rate: '21', surcharge_rate: '5.2' }),
+      ),
+    );
   });
 
   it('records opening stock in the selected inventory location with the new product', async () => {
