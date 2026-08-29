@@ -9,6 +9,7 @@ const qzMocks = vi.hoisted(() => ({
   create: vi.fn(() => ({ printer: 'Caja charcutería' })),
   print: vi.fn(() => Promise.resolve()),
   raster: vi.fn(() => Promise.resolve('data:image/png;base64,TICKET')),
+  geometry: vi.fn(() => ({ contentLeftDots: 0, contentWidthDots: 576 })),
   certificate: vi.fn(),
   algorithm: vi.fn(),
   signature: vi.fn(),
@@ -35,7 +36,11 @@ vi.mock('qz-tray', () => ({
   print: qzMocks.print,
 }));
 
-vi.mock('./ticketRaster', () => ({ ticketRasterPngUrl: qzMocks.raster }));
+vi.mock('./ticketRaster', () => ({
+  THERMAL_PRINTER_DPI: 203,
+  ticketRasterContentPngUrl: qzMocks.raster,
+  ticketRasterGeometry: qzMocks.geometry,
+}));
 vi.mock('./qzSecurityApi', () => ({
   getQzSecurity: qzMocks.getSecurity,
   signQzDigest: qzMocks.sign,
@@ -59,6 +64,7 @@ describe('QZ thermal printer adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     qzMocks.isActive.mockReturnValue(false);
+    qzMocks.geometry.mockReturnValue({ contentLeftDots: 0, contentWidthDots: 576 });
   });
 
   it('sends the preview raster to the exact Windows printer as ESC/POS and cuts once', async () => {
@@ -90,6 +96,9 @@ describe('QZ thermal printer adapter', () => {
     );
     expect(qzMocks.print).toHaveBeenCalledWith({ printer: 'Caja charcutería' }, [
       '\x1b\x40',
+      '\x1d\x50\xcb\xcb',
+      '\x1d\x4c\x00\x00',
+      '\x1d\x57\x40\x02',
       {
         type: 'raw',
         format: 'image',
@@ -100,6 +109,60 @@ describe('QZ thermal printer adapter', () => {
           imageEncoding: 'gs_v_0',
         },
       },
+      '\x1d\x56\x00',
+    ]);
+  });
+
+  it('feeds the configured top and bottom margins as physical ESC/POS paper movement', async () => {
+    await printThermalTicket(
+      'TOTAL 1.25 €',
+      { ...PROFILE, margin_top_mm: 5, margin_bottom_mm: 7 },
+      {
+        host: '192.168.1.50',
+        securePort: 8282,
+        printerName: 'Caja charcutería',
+      },
+    );
+
+    expect(qzMocks.raster).toHaveBeenCalledWith(
+      'TOTAL 1.25 €',
+      expect.objectContaining({ margin_top_mm: 0, margin_bottom_mm: 0 }),
+    );
+    expect(qzMocks.print).toHaveBeenCalledWith(expect.anything(), [
+      '\x1b\x40',
+      '\x1d\x50\xcb\xcb',
+      '\x1d\x4c\x00\x00',
+      '\x1d\x57\x40\x02',
+      '\x1b\x4a\x28',
+      expect.objectContaining({ type: 'raw', format: 'image' }),
+      '\x1b\x4a\x38',
+      '\x1d\x56\x00',
+    ]);
+  });
+
+  it('sets a narrower cropped raster inside explicit left and right print margins', async () => {
+    qzMocks.raster.mockClear();
+    qzMocks.geometry.mockReturnValueOnce({
+      contentLeftDots: 16,
+      contentWidthDots: 512,
+    });
+
+    await printThermalTicket(
+      'TOTAL 1.25 €',
+      { ...PROFILE, printable_width_mm: 64, margin_left_mm: 6, margin_right_mm: 10 },
+      {
+        host: '192.168.1.50',
+        securePort: 8282,
+        printerName: 'Caja charcutería',
+      },
+    );
+
+    expect(qzMocks.print).toHaveBeenCalledWith(expect.anything(), [
+      '\x1b\x40',
+      '\x1d\x50\xcb\xcb',
+      '\x1d\x4c\x10\x00',
+      '\x1d\x57\x00\x02',
+      expect.objectContaining({ type: 'raw', format: 'image' }),
       '\x1d\x56\x00',
     ]);
   });

@@ -77,7 +77,7 @@ function escapeXml(value: string): string {
  * raster-sized in printer dots instead of CSS millimetres, so Windows cannot
  * recompute its margins, font metrics or centring.
  */
-export function ticketRasterSvg(text: string, profile: TicketPrintProfile): string {
+function rasterSvg(text: string, profile: TicketPrintProfile, contentOnly: boolean): string {
   const lines = text.replace(/\n$/, '').split('\n');
   const geometry = ticketRasterGeometry(profile, lines.length);
   const fontFamily = escapeXml(ticketFontStack(profile.font_family));
@@ -95,16 +95,23 @@ export function ticketRasterSvg(text: string, profile: TicketPrintProfile): stri
     })
     .join('');
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${geometry.widthDots}" height="${geometry.heightDots}" viewBox="0 0 ${geometry.widthDots} ${geometry.heightDots}">${contentClip}<rect width="100%" height="100%" fill="white"/><g clip-path="url(#ticket-content)" fill="black" font-family="${fontFamily}" font-size="${geometry.fontSizeDots}" font-weight="${fontWeight}" font-variant-ligatures="none">${textNodes}</g></svg>`;
+  const imageWidth = contentOnly ? geometry.contentWidthDots : geometry.widthDots;
+  const viewBoxX = contentOnly ? geometry.contentLeftDots : 0;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${imageWidth}" height="${geometry.heightDots}" viewBox="${viewBoxX} 0 ${imageWidth} ${geometry.heightDots}">${contentClip}<rect width="100%" height="100%" fill="white"/><g clip-path="url(#ticket-content)" fill="black" font-family="${fontFamily}" font-size="${geometry.fontSizeDots}" font-weight="${fontWeight}" font-variant-ligatures="none">${textNodes}</g></svg>`;
+}
+
+export function ticketRasterSvg(text: string, profile: TicketPrintProfile): string {
+  return rasterSvg(text, profile, false);
 }
 
 export function ticketRasterSvgUrl(text: string, profile: TicketPrintProfile): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(ticketRasterSvg(text, profile))}`;
 }
 
-export async function ticketRasterPngUrl(
+async function rasterPngUrl(
   text: string,
   profile: TicketPrintProfile,
+  contentOnly: boolean,
 ): Promise<string> {
   await document.fonts?.ready;
   const geometry = ticketRasterGeometry(profile, text.replace(/\n$/, '').split('\n').length);
@@ -113,11 +120,11 @@ export async function ticketRasterPngUrl(
     image.onload = () => resolve();
     image.onerror = () => reject(new Error('No se ha podido rasterizar el ticket.'));
   });
-  image.src = ticketRasterSvgUrl(text, profile);
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(rasterSvg(text, profile, contentOnly))}`;
   await loaded;
 
   const canvas = document.createElement('canvas');
-  canvas.width = geometry.widthDots;
+  canvas.width = contentOnly ? geometry.contentWidthDots : geometry.widthDots;
   canvas.height = geometry.heightDots;
   const context = canvas.getContext('2d');
   if (context === null) throw new Error('El navegador no permite preparar la impresión.');
@@ -125,4 +132,20 @@ export async function ticketRasterPngUrl(
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0);
   return canvas.toDataURL('image/png');
+}
+
+/** Full 576-dot document used by the on-screen paper preview. */
+export function ticketRasterPngUrl(text: string, profile: TicketPrintProfile): Promise<string> {
+  return rasterPngUrl(text, profile, false);
+}
+
+/**
+ * Content-only image used with explicit ESC/POS GS L/GS W print-area commands.
+ * This avoids relying on a driver to preserve white columns around a raster.
+ */
+export function ticketRasterContentPngUrl(
+  text: string,
+  profile: TicketPrintProfile,
+): Promise<string> {
+  return rasterPngUrl(text, profile, true);
 }
