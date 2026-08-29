@@ -58,7 +58,6 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
     register,
     handleSubmit,
     reset,
-    setValue,
     formState: { errors },
   } = useForm<LinkFormValues>({
     resolver: zodResolver(linkSchema),
@@ -79,9 +78,7 @@ export function SupplierProductsPanel({ supplierId, canManage }: SupplierProduct
   const linkedProductIds = new Set(links.data?.map((link) => link.product_id));
   const availableProducts = (products.data ?? []).filter((p) => !linkedProductIds.has(p.id));
   const productFieldId = useId();
-  const { query, setQuery, matches } = useProductSearch(availableProducts, {
-    onSingleMatch: (id) => setValue('product_id', id),
-  });
+  const { query, setQuery, matches } = useProductSearch(availableProducts);
 
   return (
     <div className="border-t border-slate-100 bg-slate-50 p-4">

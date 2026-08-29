@@ -207,15 +207,18 @@ describe('InventoryBalancesPage', () => {
     // barras, con el producto en la mano.
     const filters = screen.getByLabelText('Buscar producto');
     await userEvent.type(filters, '8412345678901');
-    expect(screen.getByLabelText('Producto')).toHaveValue('10');
+    const productFilter = screen.getByLabelText('Producto');
+    expect(productFilter).toHaveValue('');
+    await userEvent.selectOptions(productFilter, '10');
 
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
-    // Buscando por el código de barras impreso en el producto, no por el SKU:
-    // queda un único producto y se elige solo (es lo que pasa al pasar el
-    // lector por la etiqueta).
+    // Buscar por código sólo filtra: aun con una coincidencia hay que
+    // confirmarla desde el desplegable, igual que en el resto de buscadores.
     await userEvent.type(within(form).getByLabelText('Buscar producto'), '8412345678901');
-    expect(within(form).getByLabelText('Producto')).toHaveValue('10');
+    const productSelect = within(form).getByLabelText('Producto');
+    expect(productSelect).toHaveValue('');
+    await userEvent.selectOptions(productSelect, '10');
     // Almacén y ubicación vienen ya con la primera opción puesta: con un solo
     // almacén no hay nada que elegir, y desplegarlos era un paso de más. El
     // coste se rellena con el que tiene ahora el producto (0,50), sin dejar

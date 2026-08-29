@@ -44,4 +44,25 @@ describe('ProductSearchDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /Leche entera 1L/ }));
     expect(onPick).toHaveBeenCalledWith(MILK);
   });
+
+  it('keeps a single result visible until the cashier taps it', async () => {
+    const onPick = vi.fn();
+    render(
+      <ProductSearchDialog
+        query="LECHE"
+        onQueryChange={vi.fn()}
+        products={[MILK]}
+        isPending={false}
+        isError={false}
+        disabled={false}
+        onPick={onPick}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText('Nombre, referencia o código'));
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: /Leche entera 1L/ })).toBeInTheDocument();
+    expect(onPick).not.toHaveBeenCalled();
+  });
 });

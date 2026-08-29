@@ -57,9 +57,7 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
     setValue('unit_cost', decimalInputValue(product.cost)),
   );
   const productFieldId = useId();
-  const { query, setQuery, matches } = useProductSearch(products, {
-    onSingleMatch: (id) => setValue('product_id', id),
-  });
+  const { query, setQuery, matches } = useProductSearch(products);
   const fromWarehouseId = watch('from_warehouse_id');
   const toWarehouseId = watch('to_warehouse_id');
   const fromLocationId = watch('from_location_id');

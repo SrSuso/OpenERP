@@ -73,13 +73,6 @@ export function AddOrderLineForm({
     enabled: search.length >= 2,
   });
   const matches = productSearch.data ?? EMPTY_PRODUCTS;
-  const onlyProductId = search.length > 0 && matches.length === 1 ? String(matches[0]!.id) : null;
-
-  useEffect(() => {
-    if (onlyProductId === null) return;
-    setValue('product_id', onlyProductId);
-    setSelectedProduct(matches[0]!);
-  }, [matches, onlyProductId, search, setValue]);
 
   // El IVA y la unidad salen del producto: una línea de compra nunca debe
   // pedir elegir otra unidad distinta. El IVA de factura sigue siendo
@@ -98,9 +91,9 @@ export function AddOrderLineForm({
   const selectedUnitName = selectedProduct?.base_unit_name;
   // Nunca se pinta el catálogo entero: con miles de artículos el selector
   // nativo sería lento e imposible de recorrer. Se muestran como mucho ocho
-  // coincidencias sólo después de escribir; el lector de códigos conserva el
-  // atajo de seleccionar automáticamente una coincidencia única.
-  const visibleMatches = search === '' ? [] : matches;
+  // coincidencias sólo después de escribir, también cuando sólo hay una: la
+  // búsqueda filtra pero no confirma una línea de compra por sí sola.
+  const visibleMatches = selectedProduct === null && search !== '' ? matches : [];
   // Los campos monetarios aceptan la coma decimal española, pero `Number`
   // no. Normalízala antes de decidir si se puede pedir la previsualización y
   // antes de enviarla al backend, que trabaja con decimales de punto.
@@ -182,7 +175,7 @@ export function AddOrderLineForm({
           className="mt-1 block w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
         <input type="hidden" {...register('product_id')} />
-        {visibleMatches.length > 1 && (
+        {visibleMatches.length > 0 && (
           <div
             role="listbox"
             aria-label="Resultados de producto"

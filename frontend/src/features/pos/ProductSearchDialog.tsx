@@ -44,9 +44,6 @@ export function ProductSearchDialog({
     if (event.key === 'Escape') {
       onClose();
     }
-    if (event.key === 'Enter' && products.length === 1 && !disabled) {
-      onPick(products[0]!);
-    }
   }
 
   return (

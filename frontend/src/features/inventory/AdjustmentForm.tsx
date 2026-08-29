@@ -74,9 +74,7 @@ export function AdjustmentForm({
     setValue('unit_cost', decimalInputValue(product.cost)),
   );
   const productFieldId = useId();
-  const { query, setQuery, matches } = useProductSearch(products, {
-    onSingleMatch: (id) => setValue('product_id', id),
-  });
+  const { query, setQuery, matches } = useProductSearch(products);
   const warehouses = useQuery(warehousesQuery);
   const locations = useQuery(locationsQuery(warehouseId ? Number(warehouseId) : null));
 

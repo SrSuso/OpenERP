@@ -308,6 +308,10 @@ describe('PurchasingPage', () => {
     await screen.findByText('Añade al menos un producto — un pedido no se puede crear vacío.');
 
     await userEvent.type(screen.getByLabelText('Producto'), 'Agua 1.5L');
+    const onlyResult = await screen.findByRole('option', { name: 'Seleccionar Agua 1.5L' });
+    expect(screen.getByRole('listbox', { name: 'Resultados de producto' })).toBeInTheDocument();
+    expect(screen.queryByText('Seleccionado: Agua 1.5L')).not.toBeInTheDocument();
+    await userEvent.click(onlyResult);
     // Lo que ese producto vale hoy, para comparar con lo que pide el
     // proveedor sin abrir su ficha.
     expect(screen.getByLabelText('Coste actual')).toHaveValue('0,5');
@@ -400,6 +404,7 @@ describe('PurchasingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo pedido' }));
     await userEvent.selectOptions(screen.getByLabelText('Proveedor'), '1');
     await userEvent.type(screen.getByLabelText('Producto'), 'Agua 1.5L');
+    await userEvent.click(await screen.findByRole('option', { name: 'Seleccionar Agua 1.5L' }));
     await userEvent.clear(screen.getByLabelText('Cantidad'));
     await userEvent.type(screen.getByLabelText('Cantidad'), '1');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir fila' }));

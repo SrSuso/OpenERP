@@ -35,9 +35,7 @@ export function InventoryBalancesPage() {
 
   const warehouses = useQuery(warehousesQuery);
   const products = useQuery(productsQuery({ activeOnly: true }));
-  const { query, setQuery, matches } = useProductSearch(products.data ?? [], {
-    onSingleMatch: setProductId,
-  });
+  const { query, setQuery, matches } = useProductSearch(products.data ?? []);
   const balances = useQuery(
     stockBalanceQuery({
       ...(productId === '' ? {} : { productId: Number(productId) }),

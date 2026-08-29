@@ -21,9 +21,7 @@ export function LotsPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const products = useQuery(productsQuery({ activeOnly: true }));
-  const { query, setQuery, matches } = useProductSearch(products.data ?? [], {
-    onSingleMatch: setProductId,
-  });
+  const { query, setQuery, matches } = useProductSearch(products.data ?? []);
   const suppliers = useQuery(suppliersQuery(true));
   const lots = useQuery({
     ...lotsQuery(productId === '' ? null : Number(productId)),
