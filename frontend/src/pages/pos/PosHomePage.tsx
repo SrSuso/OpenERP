@@ -549,7 +549,7 @@ export function PosHomePage() {
                         <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
                         {enabledSurcharges.length > 0 && (
                           <div className="border-b border-slate-700 p-3">
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2">
                               {enabledSurcharges.map((button) => {
                                 const selected = selectedSurcharge === button.code;
                                 return (
@@ -563,7 +563,7 @@ export function PosHomePage() {
                                       )
                                     }
                                     disabled={busy}
-                                    className={`min-h-12 rounded-lg border px-4 text-left text-base font-semibold transition disabled:opacity-50 ${
+                                    className={`min-h-14 w-full rounded-lg border px-4 text-left text-base font-semibold transition disabled:opacity-50 ${
                                       selected
                                         ? 'pos-button-primary border-cyan-300'
                                         : 'pos-button-secondary border-slate-600'
