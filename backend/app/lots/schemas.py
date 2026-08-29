@@ -9,6 +9,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class LotOpeningStock(BaseModel):
+    """Physical units counted when a lot is created manually.
+
+    A lot catalogue entry without a movement is valid, but during the first
+    inventory count the operator needs to create both together.
+    """
+
+    warehouse_id: int
+    location_id: int
+    quantity: Decimal = Field(gt=0)
+
+
 class LotCreate(BaseModel):
     product_id: int
     lot_number: str = Field(min_length=1, max_length=100)
@@ -16,6 +28,7 @@ class LotCreate(BaseModel):
     expiration_date: date | None = None
     supplier_id: int | None = None
     purchase_order_id: int | None = None
+    opening_stock: LotOpeningStock | None = None
 
 
 class LotRead(BaseModel):

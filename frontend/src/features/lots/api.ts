@@ -35,6 +35,11 @@ export interface LotCreateInput {
   expiration_date: string | null;
   supplier_id: number | null;
   purchase_order_id: number | null;
+  opening_stock?: {
+    warehouse_id: number;
+    location_id: number;
+    quantity: string;
+  } | null;
 }
 
 export async function createLot(payload: LotCreateInput): Promise<Lot> {

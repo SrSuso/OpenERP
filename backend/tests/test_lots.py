@@ -94,6 +94,33 @@ async def test_create_lot_and_look_it_up(
     assert body["product_id"] == product_id
 
 
+async def test_create_lot_can_record_its_opening_stock_in_the_same_transaction(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client)
+    warehouse_id, location_id = await _default_location(client)
+
+    response = await client.post(
+        "/api/v1/lots",
+        json={
+            "product_id": product_id,
+            "lot_number": "LOTE-CON-STOCK",
+            "expiration_date": "2030-03-31",
+            "opening_stock": {
+                "warehouse_id": warehouse_id,
+                "location_id": location_id,
+                "quantity": "18",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    lot_id = response.json()["id"]
+    balances = (await client.get("/api/v1/stock-balance", params={"product_id": product_id})).json()
+    assert [(row["lot_id"], row["quantity"]) for row in balances] == [(lot_id, "18.000000")]
+
+
 async def test_duplicate_lot_number_for_same_product_is_a_conflict(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

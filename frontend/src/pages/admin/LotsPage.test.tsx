@@ -70,6 +70,7 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
   let nextLotId = 1;
   const balances: LotBalance[] = [];
   const consumeKeys: string[] = [];
+  const lotCreateCalls: Record<string, unknown>[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -93,6 +94,7 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
       if (method === 'GET' && /\/lots\?/.test(url)) return Promise.resolve(jsonResponse(lots));
       if (method === 'POST' && /\/lots$/.test(url)) {
         const b = body();
+        lotCreateCalls.push(b);
         const lot: Lot = {
           id: nextLotId++,
           product_id: b['product_id'] as number,
@@ -136,7 +138,7 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
-  return { consumeKeys };
+  return { consumeKeys, lotCreateCalls };
 }
 
 function renderPage() {
@@ -152,24 +154,35 @@ function renderPage() {
 
 describe('LotsPage', () => {
   it('creates a lot with an expiration date and shows the FEFO plan for it', async () => {
-    const { consumeKeys } = stubBackend({ failFirstConsume: true });
+    const { consumeKeys, lotCreateCalls } = stubBackend({ failFirstConsume: true });
     renderPage();
 
     await screen.findByText('Yogur natural');
     await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
     await screen.findByText('Este producto todavía no tiene lotes.');
 
-    await userEvent.type(screen.getByLabelText('Nº de lote'), 'L2026-01');
-    await userEvent.type(screen.getByLabelText('Caducidad (opcional)'), '2026-09-01');
-    await userEvent.selectOptions(screen.getByLabelText('Proveedor (opcional)'), '1');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear lote' }));
+    const form = screen.getByRole('button', { name: 'Crear lote' }).closest('form')!;
+    await userEvent.type(within(form).getByLabelText('Nº de lote'), 'L2026-01');
+    await userEvent.type(within(form).getByLabelText('Caducidad (opcional)'), '2026-09-01');
+    await userEvent.selectOptions(within(form).getByLabelText('Proveedor (opcional)'), '1');
+    await userEvent.clear(within(form).getByLabelText('Cantidad'));
+    await userEvent.type(within(form).getByLabelText('Cantidad'), '10');
+    await waitFor(() => expect(within(form).getByLabelText('Almacén')).toHaveValue('1'));
+    await waitFor(() => expect(within(form).getByLabelText('Ubicación')).toHaveValue('1'));
+    await userEvent.click(within(form).getByRole('button', { name: 'Crear lote' }));
 
     await screen.findByText('L2026-01');
     expect(screen.getByText('2026-09-01')).toBeInTheDocument();
+    expect(lotCreateCalls).toEqual([
+      expect.objectContaining({
+        opening_stock: { warehouse_id: 1, location_id: 1, quantity: '10' },
+      }),
+    ]);
 
     // Saldo por lote + plan FEFO
-    await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
-    await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
+    const fefoPanel = screen.getByRole('heading', { name: 'Saldo por lote y FEFO' }).parentElement!;
+    await userEvent.selectOptions(within(fefoPanel).getByLabelText('Almacén'), '1');
+    await userEvent.selectOptions(within(fefoPanel).getByLabelText('Ubicación'), '1');
     // Aparece dos veces: en la tabla de lotes del producto y en el saldo
     // por lote del almacén/ubicación elegidos.
     expect(await screen.findAllByText('L2026-01')).toHaveLength(2);

@@ -26,6 +26,7 @@ from app.db.types import NUMERIC_EPSILON
 from app.idempotency import service as idempotency_service
 from app.inventory import service as inventory_service
 from app.inventory.models import StockBalance, StockMovement
+from app.inventory.schemas import AdjustmentCreate
 from app.lots.models import Lot
 from app.lots.schemas import FefoConsumeRequest, LotCreate
 from app.purchasing.models import PurchaseOrder
@@ -43,7 +44,7 @@ async def _product_or_422(session: AsyncSession, product_id: int) -> Product:
 
 
 async def create_lot(session: AsyncSession, payload: LotCreate) -> Lot:
-    await _product_or_422(session, payload.product_id)
+    product = await _product_or_422(session, payload.product_id)
     if payload.supplier_id is not None and await session.get(Supplier, payload.supplier_id) is None:
         raise ValidationError(f"Supplier {payload.supplier_id} does not exist.")
     if (
@@ -83,6 +84,23 @@ async def create_lot(session: AsyncSession, payload: LotCreate) -> Lot:
             "expiration_date": str(payload.expiration_date) if payload.expiration_date else None,
         },
     )
+    if payload.opening_stock is not None:
+        # Creating the lot and loading the units is one transaction: a
+        # successful response can never leave a count without its lot, nor
+        # an empty lot after a failed stock movement.
+        await inventory_service.record_adjustment(
+            session,
+            AdjustmentCreate(
+                product_id=product.id,
+                warehouse_id=payload.opening_stock.warehouse_id,
+                location_id=payload.opening_stock.location_id,
+                movement_type="ADJUSTMENT",
+                quantity=payload.opening_stock.quantity,
+                unit_cost=product.cost,
+                lot_id=lot.id,
+                reason="Stock inicial al crear el lote.",
+            ),
+        )
     return lot
 
 
