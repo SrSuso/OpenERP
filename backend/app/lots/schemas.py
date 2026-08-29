@@ -31,6 +31,19 @@ class LotCreate(BaseModel):
     opening_stock: LotOpeningStock | None = None
 
 
+class LotUpdate(BaseModel):
+    """Editable batch metadata.
+
+    ``product_id`` deliberately is not editable: moving a batch to another
+    product would make every stock and traceability reference ambiguous.
+    """
+
+    lot_number: str = Field(min_length=1, max_length=100)
+    manufacturing_date: date | None = None
+    expiration_date: date | None = None
+    supplier_id: int | None = None
+
+
 class LotRead(BaseModel):
     id: int
     product_id: int

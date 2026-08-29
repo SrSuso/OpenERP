@@ -20,6 +20,7 @@ from app.lots.schemas import (
     LotBalanceRead,
     LotCreate,
     LotRead,
+    LotUpdate,
 )
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import LOT_MANAGE, LOT_READ
@@ -47,6 +48,16 @@ async def _lot_to_read(session: SessionDep, lot: Lot) -> LotRead:
 @router.post("/lots", response_model=LotRead, status_code=201, dependencies=[_require_manage])
 async def create_lot(payload: LotCreate, session: SessionDep) -> LotRead:
     return await _lot_to_read(session, await service.create_lot(session, payload))
+
+
+@router.put("/lots/{lot_id}", response_model=LotRead, dependencies=[_require_manage])
+async def update_lot(lot_id: int, payload: LotUpdate, session: SessionDep) -> LotRead:
+    return await _lot_to_read(session, await service.update_lot(session, lot_id, payload))
+
+
+@router.delete("/lots/{lot_id}", status_code=204, dependencies=[_require_manage])
+async def delete_lot(lot_id: int, session: SessionDep) -> None:
+    await service.delete_lot(session, lot_id)
 
 
 @router.get("/lots", response_model=list[LotRead], dependencies=[_require_read])

@@ -26,7 +26,15 @@ import { stockBalanceQuery } from '@/features/inventory/api';
 import { CreateLotForm } from '@/features/lots/CreateLotForm';
 import { LotBalancesPanel } from '@/features/lots/LotBalancesPanel';
 import { LotsTable } from '@/features/lots/LotsTable';
-import { createLot, lotsQuery, type LotCreateInput } from '@/features/lots/api';
+import {
+  createLot,
+  deleteLot,
+  lotsQuery,
+  updateLot,
+  type Lot,
+  type LotCreateInput,
+  type LotUpdateInput,
+} from '@/features/lots/api';
 import {
   productPriceCalculationQuery,
   setProductPricing,
@@ -89,6 +97,7 @@ export function ProductDetailPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [createLotError, setCreateLotError] = useState<string | null>(null);
+  const [lotActionError, setLotActionError] = useState<string | null>(null);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
 
   const product = useQuery(productQuery(productId));
@@ -256,6 +265,27 @@ export function ProductDetailPage() {
       setCreateLotError(null);
     },
     onError: () => setCreateLotError('No se ha podido crear el lote.'),
+  });
+  const updateLotMutation = useMutation({
+    mutationFn: ({ lotId, payload }: { lotId: number; payload: LotUpdateInput }) =>
+      updateLot(lotId, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['lots'] });
+      setLotActionError(null);
+    },
+    onError: (err: unknown) =>
+      setLotActionError(err instanceof ApiError ? err.message : 'No se ha podido guardar el lote.'),
+  });
+  const deleteLotMutation = useMutation({
+    mutationFn: (lotId: number) => deleteLot(lotId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['lots'] });
+      setLotActionError(null);
+    },
+    onError: (err: unknown) =>
+      setLotActionError(
+        err instanceof ApiError ? err.message : 'No se ha podido eliminar el lote.',
+      ),
   });
 
   if (product.isPending) return <p className="text-sm text-slate-500">Cargando…</p>;
@@ -479,7 +509,26 @@ export function ProductDetailPage() {
               onSubmit={(payload) => createLotMutation.mutate(payload)}
             />
           )}
-          {lots.data && <LotsTable lots={lots.data} />}
+          {lots.data && (
+            <LotsTable
+              lots={lots.data}
+              suppliers={suppliers.data ?? []}
+              canManage={canManageLots}
+              isSaving={updateLotMutation.isPending}
+              isDeleting={deleteLotMutation.isPending}
+              actionError={lotActionError}
+              onSave={(lotId, payload) => updateLotMutation.mutateAsync({ lotId, payload })}
+              onDelete={(lot: Lot) => {
+                if (
+                  window.confirm(
+                    `¿Eliminar el lote «${lot.lot_number}»? Solo se eliminará si todavía no tiene stock ni movimientos.`,
+                  )
+                ) {
+                  deleteLotMutation.mutate(lot.id);
+                }
+              }}
+            />
+          )}
           <LotBalancesPanel productId={productId} canManage={canManageLots} />
         </div>
       )}

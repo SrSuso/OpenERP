@@ -42,8 +42,23 @@ export interface LotCreateInput {
   } | null;
 }
 
+export interface LotUpdateInput {
+  lot_number: string;
+  manufacturing_date: string | null;
+  expiration_date: string | null;
+  supplier_id: number | null;
+}
+
 export async function createLot(payload: LotCreateInput): Promise<Lot> {
   return apiFetch(`${API_V1}/lots`, { method: 'POST', schema: lotSchema, body: payload });
+}
+
+export async function updateLot(lotId: number, payload: LotUpdateInput): Promise<Lot> {
+  return apiFetch(`${API_V1}/lots/${lotId}`, { method: 'PUT', schema: lotSchema, body: payload });
+}
+
+export async function deleteLot(lotId: number): Promise<void> {
+  await apiFetch(`${API_V1}/lots/${lotId}`, { method: 'DELETE', schema: z.null() });
 }
 
 // --- saldo por lote (FEFO: primero el que antes caduca) --------------------

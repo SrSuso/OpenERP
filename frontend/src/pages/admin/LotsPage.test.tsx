@@ -109,6 +109,23 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
         balances.push({ lot, quantity: '10' });
         return Promise.resolve(jsonResponse(lot, { status: 201 }));
       }
+      if (method === 'PUT' && /\/lots\/\d+$/.test(url)) {
+        const id = Number(url.split('/').at(-1));
+        const lot = lots.find((candidate) => candidate.id === id);
+        if (!lot) return Promise.resolve(jsonResponse({}, { status: 404 }));
+        const b = body();
+        lot.lot_number = b['lot_number'] as string;
+        lot.manufacturing_date = (b['manufacturing_date'] as string | null) ?? null;
+        lot.expiration_date = (b['expiration_date'] as string | null) ?? null;
+        lot.supplier_id = (b['supplier_id'] as number | null) ?? null;
+        return Promise.resolve(jsonResponse(lot));
+      }
+      if (method === 'DELETE' && /\/lots\/\d+$/.test(url)) {
+        const id = Number(url.split('/').at(-1));
+        const index = lots.findIndex((candidate) => candidate.id === id);
+        if (index >= 0) lots.splice(index, 1);
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
       if (method === 'GET' && /\/lot-balances\?/.test(url)) {
         return Promise.resolve(jsonResponse(balances));
       }
@@ -200,5 +217,30 @@ describe('LotsPage', () => {
     expect(consumeKeys[0]).not.toBe('');
     expect(consumeKeys[1]).toBe(consumeKeys[0]);
     expect(await screen.findByText(/Lote L2026-01 \(caduca 2026-09-01\)/)).toBeInTheDocument();
+  });
+
+  it('edits and deletes a lot that has not yet had stock recorded', async () => {
+    stubBackend();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByText('Yogur natural');
+    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    const form = screen.getByRole('button', { name: 'Crear lote' }).closest('form')!;
+    await userEvent.type(within(form).getByLabelText('Nº de lote'), 'L-ORIGINAL');
+    await userEvent.click(within(form).getByRole('button', { name: 'Crear lote' }));
+
+    await screen.findByText('L-ORIGINAL');
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    const lotNumber = within(screen.getByRole('table')).getByLabelText('Nº de lote');
+    await userEvent.clear(lotNumber);
+    await userEvent.type(lotNumber, 'L-CORREGIDO');
+    await userEvent.type(screen.getByLabelText('Caducidad'), '2026-12-31');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(await screen.findByText('L-CORREGIDO')).toBeInTheDocument();
+    expect(screen.getByText('2026-12-31')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+    await screen.findByText('Este producto todavía no tiene lotes.');
   });
 });

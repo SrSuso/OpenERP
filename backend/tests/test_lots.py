@@ -136,6 +136,48 @@ async def test_duplicate_lot_number_for_same_product_is_a_conflict(
     assert response.status_code == 409
 
 
+async def test_empty_lot_can_be_edited_and_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client)
+    lot_id = await _create_lot(client, product_id, "LOTE-ERRÓNEO", "2026-08-14")
+
+    update = await client.put(
+        f"/api/v1/lots/{lot_id}",
+        json={
+            "lot_number": "LOTE-CORREGIDO",
+            "manufacturing_date": "2026-01-20",
+            "expiration_date": "2026-09-01",
+            "supplier_id": None,
+        },
+    )
+    assert update.status_code == 200
+    assert update.json()["lot_number"] == "LOTE-CORREGIDO"
+    assert update.json()["manufacturing_date"] == "2026-01-20"
+    assert update.json()["expiration_date"] == "2026-09-01"
+
+    deleted = await client.delete(f"/api/v1/lots/{lot_id}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/api/v1/lots/{lot_id}")).status_code == 404
+
+
+async def test_lot_with_stock_history_cannot_be_deleted(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client)
+    warehouse_id, location_id = await _default_location(client)
+    lot_id = await _create_lot(client, product_id, "LOTE-CON-HISTÓRICO", "2026-08-14")
+    await _stock_lot(client, product_id, warehouse_id, location_id, lot_id, "1")
+
+    response = await client.delete(f"/api/v1/lots/{lot_id}")
+
+    assert response.status_code == 409
+    assert "histórico" in response.json()["error"]["message"]
+    assert (await client.get(f"/api/v1/lots/{lot_id}")).status_code == 200
+
+
 async def test_lot_balances_are_sorted_fefo(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

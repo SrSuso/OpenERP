@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
@@ -28,8 +28,9 @@ from app.inventory import service as inventory_service
 from app.inventory.models import StockBalance, StockMovement
 from app.inventory.schemas import AdjustmentCreate
 from app.lots.models import Lot
-from app.lots.schemas import FefoConsumeRequest, LotCreate
-from app.purchasing.models import PurchaseOrder
+from app.lots.schemas import FefoConsumeRequest, LotCreate, LotUpdate
+from app.purchasing.models import GoodsReceiptLine, PurchaseOrder
+from app.returns.models import ReturnLine
 from app.suppliers.models import Supplier
 
 _MANUAL_FEFO_OPERATION = "lot.fefo_consume"
@@ -135,6 +136,103 @@ async def get_lot(session: AsyncSession, lot_id: int) -> Lot:
     if lot is None:
         raise NotFoundError(f"Lot {lot_id} not found.")
     return lot
+
+
+async def update_lot(session: AsyncSession, lot_id: int, payload: LotUpdate) -> Lot:
+    """Correct a lot's own label and dates without changing its product.
+
+    The lot record is shared by stock and traceability entries.  Those keep
+    their immutable IDs; the audit log retains the former batch metadata.
+    """
+    lot = await get_lot(session, lot_id)
+    if payload.supplier_id is not None and await session.get(Supplier, payload.supplier_id) is None:
+        raise ValidationError(f"Supplier {payload.supplier_id} does not exist.")
+
+    duplicate = (
+        await session.execute(
+            select(Lot).where(
+                Lot.product_id == lot.product_id,
+                Lot.lot_number == payload.lot_number,
+                Lot.id != lot.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if duplicate is not None:
+        raise ConflictError(f"Product already has a lot numbered {payload.lot_number!r}.")
+
+    before = {
+        "lot_number": lot.lot_number,
+        "manufacturing_date": str(lot.manufacturing_date) if lot.manufacturing_date else None,
+        "expiration_date": str(lot.expiration_date) if lot.expiration_date else None,
+        "supplier_id": lot.supplier_id,
+    }
+    lot.lot_number = payload.lot_number
+    lot.manufacturing_date = payload.manufacturing_date
+    lot.expiration_date = payload.expiration_date
+    lot.supplier_id = payload.supplier_id
+    await session.flush()
+    await audit.record(
+        session,
+        action="updated",
+        entity_type="lot",
+        entity_id=lot.id,
+        before=before,
+        after={
+            "lot_number": lot.lot_number,
+            "manufacturing_date": str(lot.manufacturing_date) if lot.manufacturing_date else None,
+            "expiration_date": str(lot.expiration_date) if lot.expiration_date else None,
+            "supplier_id": lot.supplier_id,
+        },
+    )
+    return lot
+
+
+async def delete_lot(session: AsyncSession, lot_id: int) -> None:
+    """Delete only an unused lot catalog entry.
+
+    Stock movements, receipts and returns are accounting/traceability
+    history.  A lot referenced by any of them must remain addressable; an
+    operator can correct its metadata above, but cannot erase that history.
+    """
+    lot = await get_lot(session, lot_id)
+    references = (
+        await session.execute(
+            select(
+                func.count(StockMovement.id),
+                func.count(StockBalance.id),
+                func.count(GoodsReceiptLine.id),
+                func.count(ReturnLine.id),
+            )
+            .select_from(Lot)
+            .outerjoin(StockMovement, StockMovement.lot_id == Lot.id)
+            .outerjoin(StockBalance, StockBalance.lot_id == Lot.id)
+            .outerjoin(GoodsReceiptLine, GoodsReceiptLine.lot_id == Lot.id)
+            .outerjoin(ReturnLine, ReturnLine.lot_id == Lot.id)
+            .where(Lot.id == lot.id)
+        )
+    ).one()
+    if any(references):
+        raise ConflictError(
+            "No se puede eliminar este lote porque ya tiene stock o movimientos asociados. "
+            "Corrige sus datos o ajusta el inventario; el histórico debe conservarse."
+        )
+
+    before = {
+        "product_id": lot.product_id,
+        "lot_number": lot.lot_number,
+        "manufacturing_date": str(lot.manufacturing_date) if lot.manufacturing_date else None,
+        "expiration_date": str(lot.expiration_date) if lot.expiration_date else None,
+        "supplier_id": lot.supplier_id,
+    }
+    await session.delete(lot)
+    await session.flush()
+    await audit.record(
+        session,
+        action="deleted",
+        entity_type="lot",
+        entity_id=lot_id,
+        before=before,
+    )
 
 
 async def list_lots(
