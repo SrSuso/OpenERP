@@ -22,9 +22,7 @@ export function CategoryTabs({ categories, selectedId, onSelect }: CategoryTabsP
         aria-selected={selectedId === null}
         onClick={() => onSelect(null)}
         className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
-          selectedId === null
-            ? 'bg-slate-50 text-slate-900'
-            : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+          selectedId === null ? 'pos-button-primary' : 'pos-button-secondary'
         }`}
       >
         Todos
@@ -39,11 +37,7 @@ export function CategoryTabs({ categories, selectedId, onSelect }: CategoryTabsP
           style={selectedId === category.id ? { backgroundColor: category.color } : undefined}
           className={`flex shrink-0 items-center gap-2 rounded-full py-2 pr-4 text-sm font-medium transition ${
             versions.data?.[String(category.id)] === undefined ? 'pl-4' : 'pl-1.5'
-          } ${
-            selectedId === category.id
-              ? 'text-white'
-              : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-          }`}
+          } ${selectedId === category.id ? 'text-white' : 'pos-button-secondary'}`}
         >
           {versions.data?.[String(category.id)] !== undefined && (
             <img

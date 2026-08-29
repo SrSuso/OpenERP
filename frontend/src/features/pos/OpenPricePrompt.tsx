@@ -95,7 +95,7 @@ export function OpenPricePrompt({ product, onCancel, onConfirm, isPending }: Ope
           type="button"
           onClick={onCancel}
           disabled={isPending}
-          className="mt-3 w-full rounded py-2 text-sm font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+          className="pos-button-secondary mt-3 w-full rounded py-2 text-sm font-medium disabled:opacity-50"
         >
           Cancelar
         </button>

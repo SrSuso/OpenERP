@@ -91,7 +91,7 @@ export function WeightPrompt({ product, onCancel, onConfirm, isPending }: Weight
         <button
           type="button"
           onClick={onCancel}
-          className="mt-2 w-full rounded px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+          className="pos-button-secondary mt-2 w-full rounded px-4 py-3 text-base font-medium"
         >
           Cancelar
         </button>

@@ -69,6 +69,18 @@ describe('useButtonColors', () => {
     expect(variable('--color-brand-700')).toContain(hexToOklch('#ff0000')!.h.toFixed(1));
   });
 
+  it('gives the normal and destructive POS buttons their own configured colours', async () => {
+    renderWithSettings({
+      'ui.pos_secondary_button_color': '#7c3aed',
+      'ui.pos_danger_button_color': '#ea580c',
+    });
+
+    await waitFor(() =>
+      expect(variable('--color-pos-secondary-600')).toContain(hexToOklch('#7c3aed')!.h.toFixed(1)),
+    );
+    expect(variable('--color-pos-danger-600')).toContain(hexToOklch('#ea580c')!.h.toFixed(1));
+  });
+
   it('falls back to the factory colour when the value is not a colour', async () => {
     renderWithSettings({ 'ui.button_color': 'azul marino' });
 

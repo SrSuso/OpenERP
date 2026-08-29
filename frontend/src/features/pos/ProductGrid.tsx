@@ -70,7 +70,7 @@ function ProductButton({
       type="button"
       disabled={disabled}
       onClick={() => onPick(product)}
-      className="flex h-32 flex-col overflow-hidden rounded-lg bg-slate-800 text-left shadow transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+      className="pos-button-secondary flex h-32 flex-col overflow-hidden rounded-lg text-left shadow transition disabled:cursor-not-allowed disabled:opacity-50"
     >
       {version !== undefined && (
         <img

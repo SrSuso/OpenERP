@@ -43,7 +43,7 @@ export function PosTicketsPage() {
           </div>
           <Link
             to="/pos"
-            className="rounded border border-slate-400 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
+            className="pos-button-secondary rounded border border-slate-400 px-4 py-2 text-sm font-medium"
           >
             Volver a venta
           </Link>

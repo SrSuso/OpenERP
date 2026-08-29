@@ -79,7 +79,7 @@ function PosLayoutContent() {
               type="button"
               disabled={newSaleAction.disabled}
               onClick={newSaleAction.onPress}
-              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600 disabled:opacity-50"
+              className="pos-button-secondary min-h-14 rounded px-4 py-3 text-base font-medium disabled:opacity-50"
             >
               Nueva venta
             </button>
@@ -87,7 +87,7 @@ function PosLayoutContent() {
           {hasPermission('return.manage') && (
             <Link
               to="/pos/returns"
-              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600"
+              className="pos-button-secondary min-h-14 rounded px-4 py-3 text-base font-medium"
             >
               Devolución
             </Link>
@@ -95,7 +95,7 @@ function PosLayoutContent() {
           {hasPermission('sale.read') && (
             <Link
               to="/pos/tickets"
-              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600"
+              className="pos-button-secondary min-h-14 rounded px-4 py-3 text-base font-medium"
             >
               Tickets
             </Link>
@@ -107,7 +107,7 @@ function PosLayoutContent() {
             <button
               type="button"
               onClick={requestTerminalChange}
-              className="min-h-14 rounded border border-slate-600 px-4 py-3 hover:bg-slate-700"
+              className="pos-button-secondary min-h-14 rounded border border-slate-600 px-4 py-3"
             >
               {selectedTerminal.name}
             </button>
@@ -115,7 +115,7 @@ function PosLayoutContent() {
           <button
             type="button"
             onClick={() => void toggleFullscreen()}
-            className="min-h-14 rounded border border-slate-600 px-4 py-3 font-medium hover:bg-slate-700"
+            className="pos-button-secondary min-h-14 rounded border border-slate-600 px-4 py-3 font-medium"
             aria-pressed={isFullscreen}
           >
             {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
@@ -124,7 +124,7 @@ function PosLayoutContent() {
             <button
               type="button"
               onClick={() => setClosingTill(true)}
-              className="min-h-14 rounded bg-slate-700 px-5 py-3 font-medium hover:bg-slate-600"
+              className="pos-button-secondary min-h-14 rounded px-5 py-3 font-medium"
             >
               Cierre Z
             </button>
@@ -132,7 +132,7 @@ function PosLayoutContent() {
           <button
             type="button"
             onClick={() => void logout()}
-            className="min-h-14 rounded bg-slate-700 px-5 py-3 font-medium hover:bg-slate-600"
+            className="pos-button-secondary min-h-14 rounded px-5 py-3 font-medium"
           >
             Cerrar sesión
           </button>

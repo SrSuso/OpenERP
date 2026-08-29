@@ -44,7 +44,7 @@ export function TerminalSelection() {
               key={terminal.id}
               type="button"
               onClick={() => selectTerminal(terminal.id)}
-              className="rounded border border-slate-600 bg-slate-700 px-4 py-3 text-left hover:border-brand-400 hover:bg-slate-600"
+              className="pos-button-secondary rounded border border-slate-600 px-4 py-3 text-left hover:border-brand-400"
             >
               <span className="block font-medium">{terminal.name}</span>
               <span className="block text-sm text-slate-300">{terminal.warehouse_name}</span>
@@ -56,7 +56,7 @@ export function TerminalSelection() {
           <button
             type="button"
             onClick={cancelTerminalChange}
-            className="mt-5 text-sm text-slate-300 hover:underline"
+            className="pos-button-secondary mt-5 rounded px-3 py-2 text-sm font-medium"
           >
             Mantener {selectedTerminal.name}
           </button>

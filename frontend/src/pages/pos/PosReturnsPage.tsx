@@ -69,7 +69,7 @@ export function PosReturnsPage() {
           <h1 className="text-2xl font-semibold">Devolución</h1>
           <Link
             to="/pos"
-            className="rounded border border-slate-400 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
+            className="pos-button-secondary rounded border border-slate-400 px-4 py-2 text-sm font-medium"
           >
             Volver a venta
           </Link>
@@ -95,7 +95,7 @@ export function PosReturnsPage() {
           <button
             type="button"
             onClick={search}
-            className="rounded bg-brand-700 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+            className="pos-button-primary rounded px-5 py-2 text-sm font-semibold"
           >
             Buscar venta
           </button>
@@ -138,7 +138,7 @@ export function PosReturnsPage() {
               <button
                 type="button"
                 onClick={() => setSaleNumberKeypadOpen(false)}
-                className="mt-2 w-full rounded px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+                className="pos-button-secondary mt-2 w-full rounded px-4 py-3 text-base font-medium"
               >
                 Cancelar
               </button>

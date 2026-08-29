@@ -99,14 +99,14 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
           type="button"
           onClick={() => printMutation.mutate()}
           disabled={printMutation.isPending}
-          className="rounded-lg bg-slate-700 px-6 py-3 text-base font-semibold text-slate-50 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pos-button-secondary rounded-lg px-6 py-3 text-base font-semibold disabled:cursor-not-allowed disabled:opacity-50"
         >
           {printMutation.isPending ? 'Generando…' : 'Imprimir ticket'}
         </button>
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-lg bg-till-600 px-8 py-3 text-base font-semibold text-white hover:bg-till-500"
+          className="pos-button-primary rounded-lg px-8 py-3 text-base font-semibold"
         >
           Nueva venta
         </button>

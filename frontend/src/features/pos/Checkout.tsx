@@ -91,7 +91,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
             onBack();
           }}
           disabled={isPending}
-          className="rounded px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pos-button-secondary rounded px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           Volver
         </button>
@@ -118,9 +118,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
               disabled={isPending}
               aria-pressed={method === value}
               className={`rounded-lg py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                method === value
-                  ? 'bg-till-600 text-white'
-                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                method === value ? 'pos-button-primary' : 'pos-button-secondary'
               }`}
             >
               {label}
@@ -140,7 +138,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
           type="button"
           onClick={handleConfirm}
           disabled={isPending}
-          className="w-full rounded-lg bg-till-600 py-3 text-base font-semibold text-white transition hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pos-button-primary w-full rounded-lg py-3 text-base font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isPending ? 'Cobrando…' : 'Confirmar cobro'}
         </button>
@@ -212,7 +210,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
                 type="button"
                 onClick={() => setCashPromptOpen(false)}
                 disabled={isPending}
-                className="flex-1 rounded border border-slate-500 py-2.5 text-sm font-medium text-slate-100 disabled:opacity-50"
+                className="pos-button-secondary flex-1 rounded border border-slate-500 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 Cancelar
               </button>
@@ -220,7 +218,7 @@ export function Checkout({ sale, isPending, error, onConfirm, onBack }: Checkout
                 type="button"
                 onClick={confirmCash}
                 disabled={isPending || !coversTotal}
-                className="flex-1 rounded bg-till-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                className="pos-button-primary flex-1 rounded py-2.5 text-sm font-semibold disabled:opacity-50"
               >
                 {isPending ? 'Cobrando…' : 'Confirmar efectivo'}
               </button>

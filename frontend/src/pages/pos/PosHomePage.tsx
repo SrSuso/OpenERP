@@ -47,9 +47,7 @@ const POS_SURCHARGE_BUTTONS: Array<{
   code: PosSurchargeCode;
   label: string;
   settingKey: 'pos.cold_drink_surcharge_amount';
-}> = [
-  { code: 'COLD_DRINK', label: 'Bebida fría', settingKey: 'pos.cold_drink_surcharge_amount' },
-];
+}> = [{ code: 'COLD_DRINK', label: 'Bebida fría', settingKey: 'pos.cold_drink_surcharge_amount' }];
 
 /**
  * The till (phase 12): resolve where this register sells from, resume or
@@ -480,7 +478,7 @@ export function PosHomePage() {
                   <button
                     type="button"
                     onClick={() => openSale()}
-                    className="rounded bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-50 hover:bg-slate-600"
+                    className="pos-button-secondary rounded px-3 py-1.5 text-sm font-medium"
                   >
                     Reintentar
                   </button>
@@ -567,8 +565,8 @@ export function PosHomePage() {
                                     disabled={busy}
                                     className={`min-h-12 rounded-lg border px-4 text-left text-base font-semibold transition disabled:opacity-50 ${
                                       selected
-                                        ? 'border-cyan-300 bg-cyan-400 text-slate-950'
-                                        : 'border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
+                                        ? 'pos-button-primary border-cyan-300'
+                                        : 'pos-button-secondary border-slate-600'
                                     }`}
                                   >
                                     {button.label}{' '}
@@ -674,7 +672,7 @@ export function PosHomePage() {
                 type="button"
                 onClick={() => setCancelConfirmationOpen(false)}
                 disabled={cancelMutation.isPending}
-                className="flex-1 rounded border border-slate-500 py-2.5 text-sm font-medium text-slate-100 disabled:opacity-50"
+                className="pos-button-secondary flex-1 rounded border border-slate-500 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 Seguir editando
               </button>
@@ -682,7 +680,7 @@ export function PosHomePage() {
                 type="button"
                 onClick={() => cancelMutation.mutate(sale.id)}
                 disabled={cancelMutation.isPending}
-                className="flex-1 rounded bg-red-700 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                className="pos-button-danger flex-1 rounded py-2.5 text-sm font-semibold disabled:opacity-50"
               >
                 {cancelMutation.isPending ? 'Cancelando…' : 'Sí, cancelar venta'}
               </button>

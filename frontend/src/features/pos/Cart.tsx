@@ -38,7 +38,7 @@ export function Cart({
           type="button"
           onClick={onCancelSale}
           disabled={disabled || sale === null}
-          className="rounded px-3 py-1.5 text-sm font-medium text-red-400 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pos-button-danger rounded px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cancelar venta
         </button>
@@ -78,7 +78,7 @@ export function Cart({
                     aria-label={`Quitar ${line.product_name}`}
                     onClick={() => onRemoveLine(line)}
                     disabled={disabled}
-                    className="rounded px-2 py-1 text-sm text-slate-400 hover:bg-slate-700 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="pos-button-danger rounded px-2 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     ✕
                   </button>
@@ -108,7 +108,7 @@ export function Cart({
           type="button"
           onClick={onCheckout}
           disabled={disabled || lines.length === 0}
-          className="w-full rounded-lg bg-till-600 py-3 text-base font-semibold text-white transition hover:bg-till-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pos-button-primary w-full rounded-lg py-3 text-base font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isCheckingStock ? 'Comprobando existencias…' : 'Cobrar'}
         </button>

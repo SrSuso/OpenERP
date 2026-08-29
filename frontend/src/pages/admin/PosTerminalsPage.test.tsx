@@ -66,6 +66,48 @@ function stubBackend() {
       caution: null,
     },
     {
+      key: 'ui.pos_button_color',
+      group: 'Caja (TPV)',
+      label: 'Color de los botones principales del TPV',
+      help: 'El de las acciones que confirman una operación.',
+      type: 'COLOR',
+      value: '#059669',
+      is_set: false,
+      default: '#059669',
+      choices: [],
+      minimum: null,
+      maximum: null,
+      caution: null,
+    },
+    {
+      key: 'ui.pos_secondary_button_color',
+      group: 'Caja (TPV)',
+      label: 'Color de los botones generales del TPV',
+      help: 'El de los botones de navegación y productos.',
+      type: 'COLOR',
+      value: '#334155',
+      is_set: false,
+      default: '#334155',
+      choices: [],
+      minimum: null,
+      maximum: null,
+      caution: null,
+    },
+    {
+      key: 'ui.pos_danger_button_color',
+      group: 'Caja (TPV)',
+      label: 'Color de los botones de anulación del TPV',
+      help: 'El de las acciones destructivas, como cancelar una venta.',
+      type: 'COLOR',
+      value: '#b91c1c',
+      is_set: false,
+      default: '#b91c1c',
+      choices: [],
+      minimum: null,
+      maximum: null,
+      caution: null,
+    },
+    {
       key: 'pos.qz_host',
       group: 'Impresión QZ Tray',
       label: 'Servidor QZ (IP o nombre completo)',
@@ -267,6 +309,9 @@ describe('PosTerminalsPage', () => {
       await screen.findByRole('heading', { name: 'Pantalla y botones del TPV' }),
     ).toBeInTheDocument();
     const surface = await screen.findByLabelText('Color de fondo del TPV');
+    expect(screen.getByLabelText('Color de los botones principales del TPV')).toBeInTheDocument();
+    expect(screen.getByLabelText('Color de los botones generales del TPV')).toBeInTheDocument();
+    expect(screen.getByLabelText('Color de los botones de anulación del TPV')).toBeInTheDocument();
     fireEvent.change(surface, { target: { value: '#123456' } });
     await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios de Caja (TPV)' }));
 

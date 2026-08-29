@@ -420,14 +420,37 @@ SETTINGS: tuple[SettingDef, ...] = (
     SettingDef(
         key="ui.pos_button_color",
         group=GROUP_POS,
-        label="Color de los botones de cobrar (caja)",
+        label="Color de los botones principales del TPV",
         help=(
-            "El de los botones que rematan una acción en el TPV: cobrar, añadir al "
-            "carrito, aceptar los gramos. Aparte del anterior a propósito, para que "
-            "en la caja se distingan de un vistazo."
+            "El de las acciones que confirman una operación: cobrar, añadir al carrito, "
+            "aceptar una cantidad o cerrar caja. Se aplica directamente al fondo del botón "
+            "y conserva un contraste legible."
         ),
         type=SettingType.COLOR,
         default="#059669",
+    ),
+    SettingDef(
+        key="ui.pos_secondary_button_color",
+        group=GROUP_POS,
+        label="Color de los botones generales del TPV",
+        help=(
+            "El de los botones de navegación, productos, teclados y métodos de pago no "
+            "seleccionados. Sustituye el gris fijo de la caja sin cambiar los colores propios "
+            "de las categorías POS."
+        ),
+        type=SettingType.COLOR,
+        default="#334155",
+    ),
+    SettingDef(
+        key="ui.pos_danger_button_color",
+        group=GROUP_POS,
+        label="Color de los botones de anulación del TPV",
+        help=(
+            "El de las acciones destructivas, como cancelar una venta. Mantenerlo distinto de "
+            "los botones principales ayuda a evitar una anulación por error en caja."
+        ),
+        type=SettingType.COLOR,
+        default="#b91c1c",
     ),
 )
 

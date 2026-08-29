@@ -17,7 +17,7 @@ interface KeypadProps {
 const DIGITS = ['7', '8', '9', '4', '5', '6', '1', '2', '3'];
 
 const KEY =
-  'rounded bg-slate-700 py-4 text-xl font-semibold text-slate-50 transition active:bg-slate-600 disabled:opacity-40';
+  'pos-button-secondary rounded py-4 text-xl font-semibold transition active:brightness-110 disabled:opacity-40';
 
 /** Teclado numérico para usar con el dedo: en una caja no hay teclado
  * físico a mano, y el del móvil tapa media pantalla justo cuando hace
@@ -78,7 +78,7 @@ export function Keypad({
           type="button"
           onClick={action.onPress}
           disabled={action.disabled}
-          className="col-span-3 rounded bg-till-600 py-4 text-lg font-semibold text-white transition active:bg-till-500 disabled:opacity-40"
+          className="pos-button-primary col-span-3 rounded py-4 text-lg font-semibold transition active:brightness-110 disabled:opacity-40"
         >
           {action.label}
         </button>

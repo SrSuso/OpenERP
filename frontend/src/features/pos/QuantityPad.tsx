@@ -37,9 +37,7 @@ export function QuantityPad({ value, onChange }: QuantityPadProps) {
               type="button"
               onClick={() => onChange(nextQuantity === '1' ? '' : nextQuantity)}
               className={`min-h-12 min-w-12 flex-1 rounded text-lg font-semibold transition active:brightness-110 ${
-                isSelected
-                  ? 'bg-amber-400 text-slate-950'
-                  : 'bg-slate-700 text-slate-50 hover:bg-slate-600'
+                isSelected ? 'pos-button-primary' : 'pos-button-secondary'
               }`}
             >
               ×{nextQuantity}

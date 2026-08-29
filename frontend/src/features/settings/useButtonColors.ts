@@ -7,6 +7,8 @@ import { hexToOklch, oklchString } from '@/lib/oklch';
  * para el panel, verde para las acciones de la caja. */
 const DEFAULT_PANEL = '#2b5bb5';
 const DEFAULT_TILL = '#059669';
+const DEFAULT_POS_SECONDARY = '#334155';
+const DEFAULT_POS_DANGER = '#b91c1c';
 
 /** Cada tono de la escala, con su claridad y su saturación fijas.
  *
@@ -28,6 +30,21 @@ const PANEL_RAMP: Record<string, { l: number; c: number }> = {
 const TILL_RAMP: Record<string, { l: number; c: number }> = {
   '--color-till-500': { l: 0.7, c: 0.17 },
   '--color-till-600': { l: 0.6, c: 0.145 },
+};
+
+/** Los botones normales no pueden seguir heredando gris de Tailwind: su
+ * tono también es una decisión de la tienda. Los dos tonos permiten que el
+ * hover siga siendo perceptible sin cambiar el color elegido por otro. */
+const POS_SECONDARY_RAMP: Record<string, { l: number; c: number }> = {
+  '--color-pos-secondary-500': { l: 0.45, c: 0.05 },
+  '--color-pos-secondary-600': { l: 0.37, c: 0.045 },
+};
+
+/** Anular una venta debe seguir distinguiéndose incluso aunque se cambien
+ * todos los demás colores de la caja. */
+const POS_DANGER_RAMP: Record<string, { l: number; c: number }> = {
+  '--color-pos-danger-500': { l: 0.56, c: 0.19 },
+  '--color-pos-danger-600': { l: 0.49, c: 0.17 },
 };
 
 function applyRamp(
@@ -58,14 +75,23 @@ function applyRamp(
 export function useButtonColors(): void {
   const panel = useShopSetting('ui.button_color', DEFAULT_PANEL);
   const till = useShopSetting('ui.pos_button_color', DEFAULT_TILL);
+  const posSecondary = useShopSetting('ui.pos_secondary_button_color', DEFAULT_POS_SECONDARY);
+  const posDanger = useShopSetting('ui.pos_danger_button_color', DEFAULT_POS_DANGER);
 
   useEffect(() => {
     applyRamp(PANEL_RAMP, panel, DEFAULT_PANEL);
     applyRamp(TILL_RAMP, till, DEFAULT_TILL);
+    applyRamp(POS_SECONDARY_RAMP, posSecondary, DEFAULT_POS_SECONDARY);
+    applyRamp(POS_DANGER_RAMP, posDanger, DEFAULT_POS_DANGER);
     return () => {
-      for (const variable of [...Object.keys(PANEL_RAMP), ...Object.keys(TILL_RAMP)]) {
+      for (const variable of [
+        ...Object.keys(PANEL_RAMP),
+        ...Object.keys(TILL_RAMP),
+        ...Object.keys(POS_SECONDARY_RAMP),
+        ...Object.keys(POS_DANGER_RAMP),
+      ]) {
         document.documentElement.style.removeProperty(variable);
       }
     };
-  }, [panel, till]);
+  }, [panel, till, posSecondary, posDanger]);
 }

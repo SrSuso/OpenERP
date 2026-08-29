@@ -32,9 +32,7 @@ export function OpenSalesBar({ sales, activeId, onSelect }: OpenSalesBarProps) {
             aria-current={isActive}
             onClick={() => onSelect(sale)}
             className={`shrink-0 rounded px-3 py-1.5 text-left text-sm transition ${
-              isActive
-                ? 'bg-slate-50 text-slate-900'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              isActive ? 'pos-button-primary' : 'pos-button-secondary'
             }`}
           >
             {/* Por su orden en la barra y no por su número interno: lo que

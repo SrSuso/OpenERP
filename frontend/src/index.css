@@ -22,6 +22,14 @@
   --color-till-500: oklch(0.7 0.17 162.5);
   --color-till-600: oklch(0.6 0.145 163.2);
 
+  /* Las tres familias de botones del TPV se actualizan desde Terminales
+     POS. No se usa slate como fondo de un botón interactivo: hacerlo
+     ocultaba el color configurado bajo una base gris. */
+  --color-pos-secondary-500: oklch(0.45 0.05 257.8);
+  --color-pos-secondary-600: oklch(0.37 0.045 257.8);
+  --color-pos-danger-500: oklch(0.56 0.19 29.2);
+  --color-pos-danger-600: oklch(0.49 0.17 29.2);
+
   /* Minimum touch target for POS controls (WCAG 2.2 target size is 24px; a
      supermarket till wants far more). */
   --spacing-touch: 4rem;
@@ -44,5 +52,34 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
+  }
+}
+
+@layer components {
+  .pos-button-primary {
+    background-color: var(--color-till-600);
+    color: white;
+  }
+
+  .pos-button-primary:hover:not(:disabled) {
+    background-color: var(--color-till-500);
+  }
+
+  .pos-button-secondary {
+    background-color: var(--color-pos-secondary-600);
+    color: var(--color-slate-50);
+  }
+
+  .pos-button-secondary:hover:not(:disabled) {
+    background-color: var(--color-pos-secondary-500);
+  }
+
+  .pos-button-danger {
+    background-color: var(--color-pos-danger-600);
+    color: white;
+  }
+
+  .pos-button-danger:hover:not(:disabled) {
+    background-color: var(--color-pos-danger-500);
   }
 }

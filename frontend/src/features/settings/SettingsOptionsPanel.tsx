@@ -47,6 +47,8 @@ export const POS_TERMINAL_SETTING_KEYS = [
   'pos.surface_color',
   'pos.font_size_px',
   'ui.pos_button_color',
+  'ui.pos_secondary_button_color',
+  'ui.pos_danger_button_color',
 ] as const;
 
 export const QZ_PRINT_SETTING_KEYS = [

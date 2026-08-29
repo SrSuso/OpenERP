@@ -143,7 +143,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                 <button
                   type="button"
                   onClick={onClosed}
-                  className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white"
+                  className="pos-button-primary flex-1 rounded-lg py-3 text-base font-semibold"
                 >
                   Volver al TPV
                 </button>
@@ -155,7 +155,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                       setPrintActive(true);
                     }
                   }}
-                  className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+                  className="pos-button-secondary rounded-lg px-4 py-3 text-base font-medium disabled:opacity-50"
                 >
                   Imprimir otra vez
                 </button>
@@ -170,7 +170,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                     closeAttemptRef.current = key;
                     closeMutation.mutate(key);
                   }}
-                  className="flex-1 rounded-lg bg-till-600 py-3 text-base font-semibold text-white disabled:opacity-40"
+                  className="pos-button-primary flex-1 rounded-lg py-3 text-base font-semibold disabled:opacity-40"
                 >
                   {closeMutation.isPending ? 'Cerrando…' : 'Cerrar caja e imprimir Z'}
                 </button>
@@ -180,7 +180,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                     closeAttemptRef.current = null;
                     onCancel();
                   }}
-                  className="rounded-lg px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+                  className="pos-button-secondary rounded-lg px-4 py-3 text-base font-medium"
                 >
                   Seguir vendiendo
                 </button>

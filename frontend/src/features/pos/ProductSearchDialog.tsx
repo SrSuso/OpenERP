@@ -62,7 +62,7 @@ export function ProductSearchDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded px-4 py-3 text-base font-medium text-slate-200 hover:bg-slate-700"
+            className="pos-button-secondary rounded px-4 py-3 text-base font-medium"
           >
             Cerrar
           </button>
@@ -102,7 +102,7 @@ export function ProductSearchDialog({
                   type="button"
                   disabled={disabled}
                   onClick={() => onPick(product)}
-                  className="rounded bg-slate-700 px-4 py-4 text-left text-slate-50 transition active:bg-slate-600 disabled:opacity-50"
+                  className="pos-button-secondary rounded px-4 py-4 text-left transition active:brightness-110 disabled:opacity-50"
                 >
                   <span className="block text-lg font-semibold">{product.name}</span>
                   <span className="mt-1 block text-sm text-emerald-400">
@@ -126,7 +126,7 @@ export function ProductSearchDialog({
                     key={key}
                     type="button"
                     onClick={() => pressKey(key)}
-                    className="min-h-12 w-[clamp(2.5rem,7vw,4.5rem)] rounded-lg border border-slate-600 bg-slate-700 px-2 text-lg font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+                    className="pos-button-secondary min-h-12 w-[clamp(2.5rem,7vw,4.5rem)] rounded-lg border border-slate-600 px-2 text-lg font-semibold shadow-sm transition active:translate-y-px active:brightness-110"
                   >
                     {key}
                   </button>
@@ -137,14 +137,14 @@ export function ProductSearchDialog({
               <button
                 type="button"
                 onClick={() => onQueryChange('')}
-                className="min-h-12 rounded-lg border border-slate-600 bg-slate-700 px-2 text-sm font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+                className="pos-button-secondary min-h-12 rounded-lg border border-slate-600 px-2 text-sm font-semibold shadow-sm transition active:translate-y-px active:brightness-110"
               >
                 Borrar todo
               </button>
               <button
                 type="button"
                 onClick={() => onQueryChange(query.slice(0, -1))}
-                className="min-h-12 rounded-lg border border-slate-600 bg-slate-700 text-xl font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+                className="pos-button-secondary min-h-12 rounded-lg border border-slate-600 text-xl font-semibold shadow-sm transition active:translate-y-px active:brightness-110"
                 aria-label="Borrar una letra"
               >
                 ←
@@ -152,14 +152,14 @@ export function ProductSearchDialog({
               <button
                 type="button"
                 onClick={() => pressKey(' ')}
-                className="min-h-12 rounded-lg border border-slate-600 bg-slate-700 px-2 text-sm font-semibold text-slate-50 shadow-sm transition hover:bg-slate-600 active:translate-y-px active:bg-slate-500"
+                className="pos-button-secondary min-h-12 rounded-lg border border-slate-600 px-2 text-sm font-semibold shadow-sm transition active:translate-y-px active:brightness-110"
               >
                 Espacio
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="min-h-12 rounded-lg bg-till-600 px-2 text-sm font-semibold text-white shadow-sm transition hover:bg-till-500 active:translate-y-px active:bg-till-700"
+                className="pos-button-primary min-h-12 rounded-lg px-2 text-sm font-semibold shadow-sm transition active:translate-y-px active:brightness-110"
               >
                 Listo
               </button>
