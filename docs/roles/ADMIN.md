@@ -25,7 +25,8 @@ caja cotidiana.
 La guía detallada para cada tarea de interfaz está en
 [`../USER_GUIDE.md`](../USER_GUIDE.md). La gestión de usuarios y roles se
 explica también en [`../ADMIN_GUIDE.md`](../ADMIN_GUIDE.md#5-gestión-de-usuarios-y-roles).
-El funcionamiento de los dos editores de ticket, los márgenes de 80 mm y todas
+El funcionamiento de los dos editores de ticket, los márgenes visibles dentro
+del cabezal de 72 mm y todas
 las variables disponibles está en
 [`../TICKET_TEMPLATE_EDITOR.md`](../TICKET_TEMPLATE_EDITOR.md).
 La instalación de QZ Tray, la impresora Windows, la impresión remota y la firma

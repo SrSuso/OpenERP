@@ -17,8 +17,8 @@ seleccionado se usa para los tickets nuevos.
 
 La vista previa exterior representa siempre los **80 mm de papel**. La
 POSPrinter POS-80 tiene un cabezal de **576 puntos a 203 dpi**, equivalente a
-**72 mm imprimibles**. Los 4 mm restantes a cada lado son la zona física entre
-el borde de la bobina y el cabezal.
+**72 mm imprimibles**. Los márgenes configurados son blancos visibles dentro de
+esos 72 mm, no una estimación de la zona física de la bobina.
 
 Se pueden modificar:
 
@@ -31,18 +31,17 @@ El ancho imprimible no es un control de escala independiente. OpenERP lo
 muestra calculado mediante:
 
 ```text
-ancho útil = 80 mm - margen izquierdo - margen derecho
+ancho útil = 72 mm - margen izquierdo - margen derecho
 ```
 
-Por ejemplo, `4 + 72 + 4 = 80 mm` utiliza los 576 puntos completos del cabezal.
-Al aumentar un margen, OpenERP deja puntos en blanco dentro de esos 576 y reduce
-el espacio disponible para el texto. El tamaño de letra no cambia. Los márgenes
-no pueden ser inferiores a 4 mm porque esa parte ya queda fuera del cabezal.
+Por ejemplo, `4 + 64 + 4 = 72 mm` deja 4 mm de blanco visible a cada lado del
+contenido. Al aumentar un margen, OpenERP reduce el espacio disponible para el
+texto; el tamaño de letra no cambia.
 
-La vista previa y la impresión comparten ahora el mismo documento: OpenERP
-genera una imagen de **576 puntos de ancho**, la muestra dentro de una bobina de
-80 mm y envía esa misma imagen a QZ Tray. Windows y Chrome ya no recalculan el
-ancho, los márgenes, la fuente ni el centrado.
+La vista previa muestra la bobina y su área útil. Al imprimir, OpenERP envía a
+QZ Tray un raster del contenido y fija por ESC/POS el margen izquierdo y el
+ancho útil. Los márgenes superior e inferior son avances físicos antes y
+después del contenido: no dependen de saltos de línea ni del tamaño de letra.
 
 ### Impresión directa con QZ Tray
 
@@ -50,7 +49,12 @@ La ruta principal de impresión requiere QZ Tray abierto en el ordenador Windows
 configurado en **Terminales POS → Impresión mediante QZ Tray**. OpenERP se
 conecta al host y puerto WSS guardados, busca el nombre exacto de impresora y
 envía la imagen como ESC/POS por la cola RAW de Windows. El trabajo incluye
-inicio de impresora, la imagen, avance final y corte.
+inicio de impresora, área útil lateral, avance superior, imagen, avance
+inferior y corte.
+
+Una venta conserva el perfil de impresión que tenía al cobrarse. Para verificar
+una plantilla editada, cobra una **venta nueva**; una reimpresión conserva el
+texto y perfil históricos. Los cierres Z usan el perfil activo al imprimirlos.
 
 Antes de la configuración de firma, QZ Tray puede pedir autorización para que
 el sitio de OpenERP imprima. En una instalación definitiva la prueba debe

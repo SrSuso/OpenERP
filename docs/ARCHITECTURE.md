@@ -142,8 +142,9 @@ de la venta.
 
 Los tickets se renderizan una vez y conservan `rendered_text` y su perfil de
 impresión. Reimprimir no vuelve a consultar la plantilla activa. Sólo puede
-existir una plantilla activa globalmente y editar crea una revisión nueva; una
-plantilla se puede borrar sin afectar tickets ya renderizados.
+existir una plantilla activa globalmente; editarla la actualiza en su sitio y
+una plantilla se puede borrar sin afectar tickets ya renderizados. QZ recibe un
+raster recortado y comandos ESC/POS para el área lateral y avances verticales.
 
 ### 2.6. Hora comercial
 

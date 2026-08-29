@@ -136,6 +136,12 @@ La impresión del ticket recién cobrado, las reimpresiones de Ventas y
 Devoluciones, el cierre Z y la reimpresión de cierres usan siempre QZ Tray. No
 existe una segunda composición del ticket mediante el navegador.
 
+En **Plantillas de ticket**, los márgenes laterales son blancos visibles dentro
+del cabezal térmico de 72 mm: `4 mm + 64 mm útiles + 4 mm` es una configuración
+normal. Los márgenes superior e inferior se avanzan físicamente. Una venta ya
+emitida conserva su perfil; para probar una plantilla nueva hay que cobrar una
+venta nueva.
+
 ### 2.6. Cerrar caja y sesión
 
 En el TPV, **Cerrar sesión** abre primero el cierre Z del almacén. La vista

@@ -295,6 +295,10 @@ firma, sus rutas dentro del contenedor y vuelve a desplegar.
 4. Reimprime esa venta desde **Ventas**.
 5. Reimprime un cierre desde **Cierres Z**.
 6. Si usas Administración en otro PC, repite una reimpresión desde allí.
+7. En la plantilla prueba una venta nueva con `4 mm` a izquierda/derecha y
+   `5 mm` arriba/abajo: debe dejar blanco lateral visible y papel antes/después
+   del contenido. No uses una venta antigua para validar una plantilla nueva,
+   porque su perfil queda congelado al cobrarla.
 
 ## 6. Diagnóstico rápido
 
@@ -310,6 +314,7 @@ firma, sus rutas dentro del contenedor y vuelve a desplegar.
 | QZ identifica la solicitud como anónima          | El navegador no recibió un certificado de firma válido: verifica ambos ficheros en `deploy/qz-signing/`, las rutas `/run/secrets/qz-signing/...` y despliega de nuevo. |
 | Chrome/Edge pregunta por red local               | Es un permiso independiente del navegador; concédelo una vez para el sitio.                                                                                            |
 | Sale A4 o diálogo del navegador                  | No es la ruta térmica: revisa que OpenERP y QZ estén desplegados y conectados.                                                                                         |
+| Los márgenes no cambian al reimprimir una venta antigua | Es correcto: el ticket conserva su perfil histórico. Cobra una venta nueva para validar la plantilla activa. |
 
 ## 7. Mantenimiento y seguridad
 
