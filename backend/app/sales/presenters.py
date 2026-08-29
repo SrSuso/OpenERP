@@ -29,6 +29,7 @@ def sale_line_to_read(line: SaleLine, *, prices_include_tax: bool) -> SaleLineRe
         package_price=service.package_price(line),
         unit_price=line.unit_price,
         cold_drink_surcharge=line.cold_drink_surcharge,
+        pos_surcharge_label=line.pos_surcharge_label,
         tax_rate=line.tax_rate,
         discount_rate=line.discount_rate,
         subtotal=totals.subtotal,

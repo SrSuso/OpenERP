@@ -194,6 +194,7 @@ export const saleLineSchema = z.object({
   unit_price: z.string(),
   // Optional while older API deployments are rolling out the new field.
   cold_drink_surcharge: z.string().optional(),
+  pos_surcharge_label: z.string().nullable().optional(),
   tax_rate: z.string(),
   discount_rate: z.string(),
   subtotal: z.string(),
@@ -333,6 +334,7 @@ export async function addLine(
     quantity_packages: string;
     open_price_total?: string;
     cold_drink?: boolean;
+    pos_surcharge?: 'COLD_DRINK' | 'BAG_LARGE' | 'BAG_MEDIUM' | 'BAG_SMALL';
   },
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines`, {
@@ -346,7 +348,12 @@ export async function addLine(
 export async function addLineByBarcode(
   saleId: number,
   terminalId: number,
-  line: { barcode: string; quantity_packages: string; cold_drink?: boolean },
+  line: {
+    barcode: string;
+    quantity_packages: string;
+    cold_drink?: boolean;
+    pos_surcharge?: 'COLD_DRINK' | 'BAG_LARGE' | 'BAG_MEDIUM' | 'BAG_SMALL';
+  },
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines/by-barcode`, {
     method: 'POST',

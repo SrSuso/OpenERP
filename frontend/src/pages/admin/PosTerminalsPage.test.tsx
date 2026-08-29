@@ -108,20 +108,27 @@ function stubBackend() {
       caution: null,
     },
   ];
-  let coldDrinkSurcharge = {
-    key: 'pos.cold_drink_surcharge_amount',
-    group: 'Caja (TPV)',
-    label: 'Recargo por bebida fría (por unidad)',
-    help: 'Importe final que suma la caja a cada unidad marcada como bebida fría.',
-    type: 'DECIMAL',
-    value: '0.20',
-    is_set: true,
-    default: '0',
-    choices: [],
-    minimum: '0',
-    maximum: '100',
-    caution: null,
-  };
+  let posSurcharges = ['Bebida fría', 'Bolsa grande', 'Bolsa mediana', 'Bolsa pequeña'].map(
+    (label, index) => ({
+      key: [
+        'pos.cold_drink_surcharge_amount',
+        'pos.large_bag_surcharge_amount',
+        'pos.medium_bag_surcharge_amount',
+        'pos.small_bag_surcharge_amount',
+      ][index]!,
+      group: 'Caja (TPV)',
+      label: `${label} (por unidad)`,
+      help: `Importe final que suma la caja al marcar ${label.toLowerCase()}.`,
+      type: 'DECIMAL',
+      value: index === 0 ? '0.20' : '0',
+      is_set: true,
+      default: '0',
+      choices: [],
+      minimum: '0',
+      maximum: '100',
+      caution: null,
+    }),
+  );
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -140,17 +147,18 @@ function stubBackend() {
           jsonResponse({ groups: ['Caja (TPV)', 'Impresión QZ Tray'], settings: posSettings }),
         );
       }
-      if (method === 'GET' && url.includes('/settings/pos/cold-drink-surcharge')) {
-        return Promise.resolve(jsonResponse(coldDrinkSurcharge));
+      if (method === 'GET' && url.includes('/settings/pos/surcharges')) {
+        return Promise.resolve(jsonResponse({ groups: ['Caja (TPV)'], settings: posSurcharges }));
       }
-      if (method === 'PUT' && url.includes('/settings/pos/cold-drink-surcharge')) {
-        coldDrinkSurcharge = {
-          ...coldDrinkSurcharge,
-          value: body['amount'] as string,
-          is_set: true,
-        };
+      if (method === 'PUT' && url.includes('/settings/pos/surcharges')) {
+        const updates = body['values'] as Record<string, string>;
+        posSurcharges = posSurcharges.map((setting) =>
+          updates[setting.key] === undefined
+            ? setting
+            : { ...setting, value: updates[setting.key], is_set: true },
+        );
         writes.push(body);
-        return Promise.resolve(jsonResponse(coldDrinkSurcharge));
+        return Promise.resolve(jsonResponse({ groups: ['Caja (TPV)'], settings: posSurcharges }));
       }
       if (method === 'GET' && url.includes('/settings/values')) {
         return Promise.resolve(
@@ -309,7 +317,7 @@ describe('PosTerminalsPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Firma silenciosa: activa');
   });
 
-  it('shows only the cold-drink amount to a role delegated that permission', async () => {
+  it('shows only the delegated fixed POS supplements to a manager role', async () => {
     const backend = stubBackend();
     renderPage({
       canReadSettings: false,
@@ -317,11 +325,20 @@ describe('PosTerminalsPage', () => {
       canManageColdDrinkSurcharge: true,
     });
 
-    const amount = await screen.findByLabelText('Recargo por bebida fría (por unidad)');
+    const amount = await screen.findByLabelText('Bebida fría (por unidad)');
     fireEvent.change(amount, { target: { value: '0,35' } });
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar importe' }));
+    const largeBag = screen.getByLabelText('Bolsa grande (por unidad)');
+    fireEvent.change(largeBag, { target: { value: '0,15' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar importes' }));
 
-    await waitFor(() => expect(backend.writes).toContainEqual({ amount: '0.35' }));
+    await waitFor(() =>
+      expect(backend.writes).toContainEqual({
+        values: {
+          'pos.cold_drink_surcharge_amount': '0.35',
+          'pos.large_bag_surcharge_amount': '0.15',
+        },
+      }),
+    );
     expect(screen.queryByText('Añadir terminal')).not.toBeInTheDocument();
     expect(screen.queryByText('Impresión mediante QZ Tray')).not.toBeInTheDocument();
   });

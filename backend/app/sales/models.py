@@ -174,6 +174,10 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: Optional per-base-unit amount selected by the cashier for a cold
     #: drink. It is a sale snapshot, never a change to the catalogue PVP.
     cold_drink_surcharge: Mapped[Money] = mapped_column(default=Decimal(0), server_default="0")
+    #: Human-readable snapshot for the configured POS supplement (cold drink
+    #: or bag). Its amount remains in ``cold_drink_surcharge`` for backwards
+    #: compatibility with the established fiscal calculations.
+    pos_surcharge_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
     #: Cost and stock policy used by the original sale and by any later
     #: physical reversal.  Without these, editing the current product could
     #: make a return value or move stock differently from the sale it undoes.

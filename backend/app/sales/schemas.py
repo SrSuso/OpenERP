@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +30,9 @@ class SaleLineCreate(BaseModel):
     #: The browser may request the configured cold-drink option, but never
     #: chooses its amount: sales.service resolves and snapshots it.
     cold_drink: bool = False
+    #: The browser selects a code only; the service resolves its configured
+    #: amount server-side and allows one supplement per sale line.
+    pos_surcharge: Literal["COLD_DRINK", "BAG_LARGE", "BAG_MEDIUM", "BAG_SMALL"] | None = None
 
 
 class SaleLineByBarcodeCreate(BaseModel):
@@ -40,6 +44,7 @@ class SaleLineByBarcodeCreate(BaseModel):
     quantity_packages: Decimal = Field(default=Decimal(1), gt=0)
     discount_rate: Decimal = Field(default=Decimal(0), ge=0, le=100)
     cold_drink: bool = False
+    pos_surcharge: Literal["COLD_DRINK", "BAG_LARGE", "BAG_MEDIUM", "BAG_SMALL"] | None = None
 
 
 class SaleLineRead(BaseModel):
@@ -62,6 +67,7 @@ class SaleLineRead(BaseModel):
     package_price: Decimal
     unit_price: Decimal
     cold_drink_surcharge: Decimal
+    pos_surcharge_label: str | None
     tax_rate: Decimal
     discount_rate: Decimal
     #: Computed, not stored — deterministic from the snapshots above, so

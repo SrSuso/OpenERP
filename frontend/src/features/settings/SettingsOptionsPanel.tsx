@@ -44,7 +44,6 @@ export const POS_TERMINAL_SETTING_KEYS = [
   'pos.catalog_refresh_seconds',
   'pos.default_payment_method',
   'pos.show_other_payment',
-  'pos.cold_drink_surcharge_amount',
   'pos.surface_color',
   'pos.font_size_px',
   'ui.pos_button_color',

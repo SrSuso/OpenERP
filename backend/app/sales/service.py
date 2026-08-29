@@ -410,6 +410,7 @@ def _new_line(
     tax_rate: Decimal,
     unit_price: Decimal | None = None,
     cold_drink_surcharge: Decimal = Decimal(0),
+    pos_surcharge_label: str | None = None,
 ) -> SaleLine:
     return SaleLine(
         sale_id=sale_id,
@@ -434,6 +435,7 @@ def _new_line(
         # with no tax to report at all.
         unit_price=product.list_price if unit_price is None else unit_price,
         cold_drink_surcharge=cold_drink_surcharge,
+        pos_surcharge_label=pos_surcharge_label,
         unit_cost=product.cost,
         tracks_stock=catalog_stock.tracks_stock(product),
         track_lots=catalog_stock.tracks_lots(product),
@@ -472,6 +474,7 @@ def _add_or_merge(sale: Sale, line: SaleLine, session: AsyncSession) -> SaleLine
             and existing.tracks_stock == line.tracks_stock
             and existing.track_lots == line.track_lots
             and existing.cold_drink_surcharge == line.cold_drink_surcharge
+            and existing.pos_surcharge_label == line.pos_surcharge_label
         ):
             existing.quantity_packages += line.quantity_packages
             existing.quantity_base += line.quantity_base
@@ -510,20 +513,30 @@ async def _open_price_unit_price(
     return _q(total / (Decimal(1) + tax_rate / Decimal(100)))
 
 
-async def _cold_drink_surcharge(
-    session: AsyncSession, *, selected: bool, tax_rate: Decimal
-) -> Decimal:
-    """Resolve the configured final cold-drink amount into line price basis."""
-    if not selected:
-        return Decimal(0)
-    configured = Decimal(
-        str(await settings_store.get_value(session, "pos.cold_drink_surcharge_amount"))
-    )
+POS_SURCHARGES: dict[str, tuple[str, str]] = {
+    "COLD_DRINK": ("pos.cold_drink_surcharge_amount", "Bebida fría"),
+    "BAG_LARGE": ("pos.large_bag_surcharge_amount", "Bolsa grande"),
+    "BAG_MEDIUM": ("pos.medium_bag_surcharge_amount", "Bolsa mediana"),
+    "BAG_SMALL": ("pos.small_bag_surcharge_amount", "Bolsa pequeña"),
+}
+
+
+async def _pos_surcharge(
+    session: AsyncSession, *, code: str | None, cold_drink: bool, tax_rate: Decimal
+) -> tuple[Decimal, str | None]:
+    """Resolve a configured POS supplement and snapshot its visible label."""
+    if code is not None and cold_drink:
+        raise ValidationError("Choose only one POS supplement per line.")
+    selected_code = code or ("COLD_DRINK" if cold_drink else None)
+    if selected_code is None:
+        return Decimal(0), None
+    setting_key, label = POS_SURCHARGES[selected_code]
+    configured = Decimal(str(await settings_store.get_value(session, setting_key)))
     if configured <= 0:
         raise ValidationError(
-            "Configura un importe mayor que cero para el recargo de bebida fría en Terminales POS."
+            f"Configura un importe mayor que cero para {label} en Terminales POS."
         )
-    return await _open_price_unit_price(session, total=configured, tax_rate=tax_rate)
+    return await _open_price_unit_price(session, total=configured, tax_rate=tax_rate), label
 
 
 async def add_line(
@@ -552,8 +565,8 @@ async def add_line(
         )
     elif payload.open_price_total is not None:
         raise ValidationError("Only an open-price POS button accepts an entered price.")
-    cold_drink_surcharge = await _cold_drink_surcharge(
-        session, selected=payload.cold_drink, tax_rate=tax_rate
+    cold_drink_surcharge, pos_surcharge_label = await _pos_surcharge(
+        session, code=payload.pos_surcharge, cold_drink=payload.cold_drink, tax_rate=tax_rate
     )
 
     line = _add_or_merge(
@@ -567,6 +580,7 @@ async def add_line(
             tax_rate=tax_rate,
             unit_price=unit_price,
             cold_drink_surcharge=cold_drink_surcharge,
+            pos_surcharge_label=pos_surcharge_label,
         ),
         session,
     )
@@ -585,6 +599,7 @@ async def add_line(
                 str(payload.open_price_total) if payload.open_price_total is not None else None
             ),
             "cold_drink_surcharge": str(cold_drink_surcharge),
+            "pos_surcharge_label": pos_surcharge_label,
         },
     )
     return await get_sale(session, sale_id)
@@ -607,8 +622,8 @@ async def add_line_by_barcode(
     if not product.is_active:
         raise ValidationError(f"Product {product.id} is deactivated and cannot be sold.")
     tax_rate = await pricing_service.effective_tax_rate_for(session, product.id)
-    cold_drink_surcharge = await _cold_drink_surcharge(
-        session, selected=payload.cold_drink, tax_rate=tax_rate
+    cold_drink_surcharge, pos_surcharge_label = await _pos_surcharge(
+        session, code=payload.pos_surcharge, cold_drink=payload.cold_drink, tax_rate=tax_rate
     )
 
     line = _add_or_merge(
@@ -621,6 +636,7 @@ async def add_line_by_barcode(
             discount_rate=payload.discount_rate,
             tax_rate=tax_rate,
             cold_drink_surcharge=cold_drink_surcharge,
+            pos_surcharge_label=pos_surcharge_label,
         ),
         session,
     )
@@ -637,6 +653,7 @@ async def add_line_by_barcode(
             "line_quantity_packages": str(line.quantity_packages),
             "barcode": payload.barcode,
             "cold_drink_surcharge": str(cold_drink_surcharge),
+            "pos_surcharge_label": pos_surcharge_label,
         },
     )
     return await get_sale(session, sale_id)

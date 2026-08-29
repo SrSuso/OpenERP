@@ -64,7 +64,8 @@ export function Cart({
                   </p>
                   {Number(line.cold_drink_surcharge ?? '0') > 0 && (
                     <p className="mt-1 text-xs font-medium text-cyan-300">
-                      Bebida fría +{formatMoney(line.cold_drink_surcharge ?? '0')} por unidad
+                      {line.pos_surcharge_label ?? 'Bebida fría'} +
+                      {formatMoney(line.cold_drink_surcharge ?? '0')} por unidad
                     </p>
                   )}
                 </div>

@@ -352,7 +352,7 @@ POS_COLD_DRINK_SURCHARGE_MANAGE = "pos.cold_drink_surcharge.manage"
 PHASE_27_PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(
         POS_COLD_DRINK_SURCHARGE_MANAGE,
-        "View and change the POS cold-drink surcharge amount.",
+        "View and change the fixed POS supplements: cold drink and bags.",
     ),
 )
 

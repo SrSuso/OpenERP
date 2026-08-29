@@ -293,7 +293,13 @@ def render_ticket(
             surcharge_total = line.quantity_base * line.cold_drink_surcharge
             if not prices_include_tax:
                 surcharge_total *= Decimal(1) + line.tax_rate / Decimal(100)
-            rows.extend(_two_column("Incluye bebida fría", f"+{_money(surcharge_total)}", width))
+            rows.extend(
+                _two_column(
+                    f"Incluye {line.pos_surcharge_label or 'bebida fría'}",
+                    f"+{_money(surcharge_total)}",
+                    width,
+                )
+            )
         if template.show_unit_price:
             rows.append(f"{_quantity(line.quantity_packages)} x {_money(line.unit_price)}")
         if template.show_line_discounts and line.discount_rate > 0:

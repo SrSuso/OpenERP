@@ -135,6 +135,37 @@ async def test_cold_drink_option_uses_the_configured_amount_per_unit(
     assert {line["cold_drink_surcharge"] for line in lines} == {"0.000000", "0.200000"}
 
 
+async def test_bag_option_uses_its_own_configured_amount_and_snapshot_label(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    assert (
+        await client.put(
+            "/api/v1/settings/options",
+            json={"values": {"pos.large_bag_surcharge_amount": "0.15"}},
+        )
+    ).status_code == 200
+    product = await _create_product(client, sku="SALE-LARGE-BAG")
+    base_id = next(package["id"] for package in product["packages"] if package["is_base"])
+    await login(role_name="CASHIER")
+    sale = await _open_sale(client)
+
+    response = await client.post(
+        f"/api/v1/sales/{sale['id']}/lines",
+        json={
+            "product_id": product["id"],
+            "package_id": base_id,
+            "quantity_packages": "2",
+            "pos_surcharge": "BAG_LARGE",
+        },
+    )
+
+    assert response.status_code == 201
+    line = response.json()["lines"][0]
+    assert line["cold_drink_surcharge"] == "0.150000"
+    assert line["pos_surcharge_label"] == "Bolsa grande"
+
+
 async def test_open_price_pos_product_uses_the_entered_final_total(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 
 from app.audit import service as audit
 from app.auth.dependencies import CurrentUser, SessionDep
+from app.core.errors import ValidationError
 from app.rbac.dependencies import require_permission
 from app.rbac.permissions import POS_COLD_DRINK_SURCHARGE_MANAGE, SETTINGS_MANAGE, SETTINGS_READ
 from app.settings import store
@@ -34,6 +35,12 @@ _require_manage = Depends(require_permission(SETTINGS_MANAGE))
 _require_cold_drink_surcharge_manage = Depends(require_permission(POS_COLD_DRINK_SURCHARGE_MANAGE))
 
 COLD_DRINK_SURCHARGE_KEY = "pos.cold_drink_surcharge_amount"
+POS_SURCHARGE_KEYS = (
+    COLD_DRINK_SURCHARGE_KEY,
+    "pos.large_bag_surcharge_amount",
+    "pos.medium_bag_surcharge_amount",
+    "pos.small_bag_surcharge_amount",
+)
 
 
 def _definition_to_read(definition: SettingDef, value: Any) -> SettingDefinitionRead:
@@ -90,6 +97,17 @@ async def _cold_drink_surcharge_definition(session: SessionDep) -> SettingDefini
     return _definition_to_read(definition, values[definition.key])
 
 
+async def _pos_surcharges(session: SessionDep) -> SettingsOptionsRead:
+    values = await store.get_values(session)
+    definitions = [SETTINGS_BY_KEY[key] for key in POS_SURCHARGE_KEYS]
+    return SettingsOptionsRead(
+        groups=list(dict.fromkeys(definition.group for definition in definitions)),
+        settings=[
+            _definition_to_read(definition, values[definition.key]) for definition in definitions
+        ],
+    )
+
+
 @router.get(
     "/settings/pos/cold-drink-surcharge",
     response_model=SettingDefinitionRead,
@@ -129,6 +147,42 @@ async def update_cold_drink_surcharge(
         },
     )
     return await _cold_drink_surcharge_definition(session)
+
+
+@router.get(
+    "/settings/pos/surcharges",
+    response_model=SettingsOptionsRead,
+    dependencies=[_require_cold_drink_surcharge_manage],
+)
+async def get_pos_surcharges(session: SessionDep) -> SettingsOptionsRead:
+    """Read the fixed POS supplements delegated to a till supervisor."""
+    return await _pos_surcharges(session)
+
+
+@router.put(
+    "/settings/pos/surcharges",
+    response_model=SettingsOptionsRead,
+    dependencies=[_require_cold_drink_surcharge_manage],
+)
+async def update_pos_surcharges(
+    payload: SettingsUpdate, session: SessionDep
+) -> SettingsOptionsRead:
+    """Change one or more fixed POS supplements, and nothing else."""
+    invalid_keys = sorted(set(payload.values) - set(POS_SURCHARGE_KEYS))
+    if invalid_keys:
+        raise ValidationError(f"Ajustes no permitidos: {', '.join(invalid_keys)}.")
+    before = await store.get_values(session)
+    after = await store.update_values(session, payload.values)
+    await audit.record(
+        session,
+        action="settings_changed",
+        entity_type="settings",
+        entity_id=None,
+        after={
+            key: {"antes": str(before[key]), "ahora": str(after[key])} for key in payload.values
+        },
+    )
+    return await _pos_surcharges(session)
 
 
 @router.put("/settings/options", response_model=SettingsOptionsRead, dependencies=[_require_manage])

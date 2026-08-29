@@ -48,12 +48,43 @@ async def test_cold_drink_surcharge_permission_reads_and_updates_only_its_settin
     ).status_code == 403
 
 
-async def test_cold_drink_surcharge_endpoint_rejects_roles_without_its_permission(
+async def test_manager_can_configure_all_fixed_pos_surcharges(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="MANAGER")
 
-    assert (await client.get("/api/v1/settings/pos/cold-drink-surcharge")).status_code == 403
+    response = await client.put(
+        "/api/v1/settings/pos/surcharges",
+        json={
+            "values": {
+                "pos.large_bag_surcharge_amount": "0.15",
+                "pos.medium_bag_surcharge_amount": "0.10",
+                "pos.small_bag_surcharge_amount": "0.05",
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    values = {setting["key"]: setting["value"] for setting in response.json()["settings"]}
+    assert values["pos.large_bag_surcharge_amount"] == "0.15"
+    assert values["pos.medium_bag_surcharge_amount"] == "0.10"
+    assert values["pos.small_bag_surcharge_amount"] == "0.05"
     assert (
-        await client.put("/api/v1/settings/pos/cold-drink-surcharge", json={"amount": "0.35"})
+        await client.put(
+            "/api/v1/settings/pos/surcharges", json={"values": {"app.display_name": "X"}}
+        )
+    ).status_code == 422
+
+
+async def test_cashier_cannot_read_or_change_pos_surcharges(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="CASHIER")
+
+    assert (await client.get("/api/v1/settings/pos/surcharges")).status_code == 403
+    assert (
+        await client.put(
+            "/api/v1/settings/pos/surcharges",
+            json={"values": {"pos.large_bag_surcharge_amount": "0.15"}},
+        )
     ).status_code == 403

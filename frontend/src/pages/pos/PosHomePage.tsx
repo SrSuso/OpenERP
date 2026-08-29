@@ -41,6 +41,23 @@ function describeError(error: unknown): string {
   return error instanceof ApiError ? error.message : 'Ha ocurrido un error inesperado.';
 }
 
+type PosSurchargeCode = 'COLD_DRINK' | 'BAG_LARGE' | 'BAG_MEDIUM' | 'BAG_SMALL';
+
+const POS_SURCHARGE_BUTTONS: Array<{
+  code: PosSurchargeCode;
+  label: string;
+  settingKey:
+    | 'pos.cold_drink_surcharge_amount'
+    | 'pos.large_bag_surcharge_amount'
+    | 'pos.medium_bag_surcharge_amount'
+    | 'pos.small_bag_surcharge_amount';
+}> = [
+  { code: 'COLD_DRINK', label: 'Bebida fría', settingKey: 'pos.cold_drink_surcharge_amount' },
+  { code: 'BAG_LARGE', label: 'Bolsa grande', settingKey: 'pos.large_bag_surcharge_amount' },
+  { code: 'BAG_MEDIUM', label: 'Bolsa mediana', settingKey: 'pos.medium_bag_surcharge_amount' },
+  { code: 'BAG_SMALL', label: 'Bolsa pequeña', settingKey: 'pos.small_bag_surcharge_amount' },
+];
+
 /**
  * The till (phase 12): resolve where this register sells from, resume or
  * open a `DRAFT` sale (phase 11's cart), and let the cashier build it by
@@ -53,7 +70,18 @@ export function PosHomePage() {
   const { selectedTerminal } = usePosTerminal();
   const terminalId = selectedTerminal?.id ?? null;
   const coldDrinkSurcharge = useShopSetting('pos.cold_drink_surcharge_amount', '0');
-  const coldDrinkSurchargeEnabled = Number(coldDrinkSurcharge) > 0;
+  const largeBagSurcharge = useShopSetting('pos.large_bag_surcharge_amount', '0');
+  const mediumBagSurcharge = useShopSetting('pos.medium_bag_surcharge_amount', '0');
+  const smallBagSurcharge = useShopSetting('pos.small_bag_surcharge_amount', '0');
+  const surchargeAmounts: Record<PosSurchargeCode, string> = {
+    COLD_DRINK: coldDrinkSurcharge,
+    BAG_LARGE: largeBagSurcharge,
+    BAG_MEDIUM: mediumBagSurcharge,
+    BAG_SMALL: smallBagSurcharge,
+  };
+  const enabledSurcharges = POS_SURCHARGE_BUTTONS.filter(
+    (button) => Number(surchargeAmounts[button.code]) > 0,
+  );
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [initialCategoryResolved, setInitialCategoryResolved] = useState(false);
   const [barcode, setBarcode] = useState('');
@@ -61,7 +89,7 @@ export function PosHomePage() {
   const [productSearch, setProductSearch] = useState('');
   const [sale, setSale] = useState<Sale | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
-  const [coldDrinkNext, setColdDrinkNext] = useState(false);
+  const [selectedSurcharge, setSelectedSurcharge] = useState<PosSurchargeCode | null>(null);
   const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
@@ -189,19 +217,19 @@ export function PosHomePage() {
       product,
       quantity,
       openPriceTotal,
-      coldDrink,
+      surcharge,
     }: {
       product: Product;
       quantity: string;
       openPriceTotal?: string;
-      coldDrink: boolean;
+      surcharge: PosSurchargeCode | null;
     }) =>
       addLine(sale!.id, terminalId as number, {
         product_id: product.id,
         package_id: basePackage(product).id,
         quantity_packages: quantity,
         ...(openPriceTotal === undefined ? {} : { open_price_total: openPriceTotal }),
-        ...(coldDrink ? { cold_drink: true } : {}),
+        ...(surcharge ? { pos_surcharge: surcharge } : {}),
       }),
     onSuccess: (updated) => {
       setLineError(null);
@@ -215,9 +243,12 @@ export function PosHomePage() {
   const [weighing, setWeighing] = useState<{
     product: Product;
     barcode?: string;
-    coldDrink: boolean;
+    surcharge: PosSurchargeCode | null;
   } | null>(null);
-  const [openPrice, setOpenPrice] = useState<{ product: Product; coldDrink: boolean } | null>(null);
+  const [openPrice, setOpenPrice] = useState<{
+    product: Product;
+    surcharge: PosSurchargeCode | null;
+  } | null>(null);
 
   // Lo tecleado en el multiplicador, vacío mientras no se toque (= una
   // unidad). Se limpia al añadir: es para el siguiente producto, no un modo
@@ -225,42 +256,42 @@ export function PosHomePage() {
   const [pendingQuantity, setPendingQuantity] = useState('');
 
   function pickProduct(product: Product) {
-    const coldDrink = coldDrinkSurchargeEnabled && coldDrinkNext;
+    const surcharge = selectedSurcharge;
     if (product.is_open_price) {
-      setOpenPrice({ product, coldDrink });
+      setOpenPrice({ product, surcharge });
       setPendingQuantity('');
-      setColdDrinkNext(false);
+      setSelectedSurcharge(null);
       return;
     }
     if (product.is_sold_by_weight) {
       // Lo que se pesa lleva su propia cantidad, en gramos.
-      setWeighing({ product, coldDrink });
-      setColdDrinkNext(false);
+      setWeighing({ product, surcharge });
+      setSelectedSurcharge(null);
       return;
     }
     addLineMutation.mutate({
       product,
       quantity: pendingQuantity === '' ? '1' : pendingQuantity,
-      coldDrink,
+      surcharge,
     });
     setPendingQuantity('');
-    setColdDrinkNext(false);
+    setSelectedSurcharge(null);
   }
 
   const addBarcodeLineMutation = useMutation({
     mutationFn: ({
       code,
       quantity,
-      coldDrink,
+      surcharge,
     }: {
       code: string;
       quantity: string;
-      coldDrink: boolean;
+      surcharge: PosSurchargeCode | null;
     }) =>
       addLineByBarcode(sale!.id, terminalId as number, {
         barcode: code,
         quantity_packages: quantity,
-        ...(coldDrink ? { cold_drink: true } : {}),
+        ...(surcharge ? { pos_surcharge: surcharge } : {}),
       }),
     onSuccess: (updated) => {
       setLineError(null);
@@ -286,19 +317,19 @@ export function PosHomePage() {
     onSuccess: (product, code) => {
       setLineError(null);
       setBarcode('');
-      const coldDrink = coldDrinkSurchargeEnabled && coldDrinkNext;
+      const surcharge = selectedSurcharge;
       if (product.is_sold_by_weight) {
-        setWeighing({ product, barcode: code, coldDrink });
-        setColdDrinkNext(false);
+        setWeighing({ product, barcode: code, surcharge });
+        setSelectedSurcharge(null);
         return;
       }
       addBarcodeLineMutation.mutate({
         code,
         quantity: pendingQuantity === '' ? '1' : pendingQuantity,
-        coldDrink,
+        surcharge,
       });
       setPendingQuantity('');
-      setColdDrinkNext(false);
+      setSelectedSurcharge(null);
     },
     // Con el lector, el error que sale casi siempre es que ese código no
     // está dado de alta — y hay que decirlo con el código delante, para no
@@ -531,24 +562,36 @@ export function PosHomePage() {
                           será el siguiente toque, sin buscarla al final de
                           la cuadrícula. */}
                         <QuantityPad value={pendingQuantity} onChange={setPendingQuantity} />
-                        {coldDrinkSurchargeEnabled && (
+                        {enabledSurcharges.length > 0 && (
                           <div className="border-b border-slate-700 p-3">
-                            <button
-                              type="button"
-                              aria-pressed={coldDrinkNext}
-                              onClick={() => setColdDrinkNext((selected) => !selected)}
-                              disabled={busy}
-                              className={`min-h-12 w-full rounded-lg border px-4 text-left text-base font-semibold transition disabled:opacity-50 ${
-                                coldDrinkNext
-                                  ? 'border-cyan-300 bg-cyan-400 text-slate-950'
-                                  : 'border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
-                              }`}
-                            >
-                              Bebida fría{' '}
-                              <span className="ml-2 text-sm font-medium">
-                                +{formatMoney(coldDrinkSurcharge)} por unidad
-                              </span>
-                            </button>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {enabledSurcharges.map((button) => {
+                                const selected = selectedSurcharge === button.code;
+                                return (
+                                  <button
+                                    key={button.code}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() =>
+                                      setSelectedSurcharge((current) =>
+                                        current === button.code ? null : button.code,
+                                      )
+                                    }
+                                    disabled={busy}
+                                    className={`min-h-12 rounded-lg border px-4 text-left text-base font-semibold transition disabled:opacity-50 ${
+                                      selected
+                                        ? 'border-cyan-300 bg-cyan-400 text-slate-950'
+                                        : 'border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
+                                    }`}
+                                  >
+                                    {button.label}{' '}
+                                    <span className="ml-2 text-sm font-medium">
+                                      +{formatMoney(surchargeAmounts[button.code])} por unidad
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
                         <CategoryTabs
@@ -598,12 +641,12 @@ export function PosHomePage() {
               ? addLineMutation.mutate({
                   product: weighing.product,
                   quantity,
-                  coldDrink: weighing.coldDrink,
+                  surcharge: weighing.surcharge,
                 })
               : addBarcodeLineMutation.mutate({
                   code: weighing.barcode,
                   quantity,
-                  coldDrink: weighing.coldDrink,
+                  surcharge: weighing.surcharge,
                 })
           }
         />
@@ -619,7 +662,7 @@ export function PosHomePage() {
               product: openPrice.product,
               quantity: '1',
               openPriceTotal: total,
-              coldDrink: openPrice.coldDrink,
+              surcharge: openPrice.surcharge,
             })
           }
         />
