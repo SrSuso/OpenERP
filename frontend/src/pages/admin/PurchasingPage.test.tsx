@@ -343,7 +343,7 @@ describe('PurchasingPage', () => {
 
     await screen.findByText('Distribuciones Ejemplo SL');
     expect(backend.orders[0]?.lines[0]?.unit_cost).toBe('1.25');
-    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ver detalles' }));
 
     expect(await screen.findByText('Realizar pedido')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Unidad' })).toBeInTheDocument();
@@ -410,7 +410,7 @@ describe('PurchasingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Añadir fila' }));
     await userEvent.click(screen.getByRole('button', { name: 'Crear pedido' }));
     await screen.findByText('Distribuciones Ejemplo SL');
-    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ver detalles' }));
     await userEvent.click(screen.getByRole('button', { name: 'Realizar pedido' }));
     await screen.findByText('Estado: Realizado');
 

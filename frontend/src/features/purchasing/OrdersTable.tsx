@@ -43,10 +43,10 @@ export function OrdersTable({
         <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
             <th className="px-4 py-2 font-medium">Nº</th>
+            <th className="px-4 py-2 font-medium">Pedido</th>
             <th className="px-4 py-2 font-medium">Proveedor</th>
             <th className="px-4 py-2 font-medium">Estado</th>
             <th className="px-4 py-2 font-medium">Total</th>
-            <th className="px-4 py-2 font-medium" />
           </tr>
         </thead>
         <tbody>
@@ -54,6 +54,16 @@ export function OrdersTable({
             <Fragment key={order.id}>
               <tr className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-2 font-mono text-xs text-slate-500">#{order.id}</td>
+                <td className="px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => onToggleExpand(order.id)}
+                    aria-expanded={expandedId === order.id}
+                    className="inline-flex min-h-9 items-center rounded border border-brand-700 bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:ring-offset-2"
+                  >
+                    {expandedId === order.id ? 'Ocultar detalles' : 'Ver detalles'}
+                  </button>
+                </td>
                 <td className="px-4 py-2 font-medium text-slate-800">{order.supplier_name}</td>
                 <td className="px-4 py-2">
                   <span
@@ -63,15 +73,6 @@ export function OrdersTable({
                   </span>
                 </td>
                 <td className="px-4 py-2">{formatMoney(order.total)}</td>
-                <td className="px-4 py-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => onToggleExpand(order.id)}
-                    className="text-sm font-medium text-slate-600 hover:underline"
-                  >
-                    {expandedId === order.id ? 'Ocultar' : 'Ver detalle'}
-                  </button>
-                </td>
               </tr>
               {expandedId === order.id && (
                 <tr>
