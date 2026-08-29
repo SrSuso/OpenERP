@@ -15,11 +15,10 @@ const zReportsQuery = queryOptions({
     apiFetch(`${API_V1}/z-reports`, { schema: z.array(zReportSchema), signal }),
 });
 
-/** Los cierres de caja guardados.
+/** Los cierres Z diarios guardados.
  *
- * Cada uno con los totales tal y como se congelaron esa noche: es el papel
- * con el que se cuadró el cajón, y no cambia aunque después se devuelva
- * media compra (ver `app.sales.z_reports`). */
+ * Hay una Z por almacén y jornada. Volver a emitirla actualiza ese mismo
+ * documento con lo cobrado y devuelto hasta ese momento. */
 export function ZReportsPage() {
   const businessTimezone = useBusinessTimezone();
   const reports = useQuery(zReportsQuery);
@@ -29,7 +28,8 @@ export function ZReportsPage() {
     <section>
       <h1 className="mb-1 text-2xl font-semibold">Cierres de caja (Z)</h1>
       <p className="mb-4 text-sm text-slate-500">
-        Una Z por día comercial y almacén, con los totales congelados al cerrar. No cambian después.
+        Una Z por día comercial y almacén. Al volver a emitirla, se actualiza con los cobros y
+        devoluciones completados de la jornada.
       </p>
 
       {reports.isPending && <p className="text-sm text-slate-500">Cargando…</p>}

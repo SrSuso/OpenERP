@@ -247,9 +247,9 @@ async def preview_z_report(
     pricing: PricingSettingsDep,
     warehouse_id: Annotated[int, Query()],
 ) -> ZReportPreview:
-    """La Z diaria, o los totales que tendría si aún no se hubiera cerrado."""
+    """Los totales actuales de la Z diaria y su documento, si ya existe."""
     totals, existing = await z_reports.preview(session, warehouse_id)
-    pending = [] if existing is not None else await z_reports.open_sales(session, warehouse_id)
+    pending = await z_reports.open_sales(session, warehouse_id)
     return ZReportPreview(
         **totals,
         existing_report=_z_to_read(existing) if existing is not None else None,

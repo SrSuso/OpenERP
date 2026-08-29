@@ -318,7 +318,7 @@ describe('PosLayout', () => {
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
   });
 
-  it('shows and reprints the only daily Z without creating another one', async () => {
+  it('reprints an existing daily Z without creating another one', async () => {
     const backend = stubBackend({ existingDailyZ: true });
     renderLayout();
     await screen.findByText('Ana');
@@ -327,11 +327,26 @@ describe('PosLayout', () => {
 
     expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
     expect(
-      screen.getByText('La Z diaria ya está cerrada. Puedes volver a imprimirla.'),
+      screen.getByText(
+        'La Z diaria ya existe. Actualízala para incorporar los cobros y devoluciones posteriores.',
+      ),
     ).toBeInTheDocument();
     expect(backend.closeCalls).toEqual([]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Reimprimir Z' }));
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+  });
+
+  it('updates the existing daily Z instead of creating another one', async () => {
+    const backend = stubBackend({ existingDailyZ: true });
+    renderLayout();
+    await screen.findByText('Ana');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar Z e imprimir' }));
+
+    expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
+    expect(backend.closeCalls).toHaveLength(1);
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
   });
 

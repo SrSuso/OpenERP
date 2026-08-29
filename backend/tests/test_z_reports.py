@@ -1,4 +1,4 @@
-"""El cierre Z diario con los totales congelados."""
+"""El cierre Z diario, único y actualizable durante la jornada."""
 
 from __future__ import annotations
 
@@ -114,10 +114,10 @@ async def test_a_close_adds_up_what_was_taken(
     assert report["covers_from"] is not None
 
 
-async def test_a_second_close_returns_the_same_daily_z(
+async def test_reissuing_the_daily_z_updates_the_same_document(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Nunca se abre un segundo periodo Z en la misma jornada."""
+    """Una venta posterior entra en la Z de hoy, sin crear otro documento."""
     await login(role_name="ADMIN")
     warehouse_id, location_id = await _default_location(client)
     await _sell(client, warehouse_id, location_id, sku="Z-3", price="10.00")
@@ -128,21 +128,21 @@ async def test_a_second_close_returns_the_same_daily_z(
 
     assert second["id"] == first["id"]
     assert second["number"] == 1
-    assert second["sales_count"] == 1
-    assert second["cash_total"] == "10.000000"
-    assert second == first
+    assert second["sales_count"] == 2
+    assert second["cash_total"] == "17.000000"
 
     preview = (
         await client.get("/api/v1/z-reports/preview", params={"warehouse_id": warehouse_id})
     ).json()
     assert preview["existing_report"]["id"] == first["id"]
+    assert preview["sales_count"] == 2
+    assert preview["cash_total"] == "17.000000"
 
 
-async def test_a_frozen_close_does_not_change_afterwards(
+async def test_reissuing_the_daily_z_includes_later_economic_returns(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Es el papel con el que se cuadró el cajón esa noche: tiene que decir
-    lo mismo dentro de un año."""
+    """La devolución del día actualiza la misma Z al volver a emitirla."""
     await login(role_name="ADMIN")
     warehouse_id, location_id = await _default_location(client)
     sale_id = await _sell(client, warehouse_id, location_id, sku="Z-5", price="10.00")
@@ -185,7 +185,9 @@ async def test_a_frozen_close_does_not_change_afterwards(
     repeated_close = (
         await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
     ).json()
-    assert repeated_close == closed
+    assert repeated_close["id"] == closed["id"]
+    assert repeated_close["returns_count"] == 1
+    assert repeated_close["returns_total"] == "10.000000"
 
 
 async def test_the_till_cannot_be_closed_with_a_sale_in_progress(

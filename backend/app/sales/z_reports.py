@@ -1,9 +1,9 @@
-"""El cierre Z diario con sus totales congelados.
+"""El cierre Z diario, actualizado explícitamente durante la jornada.
 
-Cada almacén tiene una sola Z por día comercial. El primer cierre congela
-todo lo cobrado y devuelto desde medianoche de la zona horaria de la tienda;
-un segundo intento devuelve esa misma Z para reimprimirla sin crear otro
-periodo ni modificar el documento.
+Cada almacén tiene una sola Z por día comercial. Al emitirla de nuevo se
+recalculan, en ese mismo documento y número, todos los cobros y devoluciones
+completados desde medianoche de la zona horaria de la tienda. Así una venta
+posterior sigue perteneciendo a la Z del día, sin abrir un segundo cierre.
 """
 
 from __future__ import annotations
@@ -92,27 +92,11 @@ async def open_sales(session: AsyncSession, warehouse_id: int) -> list[Sale]:
 async def preview(
     session: AsyncSession, warehouse_id: int
 ) -> tuple[dict[str, object], ZReport | None]:
-    """La Z diaria existente, o los totales que tendría antes de crearla."""
+    """Los totales vivos de hoy y, si existe, su único documento Z."""
     now = await accounting.database_clock(session)
     start, end = await _business_day_window(session, now)
     existing = await _report_for_business_day(session, warehouse_id, start=start, end=end)
-    if existing is not None:
-        return (
-            {
-                "covers_from": existing.covers_from,
-                "sales_count": existing.sales_count,
-                "gross_total": existing.gross_total,
-                "tax_total": existing.tax_total,
-                "discount_total": existing.discount_total,
-                "cash_total": existing.cash_total,
-                "card_total": existing.card_total,
-                "other_total": existing.other_total,
-                "returns_count": existing.returns_count,
-                "returns_total": existing.returns_total,
-            },
-            existing,
-        )
-    return await _totals(session, warehouse_id, since=start, until=now), None
+    return await _totals(session, warehouse_id, since=start, until=now), existing
 
 
 async def _totals(
@@ -227,7 +211,7 @@ async def close(
     idempotency_key: str | None = None,
     actor_user_id: int | None = None,
 ) -> ZReport:
-    """Cierra una única Z diaria, o devuelve la que ya quedó cerrada."""
+    """Crea o actualiza la única Z diaria con todos los efectos de hoy."""
     claim = None
     closing_user_id = actor_user_id if actor_user_id is not None else get_user_id()
     if idempotency_key is not None:
@@ -249,16 +233,6 @@ async def close(
     await accounting.lock_warehouse_cut(session, warehouse_id)
     closed_at = await accounting.database_clock(session)
     day_start, day_end = await _business_day_window(session, closed_at)
-    existing = await _report_for_business_day(session, warehouse_id, start=day_start, end=day_end)
-    if existing is not None:
-        if claim is not None:
-            await idempotency_service.complete(
-                session, claim.record, result_resource_id=existing.id
-            )
-        return existing
-
-    last = await _last_close(session, warehouse_id)
-
     pending = await open_sales(session, warehouse_id)
     if pending:
         numbers = ", ".join(f"#{sale.id}" for sale in pending)
@@ -274,6 +248,33 @@ async def close(
         since=day_start,
         until=closed_at,
     )
+
+    existing = await _report_for_business_day(session, warehouse_id, start=day_start, end=day_end)
+    if existing is not None:
+        existing.closed_at = closed_at
+        existing.closed_by_user_id = closing_user_id
+        for field, value in totals.items():
+            setattr(existing, field, value)
+        await session.flush()
+        await audit.record(
+            session,
+            action="updated",
+            entity_type="z_report",
+            entity_id=existing.id,
+            after={
+                "number": existing.number,
+                "warehouse_id": warehouse_id,
+                "sales_count": existing.sales_count,
+                "gross_total": str(existing.gross_total),
+            },
+        )
+        if claim is not None:
+            await idempotency_service.complete(
+                session, claim.record, result_resource_id=existing.id
+            )
+        return existing
+
+    last = await _last_close(session, warehouse_id)
 
     report = ZReport(
         warehouse_id=warehouse_id,

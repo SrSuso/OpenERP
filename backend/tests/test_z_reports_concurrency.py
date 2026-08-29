@@ -172,7 +172,7 @@ async def test_checkout_wins_and_is_included_once_with_its_payment(
 async def test_z_wins_and_a_later_checkout_does_not_open_a_second_daily_z(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
-    """La Z diaria queda congelada aunque se intente cerrarla otra vez."""
+    """Una venta posterior actualiza la misma Z al volver a emitirla."""
     ready = await _ready_z(committing_sessionmaker, tag="Z-FIRST", with_line=False)
     line_added = asyncio.Event()
 
@@ -215,8 +215,8 @@ async def test_z_wins_and_a_later_checkout_does_not_open_a_second_daily_z(
     assert first.sales_count == 0
     assert completed.completed_at is not None and completed.completed_at > first.closed_at
     assert second.id == first.id
-    assert second.sales_count == 0
-    assert second.cash_total == Decimal(0)
+    assert second.sales_count == 1
+    assert second.cash_total == Decimal("5")
 
 
 async def test_return_after_a_daily_z_does_not_open_another_z(
@@ -248,8 +248,8 @@ async def test_return_after_a_daily_z_does_not_open_another_z(
     assert returned.refund is not None
     assert returned.refund.completed_at > first.closed_at
     assert report.id == first.id
-    assert report.returns_count == 0
-    assert report.returns_total == Decimal(0)
+    assert report.returns_count == 1
+    assert report.returns_total == Decimal("5")
 
 
 async def test_z_wins_and_waiting_return_does_not_create_a_second_daily_z(
@@ -292,8 +292,8 @@ async def test_z_wins_and_waiting_return_does_not_create_a_second_daily_z(
     assert returned.refund is not None
     assert returned.refund.completed_at > current.closed_at
     assert repeated.id == current.id
-    assert repeated.returns_count == 0
-    assert repeated.returns_total == Decimal(0)
+    assert repeated.returns_count == 1
+    assert repeated.returns_total == Decimal("5")
 
 
 async def test_two_different_close_keys_return_the_same_daily_z(
@@ -334,7 +334,7 @@ async def test_two_different_close_keys_return_the_same_daily_z(
             .select_from(ZReport)
             .where(ZReport.warehouse_id == ready.warehouse_id)
         )
-        audit_count = await session.scalar(
+        close_audit_count = await session.scalar(
             select(func.count())
             .select_from(AuditLog)
             .join(ZReport, ZReport.id == AuditLog.entity_id)
@@ -344,7 +344,17 @@ async def test_two_different_close_keys_return_the_same_daily_z(
                 AuditLog.action == "closed",
             )
         )
-    assert report_count == audit_count == 1
+        update_audit_count = await session.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .join(ZReport, ZReport.id == AuditLog.entity_id)
+            .where(
+                ZReport.warehouse_id == ready.warehouse_id,
+                AuditLog.entity_type == "z_report",
+                AuditLog.action == "updated",
+            )
+        )
+    assert report_count == close_audit_count == update_audit_count == 1
 
 
 async def test_same_close_key_replays_sequentially_with_one_audit(
@@ -435,7 +445,7 @@ async def test_a_warehouse_cut_does_not_block_another_warehouse(
 async def test_operations_after_the_daily_z_do_not_create_a_second_cut(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
-    """La reimpresión mantiene intactos los totales de la única Z diaria."""
+    """La segunda emisión actualiza la única Z diaria, sin crear otra."""
     ready = await _ready_z(committing_sessionmaker, tag="TWO-CUTS", completed=True, quantity="2")
     async with committing_sessionmaker() as session:
         first_return = await returns_service.create_return(
@@ -462,5 +472,7 @@ async def test_operations_after_the_daily_z_do_not_create_a_second_cut(
     second = await _close(committing_sessionmaker, ready, "second-partition-cut")
     assert first.sales_count == 1
     assert second.id == first.id
-    assert first.returns_count == second.returns_count == 1
+    assert first.returns_count == 1
+    assert second.returns_count == 2
+    assert second.returns_total == Decimal("10")
     assert first_return.created_at <= first.closed_at < second_return.created_at

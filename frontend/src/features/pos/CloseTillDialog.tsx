@@ -69,7 +69,9 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
       setError(err instanceof ApiError ? err.message : 'No se ha podido cerrar la caja.'),
   });
 
-  const totals = report ?? preview.data;
+  // Antes de actualizar, el papel guardado puede ser anterior a una venta
+  // recién cobrada. La pantalla debe enseñar siempre el total vivo de hoy.
+  const totals = closed ?? preview.data;
   const openSales = preview.data?.open_sales ?? [];
 
   return (
@@ -88,7 +90,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
             {closed
               ? 'Guardado. Puedes volver a imprimirlo desde el panel.'
               : existing
-                ? 'La Z diaria ya está cerrada. Puedes volver a imprimirla.'
+                ? 'La Z diaria ya existe. Actualízala para incorporar los cobros y devoluciones posteriores.'
                 : 'Estos son los totales de la jornada comercial de hoy.'}
           </p>
 
@@ -115,7 +117,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
             </div>
           )}
 
-          {report === null && openSales.length > 0 && (
+          {closed === null && openSales.length > 0 && (
             <div className="mt-4 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
               <p>
                 {openSales.length === 1
@@ -144,7 +146,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
           )}
 
           <div className="mt-6 flex gap-2 print:hidden">
-            {report ? (
+            {closed ? (
               <>
                 <button
                   type="button"
@@ -164,6 +166,40 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                   className="pos-button-secondary rounded-lg px-4 py-3 text-base font-medium disabled:opacity-50"
                 >
                   Reimprimir Z
+                </button>
+              </>
+            ) : existing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onClosed}
+                  className="pos-button-secondary rounded-lg px-4 py-3 text-base font-medium"
+                >
+                  Volver al TPV
+                </button>
+                <button
+                  type="button"
+                  disabled={printProfile.data === undefined}
+                  onClick={() => {
+                    if (printProfile.data !== undefined) {
+                      setPrintActive(true);
+                    }
+                  }}
+                  className="pos-button-secondary rounded-lg px-4 py-3 text-base font-medium disabled:opacity-50"
+                >
+                  Reimprimir Z
+                </button>
+                <button
+                  type="button"
+                  disabled={closeMutation.isPending || preview.isPending || openSales.length > 0}
+                  onClick={() => {
+                    const key = closeAttemptRef.current ?? crypto.randomUUID();
+                    closeAttemptRef.current = key;
+                    closeMutation.mutate(key);
+                  }}
+                  className="pos-button-primary flex-1 rounded-lg py-3 text-base font-semibold disabled:opacity-40"
+                >
+                  {closeMutation.isPending ? 'Actualizando…' : 'Actualizar Z e imprimir'}
                 </button>
               </>
             ) : (
