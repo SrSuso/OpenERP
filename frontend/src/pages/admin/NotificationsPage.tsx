@@ -17,7 +17,7 @@ import {
   type RuleCreateInput,
 } from '@/features/notifications/api';
 
-import { pageHeaderRow, primaryAction, secondaryAction } from './pageActions';
+import { primaryAction, secondaryAction } from './pageActions';
 
 const tabClassName = (active: boolean) =>
   `border-b-2 px-4 py-2 text-sm font-medium ${
@@ -34,6 +34,7 @@ export function NotificationsPage() {
 
   const [tab, setTab] = useState<'rules' | 'incidents'>('incidents');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingRule, setEditingRule] = useState<NotificationRule | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('OPEN');
 
@@ -46,6 +47,7 @@ export function NotificationsPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: notificationRulesQuery.queryKey });
       setShowCreateForm(false);
+      setEditingRule(null);
       setCreateError(null);
     },
     onError: () => setCreateError('No se ha podido crear la regla.'),
@@ -55,6 +57,22 @@ export function NotificationsPage() {
     mutationFn: (rule: NotificationRule) => updateRule(rule.id, { is_active: !rule.is_active }),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: notificationRulesQuery.queryKey }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ rule, payload }: { rule: NotificationRule; payload: RuleCreateInput }) =>
+      updateRule(rule.id, {
+        name: payload.name,
+        params: payload.params,
+        severity: payload.severity,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: notificationRulesQuery.queryKey });
+      setShowCreateForm(false);
+      setEditingRule(null);
+      setCreateError(null);
+    },
+    onError: () => setCreateError('No se han podido guardar los cambios de la regla.'),
   });
 
   const evaluateMutation = useMutation({
@@ -72,99 +90,140 @@ export function NotificationsPage() {
   });
 
   return (
-    <section>
-      <h1 className="mb-4 text-2xl font-semibold">Notificaciones</h1>
+    <section className="space-y-5">
+      <header className="rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-5 py-5 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">Avisos</h1>
+        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+          Consulta las incidencias que requieren atención y define las reglas que las generan.
+        </p>
+      </header>
 
-      <nav className="mb-6 flex gap-2 border-b border-slate-200" aria-label="Notificaciones">
-        <button
-          type="button"
-          onClick={() => setTab('incidents')}
-          className={tabClassName(tab === 'incidents')}
-        >
-          Incidencias
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('rules')}
-          className={tabClassName(tab === 'rules')}
-        >
-          Reglas
-        </button>
-      </nav>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <nav className="flex gap-2 border-b border-slate-200 px-4" aria-label="Avisos">
+          <button
+            type="button"
+            onClick={() => setTab('incidents')}
+            className={tabClassName(tab === 'incidents')}
+          >
+            Incidencias
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('rules')}
+            className={tabClassName(tab === 'rules')}
+          >
+            Reglas
+          </button>
+        </nav>
 
-      {tab === 'rules' && (
-        <div>
-          {canManage && !showCreateForm && (
-            <button
-              type="button"
-              onClick={() => setShowCreateForm(true)}
-              className={`mb-4 ${primaryAction}`}
-            >
-              Nueva regla
-            </button>
-          )}
+        {tab === 'rules' && (
+          <div className="p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-slate-800">Reglas de aviso</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Activa sólo los controles que aporten valor a tu operativa.
+                </p>
+              </div>
+              {canManage && !showCreateForm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingRule(null);
+                    setCreateError(null);
+                    setShowCreateForm(true);
+                  }}
+                  className={primaryAction}
+                >
+                  Nueva regla
+                </button>
+              )}
+            </div>
 
-          {showCreateForm && (
-            <CreateRuleForm
-              isPending={createMutation.isPending}
-              submitError={createError}
-              onCancel={() => {
-                setShowCreateForm(false);
-                setCreateError(null);
-              }}
-              onSubmit={(payload) => createMutation.mutate(payload)}
-            />
-          )}
+            {showCreateForm && (
+              <CreateRuleForm
+                key={editingRule?.id ?? 'new'}
+                {...(editingRule ? { rule: editingRule } : {})}
+                isPending={createMutation.isPending || updateMutation.isPending}
+                submitError={createError}
+                onCancel={() => {
+                  setShowCreateForm(false);
+                  setEditingRule(null);
+                  setCreateError(null);
+                }}
+                onSubmit={(payload) => {
+                  if (editingRule) {
+                    updateMutation.mutate({ rule: editingRule, payload });
+                    return;
+                  }
+                  createMutation.mutate(payload);
+                }}
+              />
+            )}
 
-          {rules.data && (
-            <RulesTable
-              rules={rules.data}
-              canManage={canManage}
-              onToggleActive={(rule) => toggleMutation.mutate(rule)}
-              isToggling={toggleMutation.isPending}
-            />
-          )}
-        </div>
-      )}
-
-      {tab === 'incidents' && (
-        <div>
-          <div className={pageHeaderRow}>
-            <label className="text-sm text-slate-600">
-              Estado
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-                className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
-              >
-                <option value="OPEN">Abiertas</option>
-                <option value="RESOLVED">Resueltas</option>
-                <option value="">Todas</option>
-              </select>
-            </label>
-
-            {canManage && (
-              <button
-                type="button"
-                onClick={() => evaluateMutation.mutate()}
-                disabled={evaluateMutation.isPending}
-                className={secondaryAction}
-              >
-                {evaluateMutation.isPending ? 'Evaluando…' : 'Evaluar ahora'}
-              </button>
+            {rules.data && (
+              <RulesTable
+                rules={rules.data}
+                canManage={canManage}
+                onEdit={(rule) => {
+                  setEditingRule(rule);
+                  setCreateError(null);
+                  setShowCreateForm(true);
+                }}
+                onToggleActive={(rule) => toggleMutation.mutate(rule)}
+                isMutating={toggleMutation.isPending || updateMutation.isPending}
+              />
             )}
           </div>
+        )}
 
-          {incidents.data && (
-            <IncidentsTable
-              incidents={incidents.data}
-              canManage={canManage}
-              onResolve={(id) => resolveMutation.mutate(id)}
-              isResolving={resolveMutation.isPending}
-            />
-          )}
-        </div>
-      )}
+        {tab === 'incidents' && (
+          <div className="p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-slate-800">Incidencias</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Revisa primero las abiertas y márcalas como resueltas cuando estén atendidas.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm text-slate-600">
+                  Estado
+                  <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                    className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
+                  >
+                    <option value="OPEN">Abiertas</option>
+                    <option value="RESOLVED">Resueltas</option>
+                    <option value="">Todas</option>
+                  </select>
+                </label>
+
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => evaluateMutation.mutate()}
+                    disabled={evaluateMutation.isPending}
+                    className={secondaryAction}
+                  >
+                    {evaluateMutation.isPending ? 'Evaluando…' : 'Evaluar ahora'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {incidents.data && (
+              <IncidentsTable
+                incidents={incidents.data}
+                canManage={canManage}
+                onResolve={(id) => resolveMutation.mutate(id)}
+                isResolving={resolveMutation.isPending}
+              />
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

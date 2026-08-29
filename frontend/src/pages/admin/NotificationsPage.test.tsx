@@ -70,7 +70,7 @@ function stubBackend() {
           id: rules.length + 1,
           name: b['name'] as string,
           rule_type: b['rule_type'] as NotificationRule['rule_type'],
-          severity: 'MEDIUM_LOW',
+          severity: b['severity'] as NotificationRule['severity'],
           params: b['params'] as Record<string, unknown>,
           is_active: true,
         };
@@ -84,6 +84,9 @@ function stubBackend() {
         toggleCalls.push({ id, body: b });
         const rule = rules.find((r) => r.id === id)!;
         if ('is_active' in b) rule.is_active = b['is_active'] as boolean;
+        if ('name' in b) rule.name = b['name'] as string;
+        if ('params' in b) rule.params = b['params'] as Record<string, unknown>;
+        if ('severity' in b) rule.severity = b['severity'] as NotificationRule['severity'];
         return Promise.resolve(jsonResponse(rule));
       }
 
@@ -208,5 +211,35 @@ describe('NotificationsPage', () => {
         },
       ]),
     );
+  });
+
+  it('edits a rule through the existing PATCH endpoint without changing its type', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Reglas' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Stock almacén');
+    await userEvent.selectOptions(screen.getByLabelText('Almacén (vacío = todos)'), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    await screen.findByText('Stock almacén');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    expect(screen.getByLabelText('Tipo')).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText('Nombre'));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Stock urgente');
+    await userEvent.selectOptions(screen.getByLabelText('Criticidad'), 'HIGH');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await screen.findByText('Stock urgente');
+    expect(backend.toggleCalls).toEqual([
+      {
+        id: 1,
+        body: {
+          name: 'Stock urgente',
+          severity: 'HIGH',
+          params: { warehouse_id: 1 },
+        },
+      },
+    ]);
   });
 });

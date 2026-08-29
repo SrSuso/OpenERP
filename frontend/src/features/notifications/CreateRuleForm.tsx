@@ -13,6 +13,7 @@ import {
   conditionCatalogueQuery,
   type RuleCreateInput,
   type RuleType,
+  type NotificationRule,
 } from '@/features/notifications/api';
 import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 
@@ -31,6 +32,22 @@ interface DraftCondition {
   value: string;
 }
 
+interface StoredCondition {
+  field: string;
+  operator: string;
+  value: string | number;
+}
+
+function isStoredCondition(value: unknown): value is StoredCondition {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['field'] === 'string' &&
+    typeof candidate['operator'] === 'string' &&
+    (typeof candidate['value'] === 'number' || typeof candidate['value'] === 'string')
+  );
+}
+
 const createRuleSchema = z.object({
   name: z.string().min(1, 'Introduce un nombre.').max(100),
   rule_type: z.enum(RULE_TYPES),
@@ -46,6 +63,7 @@ interface CreateRuleFormProps {
   onCancel: () => void;
   isPending: boolean;
   submitError: string | null;
+  rule?: NotificationRule;
 }
 
 export function CreateRuleForm({
@@ -53,11 +71,28 @@ export function CreateRuleForm({
   onCancel,
   isPending,
   submitError,
+  rule,
 }: CreateRuleFormProps) {
+  const isEditing = rule !== undefined;
   const warehouses = useQuery(warehousesQuery);
   const catalogue = useQuery(conditionCatalogueQuery);
-  const [subject, setSubject] = useState('');
-  const [conditions, setConditions] = useState<DraftCondition[]>([]);
+  const [subject, setSubject] = useState(() =>
+    typeof rule?.params['subject'] === 'string' ? rule.params['subject'] : '',
+  );
+  const [conditions, setConditions] = useState<DraftCondition[]>(() => {
+    const saved = rule?.params['conditions'];
+    if (!Array.isArray(saved)) return [];
+    return saved.flatMap((condition) => {
+      if (!isStoredCondition(condition)) return [];
+      return [
+        {
+          field: condition['field'],
+          operator: condition['operator'],
+          value: String(condition['value']),
+        },
+      ];
+    });
+  });
   const [conditionError, setConditionError] = useState<string | null>(null);
 
   const subjectDef = catalogue.data?.subjects.find((s) => s.key === subject);
@@ -68,7 +103,17 @@ export function CreateRuleForm({
     formState: { errors, isDirty },
   } = useForm<CreateRuleFormValues>({
     resolver: zodResolver(createRuleSchema),
-    defaultValues: { rule_type: 'LOW_STOCK', severity: 'MEDIUM_LOW', days_before_expiration: 7 },
+    defaultValues: {
+      name: rule?.name ?? '',
+      rule_type: rule?.rule_type ?? 'LOW_STOCK',
+      severity: rule?.severity ?? 'MEDIUM_LOW',
+      warehouse_id:
+        typeof rule?.params['warehouse_id'] === 'number' ? String(rule.params['warehouse_id']) : '',
+      days_before_expiration:
+        typeof rule?.params['days_before_expiration'] === 'number'
+          ? rule.params['days_before_expiration']
+          : 7,
+    },
   });
 
   const ruleType = watch('rule_type');
@@ -111,7 +156,14 @@ export function CreateRuleForm({
       noValidate
       className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
     >
-      <h3 className="mb-3 text-sm font-semibold text-slate-700">Nueva regla</h3>
+      <h3 className="mb-1 text-base font-semibold text-slate-800">
+        {isEditing ? `Editar regla: ${rule.name}` : 'Nueva regla'}
+      </h3>
+      <p className="mb-4 text-sm text-slate-500">
+        {isEditing
+          ? 'Ajusta el nombre, la criticidad y los parámetros de esta regla.'
+          : 'Define cuándo quieres recibir un aviso.'}
+      </p>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="text-sm text-slate-600">
@@ -129,6 +181,7 @@ export function CreateRuleForm({
           <select
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('rule_type')}
+            disabled={isEditing}
           >
             {RULE_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -302,7 +355,13 @@ export function CreateRuleForm({
           disabled={isPending}
           className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {isPending ? 'Creando…' : 'Crear'}
+          {isPending
+            ? isEditing
+              ? 'Guardando…'
+              : 'Creando…'
+            : isEditing
+              ? 'Guardar cambios'
+              : 'Crear'}
         </button>
         <button
           type="button"
