@@ -38,7 +38,13 @@ from app.catalog.schemas import (
 )
 from app.catalog.version import catalog_version
 from app.rbac.dependencies import check_permission, require_permission
-from app.rbac.permissions import POS_CATEGORY_MANAGE, PRICING_MANAGE, PRODUCT_MANAGE, PRODUCT_READ
+from app.rbac.permissions import (
+    INVENTORY_MANAGE,
+    POS_CATEGORY_MANAGE,
+    PRICING_MANAGE,
+    PRODUCT_MANAGE,
+    PRODUCT_READ,
+)
 
 router = APIRouter(tags=["catalog"])
 
@@ -337,7 +343,11 @@ async def get_product(product_id: int, session: SessionDep) -> ProductRead:
 @router.post(
     "/products", response_model=ProductRead, status_code=201, dependencies=[_require_manage]
 )
-async def create_product(payload: ProductCreate, session: SessionDep) -> ProductRead:
+async def create_product(
+    payload: ProductCreate, session: SessionDep, user: CurrentUser
+) -> ProductRead:
+    if payload.initial_stock is not None:
+        check_permission(user, INVENTORY_MANAGE)
     return _to_read(await service.create_product(session, payload))
 
 

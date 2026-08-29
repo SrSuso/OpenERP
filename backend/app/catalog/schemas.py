@@ -166,6 +166,18 @@ class BarcodeUpdate(BaseModel):
     barcode: str = Field(min_length=1, max_length=64)
 
 
+class InitialStockCreate(BaseModel):
+    """Opening quantity for a new non-lot-tracked product.
+
+    It deliberately describes a stock coordinate, not a mutable product
+    field: the service records an immutable ``ADJUSTMENT`` ledger entry.
+    """
+
+    warehouse_id: int
+    location_id: int
+    quantity: Decimal = Field(gt=0)
+
+
 class ProductCreate(BaseModel):
     #: ``None`` (the normal case from the admin panel — nobody types a SKU
     #: any more) auto-generates one in app.catalog.service.create_product
@@ -208,6 +220,9 @@ class ProductCreate(BaseModel):
     track_expiration: bool = False
     #: ``None`` = lo que diga su categoría. Ver `app.catalog.stock`.
     tracks_stock: bool | None = None
+    #: Optional opening balance recorded atomically with the product.  Lots
+    #: need their own receiving flow because each quantity must identify one.
+    initial_stock: InitialStockCreate | None = None
 
 
 class ProductUpdate(BaseModel):

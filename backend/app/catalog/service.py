@@ -748,6 +748,11 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         await _pos_category_or_422(session, payload.pos_category_id)
     if payload.base_barcode is not None:
         await _assert_barcode_free(session, payload.base_barcode)
+    if payload.initial_stock is not None and (payload.track_lots or payload.track_expiration):
+        raise ValidationError(
+            "Initial stock for a product tracked by lots must be recorded "
+            "through a receipt with a lot."
+        )
     # `catalog.sku_prefix`/`catalog.default_min_stock` (app.settings.registry).
     shop = await settings_store.get_values(session)
     sku_prefix = str(shop["catalog.sku_prefix"])
@@ -808,6 +813,27 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         entity_id=created.id,
         after=_snapshot(created),
     )
+    if payload.initial_stock is not None:
+        # Keep the opening balance in the immutable ledger, not in a
+        # product field.  This runs in the caller's request transaction, so
+        # invalid warehouse/location data rolls the product creation back
+        # too; there can never be a product that was reported as created
+        # with an opening quantity that silently failed to exist.
+        from app.inventory import service as inventory_service
+        from app.inventory.schemas import AdjustmentCreate
+
+        await inventory_service.record_adjustment(
+            session,
+            AdjustmentCreate(
+                product_id=created.id,
+                warehouse_id=payload.initial_stock.warehouse_id,
+                location_id=payload.initial_stock.location_id,
+                movement_type="ADJUSTMENT",
+                quantity=payload.initial_stock.quantity,
+                unit_cost=created.cost,
+                reason="Stock inicial al crear el producto.",
+            ),
+        )
     return created
 
 

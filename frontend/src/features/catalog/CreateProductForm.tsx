@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -12,6 +12,8 @@ import {
 } from '@/features/catalog/api';
 import { previewFormula, type Tax } from '@/features/pricing/api';
 import { TaxChips } from '@/features/pricing/TaxChips';
+import { locationsQuery, warehousesQuery } from '@/features/inventory/api';
+import { useDefaultToFirstOption } from '@/features/inventory/useDefaultToFirstOption';
 import { decimalString } from '@/lib/decimal';
 import { formatMoney } from '@/lib/format';
 import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
@@ -20,23 +22,44 @@ import { cancelWithConfirm, useUnsavedWarning } from '@/lib/unsaved';
 // genera el backend) ni tax_rate (los impuestos se eligen del catálogo de
 // Precios, nunca un número suelto aquí). surcharge_rate/price_formula
 // quedan fuera a propósito, igual que antes.
-const createProductSchema = z.object({
-  name: z.string().min(1, 'Introduce un nombre.').max(255),
-  description: z.string().max(2000).optional(),
-  category_id: z.string(),
-  pos_category_id: z.string(),
-  pos_display_order: z.coerce.number().int().min(0),
-  is_open_price: z.boolean(),
-  base_unit_name: z.string().min(1, 'Elige una unidad.'),
-  base_barcode: z.string().max(64).optional(),
-  cost: decimalString({ min: 0 }),
-  list_price: decimalString({ min: 0 }),
-  margin_rate: z.string(), // vacío = hereda de la categoría; validado abajo si no está vacío
-  margin_amount: z.string(), // igual, pero en euros sobre el coste
-  min_stock: decimalString({ min: 0 }),
-  track_lots: z.boolean(),
-  track_expiration: z.boolean(),
-});
+const createProductSchema = z
+  .object({
+    name: z.string().min(1, 'Introduce un nombre.').max(255),
+    description: z.string().max(2000).optional(),
+    category_id: z.string(),
+    pos_category_id: z.string(),
+    pos_display_order: z.coerce.number().int().min(0),
+    is_open_price: z.boolean(),
+    base_unit_name: z.string().min(1, 'Elige una unidad.'),
+    base_barcode: z.string().max(64).optional(),
+    cost: decimalString({ min: 0 }),
+    list_price: decimalString({ min: 0 }),
+    margin_rate: z.string(), // vacío = hereda de la categoría; validado abajo si no está vacío
+    margin_amount: z.string(), // igual, pero en euros sobre el coste
+    min_stock: decimalString({ min: 0 }),
+    track_lots: z.boolean(),
+    track_expiration: z.boolean(),
+    initial_stock_quantity: decimalString({ min: 0 }),
+    initial_stock_warehouse_id: z.string(),
+    initial_stock_location_id: z.string(),
+  })
+  .superRefine((values, context) => {
+    if (Number(values.initial_stock_quantity.replace(',', '.')) <= 0) return;
+    if (values.initial_stock_warehouse_id === '') {
+      context.addIssue({
+        code: 'custom',
+        path: ['initial_stock_warehouse_id'],
+        message: 'Elige el almacén del stock inicial.',
+      });
+    }
+    if (values.initial_stock_location_id === '') {
+      context.addIssue({
+        code: 'custom',
+        path: ['initial_stock_location_id'],
+        message: 'Elige la ubicación del stock inicial.',
+      });
+    }
+  });
 
 type CreateProductFormValues = z.infer<typeof createProductSchema>;
 
@@ -53,6 +76,7 @@ interface CreateProductFormProps {
   onCancel: () => void;
   isPending: boolean;
   submitError: string | null;
+  canManageStock: boolean;
 }
 
 /** Suma de las tasas de los impuestos elegidos si hay alguno explícito;
@@ -94,6 +118,7 @@ export function CreateProductForm({
   onCancel,
   isPending,
   submitError,
+  canManageStock,
 }: CreateProductFormProps) {
   // `taxIds` es lo que de verdad se manda (vacío = sigue heredando, ver
   // onSubmit más abajo); `isOverride` distingue "nunca lo ha tocado" de
@@ -130,6 +155,9 @@ export function CreateProductForm({
       min_stock: '0',
       track_lots: false,
       track_expiration: false,
+      initial_stock_quantity: '0',
+      initial_stock_warehouse_id: '',
+      initial_stock_location_id: '',
     },
   });
 
@@ -138,11 +166,31 @@ export function CreateProductForm({
   const amountInput = watch('margin_amount');
   const categoryId = watch('category_id');
   const tracksExpiration = watch('track_expiration');
+  const tracksLots = watch('track_lots');
+  const initialStockQuantity = watch('initial_stock_quantity');
+  const initialStockWarehouseId = watch('initial_stock_warehouse_id');
+  const initialStockLocationId = watch('initial_stock_location_id');
   const [estimatedPrice, setEstimatedPrice] = useState<string | null>(null);
+  const warehouses = useQuery({ ...warehousesQuery, enabled: canManageStock });
+  const locations = useQuery({
+    ...locationsQuery(initialStockWarehouseId === '' ? null : Number(initialStockWarehouseId)),
+    enabled: canManageStock && initialStockWarehouseId !== '',
+  });
+
+  useDefaultToFirstOption(initialStockWarehouseId, warehouses.data, (value) =>
+    setValue('initial_stock_warehouse_id', value),
+  );
+  useDefaultToFirstOption(initialStockLocationId, locations.data, (value) =>
+    setValue('initial_stock_location_id', value),
+  );
 
   useEffect(() => {
     if (tracksExpiration) setValue('track_lots', true);
   }, [setValue, tracksExpiration]);
+
+  useEffect(() => {
+    if (tracksLots) setValue('initial_stock_quantity', '0');
+  }, [setValue, tracksLots]);
 
   useEffect(() => {
     const defaultUnit = categories.find(
@@ -206,7 +254,16 @@ export function CreateProductForm({
 
   useUnsavedWarning(isDirty);
 
-  const submit = handleSubmit((values) =>
+  const submit = handleSubmit((values) => {
+    const initialQuantity = Number(values.initial_stock_quantity.replace(',', '.'));
+    const initialStock =
+      initialQuantity > 0
+        ? {
+            warehouse_id: Number(values.initial_stock_warehouse_id),
+            location_id: Number(values.initial_stock_location_id),
+            quantity: values.initial_stock_quantity.replace(',', '.'),
+          }
+        : null;
     onSubmit(
       {
         name: values.name,
@@ -224,10 +281,11 @@ export function CreateProductForm({
         min_stock: values.min_stock,
         track_lots: values.track_lots,
         track_expiration: values.track_expiration,
+        initial_stock: initialStock,
       },
       [...taxIds],
-    ),
-  );
+    );
+  });
 
   return (
     <form
@@ -437,6 +495,79 @@ export function CreateProductForm({
             <p className="mt-1 text-sm text-red-600">{errors.min_stock.message}</p>
           )}
         </label>
+
+        {canManageStock && (
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 sm:col-span-3">
+            <p className="font-medium text-slate-700">Stock inicial</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Se registra como un ajuste de entrada al crear el producto. Usa una cantidad positiva;
+              para corregir o restar existencias después utiliza Ajustes de inventario.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label>
+                Cantidad
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  disabled={tracksLots}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                  {...register('initial_stock_quantity')}
+                />
+                {errors.initial_stock_quantity && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {errors.initial_stock_quantity.message}
+                  </p>
+                )}
+              </label>
+              <label>
+                Almacén
+                <select
+                  disabled={tracksLots || initialStockQuantity === '0'}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                  {...register('initial_stock_warehouse_id')}
+                >
+                  <option value="">Elige un almacén…</option>
+                  {(warehouses.data ?? []).map((warehouse) => (
+                    <option key={warehouse.id} value={warehouse.id}>
+                      {warehouse.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.initial_stock_warehouse_id && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {errors.initial_stock_warehouse_id.message}
+                  </p>
+                )}
+              </label>
+              <label>
+                Ubicación
+                <select
+                  disabled={tracksLots || initialStockQuantity === '0'}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                  {...register('initial_stock_location_id')}
+                >
+                  <option value="">Elige una ubicación…</option>
+                  {(locations.data ?? []).map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.initial_stock_location_id && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {errors.initial_stock_location_id.message}
+                  </p>
+                )}
+              </label>
+            </div>
+            {tracksLots && (
+              <p className="mt-2 text-xs text-amber-700">
+                Los productos con lotes se dan de alta sin stock: registra sus unidades y lote
+                mediante una recepción de compra.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="text-sm text-slate-600 sm:col-span-2">
           <p className="mb-2 text-xs font-medium uppercase text-slate-500">Trazabilidad</p>

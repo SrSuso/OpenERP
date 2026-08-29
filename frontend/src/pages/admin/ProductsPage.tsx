@@ -25,6 +25,7 @@ export function ProductsPage() {
   const canManage = hasPermission('product.manage');
 
   const canManagePricing = hasPermission('pricing.manage');
+  const canManageStock = hasPermission('inventory.manage');
 
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -243,6 +244,7 @@ export function ProductsPage() {
           taxes={taxes.data ?? []}
           isPending={createMutation.isPending}
           submitError={createError}
+          canManageStock={canManageStock}
           onCancel={() => {
             setShowCreateForm(false);
             setCreateError(null);

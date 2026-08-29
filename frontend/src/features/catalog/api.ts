@@ -340,6 +340,11 @@ export interface ProductCreateInput {
   min_stock: string;
   track_lots: boolean;
   track_expiration: boolean;
+  initial_stock: {
+    warehouse_id: number;
+    location_id: number;
+    quantity: string;
+  } | null;
 }
 
 export async function createProduct(payload: ProductCreateInput): Promise<Product> {

@@ -33,6 +33,7 @@ const ME = {
     'product.manage',
     'pricing.manage',
     'inventory.read',
+    'inventory.manage',
   ],
 };
 
@@ -120,6 +121,16 @@ function stubBackend(options: { products?: Product[] } = {}) {
             { product_id: 1, quantity: '24.000000' },
             { product_id: 2, quantity: '14.500000' },
           ]),
+        );
+      }
+      if (method === 'GET' && /\/warehouses\/?$/.test(url.split('?')[0]!)) {
+        return Promise.resolve(
+          jsonResponse([{ id: 1, name: 'Tienda principal', is_active: true }]),
+        );
+      }
+      if (method === 'GET' && /\/warehouses\/1\/locations$/.test(url.split('?')[0]!)) {
+        return Promise.resolve(
+          jsonResponse([{ id: 1, warehouse_id: 1, name: 'Almacén', is_active: true }]),
         );
       }
       if (method === 'GET' && url.includes('/units')) {
@@ -268,6 +279,31 @@ describe('ProductsPage', () => {
     expect(backend.createCalls[0]).not.toHaveProperty('tax_rate');
     // Sin ningún impuesto elegido, no hay PATCH .../pricing de más.
     expect(backend.pricingCalls).toEqual([]);
+  });
+
+  it('records opening stock in the selected inventory location with the new product', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Galletas');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    await userEvent.clear(screen.getByLabelText('Precio de venta'));
+    await userEvent.type(screen.getByLabelText('Precio de venta'), '2');
+    await userEvent.clear(screen.getByLabelText('Cantidad'));
+    await userEvent.type(screen.getByLabelText('Cantidad'), '18');
+    await screen.findByRole('option', { name: 'Tienda principal' });
+    await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
+    await screen.findByRole('option', { name: 'Almacén' });
+    await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    expect(await screen.findByText('Galletas')).toBeInTheDocument();
+    expect(backend.createCalls[0]).toMatchObject({
+      name: 'Galletas',
+      initial_stock: { warehouse_id: 1, location_id: 1, quantity: '18' },
+    });
   });
 
   it('does not submit a new product when a barcode scanner sends Enter', async () => {

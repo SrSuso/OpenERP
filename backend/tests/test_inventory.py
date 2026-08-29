@@ -82,6 +82,42 @@ async def test_recording_an_adjustment_updates_the_balance_atomically(
     assert balances[0]["product_name"] == "Producto de inventario"
 
 
+async def test_creating_a_product_can_record_its_opening_stock_atomically(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+
+    response = await client.post(
+        "/api/v1/products",
+        json={
+            "sku": "INV-OPENING-STOCK",
+            "name": "Producto con stock inicial",
+            "base_unit_name": "UNIDAD",
+            "cost": "1.25",
+            "list_price": "2.50",
+            "initial_stock": {
+                "warehouse_id": warehouse_id,
+                "location_id": location_id,
+                "quantity": "24",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    product_id = response.json()["id"]
+    balances = (await client.get("/api/v1/stock-balance", params={"product_id": product_id})).json()
+    assert [(row["location_id"], row["quantity"]) for row in balances] == [
+        (location_id, "24.000000")
+    ]
+    movements = (
+        await client.get("/api/v1/stock-movements", params={"product_id": product_id})
+    ).json()
+    assert [(row["movement_type"], row["quantity"], row["unit_cost"]) for row in movements] == [
+        ("ADJUSTMENT", "24.000000", "1.250000")
+    ]
+
+
 async def test_waste_is_normalised_to_negative(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
