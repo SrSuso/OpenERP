@@ -47,7 +47,7 @@ async def get_return(session: AsyncSession, return_id: int) -> Return:
     )
     ret = (await session.execute(stmt)).scalar_one_or_none()
     if ret is None:
-        raise NotFoundError(f"Return {return_id} not found.")
+        raise NotFoundError(f"La devolución {return_id} no existe.")
     return ret
 
 
@@ -124,7 +124,7 @@ async def _get_sale_for_return(session: AsyncSession, sale_id: int) -> Sale:
     )
     sale = (await session.execute(stmt)).scalar_one_or_none()
     if sale is None:
-        raise ValidationError(f"Sale {sale_id} does not exist.")
+        raise ValidationError(f"La venta {sale_id} no existe.")
     return sale
 
 
@@ -159,8 +159,8 @@ def _exceeded_error(
         else ValidationError
     )
     return error_type(
-        f"Line {sale_line.id}: {dimension} quantity {requested_packages} would exceed "
-        f"the {remaining_packages} still available."
+        f"Línea {sale_line.id}: la cantidad de {dimension} ({requested_packages}) supera "
+        f"la disponible ({remaining_packages})."
     )
 
 
@@ -176,7 +176,9 @@ async def create_return(
     claim = None
     if idempotency_key is not None:
         if actor_id is None:
-            raise ValidationError("An authenticated user is required for an idempotent return.")
+            raise ValidationError(
+                "Se necesita un usuario autenticado para registrar la devolución."
+            )
         claim = await idempotency_service.claim(
             session,
             operation=_CREATE_RETURN_OPERATION,
@@ -187,21 +189,19 @@ async def create_return(
         )
         if not claim.is_new:
             if claim.record.result_resource_id is None:
-                raise ConflictError("The idempotent return result is not available.")
+                raise ConflictError("El resultado de esta devolución aún no está disponible.")
             return await get_return(session, claim.record.result_resource_id)
 
     warehouse_id = await session.scalar(select(Sale.warehouse_id).where(Sale.id == sale_id))
     if warehouse_id is None:
-        raise ValidationError(f"Sale {sale_id} does not exist.")
+        raise ValidationError(f"La venta {sale_id} no existe.")
 
     # A completed economic refund affects exactly one Z period. Physical-only
     # returns keep the same lock order for a single deterministic code path.
     await accounting.lock_warehouse_cut(session, warehouse_id)
     sale = await _get_sale_for_return(session, sale_id)
     if sale.status != SaleStatus.COMPLETED:
-        raise ValidationError(
-            f"Only a completed sale can be returned against (this one is {sale.status})."
-        )
+        raise ValidationError("Sólo se puede registrar una devolución sobre una venta completada.")
 
     lines_by_id = {line.id: line for line in sale.lines}
     assert sale.prices_include_tax is not None  # completed-sale DB invariant
@@ -223,7 +223,7 @@ async def create_return(
         sale_line = lines_by_id.get(line_payload.sale_line_id)
         if sale_line is None:
             raise ValidationError(
-                f"Line {line_payload.sale_line_id} does not belong to sale {sale.id}."
+                f"La línea {line_payload.sale_line_id} no pertenece a esta venta."
             )
         refund_base = line_payload.refund_quantity_packages * sale_line.package_factor
         stock_base = line_payload.stock_return_quantity_packages * sale_line.package_factor
@@ -234,14 +234,14 @@ async def create_return(
                 sale_line,
                 requested_packages=line_payload.refund_quantity_packages,
                 remaining_base=remaining_refundable,
-                dimension="refund",
+                dimension="reembolso",
             )
         if stock_base > remaining_physical:
             raise _exceeded_error(
                 sale_line,
                 requested_packages=line_payload.stock_return_quantity_packages,
                 remaining_base=remaining_physical,
-                dimension="physical return",
+                dimension="reposición a stock",
             )
         planned_refunded[sale_line.id] += refund_base
         planned_physical[sale_line.id] += stock_base
@@ -249,26 +249,23 @@ async def create_return(
         if stock_base == 0:
             if line_payload.lot_number:
                 raise ValidationError(
-                    f"Line {sale_line.id}: lot_number is forbidden without a physical return."
+                    f"Línea {sale_line.id}: el lote sólo se puede indicar si el artículo "
+                    "vuelve a stock."
                 )
             continue
         if not sale_line.tracks_stock:
             if line_payload.lot_number:
                 raise ValidationError(
-                    f"Line {sale_line.id}: product {sale_line.product_sku} does not track stock "
-                    "— lot_number is forbidden."
+                    f"Línea {sale_line.id}: el artículo no controla existencias; no puede "
+                    "indicarse lote."
                 )
             continue
         if sale_line.track_lots and not line_payload.lot_number:
             raise ValidationError(
-                f"Line {sale_line.id}: product {sale_line.product_sku} tracks lots — "
-                "lot_number is required to restock it."
+                f"Línea {sale_line.id}: debe indicar el número de lote para reponer este artículo."
             )
         if not sale_line.track_lots and line_payload.lot_number:
-            raise ValidationError(
-                f"Line {sale_line.id}: product {sale_line.product_sku} does not track lots — "
-                "lot_number is forbidden."
-            )
+            raise ValidationError(f"Línea {sale_line.id}: este artículo no controla lotes.")
         await inventory_service.validate_inventory_context(
             session,
             product_id=sale_line.product_id,
@@ -407,14 +404,14 @@ async def _apply_return_line(
             sale_line,
             requested_packages=line_payload.refund_quantity_packages,
             remaining_base=remaining_refundable,
-            dimension="refund",
+            dimension="reembolso",
         )
     if stock_base > remaining_physical:
         raise _exceeded_error(
             sale_line,
             requested_packages=line_payload.stock_return_quantity_packages,
             remaining_base=remaining_physical,
-            dimension="physical return",
+            dimension="reposición a stock",
         )
 
     # Cumulative-delta valuation makes returning a line in parts sum exactly

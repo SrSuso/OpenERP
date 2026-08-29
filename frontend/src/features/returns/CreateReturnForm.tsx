@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -37,6 +37,69 @@ function estimatedRefundAmount(line: Sale['lines'][number], quantityPackages: nu
   return (decimalNumber(line.total) * quantityPackages) / boughtPackages;
 }
 
+function quantityStep(line: Sale['lines'][number]): number {
+  // Las unidades completas se devuelven de una en una; para peso, volumen y
+  // formatos fraccionables el paso permite ajustar gramos/mililitros.
+  if (/\b(?:KG|G|L|ML)\b|KILOGRAM|LITRO/i.test(line.package_name)) return 0.001;
+  return Number.isInteger(decimalNumber(line.quantity_packages)) ? 1 : 0.001;
+}
+
+function decimalForInput(value: number): string {
+  return String(Math.round(value * 1_000_000) / 1_000_000);
+}
+
+interface QuantityStepperProps {
+  label: string;
+  value: string;
+  max: number;
+  step: number;
+  onChange: (value: string) => void;
+  error?: string | undefined;
+}
+
+function QuantityStepper({ label, value, max, step, onChange, error }: QuantityStepperProps) {
+  const current = Math.max(0, Math.min(max, decimalNumber(value)));
+  const update = (next: number) => onChange(decimalForInput(Math.max(0, Math.min(max, next))));
+
+  return (
+    <label className="text-sm text-slate-600">
+      {label}
+      <span className="mt-1 flex w-36 overflow-hidden rounded border border-slate-300 bg-white">
+        <button
+          type="button"
+          aria-label={`Reducir ${label.toLowerCase()}`}
+          disabled={current <= 0}
+          onClick={() => update(current - step)}
+          className="w-10 border-r border-slate-300 text-lg leading-none text-slate-700 disabled:opacity-35"
+        >
+          −
+        </button>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={label}
+          className="min-w-0 flex-1 px-2 py-1.5 text-center text-sm outline-none"
+        />
+        <button
+          type="button"
+          aria-label={`Aumentar ${label.toLowerCase()}`}
+          disabled={current >= max}
+          onClick={() => update(current + step)}
+          className="w-10 border-l border-slate-300 text-lg leading-none text-slate-700 disabled:opacity-35"
+        >
+          +
+        </button>
+      </span>
+      <span className="mt-1 block text-xs text-slate-500">
+        Máximo: {formatQuantity(String(max))}
+      </span>
+      {error && <span className="mt-1 block text-sm text-red-600">{error}</span>}
+    </label>
+  );
+}
+
 const addLineSchema = z
   .object({
     sale_line_id: z.string().min(1, 'Elige una línea.'),
@@ -68,6 +131,7 @@ interface CreateReturnFormProps {
   onSubmit: (payload: ReturnInput) => void;
   isPending: boolean;
   submitError: string | null;
+  submissionSucceeded?: boolean;
 }
 
 /** Money and merchandise are independent. A normal return defaults both
@@ -78,18 +142,22 @@ export function CreateReturnForm({
   onSubmit,
   isPending,
   submitError,
+  submissionSucceeded = false,
 }: CreateReturnFormProps) {
   const [notes, setNotes] = useState('');
   const [refundMethod, setRefundMethod] = useState<RefundMethod>('CASH');
   const [stagedLines, setStagedLines] = useState<StagedLine[]>([]);
+  const [isConfirming, setConfirming] = useState(false);
+  const [stockQuantityIsManual, setStockQuantityIsManual] = useState(false);
 
   const {
     register,
     handleSubmit,
     reset,
+    setError,
     setValue,
     watch,
-    formState: { dirtyFields, errors },
+    formState: { errors },
   } = useForm<AddLineFormValues>({
     resolver: zodResolver(addLineSchema),
     defaultValues: {
@@ -106,6 +174,7 @@ export function CreateReturnForm({
         remainingPackages(line, 'quantity_physically_returned') > 0),
   );
   const selectedLine = sale.lines.find((line) => line.id === Number(watch('sale_line_id')));
+  const saleLineField = register('sale_line_id');
   const selectedRefundQuantity = decimalNumber(watch('refund_quantity_packages') ?? '0');
   const stockQuantity = decimalNumber(watch('stock_return_quantity_packages') ?? '0');
   const hasEconomicEffect = stagedLines.some(
@@ -117,11 +186,37 @@ export function CreateReturnForm({
       ? total
       : total + estimatedRefundAmount(saleLine, decimalNumber(staged.refund_quantity_packages));
   }, 0);
-  const refundQuantityField = register('refund_quantity_packages');
+  useEffect(() => {
+    if (!submissionSucceeded) return;
+    setNotes('');
+    setStagedLines([]);
+    setConfirming(false);
+    setStockQuantityIsManual(false);
+    reset({
+      sale_line_id: '',
+      refund_quantity_packages: '1',
+      stock_return_quantity_packages: '1',
+      lot_number: '',
+    });
+  }, [reset, submissionSucceeded]);
 
   const addLine = handleSubmit((values) => {
     const line = sale.lines.find((candidate) => candidate.id === Number(values.sale_line_id));
     if (!line) return;
+    const refundable = remainingPackages(line, 'quantity_refunded');
+    const returnableToStock = remainingPackages(line, 'quantity_physically_returned');
+    if (decimalNumber(values.refund_quantity_packages) > refundable) {
+      setError('refund_quantity_packages', {
+        message: `La cantidad a reembolsar supera el máximo disponible (${formatQuantity(String(refundable))}).`,
+      });
+      return;
+    }
+    if (decimalNumber(values.stock_return_quantity_packages) > returnableToStock) {
+      setError('stock_return_quantity_packages', {
+        message: `La cantidad que vuelve a stock supera el máximo disponible (${formatQuantity(String(returnableToStock))}).`,
+      });
+      return;
+    }
     setStagedLines((current) => [
       ...current,
       {
@@ -141,16 +236,31 @@ export function CreateReturnForm({
       stock_return_quantity_packages: '1',
       lot_number: '',
     });
+    setStockQuantityIsManual(false);
   });
+
+  const requestConfirmation = () => {
+    if (stagedLines.length === 0) return;
+    setConfirming(true);
+  };
 
   const submit = () => {
     if (stagedLines.length === 0) return;
+    setConfirming(false);
     onSubmit({
       notes,
       lines: stagedLines.map(({ label: _label, ...line }) => line),
       ...(hasEconomicEffect ? { refund_method: refundMethod } : {}),
     });
   };
+
+  const selectedRefundMaximum = selectedLine
+    ? Math.max(0, remainingPackages(selectedLine, 'quantity_refunded'))
+    : 0;
+  const stockMaximum = selectedLine
+    ? Math.max(0, remainingPackages(selectedLine, 'quantity_physically_returned'))
+    : 0;
+  const selectedStep = selectedLine ? quantityStep(selectedLine) : 1;
 
   return (
     <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-4">
@@ -265,11 +375,33 @@ export function CreateReturnForm({
           noValidate
           className="flex flex-wrap items-end gap-2"
         >
+          <input type="hidden" {...register('refund_quantity_packages')} />
+          <input type="hidden" {...register('stock_return_quantity_packages')} />
           <label className="text-sm text-slate-600">
             Línea vendida
             <select
               className="mt-1 block w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
-              {...register('sale_line_id')}
+              {...saleLineField}
+              onChange={(event) => {
+                void saleLineField.onChange(event);
+                setStockQuantityIsManual(false);
+                const line = sale.lines.find(
+                  (candidate) => candidate.id === Number(event.target.value),
+                );
+                if (!line) return;
+                setValue(
+                  'refund_quantity_packages',
+                  decimalForInput(Math.min(1, remainingPackages(line, 'quantity_refunded'))),
+                  { shouldValidate: true },
+                );
+                setValue(
+                  'stock_return_quantity_packages',
+                  decimalForInput(
+                    Math.min(1, remainingPackages(line, 'quantity_physically_returned')),
+                  ),
+                  { shouldValidate: true },
+                );
+              }}
             >
               <option value="">Elige…</option>
               {pendingLines.map((line) => (
@@ -285,39 +417,39 @@ export function CreateReturnForm({
             )}
           </label>
 
-          <label className="text-sm text-slate-600">
-            Cantidad a reembolsar
-            <input
-              type="text"
-              inputMode="decimal"
-              className="mt-1 block w-24 rounded border border-slate-300 px-3 py-1.5 text-sm"
-              {...refundQuantityField}
-              onChange={(event) => {
-                void refundQuantityField.onChange(event);
-                if (!dirtyFields.stock_return_quantity_packages) {
-                  setValue('stock_return_quantity_packages', event.target.value);
-                }
-              }}
-            />
-            {errors.refund_quantity_packages && (
-              <p className="mt-1 text-sm text-red-600">{errors.refund_quantity_packages.message}</p>
-            )}
-          </label>
+          <QuantityStepper
+            label="Cantidad a devolver"
+            value={watch('refund_quantity_packages') ?? '0'}
+            max={selectedRefundMaximum}
+            step={selectedStep}
+            onChange={(value) => {
+              setValue('refund_quantity_packages', value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              if (!stockQuantityIsManual) {
+                setValue('stock_return_quantity_packages', value, {
+                  shouldValidate: true,
+                });
+              }
+            }}
+            error={errors.refund_quantity_packages?.message}
+          />
 
-          <label className="text-sm text-slate-600">
-            Cantidad que vuelve a stock
-            <input
-              type="text"
-              inputMode="decimal"
-              className="mt-1 block w-24 rounded border border-slate-300 px-3 py-1.5 text-sm"
-              {...register('stock_return_quantity_packages')}
-            />
-            {errors.stock_return_quantity_packages && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.stock_return_quantity_packages.message}
-              </p>
-            )}
-          </label>
+          <QuantityStepper
+            label="Cantidad que vuelve a stock"
+            value={watch('stock_return_quantity_packages') ?? '0'}
+            max={stockMaximum}
+            step={selectedStep}
+            onChange={(value) => {
+              setStockQuantityIsManual(true);
+              setValue('stock_return_quantity_packages', value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+            }}
+            error={errors.stock_return_quantity_packages?.message}
+          />
 
           {stockQuantity > 0 && selectedLine?.track_lots && (
             <label className="text-sm text-slate-600">
@@ -376,13 +508,47 @@ export function CreateReturnForm({
       <div className="mt-4">
         <button
           type="button"
-          onClick={submit}
+          onClick={requestConfirmation}
           disabled={isPending || stagedLines.length === 0}
           className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {isPending ? 'Registrando…' : 'Registrar devolución'}
         </button>
       </div>
+
+      {isConfirming && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirmar devolución"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+        >
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
+            <h5 className="text-lg font-semibold text-slate-900">Confirmar devolución</h5>
+            <p className="mt-2 text-sm text-slate-600">
+              Se devolverán {formatMoney(String(stagedRefundTotal))} y se registrarán las cantidades
+              indicadas. Esta operación no se puede deshacer automáticamente.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={isPending}
+                className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Confirmar devolución
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

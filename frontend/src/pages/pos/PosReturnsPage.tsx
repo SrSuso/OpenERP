@@ -62,6 +62,14 @@ export function PosReturnsPage() {
     setSaleNumber(number);
   }
 
+  function returnToReturnsPanel() {
+    returnAttemptRef.current = null;
+    setCreateError(null);
+    setSuccess(false);
+    setSaleNumber(null);
+    setSaleNumberInput('');
+  }
+
   return (
     <section className="h-full overflow-y-auto px-6 py-5">
       <div className="mx-auto max-w-5xl">
@@ -168,18 +176,27 @@ export function PosReturnsPage() {
             {sale.data.status === 'COMPLETED' && (
               <>
                 {success && (
-                  <p
+                  <div
                     role="status"
-                    className="mb-3 rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                    className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
                   >
-                    Devolución registrada correctamente.
-                  </p>
+                    <span>Devolución registrada correctamente.</span>
+                    <button
+                      type="button"
+                      onClick={returnToReturnsPanel}
+                      className="rounded border border-emerald-700 px-3 py-1 font-medium text-emerald-900"
+                    >
+                      Volver al panel de devoluciones
+                    </button>
+                  </div>
                 )}
                 <CreateReturnForm
                   sale={sale.data}
                   isPending={createMutation.isPending}
                   submitError={createError}
+                  submissionSucceeded={success}
                   onSubmit={(payload) => {
+                    setSuccess(false);
                     const fingerprint = JSON.stringify(payload);
                     const existing = returnAttemptRef.current;
                     const attempt =

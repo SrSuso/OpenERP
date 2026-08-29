@@ -181,8 +181,18 @@ describe('PosReturnsPage', () => {
     await screen.findByText(/Venta #7/);
 
     await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad a devolver' }));
+    expect(screen.getByLabelText('Cantidad a devolver')).toHaveValue('2');
+    expect(screen.getByLabelText('Cantidad que vuelve a stock')).toHaveValue('2');
+    await userEvent.click(screen.getByRole('button', { name: 'Reducir cantidad a devolver' }));
     await userEvent.click(screen.getByRole('button', { name: 'Añadir a la devolución' }));
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+
+    const confirmation = await screen.findByRole('dialog', { name: 'Confirmar devolución' });
+    expect(backend.returns).toEqual([]);
+    await userEvent.click(
+      within(confirmation).getByRole('button', { name: 'Confirmar devolución' }),
+    );
 
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Devolución registrada correctamente.',
@@ -202,6 +212,10 @@ describe('PosReturnsPage', () => {
         refund_method: 'CASH',
       },
     ]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Volver al panel de devoluciones' }));
+    expect(screen.queryByText(/Venta #7/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Nº de venta')).toHaveValue('');
   });
 
   it('does not expose a return screen to a POS cashier without return.manage', async () => {

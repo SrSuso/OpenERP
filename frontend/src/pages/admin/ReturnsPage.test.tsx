@@ -222,7 +222,7 @@ describe('ReturnsPage', () => {
     expect(screen.getAllByText('10,00 €')).not.toHaveLength(0);
 
     await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
-    const qtyInput = screen.getByLabelText('Cantidad a reembolsar');
+    const qtyInput = screen.getByLabelText('Cantidad a devolver');
     await userEvent.clear(qtyInput);
     await userEvent.type(qtyInput, '2');
     expect(screen.getByText(/Importe a devolver de esta línea: 4,00 €/)).toBeInTheDocument();
@@ -230,8 +230,10 @@ describe('ReturnsPage', () => {
 
     await screen.findByText(/Importe total a devolver: 4,00 €/);
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }));
     await screen.findByText('No se ha podido registrar la devolución.');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }));
 
     expect(await screen.findAllByText(/reembolso 4,00/)).not.toHaveLength(0);
     expect(backend.returnKeys[0]).not.toBe('');
@@ -260,7 +262,7 @@ describe('ReturnsPage', () => {
     await screen.findByText(/Venta #7/);
 
     await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
-    const refund = screen.getByLabelText('Cantidad a reembolsar');
+    const refund = screen.getByLabelText('Cantidad a devolver');
     const stock = screen.getByLabelText('Cantidad que vuelve a stock');
     await userEvent.clear(refund);
     await userEvent.type(refund, '3');
@@ -270,6 +272,7 @@ describe('ReturnsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Añadir a la devolución' }));
     await userEvent.selectOptions(screen.getByLabelText('Medio del reembolso'), 'CARD');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }));
 
     expect(await screen.findByText(/devuelto 3.*repuesto 1/)).toBeInTheDocument();
     expect(backend.createCalls).toEqual([
@@ -296,7 +299,7 @@ describe('ReturnsPage', () => {
     await screen.findByText(/Venta #7/);
 
     await userEvent.selectOptions(screen.getByLabelText('Línea vendida'), '1');
-    const refund = screen.getByLabelText('Cantidad a reembolsar');
+    const refund = screen.getByLabelText('Cantidad a devolver');
     const stock = screen.getByLabelText('Cantidad que vuelve a stock');
     await userEvent.clear(refund);
     await userEvent.type(refund, '0');
@@ -306,6 +309,7 @@ describe('ReturnsPage', () => {
 
     expect(screen.queryByLabelText('Medio del reembolso')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Registrar devolución' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }));
     expect(await screen.findByText(/sin reembolso económico/)).toBeInTheDocument();
     expect(backend.createCalls[0]).not.toHaveProperty('refund_method');
   });

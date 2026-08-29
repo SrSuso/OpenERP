@@ -23,6 +23,7 @@ export function ReturnsPage() {
   //: carrito cancelado no gasta número, así que los dos ya no coinciden.
   const [saleNumber, setSaleNumber] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const returnAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const found = useQuery(saleByNumberQuery(saleNumber));
@@ -38,6 +39,7 @@ export function ReturnsPage() {
       void queryClient.invalidateQueries({ queryKey: ['returns', 'sale', saleId] });
       void queryClient.invalidateQueries({ queryKey: ['returns', 'by-sale', saleId] });
       setCreateError(null);
+      setSuccess(true);
     },
     onError: (error: unknown) =>
       setCreateError(
@@ -49,7 +51,16 @@ export function ReturnsPage() {
     const number = Number(saleNumberInput);
     if (!Number.isInteger(number) || number <= 0) return;
     returnAttemptRef.current = null;
+    setSuccess(false);
     setSaleNumber(number);
+  }
+
+  function returnToReturnsPanel() {
+    returnAttemptRef.current = null;
+    setCreateError(null);
+    setSuccess(false);
+    setSaleNumber(null);
+    setSaleNumberInput('');
   }
 
   return (
@@ -102,21 +113,40 @@ export function ReturnsPage() {
                 <TicketReprintButton saleId={sale.data.id} />
               </div>
               {canManage && (
-                <CreateReturnForm
-                  sale={sale.data}
-                  isPending={createMutation.isPending}
-                  submitError={createError}
-                  onSubmit={(payload) => {
-                    const fingerprint = JSON.stringify(payload);
-                    const existing = returnAttemptRef.current;
-                    const attempt =
-                      existing?.fingerprint === fingerprint
-                        ? existing
-                        : { fingerprint, key: crypto.randomUUID() };
-                    returnAttemptRef.current = attempt;
-                    createMutation.mutate({ payload, key: attempt.key });
-                  }}
-                />
+                <>
+                  {success && (
+                    <div
+                      role="status"
+                      className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                    >
+                      <span>Devolución registrada correctamente.</span>
+                      <button
+                        type="button"
+                        onClick={returnToReturnsPanel}
+                        className="rounded border border-emerald-700 px-3 py-1 font-medium text-emerald-900"
+                      >
+                        Volver al panel de devoluciones
+                      </button>
+                    </div>
+                  )}
+                  <CreateReturnForm
+                    sale={sale.data}
+                    isPending={createMutation.isPending}
+                    submitError={createError}
+                    submissionSucceeded={success}
+                    onSubmit={(payload) => {
+                      setSuccess(false);
+                      const fingerprint = JSON.stringify(payload);
+                      const existing = returnAttemptRef.current;
+                      const attempt =
+                        existing?.fingerprint === fingerprint
+                          ? existing
+                          : { fingerprint, key: crypto.randomUUID() };
+                      returnAttemptRef.current = attempt;
+                      createMutation.mutate({ payload, key: attempt.key });
+                    }}
+                  />
+                </>
               )}
               <h5 className="mb-1 text-xs font-semibold uppercase text-slate-500">
                 Devoluciones de esta venta

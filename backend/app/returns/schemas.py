@@ -26,7 +26,7 @@ class ReturnLineCreate(BaseModel):
     @model_validator(mode="after")
     def _at_least_one_effect(self) -> ReturnLineCreate:
         if self.refund_quantity_packages == 0 and self.stock_return_quantity_packages == 0:
-            raise ValueError("A return line needs an economic or physical quantity.")
+            raise ValueError("Una línea de devolución necesita una cantidad económica o física.")
         return self
 
 
@@ -42,9 +42,9 @@ class ReturnCreate(BaseModel):
     def _refund_method_matches_effect(self) -> ReturnCreate:
         has_economic_effect = any(line.refund_quantity_packages > 0 for line in self.lines)
         if has_economic_effect and self.refund_method is None:
-            raise ValueError("refund_method is required for an economic return.")
+            raise ValueError("Debe indicar el medio del reembolso económico.")
         if not has_economic_effect and self.refund_method is not None:
-            raise ValueError("refund_method is forbidden when no money is being refunded.")
+            raise ValueError("No puede indicar un medio de reembolso si no se devuelve dinero.")
         return self
 
 

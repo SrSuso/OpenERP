@@ -260,6 +260,7 @@ async def test_returning_more_than_sold_is_rejected(
     )
 
     assert response.status_code == 422
+    assert "supera la disponible" in response.json()["error"]["message"]
 
 
 async def test_returning_cumulatively_over_the_limit_is_rejected(
