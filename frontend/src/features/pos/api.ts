@@ -334,7 +334,7 @@ export async function addLine(
     quantity_packages: string;
     open_price_total?: string;
     cold_drink?: boolean;
-    pos_surcharge?: 'COLD_DRINK' | 'BAG_LARGE' | 'BAG_MEDIUM' | 'BAG_SMALL';
+    pos_surcharge?: 'COLD_DRINK';
   },
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines`, {
@@ -352,7 +352,7 @@ export async function addLineByBarcode(
     barcode: string;
     quantity_packages: string;
     cold_drink?: boolean;
-    pos_surcharge?: 'COLD_DRINK' | 'BAG_LARGE' | 'BAG_MEDIUM' | 'BAG_SMALL';
+    pos_surcharge?: 'COLD_DRINK';
   },
 ): Promise<Sale> {
   return apiFetch(`${API_V1}/sales/${saleId}/lines/by-barcode`, {

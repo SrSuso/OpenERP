@@ -41,21 +41,14 @@ function describeError(error: unknown): string {
   return error instanceof ApiError ? error.message : 'Ha ocurrido un error inesperado.';
 }
 
-type PosSurchargeCode = 'COLD_DRINK' | 'BAG_LARGE' | 'BAG_MEDIUM' | 'BAG_SMALL';
+type PosSurchargeCode = 'COLD_DRINK';
 
 const POS_SURCHARGE_BUTTONS: Array<{
   code: PosSurchargeCode;
   label: string;
-  settingKey:
-    | 'pos.cold_drink_surcharge_amount'
-    | 'pos.large_bag_surcharge_amount'
-    | 'pos.medium_bag_surcharge_amount'
-    | 'pos.small_bag_surcharge_amount';
+  settingKey: 'pos.cold_drink_surcharge_amount';
 }> = [
   { code: 'COLD_DRINK', label: 'Bebida fría', settingKey: 'pos.cold_drink_surcharge_amount' },
-  { code: 'BAG_LARGE', label: 'Bolsa grande', settingKey: 'pos.large_bag_surcharge_amount' },
-  { code: 'BAG_MEDIUM', label: 'Bolsa mediana', settingKey: 'pos.medium_bag_surcharge_amount' },
-  { code: 'BAG_SMALL', label: 'Bolsa pequeña', settingKey: 'pos.small_bag_surcharge_amount' },
 ];
 
 /**
@@ -70,14 +63,8 @@ export function PosHomePage() {
   const { selectedTerminal } = usePosTerminal();
   const terminalId = selectedTerminal?.id ?? null;
   const coldDrinkSurcharge = useShopSetting('pos.cold_drink_surcharge_amount', '0');
-  const largeBagSurcharge = useShopSetting('pos.large_bag_surcharge_amount', '0');
-  const mediumBagSurcharge = useShopSetting('pos.medium_bag_surcharge_amount', '0');
-  const smallBagSurcharge = useShopSetting('pos.small_bag_surcharge_amount', '0');
   const surchargeAmounts: Record<PosSurchargeCode, string> = {
     COLD_DRINK: coldDrinkSurcharge,
-    BAG_LARGE: largeBagSurcharge,
-    BAG_MEDIUM: mediumBagSurcharge,
-    BAG_SMALL: smallBagSurcharge,
   };
   const enabledSurcharges = POS_SURCHARGE_BUTTONS.filter(
     (button) => Number(surchargeAmounts[button.code]) > 0,

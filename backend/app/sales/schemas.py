@@ -32,7 +32,7 @@ class SaleLineCreate(BaseModel):
     cold_drink: bool = False
     #: The browser selects a code only; the service resolves its configured
     #: amount server-side and allows one supplement per sale line.
-    pos_surcharge: Literal["COLD_DRINK", "BAG_LARGE", "BAG_MEDIUM", "BAG_SMALL"] | None = None
+    pos_surcharge: Literal["COLD_DRINK"] | None = None
 
 
 class SaleLineByBarcodeCreate(BaseModel):
@@ -44,7 +44,7 @@ class SaleLineByBarcodeCreate(BaseModel):
     quantity_packages: Decimal = Field(default=Decimal(1), gt=0)
     discount_rate: Decimal = Field(default=Decimal(0), ge=0, le=100)
     cold_drink: bool = False
-    pos_surcharge: Literal["COLD_DRINK", "BAG_LARGE", "BAG_MEDIUM", "BAG_SMALL"] | None = None
+    pos_surcharge: Literal["COLD_DRINK"] | None = None
 
 
 class SaleLineRead(BaseModel):

@@ -112,19 +112,3 @@ export async function updateColdDrinkSurcharge(amount: string): Promise<SettingD
     body: { amount },
   });
 }
-
-export const posSurchargesQuery = queryOptions({
-  queryKey: ['settings', 'pos', 'surcharges'] as const,
-  queryFn: ({ signal }) =>
-    apiFetch(`${API_V1}/settings/pos/surcharges`, { schema: settingsOptionsSchema, signal }),
-});
-
-export async function updatePosSurcharges(
-  values: Record<string, string>,
-): Promise<SettingsOptions> {
-  return apiFetch(`${API_V1}/settings/pos/surcharges`, {
-    method: 'PUT',
-    schema: settingsOptionsSchema,
-    body: { values },
-  });
-}

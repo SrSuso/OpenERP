@@ -181,7 +181,6 @@ function stubBackend(
     rejectStockCheck?: boolean;
     showProductSearch?: boolean;
     coldDrinkSurcharge?: string;
-    largeBagSurcharge?: string;
     posCategories?: Array<typeof POS_CATEGORY & { is_default?: boolean }>;
   } = {},
 ) {
@@ -217,7 +216,6 @@ function stubBackend(
         return Promise.resolve(
           jsonResponse({
             'pos.cold_drink_surcharge_amount': options.coldDrinkSurcharge ?? '0',
-            'pos.large_bag_surcharge_amount': options.largeBagSurcharge ?? '0',
           }),
         );
       }
@@ -397,18 +395,14 @@ function stubBackend(
         const coldDrinkSurcharge =
           surchargeCode === 'COLD_DRINK'
             ? '0.200000'
-            : surchargeCode === 'BAG_LARGE'
-              ? '0.150000'
-              : '0.000000';
+            : '0.000000';
         const line = {
           ...regularSale.lines[0]!,
           cold_drink_surcharge: coldDrinkSurcharge,
           pos_surcharge_label:
             surchargeCode === 'COLD_DRINK'
               ? 'Bebida fría'
-              : surchargeCode === 'BAG_LARGE'
-                ? 'Bolsa grande'
-                : null,
+              : null,
           total: (Number(regularSale.lines[0]!.total) + Number(coldDrinkSurcharge)).toFixed(6),
         };
         sale = { ...regularSale, lines: [line], total: line.total };
@@ -559,24 +553,6 @@ describe('PosHomePage', () => {
       });
     });
     expect(await screen.findByText(/bebida fría \+0,20 € por unidad/i)).toBeInTheDocument();
-  });
-
-  it('adds the selected large-bag charge only to the next item', async () => {
-    const backend = stubBackend({ largeBagSurcharge: '0.15' });
-    renderPage();
-
-    await userEvent.click(await screen.findByRole('button', { name: /bolsa grande/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /leche entera 1l/i }));
-
-    await waitFor(() => {
-      expect(backend.addLineCalls).toContainEqual({
-        product_id: 1,
-        package_id: 10,
-        quantity_packages: '1',
-        pos_surcharge: 'BAG_LARGE',
-      });
-    });
-    expect(await screen.findByText(/bolsa grande \+0,15 € por unidad/i)).toBeInTheDocument();
   });
 
   it('finds a product from the touch search and adds the selected result', async () => {

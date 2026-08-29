@@ -222,10 +222,10 @@ export function PosTerminalsPage() {
 
       {canManageColdDrinkSurcharge && (
         <section className="border-t border-slate-200 pt-6">
-          <h2 className="text-lg font-semibold text-slate-900">Suplementos del TPV</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Bebidas frías</h2>
           <p className="mb-4 mt-1 text-sm text-slate-600">
-            Cada importe se suma por unidad al seleccionar su botón antes de añadir un artículo en
-            el TPV. Pon 0 para ocultar ese botón.
+            Este importe se suma por unidad al seleccionar «Bebida fría» antes de añadir un artículo
+            en el TPV.
           </p>
           <ColdDrinkSurchargePanel />
         </section>

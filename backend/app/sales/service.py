@@ -515,9 +515,6 @@ async def _open_price_unit_price(
 
 POS_SURCHARGES: dict[str, tuple[str, str]] = {
     "COLD_DRINK": ("pos.cold_drink_surcharge_amount", "Bebida fría"),
-    "BAG_LARGE": ("pos.large_bag_surcharge_amount", "Bolsa grande"),
-    "BAG_MEDIUM": ("pos.medium_bag_surcharge_amount", "Bolsa mediana"),
-    "BAG_SMALL": ("pos.small_bag_surcharge_amount", "Bolsa pequeña"),
 }
 
 

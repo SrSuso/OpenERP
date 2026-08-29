@@ -258,45 +258,6 @@ SETTINGS: tuple[SettingDef, ...] = (
         maximum=Decimal(100),
     ),
     SettingDef(
-        key="pos.large_bag_surcharge_amount",
-        group=GROUP_POS,
-        label="Bolsa grande (por unidad)",
-        help=(
-            "Importe final que suma la caja al marcar una bolsa grande. "
-            "Pon 0 para ocultar el botón."
-        ),
-        type=SettingType.DECIMAL,
-        default=Decimal(0),
-        minimum=Decimal(0),
-        maximum=Decimal(100),
-    ),
-    SettingDef(
-        key="pos.medium_bag_surcharge_amount",
-        group=GROUP_POS,
-        label="Bolsa mediana (por unidad)",
-        help=(
-            "Importe final que suma la caja al marcar una bolsa mediana. "
-            "Pon 0 para ocultar el botón."
-        ),
-        type=SettingType.DECIMAL,
-        default=Decimal(0),
-        minimum=Decimal(0),
-        maximum=Decimal(100),
-    ),
-    SettingDef(
-        key="pos.small_bag_surcharge_amount",
-        group=GROUP_POS,
-        label="Bolsa pequeña (por unidad)",
-        help=(
-            "Importe final que suma la caja al marcar una bolsa pequeña. "
-            "Pon 0 para ocultar el botón."
-        ),
-        type=SettingType.DECIMAL,
-        default=Decimal(0),
-        minimum=Decimal(0),
-        maximum=Decimal(100),
-    ),
-    SettingDef(
         key="pos.surface_color",
         group=GROUP_POS,
         label="Color de fondo del TPV",
