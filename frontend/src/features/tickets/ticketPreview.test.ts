@@ -4,6 +4,8 @@ import { renderTicketPreview } from './ticketPreview';
 
 const BASE_FIELDS = {
   printable_width_mm: 48,
+  margin_left_mm: 0,
+  margin_right_mm: 0,
   font_size_px: 9,
   font_weight: 'NORMAL' as const,
   header_text: '',

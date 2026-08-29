@@ -171,6 +171,8 @@ export function TemplateFieldsForm({
 
   let preview = renderTicketPreview({
     printable_width_mm: printProfile.printable_width_mm,
+    margin_left_mm: printProfile.margin_left_mm,
+    margin_right_mm: printProfile.margin_right_mm,
     font_size_px: printProfile.font_size_px,
     font_weight: printProfile.font_weight,
     header_text: watch('header_text') ?? '',

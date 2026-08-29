@@ -49,6 +49,8 @@ const SAMPLE_LINES = [
 
 export interface TicketPreviewFields {
   printable_width_mm: number;
+  margin_left_mm: number;
+  margin_right_mm: number;
   font_size_px: number;
   font_weight: 'NORMAL' | 'BOLD';
   header_text: string;
