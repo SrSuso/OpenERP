@@ -153,7 +153,6 @@ export async function printThermalTicket(
             imageEncoding: 'gs_v_0',
           },
         },
-        '\n\n\n',
         '\x1d\x56\x00',
       ]),
       `enviar el ticket a «${printer}»`,

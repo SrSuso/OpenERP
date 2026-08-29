@@ -51,4 +51,21 @@ describe('POS-80 ticket raster', () => {
     expect(svg).toContain('xml:space="preserve">  CENTRADO  </text>');
     expect(svg).toContain('TOTAL      1.25 €');
   });
+
+  it('clips text to the configured content area so the right margin remains blank', () => {
+    const profile = { ...PROFILE, printable_width_mm: 64, margin_left_mm: 6, margin_right_mm: 10 };
+    const svg = ticketRasterSvg('A line deliberately longer than the printable area', profile);
+
+    expect(svg).toContain('<clipPath id="ticket-content">');
+    expect(svg).toContain('<rect x="16" y="0" width="512"');
+    expect(svg).toContain('clip-path="url(#ticket-content)"');
+  });
+
+  it('represents vertical margins as deterministic blank raster rows', () => {
+    const geometry = ticketRasterGeometry({ ...PROFILE, margin_top_mm: 5, margin_bottom_mm: 7 }, 2);
+
+    expect(geometry.topDots).toBe(40);
+    expect(geometry.bottomDots).toBe(56);
+    expect(geometry.heightDots).toBe(180);
+  });
 });

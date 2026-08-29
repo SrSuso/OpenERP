@@ -82,6 +82,12 @@ export function ticketRasterSvg(text: string, profile: TicketPrintProfile): stri
   const geometry = ticketRasterGeometry(profile, lines.length);
   const fontFamily = escapeXml(ticketFontStack(profile.font_family));
   const fontWeight = profile.font_weight === 'BOLD' ? 700 : 400;
+  // The backend formats every line for the configured content width.  The
+  // raster must nevertheless enforce that physical boundary: a font fallback
+  // or a custom layout must never spill into the right-hand margin (or beyond
+  // the thermal head) merely because SVG text is allowed to paint outside its
+  // nominal box by default.
+  const contentClip = `<defs><clipPath id="ticket-content"><rect x="${geometry.contentLeftDots}" y="0" width="${geometry.contentWidthDots}" height="${geometry.heightDots}"/></clipPath></defs>`;
   const textNodes = lines
     .map((line, index) => {
       const baseline = geometry.topDots + geometry.fontSizeDots + index * geometry.lineHeightDots;
@@ -89,7 +95,7 @@ export function ticketRasterSvg(text: string, profile: TicketPrintProfile): stri
     })
     .join('');
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${geometry.widthDots}" height="${geometry.heightDots}" viewBox="0 0 ${geometry.widthDots} ${geometry.heightDots}"><rect width="100%" height="100%" fill="white"/><g fill="black" font-family="${fontFamily}" font-size="${geometry.fontSizeDots}" font-weight="${fontWeight}" font-variant-ligatures="none">${textNodes}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${geometry.widthDots}" height="${geometry.heightDots}" viewBox="0 0 ${geometry.widthDots} ${geometry.heightDots}">${contentClip}<rect width="100%" height="100%" fill="white"/><g clip-path="url(#ticket-content)" fill="black" font-family="${fontFamily}" font-size="${geometry.fontSizeDots}" font-weight="${fontWeight}" font-variant-ligatures="none">${textNodes}</g></svg>`;
 }
 
 export function ticketRasterSvgUrl(text: string, profile: TicketPrintProfile): string {
