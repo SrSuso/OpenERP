@@ -7,6 +7,7 @@ import { IncidentsTable } from '@/features/notifications/IncidentsTable';
 import { RulesTable } from '@/features/notifications/RulesTable';
 import {
   createRule,
+  deleteRule,
   evaluateRules,
   incidentsQuery,
   notificationRulesQuery,
@@ -73,6 +74,18 @@ export function NotificationsPage() {
       setCreateError(null);
     },
     onError: () => setCreateError('No se han podido guardar los cambios de la regla.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (rule: NotificationRule) => deleteRule(rule.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: notificationRulesQuery.queryKey });
+      void queryClient.invalidateQueries({ queryKey: ['notifications', 'incidents'] });
+      setShowCreateForm(false);
+      setEditingRule(null);
+      setCreateError(null);
+    },
+    onError: () => setCreateError('No se ha podido eliminar la regla.'),
   });
 
   const evaluateMutation = useMutation({
@@ -170,8 +183,19 @@ export function NotificationsPage() {
                   setCreateError(null);
                   setShowCreateForm(true);
                 }}
+                onDelete={(rule) => {
+                  if (
+                    window.confirm(
+                      `¿Eliminar la regla «${rule.name}»?\n\nTambién se eliminarán las incidencias generadas por ella. Esta acción no se puede deshacer.`,
+                    )
+                  ) {
+                    deleteMutation.mutate(rule);
+                  }
+                }}
                 onToggleActive={(rule) => toggleMutation.mutate(rule)}
-                isMutating={toggleMutation.isPending || updateMutation.isPending}
+                isMutating={
+                  toggleMutation.isPending || updateMutation.isPending || deleteMutation.isPending
+                }
               />
             )}
           </div>

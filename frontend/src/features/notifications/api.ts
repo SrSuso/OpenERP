@@ -77,6 +77,13 @@ export async function updateRule(id: number, payload: RuleUpdateInput): Promise<
   });
 }
 
+export async function deleteRule(id: number): Promise<void> {
+  await apiFetch(`${API_V1}/notification-rules/${id}`, {
+    method: 'DELETE',
+    schema: z.null(),
+  });
+}
+
 // --- incidencias -------------------------------------------------------
 
 export const incidentSchema = z.object({

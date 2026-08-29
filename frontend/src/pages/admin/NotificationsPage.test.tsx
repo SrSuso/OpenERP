@@ -30,6 +30,7 @@ function stubBackend() {
   let incidents: Incident[] = [];
   const createRuleCalls: Record<string, unknown>[] = [];
   const toggleCalls: { id: number; body: Record<string, unknown> }[] = [];
+  const deletedRuleIds: number[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -78,6 +79,13 @@ function stubBackend() {
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
       const toggleMatch = /\/notification-rules\/(\d+)$/.exec(url);
+      if (method === 'DELETE' && toggleMatch) {
+        const id = Number(toggleMatch[1]);
+        deletedRuleIds.push(id);
+        const index = rules.findIndex((rule) => rule.id === id);
+        if (index >= 0) rules.splice(index, 1);
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
       if (method === 'PATCH' && toggleMatch) {
         const id = Number(toggleMatch[1]);
         const b = body();
@@ -126,7 +134,7 @@ function stubBackend() {
     }),
   );
 
-  return { createRuleCalls, toggleCalls };
+  return { createRuleCalls, toggleCalls, deletedRuleIds };
 }
 
 function renderPage() {
@@ -241,5 +249,23 @@ describe('NotificationsPage', () => {
         },
       },
     ]);
+  });
+
+  it('confirms and deletes a rule', async () => {
+    const backend = stubBackend();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Reglas' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Regla equivocada');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    await screen.findByText('Regla equivocada');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+
+    await waitFor(() => expect(backend.deletedRuleIds).toEqual([1]));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('incidencias generadas'));
+    expect(await screen.findByText('Todavía no hay ninguna regla.')).toBeInTheDocument();
+    confirm.mockRestore();
   });
 });

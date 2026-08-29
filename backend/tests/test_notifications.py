@@ -338,6 +338,30 @@ async def test_deactivating_a_rule_excludes_it_from_evaluation(
     assert _incident_for(incidents, "product", product["id"]) is None
 
 
+async def test_deleting_a_rule_removes_its_derived_incidents(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(client, sku="NOTIF-DELETE", min_stock="10")
+    warehouse_id, location_id = await _default_location(client)
+    await _stock(
+        client,
+        product_id=product["id"],
+        warehouse_id=warehouse_id,
+        location_id=location_id,
+        quantity="1",
+    )
+    rule = await _create_rule(client, name="Borrar stock bajo", rule_type="LOW_STOCK")
+    incident = _incident_for(await _evaluate(client), "product", product["id"])
+    assert incident is not None
+
+    response = await client.delete(f"/api/v1/notification-rules/{rule['id']}")
+
+    assert response.status_code == 204
+    assert (await client.get("/api/v1/notification-rules")).json() == []
+    assert (await client.get(f"/api/v1/incidents/{incident['id']}")).status_code == 404
+
+
 async def test_manually_resolving_an_incident(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

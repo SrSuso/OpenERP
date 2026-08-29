@@ -68,6 +68,11 @@ async def update_rule(
     return _rule_to_read(await service.update_rule(session, rule_id, payload))
 
 
+@router.delete("/notification-rules/{rule_id}", status_code=204, dependencies=[_require_manage])
+async def delete_rule(rule_id: int, session: SessionDep) -> None:
+    await service.delete_rule(session, rule_id)
+
+
 @router.post(
     "/notifications/evaluate",
     response_model=list[IncidentRead],

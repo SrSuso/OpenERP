@@ -31,6 +31,7 @@ interface RulesTableProps {
   rules: NotificationRule[];
   canManage: boolean;
   onEdit: (rule: NotificationRule) => void;
+  onDelete: (rule: NotificationRule) => void;
   onToggleActive: (rule: NotificationRule) => void;
   isMutating: boolean;
 }
@@ -39,6 +40,7 @@ export function RulesTable({
   rules,
   canManage,
   onEdit,
+  onDelete,
   onToggleActive,
   isMutating,
 }: RulesTableProps) {
@@ -113,6 +115,14 @@ export function RulesTable({
                       className="text-sm font-medium text-slate-600 hover:underline disabled:opacity-50"
                     >
                       {rule.is_active ? 'Desactivar' : 'Activar'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(rule)}
+                      disabled={isMutating}
+                      className="text-sm font-medium text-red-600 hover:underline disabled:opacity-50"
+                    >
+                      Eliminar
                     </button>
                   </div>
                 )}

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -96,6 +96,34 @@ async def update_rule(
         after={"name": rule.name, "params": rule.params, "is_active": rule.is_active},
     )
     return rule
+
+
+async def delete_rule(session: AsyncSession, rule_id: int) -> None:
+    """Remove a rule and the incidents generated exclusively by it.
+
+    Incidents are derived operational alerts, not accounting records.  They
+    cannot outlive their rule because their foreign key is intentionally
+    restrictive; delete them in the same transaction and leave an immutable
+    audit entry explaining what was removed.
+    """
+    rule = await get_rule(session, rule_id)
+    before = {
+        "name": rule.name,
+        "rule_type": rule.rule_type,
+        "params": rule.params,
+        "severity": rule.severity,
+        "is_active": rule.is_active,
+    }
+    await session.execute(delete(Incident).where(Incident.rule_id == rule.id))
+    await session.delete(rule)
+    await session.flush()
+    await audit.record(
+        session,
+        action="deleted",
+        entity_type="notification_rule",
+        entity_id=rule_id,
+        before=before,
+    )
 
 
 # --- incidents -------------------------------------------------------------------
