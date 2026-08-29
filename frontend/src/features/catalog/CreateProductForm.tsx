@@ -77,6 +77,7 @@ interface CreateProductFormProps {
   isPending: boolean;
   submitError: string | null;
   canManageStock: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 /** La misma prioridad producto → categoría que usa el backend. La lista
@@ -138,6 +139,7 @@ export function CreateProductForm({
   isPending,
   submitError,
   canManageStock,
+  onDirtyChange,
 }: CreateProductFormProps) {
   // `taxIds` es lo que de verdad se manda (vacío = sigue heredando, ver
   // onSubmit más abajo); `isOverride` distingue "nunca lo ha tocado" de
@@ -275,6 +277,9 @@ export function CreateProductForm({
   const displayedTaxIds = isOverride ? taxIds : categoryTaxIds;
 
   useUnsavedWarning(isDirty);
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const submit = handleSubmit((values) => {
     const initialQuantity = Number(values.initial_stock_quantity.replace(',', '.'));

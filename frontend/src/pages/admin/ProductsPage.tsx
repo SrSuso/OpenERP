@@ -17,6 +17,7 @@ import { stockTotalsQuery } from '@/features/inventory/api';
 import { PriceChangeDialog } from '@/features/pricing/PriceChangeDialog';
 import { setManualPrice, setProductPricing, taxesQuery } from '@/features/pricing/api';
 import { ApiError } from '@/lib/api';
+import { useUnsavedNavigationWarning } from '@/lib/unsaved';
 
 import { pageHeaderRow, primaryAction } from './pageActions';
 
@@ -40,6 +41,8 @@ export function ProductsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createDirty, setCreateDirty] = useState(false);
+  useUnsavedNavigationWarning(showCreateForm && createDirty);
 
   const categories = useQuery(productCategoriesQuery);
   const posCategories = useQuery(posCategoriesQuery);
@@ -71,6 +74,7 @@ export function ProductsPage() {
     onSuccess: () => {
       invalidateProducts();
       setShowCreateForm(false);
+      setCreateDirty(false);
       setCreateError(null);
     },
     onError: (error: unknown) => {
@@ -247,8 +251,10 @@ export function ProductsPage() {
           canManageStock={canManageStock}
           onCancel={() => {
             setShowCreateForm(false);
+            setCreateDirty(false);
             setCreateError(null);
           }}
+          onDirtyChange={setCreateDirty}
           onSubmit={(payload, taxIds) => createMutation.mutate({ payload, taxIds })}
         />
       )}

@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { RouterProvider, createMemoryRouter } from 'react-router';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { type Product, type ProductCategory, type Unit } from '@/features/catalog/api';
@@ -12,6 +12,28 @@ import { type Supplier } from '@/features/suppliers/api';
 import { type Tax } from '@/features/pricing/api';
 
 import { ProductDetailPage } from './ProductDetailPage';
+
+beforeEach(() => {
+  // React Router's data router creates browser-realm AbortSignals in jsdom,
+  // while Node's native Request (used by this test runtime) accepts only its
+  // own realm. Route tests do not load data, so omitting that internal signal
+  // preserves the navigation contract without crossing realms.
+  const NativeRequest = globalThis.Request;
+  vi.stubGlobal(
+    'Request',
+    class extends NativeRequest {
+      constructor(input: RequestInfo | URL, init?: RequestInit) {
+        if (init?.signal === undefined) {
+          super(input, init);
+          return;
+        }
+        const withoutSignal: RequestInit = { ...init };
+        delete withoutSignal.signal;
+        super(input, withoutSignal);
+      }
+    },
+  );
+});
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -334,18 +356,23 @@ function stubBackend(
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <MemoryRouter initialEntries={['/admin/inventory/products/1']}>
-          <Routes>
-            <Route path="/admin/inventory/products/:productId" element={<ProductDetailPage />} />
-            <Route path="/admin/inventory/products" element={<p>Listado de productos</p>} />
-          </Routes>
-        </MemoryRouter>
-      </AuthProvider>
-    </QueryClientProvider>,
+  const router = createMemoryRouter(
+    [
+      { path: '/admin/inventory/products/:productId', element: <ProductDetailPage /> },
+      { path: '/admin/inventory/products', element: <p>Listado de productos</p> },
+    ],
+    { initialEntries: ['/admin/inventory/products/1'] },
   );
+  return {
+    router,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe('ProductDetailPage', () => {
@@ -524,6 +551,19 @@ describe('ProductDetailPage', () => {
 
     expect(confirmSpy).toHaveBeenCalled();
     expect(screen.getByLabelText('Coste')).toHaveValue('0.45');
+  });
+
+  it('asks before leaving the product detail through its back link', async () => {
+    stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPage();
+
+    const nameInput = await screen.findByDisplayValue('Agua 1L');
+    await userEvent.type(nameInput, ' fresca');
+    await userEvent.click(screen.getByRole('link', { name: /Volver a productos/ }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('no has guardado'));
+    expect(screen.getByDisplayValue('Agua 1L fresca')).toBeInTheDocument();
   });
 
   it('keeps showing what was just saved, even if the reload is slow', async () => {

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { RouterProvider, createMemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
@@ -228,15 +228,24 @@ function stubBackend(options: { products?: Product[] } = {}) {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <MemoryRouter initialEntries={['/admin/inventory/products']}>
-          <ProductsPage />
-        </MemoryRouter>
-      </AuthProvider>
-    </QueryClientProvider>,
+  const router = createMemoryRouter(
+    [
+      { path: '/admin/inventory/products', element: <ProductsPage /> },
+      { path: '/admin/another-page', element: <p>Otra página</p> },
+      { path: '/admin/inventory/products/:productId', element: <p>Ficha de producto</p> },
+    ],
+    { initialEntries: ['/admin/inventory/products'] },
   );
+  return {
+    router,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe('ProductsPage', () => {
@@ -284,6 +293,24 @@ describe('ProductsPage', () => {
     expect(backend.createCalls[0]).not.toHaveProperty('tax_rate');
     // Sin ningún impuesto elegido, no hay PATCH .../pricing de más.
     expect(backend.pricingCalls).toEqual([]);
+  });
+
+  it('asks before leaving the product creation form with unsaved changes', async () => {
+    stubBackend();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { router } = renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Producto pendiente');
+    await act(async () => {
+      await router.navigate('/admin/another-page');
+    });
+
+    await waitFor(() =>
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('no has guardado')),
+    );
+    expect(screen.getByDisplayValue('Producto pendiente')).toBeInTheDocument();
   });
 
   it('includes the selected IVA equivalence surcharge in a category-free product preview', async () => {

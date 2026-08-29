@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, type RefObject } from 'react';
+import { useBlocker } from 'react-router';
 
 /** El aviso de siempre, con las mismas palabras en todas partes: si se ha
  * tocado algo y se sale sin guardar, se pregunta antes. Devuelve `true` si
@@ -40,4 +41,24 @@ export function useUnsavedWarning(isDirty: boolean): void {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty]);
+}
+
+/** Protege también la navegación dentro de la SPA (menú lateral, enlaces y
+ * atrás del navegador). `beforeunload` no interviene ahí porque la página no
+ * llega a recargarse. La app usa un data router, así que `useBlocker` detiene
+ * el cambio antes de desmontar el formulario. */
+export function useUnsavedNavigationWarning(
+  isDirty: boolean,
+  bypassRef?: RefObject<boolean>,
+): void {
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      currentLocation.pathname !== nextLocation.pathname && isDirty && !bypassRef?.current,
+  );
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (confirmDiscard()) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 
 import { useAuth } from '@/features/auth/useAuth';
@@ -43,7 +43,7 @@ import { ImagePicker } from '@/features/images/ImagePicker';
 import { formatQuantity } from '@/lib/format';
 
 import { dangerAction, pageTitleRow, primaryAction } from './pageActions';
-import { confirmDiscard } from '@/lib/unsaved';
+import { confirmDiscard, useUnsavedNavigationWarning } from '@/lib/unsaved';
 
 type Tab = 'general' | 'pricing' | 'packages' | 'lots' | 'purchases';
 
@@ -75,6 +75,8 @@ export function ProductDetailPage() {
   // los desmontaría sin decir nada.
   const [generalDirty, setGeneralDirty] = useState(false);
   const [pricingDirty, setPricingDirty] = useState(false);
+  const bypassNavigationRef = useRef(false);
+  useUnsavedNavigationWarning(generalDirty || pricingDirty, bypassNavigationRef);
   const goToTab = (next: Tab) => {
     if (next === tab) return;
     const hasUnsavedChanges =
@@ -153,6 +155,9 @@ export function ProductDetailPage() {
     mutationFn: () => deleteProduct(productId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
+      // El borrado ya tiene su confirmación específica; no pedir además
+      // descartar la ficha que precisamente acaba de desaparecer.
+      bypassNavigationRef.current = true;
       void navigate('/admin/inventory/products');
     },
     onError: (err: unknown) =>
