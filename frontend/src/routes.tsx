@@ -163,7 +163,11 @@ export const routes: RouteObject[] = [
               },
               {
                 path: 'pos-terminals',
-                element: <RequirePermission permission="pos_terminal.manage" />,
+                element: (
+                  <RequireAnyPermission
+                    permissions={['pos_terminal.manage', 'pos.cold_drink_surcharge.manage']}
+                  />
+                ),
                 children: [{ index: true, element: <PosTerminalsPage /> }],
               },
               // Enlaces viejos de antes de la reorganización — siguen

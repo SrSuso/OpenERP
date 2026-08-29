@@ -60,7 +60,7 @@ const SECTIONS: NavSection[] = [
       {
         to: '/admin/pos-terminals',
         label: 'Terminales POS',
-        permissions: ['pos_terminal.manage'],
+        permissions: ['pos_terminal.manage', 'pos.cold_drink_surcharge.manage'],
       },
       { to: '/admin/pricing', label: 'Precios e impuestos', permissions: ['pricing.manage'] },
       {

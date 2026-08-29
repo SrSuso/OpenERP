@@ -108,6 +108,20 @@ function stubBackend() {
       caution: null,
     },
   ];
+  let coldDrinkSurcharge = {
+    key: 'pos.cold_drink_surcharge_amount',
+    group: 'Caja (TPV)',
+    label: 'Recargo por bebida fría (por unidad)',
+    help: 'Importe final que suma la caja a cada unidad marcada como bebida fría.',
+    type: 'DECIMAL',
+    value: '0.20',
+    is_set: true,
+    default: '0',
+    choices: [],
+    minimum: '0',
+    maximum: '100',
+    caution: null,
+  };
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -125,6 +139,18 @@ function stubBackend() {
         return Promise.resolve(
           jsonResponse({ groups: ['Caja (TPV)', 'Impresión QZ Tray'], settings: posSettings }),
         );
+      }
+      if (method === 'GET' && url.includes('/settings/pos/cold-drink-surcharge')) {
+        return Promise.resolve(jsonResponse(coldDrinkSurcharge));
+      }
+      if (method === 'PUT' && url.includes('/settings/pos/cold-drink-surcharge')) {
+        coldDrinkSurcharge = {
+          ...coldDrinkSurcharge,
+          value: body['amount'] as string,
+          is_set: true,
+        };
+        writes.push(body);
+        return Promise.resolve(jsonResponse(coldDrinkSurcharge));
       }
       if (method === 'GET' && url.includes('/settings/values')) {
         return Promise.resolve(
@@ -175,13 +201,26 @@ function stubBackend() {
   return { writes };
 }
 
-function renderPage({ canManageSettings = false }: { canManageSettings?: boolean } = {}) {
+function renderPage({
+  canReadSettings = true,
+  canManageSettings = false,
+  canManageColdDrinkSurcharge = false,
+  canManageTerminals = true,
+}: {
+  canReadSettings?: boolean;
+  canManageSettings?: boolean;
+  canManageColdDrinkSurcharge?: boolean;
+  canManageTerminals?: boolean;
+} = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const auth: AuthContextValue = {
     user: null,
     isLoading: false,
     hasPermission: (permission) =>
-      permission === 'settings.read' || (canManageSettings && permission === 'settings.manage'),
+      (canReadSettings && permission === 'settings.read') ||
+      (canManageSettings && permission === 'settings.manage') ||
+      (canManageTerminals && permission === 'pos_terminal.manage') ||
+      (canManageColdDrinkSurcharge && permission === 'pos.cold_drink_surcharge.manage'),
     login: vi.fn(),
     logout: vi.fn(),
     markPasswordChanged: vi.fn(),
@@ -268,5 +307,22 @@ describe('PosTerminalsPage', () => {
       }),
     );
     expect(await screen.findByRole('status')).toHaveTextContent('Firma silenciosa: activa');
+  });
+
+  it('shows only the cold-drink amount to a role delegated that permission', async () => {
+    const backend = stubBackend();
+    renderPage({
+      canReadSettings: false,
+      canManageTerminals: false,
+      canManageColdDrinkSurcharge: true,
+    });
+
+    const amount = await screen.findByLabelText('Recargo por bebida fría (por unidad)');
+    fireEvent.change(amount, { target: { value: '0,35' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar importe' }));
+
+    await waitFor(() => expect(backend.writes).toContainEqual({ amount: '0.35' }));
+    expect(screen.queryByText('Añadir terminal')).not.toBeInTheDocument();
+    expect(screen.queryByText('Impresión mediante QZ Tray')).not.toBeInTheDocument();
   });
 });

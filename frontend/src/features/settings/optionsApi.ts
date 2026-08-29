@@ -93,3 +93,22 @@ export const settingsValuesQuery = queryOptions({
   queryFn: ({ signal }) =>
     apiFetch(`${API_V1}/settings/values`, { schema: z.record(z.string(), z.string()), signal }),
 });
+
+/** Ajuste delegable: su API sólo permite leer y cambiar este importe, no el
+ * catálogo global de Configuración. */
+export const coldDrinkSurchargeQuery = queryOptions({
+  queryKey: ['settings', 'pos', 'cold-drink-surcharge'] as const,
+  queryFn: ({ signal }) =>
+    apiFetch(`${API_V1}/settings/pos/cold-drink-surcharge`, {
+      schema: settingDefinitionSchema,
+      signal,
+    }),
+});
+
+export async function updateColdDrinkSurcharge(amount: string): Promise<SettingDefinition> {
+  return apiFetch(`${API_V1}/settings/pos/cold-drink-surcharge`, {
+    method: 'PUT',
+    schema: settingDefinitionSchema,
+    body: { amount },
+  });
+}

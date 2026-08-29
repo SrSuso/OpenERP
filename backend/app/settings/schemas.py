@@ -50,3 +50,13 @@ class SettingsUpdate(BaseModel):
     tarjeta sin mandar el resto de la pantalla."""
 
     values: dict[str, str]
+
+
+class ColdDrinkSurchargeUpdate(BaseModel):
+    """El único ajuste delegable de bebida fría.
+
+    Un modelo dedicado impide que el permiso específico se pueda reutilizar
+    para enviar por accidente otras claves del registro general.
+    """
+
+    amount: str

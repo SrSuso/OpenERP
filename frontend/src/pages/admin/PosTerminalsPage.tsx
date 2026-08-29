@@ -14,6 +14,7 @@ import {
   QZ_PRINT_SETTING_KEYS,
   SettingsOptionsPanel,
 } from '@/features/settings/SettingsOptionsPanel';
+import { ColdDrinkSurchargePanel } from '@/features/settings/ColdDrinkSurchargePanel';
 import { useSettledQzPrintConfig } from '@/features/tickets/qzConfig';
 import { testQzPrinterConnection } from '@/features/tickets/qzPrinter';
 
@@ -121,9 +122,11 @@ function TerminalRow({ terminal }: { terminal: PosTerminal }) {
 /** Minimal registry only: no shifts, sessions, till balances or peripherals. */
 export function PosTerminalsPage() {
   const { hasPermission } = useAuth();
+  const canManageTerminals = hasPermission('pos_terminal.manage');
+  const canManageColdDrinkSurcharge = hasPermission('pos.cold_drink_surcharge.manage');
   const queryClient = useQueryClient();
-  const terminals = useQuery(posTerminalsQuery(false));
-  const warehouses = useQuery(warehousesQuery);
+  const terminals = useQuery({ ...posTerminalsQuery(false), enabled: canManageTerminals });
+  const warehouses = useQuery({ ...warehousesQuery, enabled: canManageTerminals });
   const [name, setName] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
 
@@ -149,69 +152,84 @@ export function PosTerminalsPage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-600">
-        Cada navegador elige una de estas cajas. El almacén queda fijado al crearla para no
-        reinterpretar sus ventas históricas.
-      </p>
+      {canManageTerminals && (
+        <>
+          <p className="text-sm text-slate-600">
+            Cada navegador elige una de estas cajas. El almacén queda fijado al crearla para no
+            reinterpretar sus ventas históricas.
+          </p>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-2 font-medium">Terminal</th>
-              <th className="px-4 py-2 font-medium">Almacén</th>
-              <th className="px-4 py-2 font-medium">Estado</th>
-              <th className="px-4 py-2 font-medium">Buscador táctil</th>
-              <th className="px-4 py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {(terminals.data ?? []).map((terminal) => (
-              <TerminalRow key={terminal.id} terminal={terminal} />
-            ))}
-            {terminals.data?.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-3 text-slate-500">
-                  Todavía no hay terminales POS.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Terminal</th>
+                  <th className="px-4 py-2 font-medium">Almacén</th>
+                  <th className="px-4 py-2 font-medium">Estado</th>
+                  <th className="px-4 py-2 font-medium">Buscador táctil</th>
+                  <th className="px-4 py-2 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {(terminals.data ?? []).map((terminal) => (
+                  <TerminalRow key={terminal.id} terminal={terminal} />
+                ))}
+                {terminals.data?.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-3 text-slate-500">
+                      Todavía no hay terminales POS.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded border p-4">
-        <label className="text-sm text-slate-600">
-          Nombre
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Caja 1"
-            className="mt-1 block rounded border border-slate-300 px-3 py-1.5"
-          />
-        </label>
-        <label className="text-sm text-slate-600">
-          Almacén
-          <select
-            value={warehouseId}
-            onChange={(event) => setWarehouseId(event.target.value)}
-            className="mt-1 block rounded border border-slate-300 px-3 py-1.5"
-          >
-            {(warehouses.data ?? []).map((warehouse) => (
-              <option key={warehouse.id} value={warehouse.id}>
-                {warehouse.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={create.isPending || name.trim() === '' || warehouseId === ''}
-          className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        >
-          Añadir terminal
-        </button>
-      </form>
+          <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded border p-4">
+            <label className="text-sm text-slate-600">
+              Nombre
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Caja 1"
+                className="mt-1 block rounded border border-slate-300 px-3 py-1.5"
+              />
+            </label>
+            <label className="text-sm text-slate-600">
+              Almacén
+              <select
+                value={warehouseId}
+                onChange={(event) => setWarehouseId(event.target.value)}
+                className="mt-1 block rounded border border-slate-300 px-3 py-1.5"
+              >
+                {(warehouses.data ?? []).map((warehouse) => (
+                  <option key={warehouse.id} value={warehouse.id}>
+                    {warehouse.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              disabled={create.isPending || name.trim() === '' || warehouseId === ''}
+              className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            >
+              Añadir terminal
+            </button>
+          </form>
+        </>
+      )}
+
+      {canManageColdDrinkSurcharge && (
+        <section className="border-t border-slate-200 pt-6">
+          <h2 className="text-lg font-semibold text-slate-900">Bebidas frías</h2>
+          <p className="mb-4 mt-1 text-sm text-slate-600">
+            Este importe se suma por unidad al seleccionar «Bebida fría» antes de añadir un artículo
+            en el TPV.
+          </p>
+          <ColdDrinkSurchargePanel />
+        </section>
+      )}
 
       {hasPermission('settings.read') && (
         <>

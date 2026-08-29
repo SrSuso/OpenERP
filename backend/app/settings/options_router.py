@@ -16,10 +16,11 @@ from fastapi import APIRouter, Depends
 from app.audit import service as audit
 from app.auth.dependencies import CurrentUser, SessionDep
 from app.rbac.dependencies import require_permission
-from app.rbac.permissions import SETTINGS_MANAGE, SETTINGS_READ
+from app.rbac.permissions import POS_COLD_DRINK_SURCHARGE_MANAGE, SETTINGS_MANAGE, SETTINGS_READ
 from app.settings import store
-from app.settings.registry import GROUPS, SETTINGS, SettingDef, SettingType
+from app.settings.registry import GROUPS, SETTINGS, SETTINGS_BY_KEY, SettingDef, SettingType
 from app.settings.schemas import (
+    ColdDrinkSurchargeUpdate,
     SettingChoiceRead,
     SettingDefinitionRead,
     SettingsOptionsRead,
@@ -30,6 +31,9 @@ router = APIRouter(tags=["settings"])
 
 _require_read = Depends(require_permission(SETTINGS_READ))
 _require_manage = Depends(require_permission(SETTINGS_MANAGE))
+_require_cold_drink_surcharge_manage = Depends(require_permission(POS_COLD_DRINK_SURCHARGE_MANAGE))
+
+COLD_DRINK_SURCHARGE_KEY = "pos.cold_drink_surcharge_amount"
 
 
 def _definition_to_read(definition: SettingDef, value: Any) -> SettingDefinitionRead:
@@ -78,6 +82,53 @@ async def list_values(session: SessionDep, user: CurrentUser) -> dict[str, str]:
     """
     values = await store.get_values(session)
     return {d.key: d.serialise(values[d.key]) for d in SETTINGS if d.type is not SettingType.SECRET}
+
+
+async def _cold_drink_surcharge_definition(session: SessionDep) -> SettingDefinitionRead:
+    values = await store.get_values(session)
+    definition = SETTINGS_BY_KEY[COLD_DRINK_SURCHARGE_KEY]
+    return _definition_to_read(definition, values[definition.key])
+
+
+@router.get(
+    "/settings/pos/cold-drink-surcharge",
+    response_model=SettingDefinitionRead,
+    dependencies=[_require_cold_drink_surcharge_manage],
+)
+async def get_cold_drink_surcharge(session: SessionDep) -> SettingDefinitionRead:
+    """Read only the surcharge delegated to a POS supervisor role."""
+    return await _cold_drink_surcharge_definition(session)
+
+
+@router.put(
+    "/settings/pos/cold-drink-surcharge",
+    response_model=SettingDefinitionRead,
+    dependencies=[_require_cold_drink_surcharge_manage],
+)
+async def update_cold_drink_surcharge(
+    payload: ColdDrinkSurchargeUpdate, session: SessionDep
+) -> SettingDefinitionRead:
+    """Change only the price added per cold-drink unit in the POS.
+
+    The specific permission intentionally grants both view and edit access:
+    showing an amount that cannot be maintained would not be useful for the
+    delegated operational role.
+    """
+    before = await store.get_value(session, COLD_DRINK_SURCHARGE_KEY)
+    after = await store.update_values(session, {COLD_DRINK_SURCHARGE_KEY: payload.amount})
+    await audit.record(
+        session,
+        action="settings_changed",
+        entity_type="settings",
+        entity_id=None,
+        after={
+            COLD_DRINK_SURCHARGE_KEY: {
+                "antes": str(before),
+                "ahora": str(after[COLD_DRINK_SURCHARGE_KEY]),
+            }
+        },
+    )
+    return await _cold_drink_surcharge_definition(session)
 
 
 @router.put("/settings/options", response_model=SettingsOptionsRead, dependencies=[_require_manage])

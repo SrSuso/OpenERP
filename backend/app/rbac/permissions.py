@@ -342,6 +342,26 @@ PHASE_26_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "ADMIN": (POS_TERMINAL_MANAGE,),
 }
 
+# --- phase 27: importe de bebida fría del TPV ------------------------------
+#
+# No reutilizamos ``settings.manage``: ese permiso abre todos los ajustes de
+# negocio de la tienda. Este control permite delegar sólo el importe que la
+# caja aplica al marcar una bebida como fría.
+POS_COLD_DRINK_SURCHARGE_MANAGE = "pos.cold_drink_surcharge.manage"
+
+PHASE_27_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(
+        POS_COLD_DRINK_SURCHARGE_MANAGE,
+        "View and change the POS cold-drink surcharge amount.",
+    ),
+)
+
+# ADMIN conserva el acceso actual. Los demás roles, incluidos los creados por
+# la tienda, lo pueden recibir expresamente desde Usuarios y roles.
+PHASE_27_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (POS_COLD_DRINK_SURCHARGE_MANAGE,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -365,4 +385,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_19_PERMISSIONS
     + PHASE_21_PERMISSIONS
     + PHASE_26_PERMISSIONS
+    + PHASE_27_PERMISSIONS
 )
