@@ -43,8 +43,8 @@ export function OrdersTable({
         <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
             <th className="px-4 py-2 font-medium">Nº</th>
-            <th className="px-4 py-2 font-medium">Pedido</th>
             <th className="px-4 py-2 font-medium">Proveedor</th>
+            <th className="px-4 py-2 font-medium">Pedido</th>
             <th className="px-4 py-2 font-medium">Estado</th>
             <th className="px-4 py-2 font-medium">Total</th>
           </tr>
@@ -54,6 +54,7 @@ export function OrdersTable({
             <Fragment key={order.id}>
               <tr className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-2 font-mono text-xs text-slate-500">#{order.id}</td>
+                <td className="px-4 py-2 font-medium text-slate-800">{order.supplier_name}</td>
                 <td className="px-4 py-2">
                   <button
                     type="button"
@@ -64,7 +65,6 @@ export function OrdersTable({
                     {expandedId === order.id ? 'Ocultar detalles' : 'Ver detalles'}
                   </button>
                 </td>
-                <td className="px-4 py-2 font-medium text-slate-800">{order.supplier_name}</td>
                 <td className="px-4 py-2">
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[order.status]}`}
