@@ -28,6 +28,7 @@ export function ticketFontStack(font: TicketFontFamily): string {
  * menor para respetar los márgenes no imprimibles del cabezal.
  */
 export const THERMAL_PAPER_WIDTH_MM = 80;
+export const THERMAL_HEAD_WIDTH_MM = 72;
 
 /**
  * Same model as LibreOffice's page dialog: the roll width is fixed and the
@@ -36,12 +37,15 @@ export const THERMAL_PAPER_WIDTH_MM = 80;
  * third, independent scaling control.
  */
 export function printableWidthFromMargins(leftMm: number, rightMm: number): number {
-  return THERMAL_PAPER_WIDTH_MM - leftMm - rightMm;
+  return THERMAL_HEAD_WIDTH_MM - leftMm - rightMm;
 }
 
 /** Same conservative capacity model as backend/app/tickets/render.py. */
 export function printableCharacters(
-  profile: Pick<TicketPrintProfile, 'printable_width_mm' | 'font_size_px' | 'font_weight'>,
+  profile: Pick<
+    TicketPrintProfile,
+    'printable_width_mm' | 'margin_left_mm' | 'margin_right_mm' | 'font_size_px' | 'font_weight'
+  >,
 ): number {
   // All supported monospace stacks retain their advance in bold. Their real
   // value is about 0.60 em; 0.61 keeps a small no-wrap safety margin without
@@ -50,7 +54,11 @@ export function printableCharacters(
   return Math.max(
     16,
     Math.floor(
-      profile.printable_width_mm / ((profile.font_size_px * characterWidthEm * 25.4) / 96),
+      Math.min(
+        profile.printable_width_mm,
+        printableWidthFromMargins(profile.margin_left_mm, profile.margin_right_mm),
+      ) /
+        ((profile.font_size_px * characterWidthEm * 25.4) / 96),
     ),
   );
 }

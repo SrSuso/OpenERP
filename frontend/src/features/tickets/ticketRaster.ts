@@ -32,20 +32,24 @@ export function ticketRasterGeometry(
   profile: TicketPrintProfile,
   lineCount: number,
 ): TicketRasterGeometry {
-  // The head already starts 4 mm inside an 80 mm roll. Template margins are
-  // absolute paper margins, so only their part beyond that hardware gutter is
-  // encoded as blank raster pixels.
-  const contentLeftDots = dotsFromMm(
-    Math.max(0, profile.margin_left_mm - THERMAL_HARDWARE_GUTTER_MM),
-  );
-  const contentRightDots = dotsFromMm(
-    Math.max(0, profile.margin_right_mm - THERMAL_HARDWARE_GUTTER_MM),
-  );
+  // These are real, visible margins inside the thermal head.  The 4 mm paper
+  // gutter is hardware-dependent and must not make an entered 4 mm disappear.
+  const contentLeftDots = dotsFromMm(profile.margin_left_mm);
+  const contentRightDots = dotsFromMm(profile.margin_right_mm);
   const contentWidthDots = Math.max(1, THERMAL_PRINTABLE_DOTS - contentLeftDots - contentRightDots);
-  const fontSizeDots = Math.max(1, profile.font_size_px * PRINT_DOTS_PER_CSS_PIXEL);
+  const configuredWidthDots = dotsFromMm(profile.printable_width_mm);
+  // Old tickets stored the previous 80-mm-page interpretation (for example
+  // 4 + 72 + 4). Shrink only those historical rows enough to preserve their
+  // complete text inside the newly explicit margin area; new tickets already
+  // render at the correct width on the backend.
+  const historicalScale = Math.min(1, contentWidthDots / configuredWidthDots);
+  const fontSizeDots = Math.max(
+    1,
+    profile.font_size_px * PRINT_DOTS_PER_CSS_PIXEL * historicalScale,
+  );
   const lineHeightDots = Math.max(
     Math.ceil(fontSizeDots),
-    Math.round(profile.line_height_px * PRINT_DOTS_PER_CSS_PIXEL),
+    Math.round(profile.line_height_px * PRINT_DOTS_PER_CSS_PIXEL * historicalScale),
   );
   const topDots = dotsFromMm(profile.margin_top_mm);
   const bottomDots = dotsFromMm(profile.margin_bottom_mm);

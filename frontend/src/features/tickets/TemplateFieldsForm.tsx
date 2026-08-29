@@ -341,9 +341,8 @@ export function TemplateFieldsForm({
               )}
             </label>
             <p className="text-xs text-slate-500 sm:col-span-3">
-              El cabezal de 72 mm ya deja 4 mm físicos a cada lado de la bobina de 80 mm. Puedes
-              ampliar esos márgenes; el ancho útil se calcula automáticamente y nunca cambia el
-              tamaño de letra.
+              Los márgenes se imprimen de forma visible dentro de los 72 mm del cabezal. El ancho
+              útil se calcula automáticamente y nunca cambia el tamaño de letra.
             </p>
           </fieldset>
 

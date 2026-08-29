@@ -19,16 +19,16 @@ const PROFILE = {
 };
 
 describe('ticket print page profile', () => {
-  it('keeps the configured printable area and margins inside the 80 mm roll', () => {
+  it('keeps visible margins inside the 72 mm thermal head', () => {
     expect(THERMAL_PAPER_WIDTH_MM).toBe(80);
-    expect(printableWidthFromMargins(PROFILE.margin_left_mm, PROFILE.margin_right_mm)).toBe(72);
+    expect(printableWidthFromMargins(PROFILE.margin_left_mm, PROFILE.margin_right_mm)).toBe(64);
   });
 
-  it('keeps wider template margins inside the explicit 80mm page', () => {
-    expect(printableWidthFromMargins(10, 10)).toBe(60);
+  it('keeps wider template margins inside the explicit 72mm head', () => {
+    expect(printableWidthFromMargins(10, 10)).toBe(52);
   });
 
   it('calculates a conservative line width without imposing a roll height', () => {
-    expect(printableCharacters(PROFILE)).toBe(49);
+    expect(printableCharacters(PROFILE)).toBe(44);
   });
 });

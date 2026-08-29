@@ -20,17 +20,17 @@ const PROFILE = {
 };
 
 describe('POS-80 ticket raster', () => {
-  it('uses the complete 576-dot head for physical 4 mm paper gutters', () => {
+  it('turns configured 4 mm margins into visible blank bands inside the head', () => {
     expect(THERMAL_HARDWARE_GUTTER_MM).toBe(4);
     expect(ticketRasterGeometry(PROFILE, 2)).toMatchObject({
       widthDots: THERMAL_PRINTABLE_DOTS,
-      contentLeftDots: 0,
-      contentWidthDots: 576,
-      lineHeightDots: 42,
+      contentLeftDots: 32,
+      contentWidthDots: 512,
+      lineHeightDots: 38,
     });
   });
 
-  it('converts margins beyond the hardware gutter to raster pixels without scaling text', () => {
+  it('converts configured margins to raster pixels without widening text', () => {
     const geometry = ticketRasterGeometry(
       { ...PROFILE, printable_width_mm: 64, margin_left_mm: 6, margin_right_mm: 10 },
       2,
@@ -38,9 +38,8 @@ describe('POS-80 ticket raster', () => {
 
     expect(geometry).toMatchObject({
       widthDots: 576,
-      contentLeftDots: 16,
-      contentWidthDots: 512,
-      fontSizeDots: ticketRasterGeometry(PROFILE, 2).fontSizeDots,
+      contentLeftDots: 48,
+      contentWidthDots: 448,
     });
   });
 
@@ -57,7 +56,7 @@ describe('POS-80 ticket raster', () => {
     const svg = ticketRasterSvg('A line deliberately longer than the printable area', profile);
 
     expect(svg).toContain('<clipPath id="ticket-content">');
-    expect(svg).toContain('<rect x="16" y="0" width="512"');
+    expect(svg).toContain('<rect x="48" y="0" width="448"');
     expect(svg).toContain('clip-path="url(#ticket-content)"');
   });
 
@@ -66,6 +65,6 @@ describe('POS-80 ticket raster', () => {
 
     expect(geometry.topDots).toBe(40);
     expect(geometry.bottomDots).toBe(56);
-    expect(geometry.heightDots).toBe(180);
+    expect(geometry.heightDots).toBe(172);
   });
 });
