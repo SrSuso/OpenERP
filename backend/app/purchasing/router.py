@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query
 
 from app.auth.dependencies import CurrentUser, SessionDep
+from app.catalog import stock as catalog_stock
 from app.purchasing import service
 from app.purchasing.models import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.purchasing.schemas import (
@@ -48,6 +49,7 @@ def _line_to_read(line: PurchaseOrderLine) -> PurchaseOrderLineRead:
         product_id=line.product_id,
         product_sku=line.product.sku,
         product_name=line.product.name,
+        track_lots=catalog_stock.tracks_lots(line.product),
         package_id=line.package_id,
         package_name=line.package_name,
         package_factor=line.package_factor,

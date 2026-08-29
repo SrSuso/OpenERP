@@ -238,7 +238,7 @@ async def test_receiving_a_lot_tracked_product_creates_the_lot(
     order_id = (
         await client.post("/api/v1/purchase-orders", json={"supplier_id": supplier_id})
     ).json()["id"]
-    line_id = (
+    ordered_line = (
         await client.post(
             f"/api/v1/purchase-orders/{order_id}/lines",
             json={
@@ -248,7 +248,9 @@ async def test_receiving_a_lot_tracked_product_creates_the_lot(
                 "unit_cost": "0.50",
             },
         )
-    ).json()["lines"][0]["id"]
+    ).json()["lines"][0]
+    assert ordered_line["track_lots"] is True
+    line_id = ordered_line["id"]
     await client.post(f"/api/v1/purchase-orders/{order_id}/place")
     warehouse_id, location_id = await _default_location(client)
 

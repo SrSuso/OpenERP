@@ -23,6 +23,7 @@ function normalizedPositiveQuantity(value: string): string | null {
 interface ReceiptDraftLine extends GoodsReceiptLineInput {
   id: number;
   product_name: string;
+  track_lots: boolean;
   package_name: string;
   remaining_packages: number;
 }
@@ -61,6 +62,7 @@ export function GoodsReceiptForm({
         {
           id: line.id,
           product_name: line.product_name,
+          track_lots: line.track_lots,
           package_name: line.package_name,
           remaining_packages: remaining,
           purchase_order_line_id: line.id,
@@ -104,10 +106,15 @@ export function GoodsReceiptForm({
         );
         return;
       }
+      const lotNumber = line.lot_number?.trim() || null;
+      if (line.track_lots && lotNumber === null) {
+        setLineError(`«${line.product_name}» requiere un número de lote para registrarlo.`);
+        return;
+      }
       lines.push({
         purchase_order_line_id: line.purchase_order_line_id,
         quantity_packages: normalizedQuantity,
-        lot_number: line.lot_number?.trim() || null,
+        lot_number: lotNumber,
         manufacturing_date: line.manufacturing_date || null,
         expiration_date: line.expiration_date || null,
       });
@@ -197,7 +204,14 @@ export function GoodsReceiptForm({
             <tbody>
               {receiptLines.map((line) => (
                 <tr key={line.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2 font-medium text-slate-800">{line.product_name}</td>
+                  <td className="px-3 py-2 font-medium text-slate-800">
+                    {line.product_name}
+                    {line.track_lots && (
+                      <span className="mt-0.5 block text-xs font-normal text-amber-700">
+                        Lote obligatorio
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">{line.package_name}</td>
                   <td className="px-3 py-2">{formatQuantity(String(line.remaining_packages))}</td>
                   <td className="px-3 py-2">
@@ -216,9 +230,12 @@ export function GoodsReceiptForm({
                     <input
                       aria-label={`Lote de ${line.product_name}`}
                       type="text"
+                      disabled={!line.track_lots}
+                      placeholder={line.track_lots ? 'Obligatorio' : 'No requiere lote'}
+                      aria-required={line.track_lots}
                       value={line.lot_number ?? ''}
                       onChange={(event) => updateLine(line.id, { lot_number: event.target.value })}
-                      className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                      className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100"
                     />
                   </td>
                   <td className="px-3 py-2">

@@ -10,6 +10,7 @@ export const purchaseOrderLineSchema = z.object({
   product_id: z.number(),
   product_sku: z.string(),
   product_name: z.string(),
+  track_lots: z.boolean(),
   package_id: z.number(),
   package_name: z.string(),
   package_factor: z.string(),

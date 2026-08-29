@@ -33,6 +33,9 @@ class PurchaseOrderLineRead(BaseModel):
     product_id: int
     product_sku: str
     product_name: str
+    #: Política actual de trazabilidad. La recepción la necesita para pedir
+    #: el lote antes de enviar una línea que el servicio rechazaría.
+    track_lots: bool
     package_id: int
     package_name: str
     package_factor: Decimal

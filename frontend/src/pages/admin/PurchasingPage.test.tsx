@@ -37,7 +37,12 @@ function orderTotal(order: PurchaseOrder): string {
 }
 
 function stubBackend(
-  options: { failPlaceOnce?: boolean; failReceiptOnce?: boolean; costProposal?: boolean } = {},
+  options: {
+    failPlaceOnce?: boolean;
+    failReceiptOnce?: boolean;
+    costProposal?: boolean;
+    lotTracked?: boolean;
+  } = {},
 ) {
   const supplier: Supplier = {
     id: 1,
@@ -71,7 +76,7 @@ function stubBackend(
     taxes: [],
     price_formula: null,
     min_stock: '0',
-    track_lots: false,
+    track_lots: options.lotTracked ?? false,
     track_expiration: false,
     tracks_stock: null,
     effective_tracks_stock: true,
@@ -105,6 +110,7 @@ function stubBackend(
       product_id: product.id,
       product_sku: product.sku,
       product_name: product.name,
+      track_lots: product.track_lots,
       package_id: b['package_id'] as number,
       package_name: 'Unidad',
       package_factor: '1',
@@ -294,7 +300,7 @@ function renderPage() {
 
 describe('PurchasingPage', () => {
   it('creates a purchase order, adds a line, places it and receives it', async () => {
-    const backend = stubBackend({ failPlaceOnce: true, failReceiptOnce: true });
+    const backend = stubBackend({ failPlaceOnce: true, failReceiptOnce: true, lotTracked: true });
     renderPage();
 
     await screen.findByText('No hay pedidos de compra todavía.');
@@ -370,8 +376,17 @@ describe('PurchasingPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
     const receivedQuantity = screen.getByLabelText('Cantidad recibida de Agua 1.5L');
     expect(receivedQuantity).toHaveValue('2');
+    expect(screen.getByText('Lote obligatorio')).toBeInTheDocument();
+    const lotNumber = screen.getByLabelText('Lote de Agua 1.5L');
+    expect(lotNumber).toHaveAttribute('aria-required', 'true');
     await userEvent.clear(receivedQuantity);
     await userEvent.type(receivedQuantity, '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
+    expect(
+      screen.getByText('«Agua 1.5L» requiere un número de lote para registrarlo.'),
+    ).toBeInTheDocument();
+    expect(backend.receiptKeys).toEqual([]);
+    await userEvent.type(lotNumber, 'LOTE-001');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
     await screen.findByText('No se ha podido registrar la recepción.');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
@@ -385,6 +400,7 @@ describe('PurchasingPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
     await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
     expect(screen.getByLabelText('Cantidad recibida de Agua 1.5L')).toHaveValue('1');
+    await userEvent.type(screen.getByLabelText('Lote de Agua 1.5L'), 'LOTE-002');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
 
     expect(await screen.findByText('Estado: Recibido')).toBeInTheDocument();
