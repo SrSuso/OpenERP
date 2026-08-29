@@ -357,7 +357,7 @@ describe('ProductsPage', () => {
     });
   });
 
-  it('does not submit a new product when a barcode scanner sends Enter', async () => {
+  it('requires clicking Crear even when Enter is pressed in a valid new product form', async () => {
     const backend = stubBackend();
     const user = userEvent.setup();
     renderPage();
@@ -368,7 +368,7 @@ describe('ProductsPage', () => {
     await user.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
     const price = screen.getByLabelText('Precio de venta');
     await user.clear(price);
-    await user.type(price, '1');
+    await user.type(price, '1{Enter}');
 
     const barcode = screen.getByLabelText('Código de barras (opcional)');
     await user.type(barcode, '8412345678901{Enter}');

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { type KeyboardEvent, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -127,6 +127,13 @@ function categoryMarginRate(categories: ProductCategory[], categoryId: string): 
 function categoryMarginAmount(categories: ProductCategory[], categoryId: string): string {
   const category = categories.find((c) => String(c.id) === categoryId);
   return category?.margin_amount ?? '0';
+}
+
+/** El alta siempre requiere pulsar o tocar "Crear". Evita que Enter desde
+ * cualquier campo (incluido un lector de códigos) confirme accidentalmente
+ * un producto que ya sea válido. */
+function preventImplicitSubmit(event: KeyboardEvent<HTMLFormElement>) {
+  if (event.key === 'Enter') event.preventDefault();
 }
 
 export function CreateProductForm({
@@ -317,6 +324,7 @@ export function CreateProductForm({
   return (
     <form
       onSubmit={(event) => void submit(event)}
+      onKeyDown={preventImplicitSubmit}
       noValidate
       className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
     >
@@ -421,12 +429,6 @@ export function CreateProductForm({
             type="text"
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('base_barcode')}
-            // Los lectores suelen terminar el código con Enter. En un alta
-            // ese Enter debe quedarse en el campo: crear el producto sigue
-            // requiriendo pulsar explícitamente «Crear».
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') event.preventDefault();
-            }}
           />
         </label>
 
