@@ -118,6 +118,83 @@ async def test_creating_a_product_can_record_its_opening_stock_atomically(
     ]
 
 
+async def test_opening_stock_with_expiration_creates_its_lot_atomically(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+
+    response = await client.post(
+        "/api/v1/products",
+        json={
+            "sku": "INV-OPENING-LOT",
+            "name": "Producto con stock y caducidad",
+            "base_unit_name": "UNIDAD",
+            "cost": "1.25",
+            "list_price": "2.50",
+            "track_expiration": True,
+            "initial_stock": {
+                "warehouse_id": warehouse_id,
+                "location_id": location_id,
+                "quantity": "24",
+                "lot_number": "LOTE-INICIAL-01",
+                "expiration_date": "2030-01-31",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    product_id = response.json()["id"]
+    lots = (await client.get("/api/v1/lots", params={"product_id": product_id})).json()
+    assert [(lot["lot_number"], lot["expiration_date"]) for lot in lots] == [
+        ("LOTE-INICIAL-01", "2030-01-31")
+    ]
+    balances = (await client.get("/api/v1/stock-balance", params={"product_id": product_id})).json()
+    assert [(row["lot_id"], row["quantity"]) for row in balances] == [(lots[0]["id"], "24.000000")]
+
+
+async def test_adjustment_can_create_a_lot_from_its_number_and_expiration(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+    product = await client.post(
+        "/api/v1/products",
+        json={
+            "sku": "INV-COUNT-LOT",
+            "name": "Producto contado con caducidad",
+            "base_unit_name": "UNIDAD",
+            "cost": "1.25",
+            "list_price": "2.50",
+            "track_expiration": True,
+        },
+    )
+    assert product.status_code == 201
+    product_id = product.json()["id"]
+
+    response = await client.post(
+        "/api/v1/stock-movements/adjustments",
+        json={
+            "product_id": product_id,
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "movement_type": "ADJUSTMENT",
+            "quantity": "12",
+            "unit_cost": "1.25",
+            "lot_number": "RECUENTO-01",
+            "expiration_date": "2030-02-28",
+            "reason": "Inventario inicial de tienda.",
+        },
+    )
+
+    assert response.status_code == 201
+    lots = (await client.get("/api/v1/lots", params={"product_id": product_id})).json()
+    assert [(lot["lot_number"], lot["expiration_date"]) for lot in lots] == [
+        ("RECUENTO-01", "2030-02-28")
+    ]
+    assert response.json()["lot_id"] == lots[0]["id"]
+
+
 async def test_waste_is_normalised_to_negative(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
@@ -167,7 +168,7 @@ class BarcodeUpdate(BaseModel):
 
 
 class InitialStockCreate(BaseModel):
-    """Opening quantity for a new non-lot-tracked product.
+    """Opening quantity for a new product.
 
     It deliberately describes a stock coordinate, not a mutable product
     field: the service records an immutable ``ADJUSTMENT`` ledger entry.
@@ -176,6 +177,8 @@ class InitialStockCreate(BaseModel):
     warehouse_id: int
     location_id: int
     quantity: Decimal = Field(gt=0)
+    lot_number: str | None = Field(default=None, min_length=1, max_length=100)
+    expiration_date: date | None = None
 
 
 class ProductCreate(BaseModel):
@@ -220,8 +223,8 @@ class ProductCreate(BaseModel):
     track_expiration: bool = False
     #: ``None`` = lo que diga su categoría. Ver `app.catalog.stock`.
     tracks_stock: bool | None = None
-    #: Optional opening balance recorded atomically with the product.  Lots
-    #: need their own receiving flow because each quantity must identify one.
+    #: Optional opening balance recorded atomically with the product.  A
+    #: lot-tracked opening balance carries its printed lot number too.
     initial_stock: InitialStockCreate | None = None
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -78,12 +78,21 @@ class AdjustmentCreate(BaseModel):
     quantity: Decimal
     unit_cost: Decimal = Field(ge=0)
     lot_id: int | None = None
+    #: Para una entrada manual inicial se puede identificar el lote por lo
+    #: que figura en el envase. El servicio lo reutiliza o lo crea de forma
+    #: atómica; el id queda reservado a operaciones internas existentes.
+    lot_number: str | None = Field(default=None, min_length=1, max_length=100)
+    expiration_date: date | None = None
     reason: str = Field(default="", max_length=500)
 
     @model_validator(mode="after")
     def _validate_and_normalise(self) -> AdjustmentCreate:
         if self.quantity == 0:
             raise ValueError("quantity must not be zero.")
+        if self.lot_id is not None and self.lot_number is not None:
+            raise ValueError("lot_id and lot_number cannot be used together.")
+        if self.expiration_date is not None and self.lot_number is None:
+            raise ValueError("expiration_date requires lot_number.")
         if self.movement_type == "WASTE" and self.quantity > 0:
             self.quantity = -self.quantity
         return self

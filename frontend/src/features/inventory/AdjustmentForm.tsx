@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
-import { useId } from 'react';
+import { useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -26,7 +26,8 @@ const adjustmentSchema = z.object({
       message: 'Introduce una cantidad distinta de cero.',
     }),
   unit_cost: decimalString({ min: 0 }),
-  lot_id: z.string().optional(),
+  lot_number: z.string().max(100).optional(),
+  expiration_date: z.string().optional(),
   reason: z.string().max(500).optional(),
 });
 
@@ -42,6 +43,8 @@ interface AdjustmentFormProps {
     quantity: string;
     unit_cost: string;
     lot_id: number | null;
+    lot_number: string | null;
+    expiration_date: string | null;
     reason: string;
   }) => void;
   isPending: boolean;
@@ -61,6 +64,7 @@ export function AdjustmentForm({
     handleSubmit,
     watch,
     setValue,
+    setError,
     formState: { errors },
   } = useForm<AdjustmentFormValues>({
     resolver: zodResolver(adjustmentSchema),
@@ -81,7 +85,21 @@ export function AdjustmentForm({
   useDefaultToFirstOption(warehouseId, warehouses.data, (value) => setValue('warehouse_id', value));
   useDefaultToFirstOption(locationId, locations.data, (value) => setValue('location_id', value));
 
-  const submit = handleSubmit((values) =>
+  useEffect(() => {
+    setValue('lot_number', '');
+    setValue('expiration_date', '');
+  }, [productId, setValue]);
+
+  const submit = handleSubmit((values) => {
+    const lotNumber = values.lot_number?.trim() ?? '';
+    if (chosenProduct?.track_lots && lotNumber === '') {
+      setError('lot_number', { message: 'Introduce el lote que figura en el envase.' });
+      return;
+    }
+    if (chosenProduct?.track_expiration && !values.expiration_date) {
+      setError('expiration_date', { message: 'Introduce la fecha de caducidad.' });
+      return;
+    }
     onSubmit({
       product_id: Number(values.product_id),
       warehouse_id: Number(values.warehouse_id),
@@ -89,10 +107,12 @@ export function AdjustmentForm({
       movement_type: values.movement_type,
       quantity: values.quantity,
       unit_cost: values.unit_cost,
-      lot_id: values.lot_id ? Number(values.lot_id) : null,
+      lot_id: null,
+      lot_number: lotNumber === '' ? null : lotNumber,
+      expiration_date: values.expiration_date || null,
       reason: values.reason ?? '',
-    }),
-  );
+    });
+  });
 
   return (
     <form
@@ -217,15 +237,41 @@ export function AdjustmentForm({
           />
         </label>
 
-        <label className="text-sm text-slate-600">
-          Lote (opcional, ID)
-          <input
-            type="text"
-            inputMode="numeric"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('lot_id')}
-          />
-        </label>
+        {chosenProduct?.track_lots && (
+          <>
+            <label className="text-sm text-slate-600">
+              Lote
+              <input
+                type="text"
+                aria-label="Número de lote"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                placeholder="El número impreso en el envase"
+                {...register('lot_number')}
+              />
+              {errors.lot_number && (
+                <p className="mt-1 text-sm text-red-600">{errors.lot_number.message}</p>
+              )}
+              <p className="mt-1 text-xs text-slate-400">
+                Si no existe, se crea al registrar este ajuste.
+              </p>
+            </label>
+
+            {chosenProduct.track_expiration && (
+              <label className="text-sm text-slate-600">
+                Caducidad
+                <input
+                  type="date"
+                  aria-label="Fecha de caducidad"
+                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  {...register('expiration_date')}
+                />
+                {errors.expiration_date && (
+                  <p className="mt-1 text-sm text-red-600">{errors.expiration_date.message}</p>
+                )}
+              </label>
+            )}
+          </>
+        )}
 
         <label className="text-sm text-slate-600 sm:col-span-2">
           Motivo (opcional)

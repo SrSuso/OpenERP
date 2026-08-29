@@ -344,6 +344,8 @@ export interface ProductCreateInput {
     warehouse_id: number;
     location_id: number;
     quantity: string;
+    lot_number?: string | null;
+    expiration_date?: string | null;
   } | null;
 }
 

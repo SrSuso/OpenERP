@@ -42,6 +42,8 @@ const createProductSchema = z
     initial_stock_quantity: decimalString({ min: 0 }),
     initial_stock_warehouse_id: z.string(),
     initial_stock_location_id: z.string(),
+    initial_stock_lot_number: z.string().max(100).optional(),
+    initial_stock_expiration_date: z.string().optional(),
   })
   .superRefine((values, context) => {
     if (Number(values.initial_stock_quantity.replace(',', '.')) <= 0) return;
@@ -57,6 +59,20 @@ const createProductSchema = z
         code: 'custom',
         path: ['initial_stock_location_id'],
         message: 'Elige la ubicación del stock inicial.',
+      });
+    }
+    if (values.track_expiration && (values.initial_stock_lot_number?.trim() ?? '') === '') {
+      context.addIssue({
+        code: 'custom',
+        path: ['initial_stock_lot_number'],
+        message: 'Introduce el lote que figura en el envase.',
+      });
+    }
+    if (values.track_expiration && !values.initial_stock_expiration_date) {
+      context.addIssue({
+        code: 'custom',
+        path: ['initial_stock_expiration_date'],
+        message: 'Introduce la fecha de caducidad.',
       });
     }
   });
@@ -186,6 +202,8 @@ export function CreateProductForm({
       initial_stock_quantity: '0',
       initial_stock_warehouse_id: '',
       initial_stock_location_id: '',
+      initial_stock_lot_number: '',
+      initial_stock_expiration_date: '',
     },
   });
 
@@ -216,10 +234,6 @@ export function CreateProductForm({
     // Al apagarla se apagan ambos controles, evitando productos "sólo lote"
     // que no son útiles en esta operativa.
     setValue('track_lots', tracksExpiration);
-  }, [setValue, tracksExpiration]);
-
-  useEffect(() => {
-    if (tracksExpiration) setValue('initial_stock_quantity', '0');
   }, [setValue, tracksExpiration]);
 
   useEffect(() => {
@@ -298,6 +312,8 @@ export function CreateProductForm({
             warehouse_id: Number(values.initial_stock_warehouse_id),
             location_id: Number(values.initial_stock_location_id),
             quantity: values.initial_stock_quantity.replace(',', '.'),
+            lot_number: values.initial_stock_lot_number?.trim() || null,
+            expiration_date: values.initial_stock_expiration_date || null,
           }
         : null;
     onSubmit(
@@ -540,8 +556,7 @@ export function CreateProductForm({
                 <input
                   type="text"
                   inputMode="decimal"
-                  disabled={tracksExpiration}
-                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm"
                   {...register('initial_stock_quantity')}
                 />
                 {errors.initial_stock_quantity && (
@@ -553,7 +568,7 @@ export function CreateProductForm({
               <label>
                 Almacén
                 <select
-                  disabled={tracksExpiration || initialStockQuantity === '0'}
+                  disabled={initialStockQuantity === '0'}
                   className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
                   {...register('initial_stock_warehouse_id')}
                 >
@@ -573,7 +588,7 @@ export function CreateProductForm({
               <label>
                 Ubicación
                 <select
-                  disabled={tracksExpiration || initialStockQuantity === '0'}
+                  disabled={initialStockQuantity === '0'}
                   className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
                   {...register('initial_stock_location_id')}
                 >
@@ -591,11 +606,36 @@ export function CreateProductForm({
                 )}
               </label>
             </div>
-            {tracksExpiration && (
-              <p className="mt-2 text-xs text-amber-700">
-                Los productos con lotes se dan de alta sin stock: registra sus unidades y lote
-                mediante una recepción de compra.
-              </p>
+            {tracksExpiration && initialStockQuantity !== '0' && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label>
+                  Lote inicial
+                  <input
+                    type="text"
+                    placeholder="El número impreso en el envase"
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                    {...register('initial_stock_lot_number')}
+                  />
+                  {errors.initial_stock_lot_number && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.initial_stock_lot_number.message}
+                    </p>
+                  )}
+                </label>
+                <label>
+                  Caducidad
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                    {...register('initial_stock_expiration_date')}
+                  />
+                  {errors.initial_stock_expiration_date && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.initial_stock_expiration_date.message}
+                    </p>
+                  )}
+                </label>
+              </div>
             )}
           </div>
         )}

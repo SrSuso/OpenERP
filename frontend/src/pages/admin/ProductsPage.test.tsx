@@ -373,6 +373,38 @@ describe('ProductsPage', () => {
     expect(backend.createCalls[0]).toMatchObject({ track_lots: true, track_expiration: true });
   });
 
+  it('records the printed lot with opening stock for a product with expiry', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Yogur con inventario');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    await userEvent.clear(screen.getByLabelText('Precio de venta'));
+    await userEvent.type(screen.getByLabelText('Precio de venta'), '2');
+    await userEvent.clear(screen.getByLabelText('Cantidad'));
+    await userEvent.type(screen.getByLabelText('Cantidad'), '18');
+    await userEvent.selectOptions(screen.getByLabelText('Almacén'), '1');
+    await userEvent.selectOptions(screen.getByLabelText('Ubicación'), '1');
+    await userEvent.click(screen.getByLabelText('Control de caducidad y lotes'));
+    await userEvent.type(screen.getByLabelText('Lote inicial'), 'YOG-01');
+    await userEvent.type(screen.getByLabelText('Caducidad'), '2030-01-31');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    expect(backend.createCalls[0]).toMatchObject({
+      track_lots: true,
+      track_expiration: true,
+      initial_stock: {
+        warehouse_id: 1,
+        location_id: 1,
+        quantity: '18',
+        lot_number: 'YOG-01',
+        expiration_date: '2030-01-31',
+      },
+    });
+  });
+
   it('requires clicking Crear even when Enter is pressed in a valid new product form', async () => {
     const backend = stubBackend();
     const user = userEvent.setup();

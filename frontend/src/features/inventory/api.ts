@@ -154,6 +154,8 @@ export interface AdjustmentInput {
   quantity: string;
   unit_cost: string;
   lot_id: number | null;
+  lot_number: string | null;
+  expiration_date: string | null;
   reason: string;
 }
 

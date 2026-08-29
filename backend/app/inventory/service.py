@@ -357,6 +357,38 @@ async def get_available_quantity(
 
 
 async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) -> StockMovement:
+    lot_id = payload.lot_id
+    if payload.lot_number is not None:
+        # A count made on the shop floor identifies a lot by the number on
+        # its package, never by an internal database id.  Resolve/create it
+        # before writing the movement, in this request's one transaction.
+        context = await validate_inventory_context(
+            session,
+            product_id=payload.product_id,
+            warehouse_id=payload.warehouse_id,
+            location_id=payload.location_id,
+            lot_id=None,
+            enforce_lot_policy=False,
+        )
+        if not catalog_stock.tracks_lots(context.product):
+            raise ValidationError(f"Product {payload.product_id} does not track lots.")
+        if context.product.track_expiration and payload.expiration_date is None:
+            raise ValidationError(
+                f"Product {payload.product_id} tracks expiration; expiration_date is required."
+            )
+        from app.lots.schemas import LotCreate
+        from app.lots.service import get_or_create_lot
+
+        lot = await get_or_create_lot(
+            session,
+            LotCreate(
+                product_id=payload.product_id,
+                lot_number=payload.lot_number,
+                expiration_date=payload.expiration_date,
+            ),
+        )
+        lot_id = lot.id
+
     movement = await record_movement(
         session,
         product_id=payload.product_id,
@@ -365,7 +397,7 @@ async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) ->
         quantity=payload.quantity,
         movement_type=payload.movement_type,
         unit_cost=payload.unit_cost,
-        lot_id=payload.lot_id,
+        lot_id=lot_id,
         # Signed ADJUSTMENT is the explicit administrative correction
         # mechanism and historically permits a negative resulting balance.
         # WASTE is an ordinary consumption and must have stock to consume.
@@ -380,7 +412,8 @@ async def record_adjustment(session: AsyncSession, payload: AdjustmentCreate) ->
             "quantity": str(payload.quantity),
             "warehouse_id": payload.warehouse_id,
             "location_id": payload.location_id,
-            "lot_id": payload.lot_id,
+            "lot_id": lot_id,
+            "lot_number": payload.lot_number,
             "reason": payload.reason,
         },
     )

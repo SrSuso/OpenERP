@@ -30,7 +30,7 @@ const ME = {
   permissions: ['admin.access', 'inventory.read', 'inventory.manage'],
 };
 
-function stubBackend() {
+function stubBackend(options: { trackExpiration?: boolean } = {}) {
   const warehouses: Warehouse[] = [{ id: 1, name: 'Almacén central', is_active: true }];
   const locations: Location[] = [{ id: 1, warehouse_id: 1, name: 'Recepción', is_active: true }];
   const product: Product = {
@@ -54,8 +54,8 @@ function stubBackend() {
     taxes: [],
     price_formula: null,
     min_stock: '0',
-    track_lots: false,
-    track_expiration: false,
+    track_lots: options.trackExpiration ?? false,
+    track_expiration: options.trackExpiration ?? false,
     tracks_stock: null,
     effective_tracks_stock: true,
     is_active: true,
@@ -242,6 +242,8 @@ describe('InventoryBalancesPage', () => {
         quantity: '-2',
         unit_cost: '0.5',
         lot_id: null,
+        lot_number: null,
+        expiration_date: null,
         reason: '',
       },
     ]);
@@ -258,6 +260,36 @@ describe('InventoryBalancesPage', () => {
     expect(confirmSpy).toHaveBeenCalled();
     await screen.findByText(/Inventario reconstruido: 1 saldos recalculados\./);
     expect(backend.rebuildCalls).toEqual([true]);
+  });
+
+  it('creates the printed lot while recording an opening count with expiry', async () => {
+    const backend = stubBackend({ trackExpiration: true });
+    renderComponent(<InventoryBalancesPage />);
+    await screen.findByRole('table');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
+    const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
+    await userEvent.selectOptions(within(form).getByLabelText('Producto'), '10');
+    await waitFor(() => expect(within(form).getByLabelText('Almacén')).toHaveValue('1'));
+    await userEvent.type(within(form).getByLabelText('Cantidad (con signo)'), '12');
+    await userEvent.type(within(form).getByLabelText('Número de lote'), 'RECUENTO-01');
+    await userEvent.type(within(form).getByLabelText('Fecha de caducidad'), '2030-02-28');
+    await userEvent.click(within(form).getByRole('button', { name: 'Registrar ajuste' }));
+
+    expect(backend.adjustmentCalls).toEqual([
+      {
+        product_id: 10,
+        warehouse_id: 1,
+        location_id: 1,
+        movement_type: 'ADJUSTMENT',
+        quantity: '12',
+        unit_cost: '0.5',
+        lot_id: null,
+        lot_number: 'RECUENTO-01',
+        expiration_date: '2030-02-28',
+        reason: '',
+      },
+    ]);
   });
 
   it('does nothing when the rebuild confirmation is cancelled', async () => {

@@ -748,10 +748,19 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         await _pos_category_or_422(session, payload.pos_category_id)
     if payload.base_barcode is not None:
         await _assert_barcode_free(session, payload.base_barcode)
-    if payload.initial_stock is not None and (payload.track_lots or payload.track_expiration):
+    if (
+        payload.initial_stock is not None
+        and (payload.track_lots or payload.track_expiration)
+        and payload.initial_stock.lot_number is None
+    ):
+        raise ValidationError("Initial stock for a product tracked by lots requires lot_number.")
+    if (
+        payload.initial_stock is not None
+        and payload.track_expiration
+        and payload.initial_stock.expiration_date is None
+    ):
         raise ValidationError(
-            "Initial stock for a product tracked by lots must be recorded "
-            "through a receipt with a lot."
+            "Initial stock for a product tracked by expiration requires expiration_date."
         )
     # `catalog.sku_prefix`/`catalog.default_min_stock` (app.settings.registry).
     shop = await settings_store.get_values(session)
@@ -821,6 +830,21 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
         # with an opening quantity that silently failed to exist.
         from app.inventory import service as inventory_service
         from app.inventory.schemas import AdjustmentCreate
+        from app.lots.schemas import LotCreate
+        from app.lots.service import get_or_create_lot
+
+        lot_id: int | None = None
+        if created.track_lots:
+            assert payload.initial_stock.lot_number is not None
+            lot = await get_or_create_lot(
+                session,
+                LotCreate(
+                    product_id=created.id,
+                    lot_number=payload.initial_stock.lot_number,
+                    expiration_date=payload.initial_stock.expiration_date,
+                ),
+            )
+            lot_id = lot.id
 
         await inventory_service.record_adjustment(
             session,
@@ -831,6 +855,7 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
                 movement_type="ADJUSTMENT",
                 quantity=payload.initial_stock.quantity,
                 unit_cost=created.cost,
+                lot_id=lot_id,
                 reason="Stock inicial al crear el producto.",
             ),
         )
