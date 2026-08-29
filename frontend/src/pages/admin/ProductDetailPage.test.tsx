@@ -37,7 +37,7 @@ const ME = {
 };
 
 const TAXES: Tax[] = [
-  { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '0', is_active: true },
+  { id: 1, name: 'IVA general', rate: '21', surcharge_rate: '5.2', is_active: true },
 ];
 const CATEGORIES_WITH_INHERITED_TAX: ProductCategory[] = [
   {
@@ -160,6 +160,7 @@ function stubBackend(
   const pricingCalls: Record<string, unknown>[] = [];
   const addPackageCalls: Record<string, unknown>[] = [];
   const formulaCalls: Record<string, unknown>[] = [];
+  const previewCalls: Record<string, unknown>[] = [];
   const clearFormulaCalls: true[] = [];
   const manualPriceCalls: Record<string, unknown>[] = [];
   const clearManualPriceCalls: true[] = [];
@@ -211,6 +212,7 @@ function stubBackend(
         return Promise.resolve(jsonResponse(product));
       }
       if (method === 'POST' && /\/pricing\/preview$/.test(url)) {
+        previewCalls.push(body());
         return Promise.resolve(jsonResponse({ result: '12.100000' }));
       }
       if (method === 'PUT' && /\/products\/1\/pricing\/formula$/.test(url)) {
@@ -318,6 +320,7 @@ function stubBackend(
     pricingCalls,
     addPackageCalls,
     formulaCalls,
+    previewCalls,
     clearFormulaCalls,
     manualPriceCalls,
     clearManualPriceCalls,
@@ -645,7 +648,7 @@ describe('ProductDetailPage', () => {
   });
 
   it('sets a per-product formula, previews it, then switches to a manual price and checks the history', async () => {
-    const backend = stubBackend();
+    const backend = stubBackend({ categories: CATEGORIES_WITH_INHERITED_TAX });
     renderPage();
 
     await screen.findByDisplayValue('Agua 1L');
@@ -658,6 +661,9 @@ describe('ProductDetailPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Probar' }));
     await screen.findByText(/PVP: 12,10/);
+    expect(backend.previewCalls).toEqual([
+      expect.objectContaining({ tax_rate: '21', surcharge_rate: '5.2' }),
+    ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Guardar fórmula' }));
     await screen.findByText('12,10 €');

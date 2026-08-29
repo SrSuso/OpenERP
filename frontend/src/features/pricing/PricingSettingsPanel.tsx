@@ -24,6 +24,10 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [formulaInput, setFormulaInput] = useState<string | null>(null);
   const [pricesIncludeTaxInput, setPricesIncludeTaxInput] = useState<boolean | null>(null);
+  // La prueba de fórmula es deliberadamente editable: 5,2 % es el
+  // recargo habitual para IVA 21 %, pero una tienda puede trabajar sin
+  // recargo o con el tipo correspondiente a otro IVA.
+  const [previewSurchargeRate, setPreviewSurchargeRate] = useState('5.2');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -36,7 +40,7 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
         formula,
         cost: '10',
         tax_rate: '21',
-        surcharge_rate: '0',
+        surcharge_rate: previewSurchargeRate.replace(',', '.'),
         margin_rate: '20',
         margin_amount: '0',
       }),
@@ -96,7 +100,19 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
             className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm disabled:bg-slate-50"
           />
 
-          <div className="mt-3 flex items-center gap-3">
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Recargo eq. (%)
+              <input
+                aria-label="Recargo de equivalencia para la prueba"
+                type="text"
+                inputMode="decimal"
+                value={previewSurchargeRate}
+                onChange={(event) => setPreviewSurchargeRate(event.target.value)}
+                disabled={!canManage}
+                className="w-28 rounded border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50"
+              />
+            </label>
             <button
               type="button"
               onClick={() => previewMutation.mutate()}
@@ -114,6 +130,9 @@ export function PricingSettingsPanel({ canManage }: { canManage: boolean }) {
               <span className="text-sm text-red-600">Fórmula no válida.</span>
             )}
           </div>
+          <p className="mt-1 text-xs text-slate-500">
+            La prueba usa el recargo indicado arriba; para IVA 21 %, el habitual es 5,2 %.
+          </p>
 
           <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
             <input

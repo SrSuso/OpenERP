@@ -25,11 +25,42 @@ interface ProductFormulaPanelProps {
 /** Igual que `effective_tax_rate`/`effective_margin_rate` en
  * backend/app/pricing/service.py — sólo para la vista previa "pruébala",
  * el cálculo real siempre lo hace el backend al guardar. */
-function effectiveTaxRate(product: Product, taxes: Tax[]): string {
-  const ownIds = new Set(product.taxes.map((t) => t.id));
-  const active = taxes.filter((t) => ownIds.has(t.id) && t.is_active);
-  if (product.taxes.length > 0) return String(active.reduce((sum, t) => sum + Number(t.rate), 0));
+function effectiveTaxRate(
+  product: Product,
+  category: ProductCategory | undefined,
+  taxes: Tax[],
+): string {
+  const sourceTaxes = product.taxes.length > 0 ? product.taxes : (category?.taxes ?? []);
+  if (sourceTaxes.length > 0) {
+    const sourceIds = new Set(sourceTaxes.map((tax) => tax.id));
+    return String(
+      taxes
+        .filter((tax) => sourceIds.has(tax.id) && tax.is_active)
+        .reduce((sum, tax) => sum + Number(tax.rate), 0),
+    );
+  }
   return product.tax_rate;
+}
+
+/** Mismo orden de herencia que `effective_surcharge_rate` del backend:
+ * impuestos propios → impuestos de categoría → campo histórico del
+ * producto. La vista previa tiene que usar el impuesto efectivo, no el
+ * campo histórico, que normalmente queda en cero. */
+function effectiveSurchargeRate(
+  product: Product,
+  category: ProductCategory | undefined,
+  taxes: Tax[],
+): string {
+  const sourceTaxes = product.taxes.length > 0 ? product.taxes : (category?.taxes ?? []);
+  if (sourceTaxes.length > 0) {
+    const sourceIds = new Set(sourceTaxes.map((tax) => tax.id));
+    return String(
+      taxes
+        .filter((tax) => sourceIds.has(tax.id) && tax.is_active)
+        .reduce((sum, tax) => sum + Number(tax.surcharge_rate), 0),
+    );
+  }
+  return product.surcharge_rate;
 }
 
 /** Una fórmula propia de este producto (pisa la de la tienda mientras esté
@@ -64,8 +95,8 @@ export function ProductFormulaPanel({
       previewFormula({
         formula: formulaInput,
         cost: product.cost,
-        tax_rate: effectiveTaxRate(product, taxes),
-        surcharge_rate: product.surcharge_rate,
+        tax_rate: effectiveTaxRate(product, category, taxes),
+        surcharge_rate: effectiveSurchargeRate(product, category, taxes),
         margin_rate: product.margin_rate ?? category?.margin_rate ?? '0',
         margin_amount: product.margin_amount ?? category?.margin_amount ?? '0',
       }),

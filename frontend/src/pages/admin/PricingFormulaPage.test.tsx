@@ -29,6 +29,7 @@ function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
   let formula = DEFAULT_FORMULA;
   let pricesIncludeTax = false;
   const saveCalls: { formula: string; prices_include_tax: boolean }[] = [];
+  const previewCalls: Record<string, unknown>[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -41,6 +42,9 @@ function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
         return Promise.resolve(jsonResponse({ formula, prices_include_tax: pricesIncludeTax }));
       }
       if (method === 'POST' && url.includes('/pricing/preview')) {
+        previewCalls.push(
+          init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
+        );
         if (options.previewOk === false) {
           return Promise.resolve(
             jsonResponse(
@@ -49,7 +53,7 @@ function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
             ),
           );
         }
-        return Promise.resolve(jsonResponse({ result: '15.120000' }));
+        return Promise.resolve(jsonResponse({ result: '15.150000' }));
       }
       if (method === 'PUT' && url.includes('/pricing/settings')) {
         const body = init?.body
@@ -76,7 +80,7 @@ function stubBackend(options: { previewOk?: boolean; saveOk?: boolean } = {}) {
     }),
   );
 
-  return { saveCalls };
+  return { saveCalls, previewCalls };
 }
 
 function renderPage() {
@@ -99,7 +103,7 @@ describe('PricingFormulaPage', () => {
   });
 
   it('previews the formula against sample values', async () => {
-    stubBackend();
+    const backend = stubBackend();
     renderPage();
     await screen.findByDisplayValue(DEFAULT_FORMULA);
 
@@ -107,7 +111,15 @@ describe('PricingFormulaPage', () => {
       screen.getByRole('button', { name: /Probar con coste 10€, IVA 21%, margen 20%/ }),
     );
 
-    expect(await screen.findByText(/15,12/)).toBeInTheDocument();
+    expect(await screen.findByText(/15,15/)).toBeInTheDocument();
+    expect(backend.previewCalls).toEqual([
+      expect.objectContaining({
+        cost: '10',
+        tax_rate: '21',
+        surcharge_rate: '5.2',
+        margin_rate: '20',
+      }),
+    ]);
   });
 
   it('saves an edited formula', async () => {
