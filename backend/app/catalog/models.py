@@ -113,6 +113,10 @@ class PosCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100), unique=True)
     color: Mapped[str] = mapped_column(String(7), default="#64748b", server_default="'#64748b'")
     display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", index=True)
+    #: La única pestaña que abre la caja por defecto. No es una categoría
+    #: de inventario ni una preferencia del navegador: es configuración
+    #: compartida de ese catálogo POS.
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 
@@ -130,9 +134,10 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     pos_category_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("pos_categories.id"), nullable=True, index=True
     )
-    #: Sort position of this product's button within its POS category grid
-    #: (phase 12); lower first. Ties break by name at the query layer.
-    pos_display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    #: Posición del botón dentro de su categoría POS: 1 es la primera;
+    #: 0 es la posición especial «al final». Los empates se resuelven por
+    #: nombre al consultar la rejilla del TPV.
+    pos_display_order: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     #: A named POS button whose amount is entered by the cashier at sale
     #: time (for example, the total supplied by a deli counter). This is
     #: deliberately opt-in per product; ordinary catalogue prices remain

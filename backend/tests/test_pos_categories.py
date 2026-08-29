@@ -9,12 +9,14 @@ from typing import Any
 from httpx import AsyncClient
 
 
-async def _create_product(client: AsyncClient, sku: str = "POS-CAT-1") -> dict[str, Any]:
+async def _create_product(
+    client: AsyncClient, sku: str = "POS-CAT-1", name: str = "Producto para categoría POS"
+) -> dict[str, Any]:
     response = await client.post(
         "/api/v1/products",
         json={
             "sku": sku,
-            "name": "Producto para categoría POS",
+            "name": name,
             "base_unit_name": "UNIDAD",
             "cost": "1.00",
             "list_price": "2.00",
@@ -65,6 +67,30 @@ async def test_default_color_is_applied_when_not_given(
 
     assert response.status_code == 201
     assert response.json()["color"] == "#64748b"
+
+
+async def test_only_one_pos_category_can_be_default(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    first = (
+        await client.post("/api/v1/pos-categories", json={"name": "Bebidas", "is_default": True})
+    ).json()
+    second = (await client.post("/api/v1/pos-categories", json={"name": "Panadería"})).json()
+
+    updated = await client.patch(
+        f"/api/v1/pos-categories/{second['id']}", json={"is_default": True}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["is_default"] is True
+
+    listed = (await client.get("/api/v1/pos-categories")).json()
+    assert [category["id"] for category in listed if category["is_default"]] == [second["id"]]
+    assert first["is_default"] is True
+
+    hidden = await client.post(f"/api/v1/pos-categories/{second['id']}/deactivate")
+    assert hidden.status_code == 200
+    assert hidden.json()["is_default"] is False
 
 
 async def test_invalid_color_is_rejected(
@@ -156,6 +182,28 @@ async def test_assigning_a_product_to_a_pos_category_and_filtering_products_by_i
     assert [p["id"] for p in filtered] == [product["id"]]
 
 
+async def test_pos_product_order_starts_at_one_and_sends_zero_to_the_end(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    category_id = (await client.post("/api/v1/pos-categories", json={"name": "Orden"})).json()["id"]
+    first = await _create_product(client, sku="POS-ORDER-1", name="Primero")
+    second = await _create_product(client, sku="POS-ORDER-2", name="Segundo")
+    last = await _create_product(client, sku="POS-ORDER-0", name="Al final")
+
+    for product, order in ((first, 1), (second, 2), (last, 0)):
+        response = await client.patch(
+            f"/api/v1/products/{product['id']}",
+            json={"pos_category_id": category_id, "pos_display_order": order},
+        )
+        assert response.status_code == 200
+
+    filtered = (
+        await client.get("/api/v1/products", params={"pos_category_id": category_id})
+    ).json()
+    assert [product["id"] for product in filtered] == [first["id"], second["id"], last["id"]]
+
+
 async def test_assigning_a_product_to_a_nonexistent_pos_category_is_rejected(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
@@ -177,7 +225,7 @@ async def test_product_without_pos_category_has_null_fields(
 
     assert product["pos_category_id"] is None
     assert product["pos_category_name"] is None
-    assert product["pos_display_order"] == 0
+    assert product["pos_display_order"] == 1
 
 
 async def test_cashier_can_read_but_not_manage_pos_categories(

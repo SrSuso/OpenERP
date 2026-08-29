@@ -158,6 +158,7 @@ export const posCategorySchema = z.object({
   name: z.string(),
   color: z.string(),
   display_order: z.number(),
+  is_default: z.boolean().optional(),
   is_active: z.boolean(),
 });
 export type PosCategory = z.infer<typeof posCategorySchema>;
@@ -175,6 +176,7 @@ export interface PosCategoryCreate {
   name: string;
   color: string;
   display_order: number;
+  is_default?: boolean;
 }
 
 export async function createPosCategory(payload: PosCategoryCreate): Promise<PosCategory> {

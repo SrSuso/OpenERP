@@ -55,6 +55,7 @@ export function PosHomePage() {
   const coldDrinkSurcharge = useShopSetting('pos.cold_drink_surcharge_amount', '0');
   const coldDrinkSurchargeEnabled = Number(coldDrinkSurcharge) > 0;
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [initialCategoryResolved, setInitialCategoryResolved] = useState(false);
   const [barcode, setBarcode] = useState('');
   const [isProductSearchOpen, setProductSearchOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
@@ -170,6 +171,11 @@ export function PosHomePage() {
   }
 
   const categories = useQuery(posCategoriesQuery);
+  useEffect(() => {
+    if (initialCategoryResolved || categories.data === undefined) return;
+    setSelectedCategoryId(categories.data.find((category) => category.is_default)?.id ?? null);
+    setInitialCategoryResolved(true);
+  }, [categories.data, initialCategoryResolved]);
   const products = useQuery(
     productsQuery(selectedCategoryId !== null ? { posCategoryId: selectedCategoryId } : {}),
   );

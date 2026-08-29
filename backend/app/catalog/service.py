@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -457,6 +457,7 @@ def _pos_category_snapshot(category: PosCategory) -> dict[str, Any]:
         "name": category.name,
         "color": category.color,
         "display_order": category.display_order,
+        "is_default": category.is_default,
         "is_active": category.is_active,
     }
 
@@ -497,8 +498,13 @@ async def create_pos_category(session: AsyncSession, payload: PosCategoryCreate)
     await _assert_pos_category_name_free(session, payload.name)
 
     category = PosCategory(
-        name=payload.name, color=payload.color, display_order=payload.display_order
+        name=payload.name,
+        color=payload.color,
+        display_order=payload.display_order,
+        is_default=payload.is_default,
     )
+    if payload.is_default:
+        await session.execute(update(PosCategory).values(is_default=False))
     session.add(category)
     await session.flush()
     await audit.record(
@@ -524,6 +530,14 @@ async def update_pos_category(
         category.color = payload.color
     if payload.display_order is not None:
         category.display_order = payload.display_order
+    if payload.is_default is not None:
+        if payload.is_default:
+            # Una única categoría abre por defecto; al elegir otra, la
+            # anterior deja de ser favorita en la misma transacción.
+            await session.execute(
+                update(PosCategory).where(PosCategory.id != category.id).values(is_default=False)
+            )
+        category.is_default = payload.is_default
 
     await session.flush()
     updated = await get_pos_category(session, pos_category_id)
@@ -550,6 +564,8 @@ async def set_pos_category_active(
 
     before = _pos_category_snapshot(category)
     category.is_active = is_active
+    if not is_active:
+        category.is_default = False
     await session.flush()
     await audit.record(
         session,
@@ -598,6 +614,7 @@ async def deactivate_pos_category(session: AsyncSession, pos_category_id: int) -
     category = await get_pos_category(session, pos_category_id)
     before = _pos_category_snapshot(category)
     category.is_active = False
+    category.is_default = False
     await session.flush()
     await audit.record(
         session,
@@ -629,7 +646,10 @@ async def list_products(
         stmt = stmt.where(Product.category_id == category_id)
     if pos_category_id is not None:
         stmt = stmt.where(Product.pos_category_id == pos_category_id)
-        stmt = stmt.order_by(None).order_by(Product.pos_display_order, Product.name)
+        # 1 es el primer botón. El 0 queda reservado para los artículos
+        # que no se quieren priorizar y siempre se manda al final.
+        zero_last = case((Product.pos_display_order == 0, 1), else_=0)
+        stmt = stmt.order_by(None).order_by(zero_last, Product.pos_display_order, Product.name)
     if search:
         pattern = f"%{search.lower()}%"
         # También por código de barras: es lo que está impreso en el

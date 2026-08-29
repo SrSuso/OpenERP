@@ -95,6 +95,7 @@ export const posCategorySchema = z.object({
   name: z.string(),
   color: z.string(),
   display_order: z.number(),
+  is_default: z.boolean().optional(),
   is_active: z.boolean(),
 });
 export type PosCategory = z.infer<typeof posCategorySchema>;

@@ -65,6 +65,7 @@ def _pos_category_to_read(category: PosCategory) -> PosCategoryRead:
         name=category.name,
         color=category.color,
         display_order=category.display_order,
+        is_default=category.is_default,
         is_active=category.is_active,
     )
 

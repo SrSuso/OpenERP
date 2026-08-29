@@ -27,7 +27,7 @@ export function PosCategoriesPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [color, setColor] = useState('#64748b');
-  const [order, setOrder] = useState('0');
+  const [order, setOrder] = useState('1');
   const [error, setError] = useState<string | null>(null);
   //: Cuál se está editando, con lo tecleado hasta ahora — se guarda al
   //: pulsar "Guardar", no al salir de cada campo, para poder cambiar el
@@ -44,7 +44,7 @@ export function PosCategoriesPanel({ canManage }: { canManage: boolean }) {
       invalidate();
       setName('');
       setColor('#64748b');
-      setOrder('0');
+      setOrder('1');
       setError(null);
     },
     onError: (err: unknown) => {
@@ -62,6 +62,7 @@ export function PosCategoriesPanel({ canManage }: { canManage: boolean }) {
         name: edited.name.trim(),
         color: edited.color,
         display_order: edited.display_order,
+        is_default: Boolean(edited.is_default),
       }),
     onSuccess: () => {
       invalidate();
@@ -129,6 +130,9 @@ export function PosCategoriesPanel({ canManage }: { canManage: boolean }) {
                 {!category.is_active && ' (oculta)'}
               </span>
               <span className="text-xs text-slate-400">orden {category.display_order}</span>
+              {category.is_default && (
+                <span className="text-xs font-medium text-amber-700">Predeterminada en TPV</span>
+              )}
               {canManage && (
                 <button
                   type="button"
@@ -157,6 +161,14 @@ export function PosCategoriesPanel({ canManage }: { canManage: boolean }) {
                       onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                       className="mt-1 block w-40 rounded border border-slate-300 px-2 py-1 text-sm"
                     />
+                  </label>
+                  <label className="mt-5 flex items-center gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(draft.is_default)}
+                      onChange={(event) => setDraft({ ...draft, is_default: event.target.checked })}
+                    />
+                    Abrir por defecto en el TPV
                   </label>
                   <label className="text-xs text-slate-600">
                     Color

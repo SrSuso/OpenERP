@@ -120,7 +120,7 @@ export function CreateProductForm({
     defaultValues: {
       category_id: '',
       pos_category_id: '',
-      pos_display_order: 0,
+      pos_display_order: 1,
       is_open_price: false,
       base_unit_name: '',
       cost: '0',
@@ -325,6 +325,9 @@ export function CreateProductForm({
             className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             {...register('pos_display_order')}
           />
+          <span className="mt-1 block text-xs text-slate-400">
+            Solo ordena el botón en su categoría POS: 1 es el primero; 0 va siempre al final.
+          </span>
         </label>
 
         <label className="text-sm text-slate-600">

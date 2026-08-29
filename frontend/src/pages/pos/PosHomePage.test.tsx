@@ -181,6 +181,7 @@ function stubBackend(
     rejectStockCheck?: boolean;
     showProductSearch?: boolean;
     coldDrinkSurcharge?: string;
+    posCategories?: Array<typeof POS_CATEGORY & { is_default?: boolean }>;
   } = {},
 ) {
   let sale: Sale | null = options.existingDraft ?? null;
@@ -225,7 +226,7 @@ function stubBackend(
         return Promise.resolve(jsonResponse([WAREHOUSE]));
       }
       if (url.includes('/pos-categories')) {
-        return Promise.resolve(jsonResponse([POS_CATEGORY]));
+        return Promise.resolve(jsonResponse(options.posCategories ?? [POS_CATEGORY]));
       }
       const lookup = /\/products\/barcode\/(.+)$/.exec(url);
       if (method === 'GET' && lookup) {
@@ -498,6 +499,17 @@ function scan(
 }
 
 describe('PosHomePage', () => {
+  it('opens the category marked as the POS default', async () => {
+    stubBackend({ posCategories: [{ ...POS_CATEGORY, is_default: true }] });
+    renderPage();
+
+    expect(await screen.findByRole('tab', { name: 'Bebidas' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('tab', { name: 'Todos' })).toHaveAttribute('aria-selected', 'false');
+  });
+
   it('opens a new draft sale when the till has none open, then lets the cashier tap a product onto it', async () => {
     const backend = stubBackend();
     renderPage();

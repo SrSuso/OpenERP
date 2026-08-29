@@ -120,12 +120,14 @@ class PosCategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     color: str = Field(default="#64748b", pattern=_HEX_COLOR)
     display_order: int = Field(default=0, ge=0)
+    is_default: bool = False
 
 
 class PosCategoryUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     color: str | None = Field(default=None, pattern=_HEX_COLOR)
     display_order: int | None = Field(default=None, ge=0)
+    is_default: bool | None = None
 
 
 class PosCategoryRead(BaseModel):
@@ -133,6 +135,7 @@ class PosCategoryRead(BaseModel):
     name: str
     color: str
     display_order: int
+    is_default: bool
     is_active: bool
 
 
@@ -176,7 +179,7 @@ class ProductCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     category_id: int | None = None
     pos_category_id: int | None = None
-    pos_display_order: int = Field(default=0, ge=0)
+    pos_display_order: int = Field(default=1, ge=0)
     is_open_price: bool = False
     base_unit_name: str = Field(min_length=1, max_length=20)
     base_barcode: str | None = Field(default=None, min_length=1, max_length=64)

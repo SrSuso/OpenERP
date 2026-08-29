@@ -390,7 +390,7 @@ describe('CategoriesPage', () => {
 
     await screen.findByText('Congelados');
     expect(backend.createPosCategoryCalls).toEqual([
-      { name: 'Congelados', color: '#64748b', display_order: 0 },
+      { name: 'Congelados', color: '#64748b', display_order: 1 },
     ]);
   });
 
