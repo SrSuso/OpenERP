@@ -152,11 +152,12 @@ function stubBackend() {
       }
       if (method === 'PUT' && url.includes('/settings/pos/surcharges')) {
         const updates = body['values'] as Record<string, string>;
-        posSurcharges = posSurcharges.map((setting) =>
-          updates[setting.key] === undefined
+        posSurcharges = posSurcharges.map((setting) => {
+          const updatedValue = updates[setting.key];
+          return updatedValue === undefined
             ? setting
-            : { ...setting, value: updates[setting.key], is_set: true },
-        );
+            : { ...setting, value: updatedValue, is_set: true };
+        });
         writes.push(body);
         return Promise.resolve(jsonResponse({ groups: ['Caja (TPV)'], settings: posSurcharges }));
       }
