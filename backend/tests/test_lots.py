@@ -178,6 +178,42 @@ async def test_lot_with_stock_history_cannot_be_deleted(
     assert (await client.get(f"/api/v1/lots/{lot_id}")).status_code == 200
 
 
+async def test_lot_stock_can_be_corrected_to_the_physical_count(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product_id = await _create_product(client)
+    warehouse_id, location_id = await _default_location(client)
+    lot_id = await _create_lot(client, product_id, "LOTE-RECUENTO", "2026-08-14")
+    await _stock_lot(client, product_id, warehouse_id, location_id, lot_id, "10")
+
+    first = await client.put(
+        f"/api/v1/lots/{lot_id}/stock",
+        json={
+            "warehouse_id": warehouse_id,
+            "location_id": location_id,
+            "quantity": "3",
+            "reason": "El alta inicial era incorrecta.",
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["previous_quantity"] == "10.000000"
+    assert first.json()["quantity"] == "3.000000"
+    assert first.json()["adjustment_quantity"] == "-7.000000"
+    assert first.json()["movement_id"] is not None
+
+    second = await client.put(
+        f"/api/v1/lots/{lot_id}/stock",
+        json={"warehouse_id": warehouse_id, "location_id": location_id, "quantity": "14"},
+    )
+    assert second.status_code == 200
+    assert second.json()["previous_quantity"] == "3.000000"
+    assert second.json()["adjustment_quantity"] == "11.000000"
+
+    balances = (await client.get("/api/v1/stock-balance", params={"product_id": product_id})).json()
+    assert [(row["lot_id"], row["quantity"]) for row in balances] == [(lot_id, "14.000000")]
+
+
 async def test_lot_balances_are_sorted_fefo(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

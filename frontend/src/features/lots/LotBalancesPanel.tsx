@@ -6,11 +6,12 @@ import {
   consumeFefo,
   lotBalancesQuery,
   planFefo,
+  setLotStock,
   type FefoAllocation,
   type FefoConsumeInput,
 } from '@/features/lots/api';
 import { ApiError } from '@/lib/api';
-import { decimalString } from '@/lib/decimal';
+import { decimalInputValue, decimalString } from '@/lib/decimal';
 import { formatQuantity } from '@/lib/format';
 
 interface LotBalancesPanelProps {
@@ -30,6 +31,9 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
   const [reason, setReason] = useState('');
   const [plan, setPlan] = useState<FefoAllocation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editingBalanceId, setEditingBalanceId] = useState<number | null>(null);
+  const [countedQuantity, setCountedQuantity] = useState('');
+  const [countReason, setCountReason] = useState('');
   const consumeAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const queryClient = useQueryClient();
 
@@ -41,6 +45,7 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
   });
 
   const quantityValid = decimalString({ min: 0.000001 }).safeParse(quantity).success;
+  const countedQuantityValid = decimalString({ min: 0 }).safeParse(countedQuantity).success;
 
   const planMutation = useMutation({
     mutationFn: () =>
@@ -70,6 +75,35 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
     },
     onError: (err: unknown) =>
       setError(err instanceof ApiError ? err.message : 'No se ha podido consumir el stock.'),
+  });
+  const setStockMutation = useMutation({
+    mutationFn: ({
+      lotId,
+      quantity: nextQuantity,
+      reason: nextReason,
+    }: {
+      lotId: number;
+      quantity: string;
+      reason: string;
+    }) =>
+      setLotStock(lotId, {
+        warehouse_id: Number(warehouseId),
+        location_id: Number(locationId),
+        quantity: nextQuantity,
+        reason: nextReason,
+      }),
+    onSuccess: () => {
+      setEditingBalanceId(null);
+      setCountedQuantity('');
+      setCountReason('');
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['lots', 'balances', productId] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'balances'] });
+    },
+    onError: (err: unknown) =>
+      setError(
+        err instanceof ApiError ? err.message : 'No se ha podido corregir el stock del lote.',
+      ),
   });
 
   return (
@@ -131,6 +165,7 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
                   <th className="py-1 pr-3 font-medium">Lote</th>
                   <th className="py-1 pr-3 font-medium">Caducidad</th>
                   <th className="py-1 pr-3 font-medium">Cantidad</th>
+                  {canManage && <th className="py-1 text-right font-medium">Acciones</th>}
                 </tr>
               </thead>
               <tbody>
@@ -138,7 +173,84 @@ export function LotBalancesPanel({ productId, canManage }: LotBalancesPanelProps
                   <tr key={balance.lot.id} className="border-t border-slate-200">
                     <td className="py-1 pr-3">{balance.lot.lot_number}</td>
                     <td className="py-1 pr-3">{balance.lot.expiration_date ?? '—'}</td>
-                    <td className="py-1 pr-3">{formatQuantity(balance.quantity)}</td>
+                    <td className="py-1 pr-3">
+                      {editingBalanceId === balance.lot.id ? (
+                        <label className="flex flex-col gap-1 text-xs text-slate-500">
+                          Cantidad física
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={countedQuantity}
+                            onChange={(event) => setCountedQuantity(event.target.value)}
+                            aria-label={`Cantidad física del lote ${balance.lot.lot_number}`}
+                            className="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-slate-800"
+                          />
+                        </label>
+                      ) : (
+                        formatQuantity(balance.quantity)
+                      )}
+                    </td>
+                    {canManage && (
+                      <td className="py-1 text-right">
+                        {editingBalanceId === balance.lot.id ? (
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <label
+                              className="sr-only"
+                              htmlFor={`lot-count-reason-${balance.lot.id}`}
+                            >
+                              Motivo de la corrección
+                            </label>
+                            <input
+                              id={`lot-count-reason-${balance.lot.id}`}
+                              value={countReason}
+                              onChange={(event) => setCountReason(event.target.value)}
+                              placeholder="Motivo (opcional)"
+                              className="w-36 rounded border border-slate-300 px-2 py-1 text-sm"
+                            />
+                            <button
+                              type="button"
+                              disabled={!countedQuantityValid || setStockMutation.isPending}
+                              onClick={() =>
+                                setStockMutation.mutate({
+                                  lotId: balance.lot.id,
+                                  quantity: countedQuantity.replace(',', '.'),
+                                  reason: countReason,
+                                })
+                              }
+                              className="rounded bg-brand-700 px-2 py-1 text-sm font-medium text-white disabled:opacity-50"
+                            >
+                              {setStockMutation.isPending ? 'Guardando…' : 'Guardar'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={setStockMutation.isPending}
+                              onClick={() => {
+                                setEditingBalanceId(null);
+                                setCountedQuantity('');
+                                setCountReason('');
+                              }}
+                              className="rounded px-2 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={setStockMutation.isPending}
+                            onClick={() => {
+                              setEditingBalanceId(balance.lot.id);
+                              setCountedQuantity(decimalInputValue(balance.quantity));
+                              setCountReason('');
+                              setError(null);
+                            }}
+                            className="rounded px-2 py-1 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                          >
+                            Corregir cantidad
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

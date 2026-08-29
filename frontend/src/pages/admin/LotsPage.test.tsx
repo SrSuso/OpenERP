@@ -71,6 +71,7 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
   const balances: LotBalance[] = [];
   const consumeKeys: string[] = [];
   const lotCreateCalls: Record<string, unknown>[] = [];
+  const lotStockSetCalls: Record<string, unknown>[] = [];
 
   vi.stubGlobal(
     'fetch',
@@ -120,6 +121,23 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
         lot.supplier_id = (b['supplier_id'] as number | null) ?? null;
         return Promise.resolve(jsonResponse(lot));
       }
+      if (method === 'PUT' && /\/lots\/\d+\/stock$/.test(url)) {
+        const id = Number(url.split('/').at(-2));
+        const b = body();
+        lotStockSetCalls.push(b);
+        const balance = balances.find((candidate) => candidate.lot.id === id);
+        if (!balance) return Promise.resolve(jsonResponse({}, { status: 404 }));
+        const previousQuantity = balance.quantity;
+        balance.quantity = b['quantity'] as string;
+        return Promise.resolve(
+          jsonResponse({
+            previous_quantity: previousQuantity,
+            quantity: balance.quantity,
+            adjustment_quantity: '0',
+            movement_id: 2,
+          }),
+        );
+      }
       if (method === 'DELETE' && /\/lots\/\d+$/.test(url)) {
         const id = Number(url.split('/').at(-1));
         const index = lots.findIndex((candidate) => candidate.id === id);
@@ -155,7 +173,7 @@ function stubBackend({ failFirstConsume = false }: { failFirstConsume?: boolean 
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
   );
-  return { consumeKeys, lotCreateCalls };
+  return { consumeKeys, lotCreateCalls, lotStockSetCalls };
 }
 
 function renderPage() {
@@ -242,5 +260,40 @@ describe('LotsPage', () => {
     expect(screen.getByText('2026-12-31')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
     await screen.findByText('Este producto todavía no tiene lotes.');
+  });
+
+  it('corrects a lot balance from the counted physical quantity', async () => {
+    const { lotStockSetCalls } = stubBackend();
+    renderPage();
+
+    await screen.findByText('Yogur natural');
+    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    const form = screen.getByRole('button', { name: 'Crear lote' }).closest('form')!;
+    await userEvent.type(within(form).getByLabelText('Nº de lote'), 'L-RECUENTO');
+    await userEvent.click(within(form).getByRole('button', { name: 'Crear lote' }));
+
+    const panel = screen.getByRole('heading', { name: 'Saldo por lote y FEFO' }).parentElement!;
+    await userEvent.selectOptions(within(panel).getByLabelText('Almacén'), '1');
+    await userEvent.selectOptions(within(panel).getByLabelText('Ubicación'), '1');
+    await userEvent.click(await within(panel).findByRole('button', { name: 'Corregir cantidad' }));
+    const count = within(panel).getByLabelText('Cantidad física del lote L-RECUENTO');
+    await userEvent.clear(count);
+    await userEvent.type(count, '4');
+    await userEvent.type(
+      within(panel).getByLabelText('Motivo de la corrección'),
+      'Recuento inicial',
+    );
+    await userEvent.click(within(panel).getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() =>
+      expect(lotStockSetCalls).toEqual([
+        expect.objectContaining({
+          warehouse_id: 1,
+          location_id: 1,
+          quantity: '4',
+          reason: 'Recuento inicial',
+        }),
+      ]),
+    );
   });
 });

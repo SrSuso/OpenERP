@@ -61,6 +61,31 @@ export async function deleteLot(lotId: number): Promise<void> {
   await apiFetch(`${API_V1}/lots/${lotId}`, { method: 'DELETE', schema: z.null() });
 }
 
+const lotStockSetSchema = z.object({
+  previous_quantity: z.string(),
+  quantity: z.string(),
+  adjustment_quantity: z.string(),
+  movement_id: z.number().nullable(),
+});
+
+export interface LotStockSetInput {
+  warehouse_id: number;
+  location_id: number;
+  quantity: string;
+  reason: string;
+}
+
+export async function setLotStock(
+  lotId: number,
+  payload: LotStockSetInput,
+): Promise<z.infer<typeof lotStockSetSchema>> {
+  return apiFetch(`${API_V1}/lots/${lotId}/stock`, {
+    method: 'PUT',
+    schema: lotStockSetSchema,
+    body: payload,
+  });
+}
+
 // --- saldo por lote (FEFO: primero el que antes caduca) --------------------
 
 export const lotBalanceSchema = z.object({

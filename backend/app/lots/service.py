@@ -28,7 +28,7 @@ from app.inventory import service as inventory_service
 from app.inventory.models import StockBalance, StockMovement
 from app.inventory.schemas import AdjustmentCreate
 from app.lots.models import Lot
-from app.lots.schemas import FefoConsumeRequest, LotCreate, LotUpdate
+from app.lots.schemas import FefoConsumeRequest, LotCreate, LotStockSet, LotUpdate
 from app.purchasing.models import GoodsReceiptLine, PurchaseOrder
 from app.returns.models import ReturnLine
 from app.suppliers.models import Supplier
@@ -233,6 +233,72 @@ async def delete_lot(session: AsyncSession, lot_id: int) -> None:
         entity_id=lot_id,
         before=before,
     )
+
+
+async def set_lot_stock(
+    session: AsyncSession, lot_id: int, payload: LotStockSet
+) -> tuple[Decimal, Decimal, int | None]:
+    """Set a lot's *counted* balance while preserving the stock ledger.
+
+    A correction is never an UPDATE of ``stock_balance``: the required delta
+    is recorded as an ordinary ``ADJUSTMENT``.  The transaction advisory lock
+    is needed for the zero-stock case, where there is no balance row for
+    ``SELECT ... FOR UPDATE`` to protect yet.
+    """
+    lot = await get_lot(session, lot_id)
+    context = await inventory_service.validate_inventory_context(
+        session,
+        product_id=lot.product_id,
+        warehouse_id=payload.warehouse_id,
+        location_id=payload.location_id,
+        lot_id=lot.id,
+    )
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {
+            "lock_key": (
+                f"lot-stock-set:{lot.product_id}:{payload.warehouse_id}:"
+                f"{payload.location_id}:{lot.id}"
+            )
+        },
+    )
+    previous_quantity = await inventory_service._lock_exact_balance_quantity(
+        session,
+        product_id=lot.product_id,
+        warehouse_id=payload.warehouse_id,
+        location_id=payload.location_id,
+        lot_id=lot.id,
+    )
+    adjustment_quantity = payload.quantity - previous_quantity
+    if adjustment_quantity == 0:
+        return previous_quantity, previous_quantity, None
+
+    movement = await inventory_service.record_movement(
+        session,
+        product_id=lot.product_id,
+        warehouse_id=payload.warehouse_id,
+        location_id=payload.location_id,
+        quantity=adjustment_quantity,
+        movement_type="ADJUSTMENT",
+        unit_cost=context.product.cost,
+        lot_id=lot.id,
+    )
+    await audit.record(
+        session,
+        action="adjustment",
+        entity_type="product",
+        entity_id=lot.product_id,
+        after={
+            "quantity": str(adjustment_quantity),
+            "resulting_quantity": str(payload.quantity),
+            "warehouse_id": payload.warehouse_id,
+            "location_id": payload.location_id,
+            "lot_id": lot.id,
+            "lot_number": lot.lot_number,
+            "reason": payload.reason or "Corrección de recuento de lote.",
+        },
+    )
+    return previous_quantity, previous_quantity + movement.quantity, movement.id
 
 
 async def list_lots(

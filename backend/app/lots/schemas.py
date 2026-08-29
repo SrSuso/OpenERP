@@ -44,6 +44,22 @@ class LotUpdate(BaseModel):
     supplier_id: int | None = None
 
 
+class LotStockSet(BaseModel):
+    """Physical count for one existing lot at one exact location."""
+
+    warehouse_id: int
+    location_id: int
+    quantity: Decimal = Field(ge=0)
+    reason: str = Field(default="", max_length=500)
+
+
+class LotStockSetRead(BaseModel):
+    previous_quantity: Decimal
+    quantity: Decimal
+    adjustment_quantity: Decimal
+    movement_id: int | None
+
+
 class LotRead(BaseModel):
     id: int
     product_id: int
