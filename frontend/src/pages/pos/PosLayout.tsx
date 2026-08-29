@@ -12,7 +12,6 @@ import { usePosTerminal } from '@/features/pos/usePosTerminal';
 import { usePosAppearance } from '@/features/pos/usePosAppearance';
 import { useButtonColors } from '@/features/settings/useButtonColors';
 import { useShopSetting } from '@/features/settings/useShopSettings';
-import { TicketReprintButton } from '@/features/tickets/TicketReprintButton';
 
 /**
  * Shell for `/pos`.
@@ -43,7 +42,7 @@ function PosLayoutContent() {
   const [closingTill, setClosingTill] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(() => document.fullscreenElement !== null);
   const { selectedTerminal, selectionOpen, requestTerminalChange } = usePosTerminal();
-  const { newSaleAction, lastTicketSaleId } = usePosHeaderActions();
+  const { newSaleAction } = usePosHeaderActions();
   const warehouseId = selectedTerminal?.warehouse_id ?? null;
 
   useEffect(() => {
@@ -100,14 +99,6 @@ function PosLayoutContent() {
             >
               Tickets
             </Link>
-          )}
-          {lastTicketSaleId !== null && (
-            <TicketReprintButton
-              key={lastTicketSaleId}
-              saleId={lastTicketSaleId}
-              label="Reimprimir último ticket"
-              className="min-h-14 rounded bg-slate-700 px-4 py-3 text-base font-medium hover:bg-slate-600 disabled:opacity-50"
-            />
           )}
         </div>
         <div className="flex items-center gap-4 text-base">

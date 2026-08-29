@@ -260,20 +260,15 @@ describe('PosLayout', () => {
     expect(exitFullscreen).toHaveBeenCalledTimes(1);
   });
 
-  it('reprints the latest ticket saved for this terminal', async () => {
-    const backend = stubBackend();
+  it('does not expose a quick reprint button for the last ticket', async () => {
+    stubBackend();
     window.localStorage.setItem('openerp.pos.lastTicketSaleId.7', '42');
     renderLayout();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Reimprimir último ticket' }));
-
-    await waitFor(() => expect(backend.ticketCalls).toEqual(['/api/v1/sales/42/tickets']));
-    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
-    expect(printMocks.thermal).toHaveBeenCalledWith(
-      'TICKET ANTERIOR',
-      expect.any(Object),
-      expect.any(Object),
-    );
+    await screen.findByRole('link', { name: 'Tickets' });
+    expect(
+      screen.queryByRole('button', { name: 'Reimprimir último ticket' }),
+    ).not.toBeInTheDocument();
   });
 
   it('signs out the cashier without closing the till or discarding its terminal', async () => {
