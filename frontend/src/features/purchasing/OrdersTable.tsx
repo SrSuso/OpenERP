@@ -60,7 +60,7 @@ export function OrdersTable({
                     type="button"
                     onClick={() => onToggleExpand(order.id)}
                     aria-expanded={expandedId === order.id}
-                    className="inline-flex min-h-9 items-center rounded border border-brand-700 bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:ring-offset-2"
+                    className="inline-flex min-h-9 items-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-100 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:ring-offset-2"
                   >
                     {expandedId === order.id ? 'Ocultar detalles' : 'Ver detalles'}
                   </button>
