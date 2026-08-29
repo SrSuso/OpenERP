@@ -17,6 +17,24 @@ let securityConfigured: Promise<boolean> | undefined;
 const QZ_OPERATION_TIMEOUT_MS = 12_000;
 const MILLIMETRES_PER_INCH = 25.4;
 const ESC_POS_MAX_FEED_DOTS = 255;
+// QZ documents this DLE/DC4 pulse as the raw ESC/POS signal to kick a cash
+// drawer. The drawer must be connected to the printer's dedicated RJ11/DK
+// port; it is not a command that Windows can send to an unrelated USB device.
+const CASH_DRAWER_PULSE = '\x10\x14\x01\x00\x05';
+
+// A checkout can open the drawer while the automatic receipt is being queued.
+// Serialising jobs preserves their order on the same QZ connection and avoids
+// two raw jobs competing for the Windows spooler.
+let queuedPrintJob: Promise<void> = Promise.resolve();
+
+function queuePrintJob<T>(job: () => Promise<T>): Promise<T> {
+  const result = queuedPrintJob.then(job, job);
+  queuedPrintJob = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -150,59 +168,83 @@ export async function testQzPrinterConnection(config: QzPrintConfig): Promise<Qz
   return { printerName: await findPrinter(config), signingEnabled };
 }
 
+/** Open the cash drawer attached to the selected ESC/POS thermal printer. */
+export function openCashDrawer(config: QzPrintConfig = DEFAULT_QZ_PRINT_CONFIG): Promise<void> {
+  return queuePrintJob(async () => {
+    await connectToQz(config);
+    const printer = await findPrinter(config);
+    const printConfig = qz.configs.create(printer, {
+      encoding: 'ISO-8859-1',
+      jobName: 'OpenERP abrir cajón',
+    });
+    try {
+      await qzWithin(
+        qz.print(printConfig, [CASH_DRAWER_PULSE]),
+        `abrir el cajón mediante «${printer}»`,
+      );
+    } catch (error) {
+      throw new ThermalPrinterError(
+        `QZ Tray no ha podido abrir el cajón mediante «${printer}». (${errorMessage(error)})`,
+      );
+    }
+  });
+}
+
 /** Send the exact preview raster through the Windows RAW spooler as ESC/POS. */
-export async function printThermalTicket(
+export function printThermalTicket(
   text: string,
   profile: TicketPrintProfile,
   config: QzPrintConfig = DEFAULT_QZ_PRINT_CONFIG,
 ): Promise<void> {
-  await connectToQz(config);
-  const printer = await findPrinter(config);
-  // Vertical margins are moved by the printer, rather than represented as
-  // blank image rows.  Some ESC/POS paths optimise blank raster rows away;
-  // ESC J cannot disappear and keeps the margin correct before the cutter.
-  const printProfile = {
-    ...profile,
-    margin_top_mm: 0,
-    margin_bottom_mm: 0,
-  };
-  const raster = await ticketRasterContentPngUrl(text, printProfile);
-  const geometry = ticketRasterGeometry(printProfile, 1);
-  const topMargin = verticalMarginFeed(profile.margin_top_mm);
-  const bottomMargin = verticalMarginFeed(profile.margin_bottom_mm);
-  const printConfig = qz.configs.create(printer, {
-    encoding: 'ISO-8859-1',
-    jobName: 'OpenERP ticket',
-  });
+  return queuePrintJob(async () => {
+    await connectToQz(config);
+    const printer = await findPrinter(config);
+    // Vertical margins are moved by the printer, rather than represented as
+    // blank image rows.  Some ESC/POS paths optimise blank raster rows away;
+    // ESC J cannot disappear and keeps the margin correct before the cutter.
+    const printProfile = {
+      ...profile,
+      margin_top_mm: 0,
+      margin_bottom_mm: 0,
+    };
+    const raster = await ticketRasterContentPngUrl(text, printProfile);
+    const geometry = ticketRasterGeometry(printProfile, 1);
+    const topMargin = verticalMarginFeed(profile.margin_top_mm);
+    const bottomMargin = verticalMarginFeed(profile.margin_bottom_mm);
+    const printConfig = qz.configs.create(printer, {
+      encoding: 'ISO-8859-1',
+      jobName: 'OpenERP ticket',
+    });
 
-  try {
-    await qzWithin(
-      qz.print(printConfig, [
-        '\x1b\x40',
-        // Define the physical print area in dots. GS v 0 then starts the
-        // cropped image at this left margin instead of at paper coordinate 0.
-        '\x1d\x50\xcb\xcb',
-        escPosUnsigned16('\x1d\x4c', geometry.contentLeftDots),
-        escPosUnsigned16('\x1d\x57', geometry.contentWidthDots),
-        ...(topMargin === null ? [] : [topMargin]),
-        {
-          type: 'raw',
-          format: 'image',
-          data: raster,
-          options: {
-            language: 'ESCPOS',
-            dotDensity: 'double',
-            imageEncoding: 'gs_v_0',
+    try {
+      await qzWithin(
+        qz.print(printConfig, [
+          '\x1b\x40',
+          // Define the physical print area in dots. GS v 0 then starts the
+          // cropped image at this left margin instead of at paper coordinate 0.
+          '\x1d\x50\xcb\xcb',
+          escPosUnsigned16('\x1d\x4c', geometry.contentLeftDots),
+          escPosUnsigned16('\x1d\x57', geometry.contentWidthDots),
+          ...(topMargin === null ? [] : [topMargin]),
+          {
+            type: 'raw',
+            format: 'image',
+            data: raster,
+            options: {
+              language: 'ESCPOS',
+              dotDensity: 'double',
+              imageEncoding: 'gs_v_0',
+            },
           },
-        },
-        ...(bottomMargin === null ? [] : [bottomMargin]),
-        '\x1d\x56\x00',
-      ]),
-      `enviar el ticket a «${printer}»`,
-    );
-  } catch (error) {
-    throw new ThermalPrinterError(
-      `QZ Tray no ha podido imprimir en «${printer}». (${errorMessage(error)})`,
-    );
-  }
+          ...(bottomMargin === null ? [] : [bottomMargin]),
+          '\x1d\x56\x00',
+        ]),
+        `enviar el ticket a «${printer}»`,
+      );
+    } catch (error) {
+      throw new ThermalPrinterError(
+        `QZ Tray no ha podido imprimir en «${printer}». (${errorMessage(error)})`,
+      );
+    }
+  });
 }

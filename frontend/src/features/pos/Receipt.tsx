@@ -1,9 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { generateTicket, type Sale, type Ticket } from '@/features/pos/api';
 import { useSettledShopFlag } from '@/features/settings/useShopSettings';
 import { TicketPrintSurface } from '@/features/tickets/TicketPrintSurface';
+import { useSettledQzPrintConfig } from '@/features/tickets/qzConfig';
+import { openCashDrawer } from '@/features/tickets/qzPrinter';
 import { ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 
@@ -32,7 +34,10 @@ function describeError(error: unknown): string {
  */
 export function Receipt({ sale, onDismiss }: ReceiptProps) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [drawerError, setDrawerError] = useState<string | null>(null);
   const printOnCheckout = useSettledShopFlag('pos.print_ticket_on_checkout', true);
+  const qzConfig = useSettledQzPrintConfig();
+  const isCashSale = sale.payments.some((payment) => payment.method === 'CASH');
 
   const printMutation = useMutation({
     mutationFn: () => generateTicket(sale.id),
@@ -43,6 +48,24 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   // dos veces mandaría dos trabajos a la impresora.
   const { mutate: print } = printMutation;
   const printed = useRef(false);
+  const drawerAttempted = useRef(false);
+
+  const openDrawer = useCallback(async () => {
+    if (qzConfig === undefined) return;
+    drawerAttempted.current = true;
+    setDrawerError(null);
+    try {
+      await openCashDrawer(qzConfig);
+    } catch (error) {
+      setDrawerError(error instanceof Error ? error.message : 'No se ha podido abrir el cajón.');
+    }
+  }, [qzConfig]);
+
+  useEffect(() => {
+    if (!isCashSale || qzConfig === undefined || drawerAttempted.current) return;
+    void openDrawer();
+  }, [isCashSale, openDrawer, qzConfig]);
+
   useEffect(() => {
     // `undefined` = todavía no se sabe si la tienda lo quiere: esperar es
     // lo correcto, porque imprimir no se puede deshacer.
@@ -92,6 +115,22 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
         <p role="alert" className="text-sm text-red-400">
           {describeError(printMutation.error)}
         </p>
+      )}
+
+      {drawerError !== null && (
+        <div className="max-w-md rounded border border-amber-500/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+          <p>{drawerError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              drawerAttempted.current = false;
+              void openDrawer();
+            }}
+            className="mt-2 font-medium underline"
+          >
+            Reintentar abrir el cajón
+          </button>
+        </div>
       )}
 
       <div className="flex gap-3">

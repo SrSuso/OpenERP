@@ -46,7 +46,7 @@ vi.mock('./qzSecurityApi', () => ({
   signQzDigest: qzMocks.sign,
 }));
 
-import { printThermalTicket, testQzPrinterConnection } from './qzPrinter';
+import { openCashDrawer, printThermalTicket, testQzPrinterConnection } from './qzPrinter';
 
 const PROFILE = {
   printable_width_mm: 72,
@@ -110,6 +110,22 @@ describe('QZ thermal printer adapter', () => {
         },
       },
       '\x1d\x56\x00',
+    ]);
+  });
+
+  it('sends the raw ESC/POS pulse to open the drawer on the configured printer', async () => {
+    await openCashDrawer({
+      host: '192.168.1.50',
+      securePort: 8282,
+      printerName: 'Caja charcutería',
+    });
+
+    expect(qzMocks.create).toHaveBeenCalledWith(
+      'Caja charcutería',
+      expect.objectContaining({ jobName: 'OpenERP abrir cajón' }),
+    );
+    expect(qzMocks.print).toHaveBeenCalledWith({ printer: 'Caja charcutería' }, [
+      '\x10\x14\x01\x00\x05',
     ]);
   });
 

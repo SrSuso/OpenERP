@@ -127,6 +127,11 @@ Si QZ o la impresora no están disponibles se muestra el motivo y se permite
 reintentar. La preparación está en
 [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md#34-la-caja-impresión-térmica-con-qz-tray).
 
+Si el cobro incluye **efectivo**, el TPV ordena a la impresora térmica mediante
+QZ Tray abrir el cajón conectado a su puerto de cajón. Una venta sólo con tarjeta
+no lo abre. Si no se abre, el cobro sigue registrado y aparece **Reintentar abrir
+el cajón**; no cobres la venta por segunda vez.
+
 Un administrador configura la dirección del PC de impresión, el puerto seguro y
 el nombre exacto de la impresora en **Configuración de la tienda → Terminales POS
 → Impresión mediante QZ Tray**. Después de guardar, el botón de prueba confirma

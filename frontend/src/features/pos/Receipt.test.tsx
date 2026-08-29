@@ -3,9 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+const printMocks = vi.hoisted(() => ({
+  thermal: vi.fn(() => Promise.resolve()),
+  drawer: vi.fn(() => Promise.resolve()),
+}));
 
-vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
+vi.mock('@/features/tickets/qzPrinter', () => ({
+  printThermalTicket: printMocks.thermal,
+  openCashDrawer: printMocks.drawer,
+}));
 
 import { Receipt } from './Receipt';
 import { type Sale } from './api';
@@ -84,6 +90,7 @@ function stubBackend(values: Record<string, string>) {
 describe('Receipt', () => {
   beforeEach(() => {
     printMocks.thermal.mockReset().mockResolvedValue(undefined);
+    printMocks.drawer.mockReset().mockResolvedValue(undefined);
   });
 
   it('shows the total charged', () => {
@@ -97,6 +104,32 @@ describe('Receipt', () => {
 
     expect(screen.getByText('Efectivo')).toBeInTheDocument();
     expect(screen.getByText('50,00 €')).toBeInTheDocument();
+  });
+
+  it('opens the cash drawer through QZ after a cash sale', async () => {
+    stubBackend({ 'pos.print_ticket_on_checkout': 'false' });
+    renderReceipt();
+
+    await waitFor(() => expect(printMocks.drawer).toHaveBeenCalledTimes(1));
+    expect(printMocks.drawer).toHaveBeenCalledWith(
+      expect.objectContaining({ printerName: 'POSPrinter POS-80' }),
+    );
+  });
+
+  it('does not open the drawer for a card-only sale', async () => {
+    stubBackend({ 'pos.print_ticket_on_checkout': 'false' });
+    renderReceipt({
+      sale: {
+        ...PAID_SALE,
+        payments: [
+          { id: 2, method: 'CARD', amount: '20.000000', created_at: PAID_SALE.created_at },
+        ],
+        change_due: '0.000000',
+      },
+    });
+
+    await screen.findByText('Venta cobrada');
+    expect(printMocks.drawer).not.toHaveBeenCalled();
   });
 
   it('shows the change due when there is any', () => {

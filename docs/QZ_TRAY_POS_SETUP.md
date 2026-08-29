@@ -42,6 +42,23 @@ Si cambia, hay que regenerar el certificado QZ y actualizar el panel.
 4. Instala [QZ Tray](https://qz.io/download/), ábrelo y activa su inicio
    automático con Windows. El icono de QZ debe permanecer junto al reloj.
 
+### 1.1. Conectar y probar el cajón de efectivo
+
+El cajón no se conecta a Ubuntu ni directamente a QZ: conecta su cable RJ11/RJ12
+al puerto **DK**, **Cash drawer** o similar de la parte trasera de la impresora
+`POSPrinter POS-80`. No lo conectes a una toma telefónica o Ethernet.
+
+Una vez guardado en OpenERP el mismo nombre de impresora que usa QZ, cada venta
+cobrada total o parcialmente en **efectivo** envía una orden ESC/POS para abrir
+el cajón. Las ventas exclusivamente con tarjeta no lo abren. Si la orden falla,
+la venta ya queda cobrada y el TPV muestra **Reintentar abrir el cajón**: no se
+debe repetir el cobro.
+
+Si no abre, confirma primero que el cajón es compatible con el pulso de apertura
+de la impresora y consulta el manual del fabricante de la impresora/cajón. QZ
+envía el comando RAW estándar; no puede alimentar ni reparar un cableado o un
+cajón incompatible.
+
 ## 2. Caso simple: el TPV está en el mismo PC que QZ
 
 En **Configuración de la tienda → Terminales POS → Impresión mediante QZ Tray**
