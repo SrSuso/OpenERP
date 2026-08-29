@@ -45,10 +45,23 @@ export const POS_TERMINAL_SETTING_KEYS = [
   'pos.default_payment_method',
   'pos.show_other_payment',
   'pos.surface_color',
+  'pos.panel_color',
+  'pos.border_color',
+  'pos.text_color',
+  'pos.muted_text_color',
+  'pos.amount_color',
+  'pos.input_background_color',
+  'pos.input_text_color',
   'pos.font_size_px',
   'ui.pos_button_color',
+  'ui.pos_button_hover_color',
+  'ui.pos_button_text_color',
   'ui.pos_secondary_button_color',
+  'ui.pos_secondary_button_hover_color',
+  'ui.pos_secondary_button_text_color',
   'ui.pos_danger_button_color',
+  'ui.pos_danger_button_hover_color',
+  'ui.pos_danger_button_text_color',
 ] as const;
 
 export const QZ_PRINT_SETTING_KEYS = [

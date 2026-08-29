@@ -7,8 +7,14 @@ import { hexToOklch, oklchString } from '@/lib/oklch';
  * para el panel, verde para las acciones de la caja. */
 const DEFAULT_PANEL = '#2b5bb5';
 const DEFAULT_TILL = '#059669';
+const DEFAULT_TILL_HOVER = '#10b981';
+const DEFAULT_TILL_TEXT = '#ffffff';
 const DEFAULT_POS_SECONDARY = '#334155';
+const DEFAULT_POS_SECONDARY_HOVER = '#475569';
+const DEFAULT_POS_SECONDARY_TEXT = '#f8fafc';
 const DEFAULT_POS_DANGER = '#b91c1c';
+const DEFAULT_POS_DANGER_HOVER = '#dc2626';
+const DEFAULT_POS_DANGER_TEXT = '#ffffff';
 
 /** Cada tono de la escala, con su claridad y su saturación fijas.
  *
@@ -27,26 +33,6 @@ const PANEL_RAMP: Record<string, { l: number; c: number }> = {
   '--color-brand-700': { l: 0.44, c: 0.14 },
 };
 
-const TILL_RAMP: Record<string, { l: number; c: number }> = {
-  '--color-till-500': { l: 0.7, c: 0.17 },
-  '--color-till-600': { l: 0.6, c: 0.145 },
-};
-
-/** Los botones normales no pueden seguir heredando gris de Tailwind: su
- * tono también es una decisión de la tienda. Los dos tonos permiten que el
- * hover siga siendo perceptible sin cambiar el color elegido por otro. */
-const POS_SECONDARY_RAMP: Record<string, { l: number; c: number }> = {
-  '--color-pos-secondary-500': { l: 0.45, c: 0.05 },
-  '--color-pos-secondary-600': { l: 0.37, c: 0.045 },
-};
-
-/** Anular una venta debe seguir distinguiéndose incluso aunque se cambien
- * todos los demás colores de la caja. */
-const POS_DANGER_RAMP: Record<string, { l: number; c: number }> = {
-  '--color-pos-danger-500': { l: 0.56, c: 0.19 },
-  '--color-pos-danger-600': { l: 0.49, c: 0.17 },
-};
-
 function applyRamp(
   ramp: Record<string, { l: number; c: number }>,
   hex: string,
@@ -63,6 +49,32 @@ function applyRamp(
   }
 }
 
+/** Los colores del TPV son literales: negro tiene que seguir siendo negro.
+ * El único trabajo defensivo es sustituir una cadena inválida por el valor
+ * de fábrica, nunca modificar brillo, saturación ni contraste. */
+function exactColour(value: string, fallback: string): string {
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+function applyExactButtonColours(
+  variables: { background: string; hover: string; text: string },
+  values: { background: string; hover: string; text: string },
+  fallbacks: { background: string; hover: string; text: string },
+): void {
+  document.documentElement.style.setProperty(
+    variables.background,
+    exactColour(values.background, fallbacks.background),
+  );
+  document.documentElement.style.setProperty(
+    variables.hover,
+    exactColour(values.hover, fallbacks.hover),
+  );
+  document.documentElement.style.setProperty(
+    variables.text,
+    exactColour(values.text, fallbacks.text),
+  );
+}
+
 /**
  * Aplica los colores de botón elegidos en Configuración y, para la caja,
  * en Terminales POS.
@@ -75,23 +87,83 @@ function applyRamp(
 export function useButtonColors(): void {
   const panel = useShopSetting('ui.button_color', DEFAULT_PANEL);
   const till = useShopSetting('ui.pos_button_color', DEFAULT_TILL);
+  const tillHover = useShopSetting('ui.pos_button_hover_color', DEFAULT_TILL_HOVER);
+  const tillText = useShopSetting('ui.pos_button_text_color', DEFAULT_TILL_TEXT);
   const posSecondary = useShopSetting('ui.pos_secondary_button_color', DEFAULT_POS_SECONDARY);
+  const posSecondaryHover = useShopSetting(
+    'ui.pos_secondary_button_hover_color',
+    DEFAULT_POS_SECONDARY_HOVER,
+  );
+  const posSecondaryText = useShopSetting(
+    'ui.pos_secondary_button_text_color',
+    DEFAULT_POS_SECONDARY_TEXT,
+  );
   const posDanger = useShopSetting('ui.pos_danger_button_color', DEFAULT_POS_DANGER);
+  const posDangerHover = useShopSetting(
+    'ui.pos_danger_button_hover_color',
+    DEFAULT_POS_DANGER_HOVER,
+  );
+  const posDangerText = useShopSetting('ui.pos_danger_button_text_color', DEFAULT_POS_DANGER_TEXT);
 
   useEffect(() => {
     applyRamp(PANEL_RAMP, panel, DEFAULT_PANEL);
-    applyRamp(TILL_RAMP, till, DEFAULT_TILL);
-    applyRamp(POS_SECONDARY_RAMP, posSecondary, DEFAULT_POS_SECONDARY);
-    applyRamp(POS_DANGER_RAMP, posDanger, DEFAULT_POS_DANGER);
+    applyExactButtonColours(
+      { background: '--color-till-600', hover: '--color-till-500', text: '--color-till-text' },
+      { background: till, hover: tillHover, text: tillText },
+      { background: DEFAULT_TILL, hover: DEFAULT_TILL_HOVER, text: DEFAULT_TILL_TEXT },
+    );
+    applyExactButtonColours(
+      {
+        background: '--color-pos-secondary-600',
+        hover: '--color-pos-secondary-500',
+        text: '--color-pos-secondary-text',
+      },
+      { background: posSecondary, hover: posSecondaryHover, text: posSecondaryText },
+      {
+        background: DEFAULT_POS_SECONDARY,
+        hover: DEFAULT_POS_SECONDARY_HOVER,
+        text: DEFAULT_POS_SECONDARY_TEXT,
+      },
+    );
+    applyExactButtonColours(
+      {
+        background: '--color-pos-danger-600',
+        hover: '--color-pos-danger-500',
+        text: '--color-pos-danger-text',
+      },
+      { background: posDanger, hover: posDangerHover, text: posDangerText },
+      {
+        background: DEFAULT_POS_DANGER,
+        hover: DEFAULT_POS_DANGER_HOVER,
+        text: DEFAULT_POS_DANGER_TEXT,
+      },
+    );
     return () => {
       for (const variable of [
         ...Object.keys(PANEL_RAMP),
-        ...Object.keys(TILL_RAMP),
-        ...Object.keys(POS_SECONDARY_RAMP),
-        ...Object.keys(POS_DANGER_RAMP),
+        '--color-till-600',
+        '--color-till-500',
+        '--color-till-text',
+        '--color-pos-secondary-600',
+        '--color-pos-secondary-500',
+        '--color-pos-secondary-text',
+        '--color-pos-danger-600',
+        '--color-pos-danger-500',
+        '--color-pos-danger-text',
       ]) {
         document.documentElement.style.removeProperty(variable);
       }
     };
-  }, [panel, till, posSecondary, posDanger]);
+  }, [
+    panel,
+    till,
+    tillHover,
+    tillText,
+    posSecondary,
+    posSecondaryHover,
+    posSecondaryText,
+    posDanger,
+    posDangerHover,
+    posDangerText,
+  ]);
 }

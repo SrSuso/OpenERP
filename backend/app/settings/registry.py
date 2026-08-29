@@ -262,11 +262,88 @@ SETTINGS: tuple[SettingDef, ...] = (
         group=GROUP_POS,
         label="Color de fondo del TPV",
         help=(
-            "El fondo principal de la pantalla de venta. Elige preferiblemente un color oscuro "
-            "para conservar el contraste de los importes y los controles táctiles."
+            "El fondo principal de la pantalla de venta. Se usa exactamente el color elegido, "
+            "sin aclararlo, oscurecerlo ni cambiar su saturación automáticamente."
         ),
         type=SettingType.COLOR,
         default="#0f172a",
+    ),
+    SettingDef(
+        key="pos.panel_color",
+        group=GROUP_POS,
+        label="Color de paneles y ventanas del TPV",
+        help=(
+            "Fondo de la cesta, cobro, diálogos y demás superficies elevadas de la caja. "
+            "Se aplica exactamente como lo elijas."
+        ),
+        type=SettingType.COLOR,
+        default="#1e293b",
+    ),
+    SettingDef(
+        key="pos.border_color",
+        group=GROUP_POS,
+        label="Color de bordes y separadores del TPV",
+        help=(
+            "Color de las líneas que separan paneles, formularios y controles de la caja. "
+            "El TPV no calcula tonos alternativos para este ajuste."
+        ),
+        type=SettingType.COLOR,
+        default="#475569",
+    ),
+    SettingDef(
+        key="pos.text_color",
+        group=GROUP_POS,
+        label="Color del texto principal del TPV",
+        help=(
+            "Color de los títulos y textos principales sobre el fondo de la caja. Elígelo "
+            "con el contraste que quieras usar; no se modifica automáticamente."
+        ),
+        type=SettingType.COLOR,
+        default="#f8fafc",
+    ),
+    SettingDef(
+        key="pos.muted_text_color",
+        group=GROUP_POS,
+        label="Color del texto secundario del TPV",
+        help=(
+            "Color de ayudas, etiquetas y detalles secundarios de la caja. Se guarda tal cual "
+            "para que puedas decidir la luminosidad y saturación exactas."
+        ),
+        type=SettingType.COLOR,
+        default="#cbd5e1",
+    ),
+    SettingDef(
+        key="pos.amount_color",
+        group=GROUP_POS,
+        label="Color de importes y totales del TPV",
+        help=(
+            "Color de los precios, importes y totales que aparecen en la caja. No se mezcla "
+            "con el fondo ni se transforma para generar contraste."
+        ),
+        type=SettingType.COLOR,
+        default="#34d399",
+    ),
+    SettingDef(
+        key="pos.input_background_color",
+        group=GROUP_POS,
+        label="Color de campos de entrada del TPV",
+        help=(
+            "Fondo de los campos donde se escanea, busca o introduce un importe. El valor se "
+            "aplica literalmente, sin una capa gris por encima."
+        ),
+        type=SettingType.COLOR,
+        default="#0f172a",
+    ),
+    SettingDef(
+        key="pos.input_text_color",
+        group=GROUP_POS,
+        label="Color de texto en campos del TPV",
+        help=(
+            "Color del texto escrito dentro de los campos de búsqueda, escáner e importes. "
+            "Configúralo independientemente del resto del texto."
+        ),
+        type=SettingType.COLOR,
+        default="#f8fafc",
     ),
     SettingDef(
         key="pos.font_size_px",
@@ -423,11 +500,32 @@ SETTINGS: tuple[SettingDef, ...] = (
         label="Color de los botones principales del TPV",
         help=(
             "El de las acciones que confirman una operación: cobrar, añadir al carrito, "
-            "aceptar una cantidad o cerrar caja. Se aplica directamente al fondo del botón "
-            "y conserva un contraste legible."
+            "aceptar una cantidad o cerrar caja. Se aplica exactamente al fondo del botón."
         ),
         type=SettingType.COLOR,
         default="#059669",
+    ),
+    SettingDef(
+        key="ui.pos_button_hover_color",
+        group=GROUP_POS,
+        label="Color al tocar un botón principal del TPV",
+        help=(
+            "Color del estado al pasar o pulsar un botón principal. Es un valor independiente: "
+            "la aplicación no lo calcula ni lo aclara a partir del fondo principal."
+        ),
+        type=SettingType.COLOR,
+        default="#10b981",
+    ),
+    SettingDef(
+        key="ui.pos_button_text_color",
+        group=GROUP_POS,
+        label="Color del texto de botones principales del TPV",
+        help=(
+            "Texto de Cobrar, confirmar y demás acciones principales. Puedes definir su propio "
+            "contraste frente al fondo sin que el TPV lo sustituya."
+        ),
+        type=SettingType.COLOR,
+        default="#ffffff",
     ),
     SettingDef(
         key="ui.pos_secondary_button_color",
@@ -442,6 +540,28 @@ SETTINGS: tuple[SettingDef, ...] = (
         default="#334155",
     ),
     SettingDef(
+        key="ui.pos_secondary_button_hover_color",
+        group=GROUP_POS,
+        label="Color al tocar un botón general del TPV",
+        help=(
+            "Color del estado al pasar o pulsar productos, teclado, navegación y métodos de "
+            "pago no seleccionados. Se configura por separado del fondo del botón."
+        ),
+        type=SettingType.COLOR,
+        default="#475569",
+    ),
+    SettingDef(
+        key="ui.pos_secondary_button_text_color",
+        group=GROUP_POS,
+        label="Color del texto de botones generales del TPV",
+        help=(
+            "Texto de productos, teclas, navegación y acciones secundarias. El valor elegido "
+            "se muestra exactamente, sin correcciones automáticas de contraste."
+        ),
+        type=SettingType.COLOR,
+        default="#f8fafc",
+    ),
+    SettingDef(
         key="ui.pos_danger_button_color",
         group=GROUP_POS,
         label="Color de los botones de anulación del TPV",
@@ -451,6 +571,28 @@ SETTINGS: tuple[SettingDef, ...] = (
         ),
         type=SettingType.COLOR,
         default="#b91c1c",
+    ),
+    SettingDef(
+        key="ui.pos_danger_button_hover_color",
+        group=GROUP_POS,
+        label="Color al tocar un botón de anulación del TPV",
+        help=(
+            "Color del estado al pasar o pulsar una acción de anulación. Se guarda de forma "
+            "independiente para que puedas controlarlo sin ningún cálculo automático."
+        ),
+        type=SettingType.COLOR,
+        default="#dc2626",
+    ),
+    SettingDef(
+        key="ui.pos_danger_button_text_color",
+        group=GROUP_POS,
+        label="Color del texto de botones de anulación del TPV",
+        help=(
+            "Texto de cancelar venta, quitar línea y demás acciones destructivas. Define tú "
+            "mismo el contraste con el fondo de ese botón."
+        ),
+        type=SettingType.COLOR,
+        default="#ffffff",
     ),
 )
 

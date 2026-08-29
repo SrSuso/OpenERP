@@ -21,14 +21,26 @@
      features/settings/useButtonColors.ts). */
   --color-till-500: oklch(0.7 0.17 162.5);
   --color-till-600: oklch(0.6 0.145 163.2);
+  --color-till-text: #ffffff;
 
   /* Las tres familias de botones del TPV se actualizan desde Terminales
      POS. No se usa slate como fondo de un botón interactivo: hacerlo
      ocultaba el color configurado bajo una base gris. */
   --color-pos-secondary-500: oklch(0.45 0.05 257.8);
   --color-pos-secondary-600: oklch(0.37 0.045 257.8);
+  --color-pos-secondary-text: #f8fafc;
   --color-pos-danger-500: oklch(0.56 0.19 29.2);
   --color-pos-danger-600: oklch(0.49 0.17 29.2);
+  --color-pos-danger-text: #ffffff;
+
+  --pos-surface-color: #0f172a;
+  --pos-panel-color: #1e293b;
+  --pos-border-color: #475569;
+  --pos-text-color: #f8fafc;
+  --pos-muted-text-color: #cbd5e1;
+  --pos-amount-color: #34d399;
+  --pos-input-background-color: #0f172a;
+  --pos-input-text-color: #f8fafc;
 
   /* Minimum touch target for POS controls (WCAG 2.2 target size is 24px; a
      supermarket till wants far more). */
@@ -49,6 +61,8 @@
   /* The POS is operated by touch: suppress the double-tap zoom and the blue
      tap highlight that make a till feel unresponsive. */
   .pos-surface {
+    background-color: var(--pos-surface-color);
+    color: var(--pos-text-color);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
@@ -56,9 +70,44 @@
 }
 
 @layer components {
+  /* Cada rol visual tiene su propio ajuste literal. Estas reglas no mezclan
+     ni derivan colores: sólo reemplazan los grises de fábrica del TPV por
+     el valor elegido en Terminales POS. */
+  .pos-surface :is(.bg-slate-800, .bg-slate-800\/50) {
+    background-color: var(--pos-panel-color) !important;
+  }
+
+  .pos-surface :is(input, select, textarea):is(.bg-slate-800, .bg-slate-900) {
+    background-color: var(--pos-input-background-color) !important;
+    color: var(--pos-input-text-color) !important;
+  }
+
+  .pos-surface
+    :is(
+      .border-slate-300,
+      .border-slate-400,
+      .border-slate-500,
+      .border-slate-600,
+      .border-slate-700
+    ) {
+    border-color: var(--pos-border-color) !important;
+  }
+
+  .pos-surface :is(.text-slate-50, .text-slate-100, .text-slate-200) {
+    color: var(--pos-text-color) !important;
+  }
+
+  .pos-surface :is(.text-slate-300, .text-slate-400, .text-slate-500, .text-slate-600) {
+    color: var(--pos-muted-text-color) !important;
+  }
+
+  .pos-surface .text-emerald-400 {
+    color: var(--pos-amount-color) !important;
+  }
+
   .pos-button-primary {
     background-color: var(--color-till-600);
-    color: white;
+    color: var(--color-till-text);
   }
 
   .pos-button-primary:hover:not(:disabled) {
@@ -67,7 +116,7 @@
 
   .pos-button-secondary {
     background-color: var(--color-pos-secondary-600);
-    color: var(--color-slate-50);
+    color: var(--color-pos-secondary-text);
   }
 
   .pos-button-secondary:hover:not(:disabled) {
@@ -76,7 +125,7 @@
 
   .pos-button-danger {
     background-color: var(--color-pos-danger-600);
-    color: white;
+    color: var(--color-pos-danger-text);
   }
 
   .pos-button-danger:hover:not(:disabled) {

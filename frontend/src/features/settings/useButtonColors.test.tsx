@@ -62,23 +62,32 @@ describe('useButtonColors', () => {
   it('paints the till buttons from their own setting', async () => {
     renderWithSettings({ 'ui.button_color': '#ff0000', 'ui.pos_button_color': '#0000ff' });
 
-    await waitFor(() =>
-      expect(variable('--color-till-600')).toContain(hexToOklch('#0000ff')!.h.toFixed(1)),
-    );
+    await waitFor(() => expect(variable('--color-till-600')).toBe('#0000ff'));
     // Y no se contagian entre ellos: son dos familias distintas a propósito.
     expect(variable('--color-brand-700')).toContain(hexToOklch('#ff0000')!.h.toFixed(1));
   });
 
-  it('gives the normal and destructive POS buttons their own configured colours', async () => {
+  it('uses the exact configured POS colours, including black', async () => {
     renderWithSettings({
+      'ui.pos_button_color': '#000000',
+      'ui.pos_button_hover_color': '#101010',
+      'ui.pos_button_text_color': '#f0f0f0',
       'ui.pos_secondary_button_color': '#7c3aed',
+      'ui.pos_secondary_button_hover_color': '#6d28d9',
+      'ui.pos_secondary_button_text_color': '#ffffff',
       'ui.pos_danger_button_color': '#ea580c',
+      'ui.pos_danger_button_hover_color': '#c2410c',
+      'ui.pos_danger_button_text_color': '#101010',
     });
 
-    await waitFor(() =>
-      expect(variable('--color-pos-secondary-600')).toContain(hexToOklch('#7c3aed')!.h.toFixed(1)),
-    );
-    expect(variable('--color-pos-danger-600')).toContain(hexToOklch('#ea580c')!.h.toFixed(1));
+    await waitFor(() => expect(variable('--color-till-600')).toBe('#000000'));
+    expect(variable('--color-till-500')).toBe('#101010');
+    expect(variable('--color-till-text')).toBe('#f0f0f0');
+    expect(variable('--color-pos-secondary-600')).toBe('#7c3aed');
+    expect(variable('--color-pos-secondary-500')).toBe('#6d28d9');
+    expect(variable('--color-pos-danger-600')).toBe('#ea580c');
+    expect(variable('--color-pos-danger-500')).toBe('#c2410c');
+    expect(variable('--color-pos-danger-text')).toBe('#101010');
   });
 
   it('falls back to the factory colour when the value is not a colour', async () => {

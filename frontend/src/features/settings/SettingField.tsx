@@ -1,5 +1,148 @@
+import { useEffect, useState } from 'react';
+
 import { type SettingDefinition } from '@/features/settings/optionsApi';
 import { formatQuantity } from '@/lib/format';
+
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
+
+function normaliseColour(value: string): string {
+  return HEX_COLOUR.test(value) ? value.toLowerCase() : '#000000';
+}
+
+function hexToHsl(hex: string): { hue: number; saturation: number; lightness: number } {
+  const source = normaliseColour(hex);
+  const red = Number.parseInt(source.slice(1, 3), 16) / 255;
+  const green = Number.parseInt(source.slice(3, 5), 16) / 255;
+  const blue = Number.parseInt(source.slice(5, 7), 16) / 255;
+  const maximum = Math.max(red, green, blue);
+  const minimum = Math.min(red, green, blue);
+  const delta = maximum - minimum;
+  const lightness = (maximum + minimum) / 2;
+  if (delta === 0) return { hue: 0, saturation: 0, lightness: Math.round(lightness * 100) };
+
+  let hue = 0;
+  if (maximum === red) hue = ((green - blue) / delta) % 6;
+  else if (maximum === green) hue = (blue - red) / delta + 2;
+  else hue = (red - green) / delta + 4;
+  hue = Math.round(hue * 60);
+  if (hue < 0) hue += 360;
+
+  const saturation = delta / (1 - Math.abs(2 * lightness - 1));
+  return { hue, saturation: Math.round(saturation * 100), lightness: Math.round(lightness * 100) };
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const normalisedHue = ((hue % 360) + 360) % 360;
+  const chroma = (1 - Math.abs(2 * (lightness / 100) - 1)) * (saturation / 100);
+  const segment = normalisedHue / 60;
+  const match = chroma * (1 - Math.abs((segment % 2) - 1));
+  const offset = lightness / 100 - chroma / 2;
+  const [red, green, blue] =
+    segment < 1
+      ? [chroma, match, 0]
+      : segment < 2
+        ? [match, chroma, 0]
+        : segment < 3
+          ? [0, chroma, match]
+          : segment < 4
+            ? [0, match, chroma]
+            : segment < 5
+              ? [match, 0, chroma]
+              : [chroma, 0, match];
+  const channel = (value: number) =>
+    Math.round((value + offset) * 255)
+      .toString(16)
+      .padStart(2, '0');
+  return `#${channel(red)}${channel(green)}${channel(blue)}`;
+}
+
+function ColourControl({
+  id,
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const colour = normaliseColour(value);
+  const [hexDraft, setHexDraft] = useState(colour);
+  const { hue, saturation, lightness } = hexToHsl(colour);
+
+  useEffect(() => setHexDraft(colour), [colour]);
+
+  function choose(next: string) {
+    const exact = normaliseColour(next);
+    setHexDraft(exact);
+    onChange(exact);
+  }
+
+  return (
+    <div className="mt-1 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          id={id}
+          type="color"
+          value={colour}
+          disabled={disabled}
+          onChange={(event) => choose(event.target.value)}
+          className="h-9 w-16 cursor-pointer rounded border border-slate-300 disabled:cursor-not-allowed"
+        />
+        <input
+          type="text"
+          value={hexDraft}
+          disabled={disabled}
+          onChange={(event) => {
+            const next = event.target.value;
+            setHexDraft(next);
+            if (HEX_COLOUR.test(next)) choose(next);
+          }}
+          aria-label={`${label}: hexadecimal`}
+          spellCheck={false}
+          maxLength={7}
+          className="w-24 rounded border border-slate-300 px-2 py-1 font-mono text-xs disabled:bg-slate-50 disabled:text-slate-500"
+        />
+      </div>
+      <div className="grid max-w-xl gap-2 sm:grid-cols-3">
+        {(
+          [
+            ['Tono', 'hue', hue, 360],
+            ['Saturación', 'saturation', saturation, 100],
+            ['Luminosidad', 'lightness', lightness, 100],
+          ] as const
+        ).map(([name, channel, current, maximum]) => (
+          <label key={channel} className="text-xs text-slate-600">
+            {name}: {current}
+            {channel === 'hue' ? '°' : '%'}
+            <input
+              type="range"
+              min="0"
+              max={maximum}
+              value={current}
+              disabled={disabled}
+              aria-label={`${label}: ${name.toLowerCase()}`}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                choose(
+                  hslToHex(
+                    channel === 'hue' ? next : hue,
+                    channel === 'saturation' ? next : saturation,
+                    channel === 'lightness' ? next : lightness,
+                  ),
+                );
+              }}
+              className="mt-1 block w-full accent-brand-600"
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Cómo se lee un valor guardado cuando hay que nombrarlo en una frase
  * ("Valor por defecto: …") en vez de meterlo en un campo. */
@@ -95,19 +238,13 @@ export function SettingField({
       break;
     case 'COLOR':
       control = (
-        <span className="mt-1 flex items-center gap-2">
-          <input
-            id={inputId}
-            type="color"
-            value={value}
-            disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
-            className="h-9 w-16 cursor-pointer rounded border border-slate-300 disabled:cursor-not-allowed"
-          />
-          {/* El hexadecimal al lado, en pequeño: no hay que saberlo para
-              elegir, pero ayuda a repetir el mismo color en otro sitio. */}
-          <span className="font-mono text-xs text-slate-400">{value}</span>
-        </span>
+        <ColourControl
+          id={inputId}
+          label={definition.label}
+          value={value}
+          disabled={disabled}
+          onChange={onChange}
+        />
       );
       break;
     case 'SECRET':
