@@ -194,7 +194,6 @@ export function CreateProductForm({
   const amountInput = watch('margin_amount');
   const categoryId = watch('category_id');
   const tracksExpiration = watch('track_expiration');
-  const tracksLots = watch('track_lots');
   const initialStockQuantity = watch('initial_stock_quantity');
   const initialStockWarehouseId = watch('initial_stock_warehouse_id');
   const initialStockLocationId = watch('initial_stock_location_id');
@@ -213,12 +212,15 @@ export function CreateProductForm({
   );
 
   useEffect(() => {
-    if (tracksExpiration) setValue('track_lots', true);
+    // En tienda sólo se ofrece una opción: caducidad implica siempre lote.
+    // Al apagarla se apagan ambos controles, evitando productos "sólo lote"
+    // que no son útiles en esta operativa.
+    setValue('track_lots', tracksExpiration);
   }, [setValue, tracksExpiration]);
 
   useEffect(() => {
-    if (tracksLots) setValue('initial_stock_quantity', '0');
-  }, [setValue, tracksLots]);
+    if (tracksExpiration) setValue('initial_stock_quantity', '0');
+  }, [setValue, tracksExpiration]);
 
   useEffect(() => {
     const defaultUnit = categories.find(
@@ -538,7 +540,7 @@ export function CreateProductForm({
                 <input
                   type="text"
                   inputMode="decimal"
-                  disabled={tracksLots}
+                  disabled={tracksExpiration}
                   className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
                   {...register('initial_stock_quantity')}
                 />
@@ -551,7 +553,7 @@ export function CreateProductForm({
               <label>
                 Almacén
                 <select
-                  disabled={tracksLots || initialStockQuantity === '0'}
+                  disabled={tracksExpiration || initialStockQuantity === '0'}
                   className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
                   {...register('initial_stock_warehouse_id')}
                 >
@@ -571,7 +573,7 @@ export function CreateProductForm({
               <label>
                 Ubicación
                 <select
-                  disabled={tracksLots || initialStockQuantity === '0'}
+                  disabled={tracksExpiration || initialStockQuantity === '0'}
                   className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
                   {...register('initial_stock_location_id')}
                 >
@@ -589,7 +591,7 @@ export function CreateProductForm({
                 )}
               </label>
             </div>
-            {tracksLots && (
+            {tracksExpiration && (
               <p className="mt-2 text-xs text-amber-700">
                 Los productos con lotes se dan de alta sin stock: registra sus unidades y lote
                 mediante una recepción de compra.
@@ -602,16 +604,12 @@ export function CreateProductForm({
           <p className="mb-2 text-xs font-medium uppercase text-slate-500">Trazabilidad</p>
           <div className="space-y-2">
             <label className="flex items-center gap-2">
-              <input type="checkbox" disabled={tracksExpiration} {...register('track_lots')} />
-              Controla lotes
-            </label>
-            <label className="flex items-center gap-2">
               <input type="checkbox" {...register('track_expiration')} />
-              Controla caducidad
+              Control de caducidad y lotes
             </label>
           </div>
           <p className="mt-2 text-xs text-slate-400">
-            La caducidad requiere lotes y control de existencias; se activan automáticamente.
+            Al activarlo se guardan lote y fecha de caducidad, y se lleva control de existencias.
           </p>
         </div>
 

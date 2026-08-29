@@ -357,6 +357,22 @@ describe('ProductsPage', () => {
     });
   });
 
+  it('uses one traceability option to enable both expiry dates and lots', async () => {
+    const backend = stubBackend();
+    renderPage();
+    await screen.findByText('Agua 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Yogur');
+    await userEvent.selectOptions(screen.getByLabelText('Unidad base'), 'UNIT');
+    await userEvent.click(screen.getByLabelText('Control de caducidad y lotes'));
+
+    expect(screen.queryByLabelText('Controla lotes')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    expect(backend.createCalls[0]).toMatchObject({ track_lots: true, track_expiration: true });
+  });
+
   it('requires clicking Crear even when Enter is pressed in a valid new product form', async () => {
     const backend = stubBackend();
     const user = userEvent.setup();

@@ -460,10 +460,9 @@ describe('ProductDetailPage', () => {
     renderPage();
 
     await screen.findByDisplayValue('Agua 1L');
-    await userEvent.click(screen.getByLabelText('Controla caducidad'));
+    await userEvent.click(screen.getByLabelText('Control de caducidad y lotes'));
 
-    expect(screen.getByLabelText('Controla lotes')).toBeChecked();
-    expect(screen.getByLabelText('Controla lotes')).toBeDisabled();
+    expect(screen.queryByLabelText('Controla lotes')).not.toBeInTheDocument();
     const stockControl = screen.getByLabelText(/Control de existencias/);
     expect(stockControl).toHaveValue('yes');
     expect(stockControl).toBeDisabled();
