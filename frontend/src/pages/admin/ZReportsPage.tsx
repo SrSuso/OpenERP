@@ -29,7 +29,7 @@ export function ZReportsPage() {
     <section>
       <h1 className="mb-1 text-2xl font-semibold">Cierres de caja (Z)</h1>
       <p className="mb-4 text-sm text-slate-500">
-        Los totales de cada turno, tal y como se guardaron al cerrar. No cambian después.
+        Una Z por día comercial y almacén, con los totales congelados al cerrar. No cambian después.
       </p>
 
       {reports.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
@@ -38,7 +38,7 @@ export function ZReportsPage() {
       )}
       {reports.data && rows.length === 0 && (
         <p className="text-sm text-slate-500">
-          Todavía no hay ninguno. Se guarda uno cada vez que se cierra la caja desde el TPV.
+          Todavía no hay ninguno. Se guarda uno al cerrar la jornada desde el TPV.
         </p>
       )}
 
@@ -49,7 +49,7 @@ export function ZReportsPage() {
               <tr>
                 <th className="px-4 py-2 font-medium">Z nº</th>
                 <th className="px-4 py-2 font-medium">Cerrado</th>
-                <th className="px-4 py-2 font-medium">Desde</th>
+                <th className="px-4 py-2 font-medium">Inicio de jornada</th>
                 <th className="px-4 py-2 font-medium">Ventas</th>
                 <th className="px-4 py-2 font-medium">Efectivo</th>
                 <th className="px-4 py-2 font-medium">Tarjeta</th>
@@ -67,8 +67,8 @@ export function ZReportsPage() {
                     {formatBusinessDateTime(report.closed_at, businessTimezone)}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-slate-500">
-                    {/* La primera Z de una caja no tiene corte anterior:
-                        entró todo lo que hubiera hasta entonces. */}
+                    {/* Las Z antiguas, creadas antes del cierre diario,
+                        pueden no conservar el inicio de jornada. */}
                     {report.covers_from === null
                       ? 'el principio'
                       : formatBusinessDateTime(report.covers_from, businessTimezone)}

@@ -208,7 +208,7 @@ class Payment(IntPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
-    """El cierre de caja: los totales del turno, congelados.
+    """El cierre Z diario: los totales congelados de la jornada comercial.
 
     Se guarda calculado, no como una consulta que se rehaga al mirarla: una
     Z es el papel con el que se cuadra el cajón esa noche, y tiene que decir
@@ -216,9 +216,8 @@ class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
     se haya devuelto media compra o cambiado un precio. Mismo criterio que
     el texto del ticket (`app.tickets`).
 
-    El turno va del cierre anterior a éste: `covers_from` es el `closed_at`
-    de la Z anterior de ese almacén, o nulo la primera vez (entran todas las
-    ventas que haya). Así no hay huecos ni solapes entre dos Z seguidas.
+    Cada almacén admite una sola Z por día comercial. `covers_from` es el
+    inicio de esa jornada en UTC, con la zona horaria configurada para tienda.
 
     `number` es correlativo por almacén, que es lo que se espera de una Z y
     lo que hace que se note si falta una.
@@ -231,7 +230,7 @@ class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"), index=True)
     number: Mapped[int] = mapped_column(Integer)
-    #: Nulo en la primera Z: antes de ella no hay corte, así que entra todo.
+    #: Inicio de la jornada comercial. Las Z históricas pueden conservarlo nulo.
     covers_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

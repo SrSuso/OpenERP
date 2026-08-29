@@ -1,19 +1,9 @@
-"""El cierre de caja (la Z de totales).
+"""El cierre Z diario con sus totales congelados.
 
-Cerrar sesión en el TPV sin haber cuadrado el cajón deja el turno sin
-cerrar y sin nada con que reconciliarlo al día siguiente, así que la caja
-exige hacer la Z antes de salir. Aquí se calculan y se congelan sus
-totales; el TPV sólo la pide, la enseña y la imprime.
-
-Dos reglas que la hacen fiable:
-
-* El turno va **del cierre anterior a éste**, no "de hoy": si un día se
-  cierra a las ocho y otro a las dos de la mañana, seguir por fechas
-  dejaría ventas fuera de toda Z o dentro de dos. Encadenando por el
-  `closed_at` anterior no hay huecos ni solapes.
-* No se cierra con una venta a medias. Un carrito abierto acabará
-  cobrándose *después* del corte, así que quedaría fuera de esta Z y
-  dentro de la siguiente, cuadrando mal las dos.
+Cada almacén tiene una sola Z por día comercial. El primer cierre congela
+todo lo cobrado y devuelto desde medianoche de la zona horaria de la tienda;
+un segundo intento devuelve esa misma Z para reimprimirla sin crear otro
+periodo ni modificar el documento.
 """
 
 from __future__ import annotations
@@ -28,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import service as audit
+from app.core.business_time import business_date, business_day_utc_range
 from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
@@ -36,6 +27,7 @@ from app.returns.models import Refund, RefundStatus, Return
 from app.sales import accounting
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus, ZReport
 from app.sales.service import compute_line_totals, payable
+from app.settings.business_time import get_business_timezone
 
 _CLOSE_OPERATION = "z_report.close"
 
@@ -50,6 +42,30 @@ async def _last_close(session: AsyncSession, warehouse_id: int) -> ZReport | Non
             select(ZReport)
             .where(ZReport.warehouse_id == warehouse_id)
             .order_by(ZReport.number.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _business_day_window(
+    session: AsyncSession, instant: datetime
+) -> tuple[datetime, datetime]:
+    timezone = await get_business_timezone(session)
+    return business_day_utc_range(business_date(instant, timezone), timezone)
+
+
+async def _report_for_business_day(
+    session: AsyncSession, warehouse_id: int, *, start: datetime, end: datetime
+) -> ZReport | None:
+    return (
+        await session.execute(
+            select(ZReport)
+            .where(
+                ZReport.warehouse_id == warehouse_id,
+                ZReport.closed_at >= start,
+                ZReport.closed_at < end,
+            )
+            .order_by(ZReport.closed_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -73,11 +89,30 @@ async def open_sales(session: AsyncSession, warehouse_id: int) -> list[Sale]:
     return [sale for sale in (await session.execute(stmt)).scalars() if sale.lines]
 
 
-async def preview(session: AsyncSession, warehouse_id: int) -> dict[str, object]:
-    """Los totales que tendría la Z si se cerrase ahora, sin guardar nada —
-    lo que el TPV enseña antes de que se confirme el cierre."""
-    last = await _last_close(session, warehouse_id)
-    return await _totals(session, warehouse_id, since=last.closed_at if last else None)
+async def preview(
+    session: AsyncSession, warehouse_id: int
+) -> tuple[dict[str, object], ZReport | None]:
+    """La Z diaria existente, o los totales que tendría antes de crearla."""
+    now = await accounting.database_clock(session)
+    start, end = await _business_day_window(session, now)
+    existing = await _report_for_business_day(session, warehouse_id, start=start, end=end)
+    if existing is not None:
+        return (
+            {
+                "covers_from": existing.covers_from,
+                "sales_count": existing.sales_count,
+                "gross_total": existing.gross_total,
+                "tax_total": existing.tax_total,
+                "discount_total": existing.discount_total,
+                "cash_total": existing.cash_total,
+                "card_total": existing.card_total,
+                "other_total": existing.other_total,
+                "returns_count": existing.returns_count,
+                "returns_total": existing.returns_total,
+            },
+            existing,
+        )
+    return await _totals(session, warehouse_id, since=start, until=now), None
 
 
 async def _totals(
@@ -91,7 +126,7 @@ async def _totals(
         Sale.warehouse_id == warehouse_id, Sale.status == SaleStatus.COMPLETED
     )
     if since is not None:
-        sales_stmt = sales_stmt.where(Sale.completed_at > since)
+        sales_stmt = sales_stmt.where(Sale.completed_at >= since)
     if until is not None:
         sales_stmt = sales_stmt.where(Sale.completed_at <= until)
     sales = list((await session.execute(sales_stmt)).scalars())
@@ -153,7 +188,7 @@ async def _totals(
         )
     )
     if since is not None:
-        refunds_stmt = refunds_stmt.where(Refund.completed_at > since)
+        refunds_stmt = refunds_stmt.where(Refund.completed_at >= since)
     if until is not None:
         refunds_stmt = refunds_stmt.where(Refund.completed_at <= until)
     refunds = list((await session.execute(refunds_stmt)).scalars())
@@ -192,7 +227,7 @@ async def close(
     idempotency_key: str | None = None,
     actor_user_id: int | None = None,
 ) -> ZReport:
-    """Cierra el turno: calcula los totales, los congela y los numera."""
+    """Cierra una única Z diaria, o devuelve la que ya quedó cerrada."""
     claim = None
     closing_user_id = actor_user_id if actor_user_id is not None else get_user_id()
     if idempotency_key is not None:
@@ -211,31 +246,32 @@ async def close(
                 raise ConflictError("The idempotent Z report result is not available.")
             return await get_report(session, claim.record.result_resource_id)
 
-    # Observe the period before waiting.  A different-key closer that saw
-    # this same period but lost the accounting lock must not silently create
-    # the following empty Z after it wakes up.
-    observed_last = await _last_close(session, warehouse_id)
-    observed_last_id = observed_last.id if observed_last is not None else None
     await accounting.lock_warehouse_cut(session, warehouse_id)
+    closed_at = await accounting.database_clock(session)
+    day_start, day_end = await _business_day_window(session, closed_at)
+    existing = await _report_for_business_day(session, warehouse_id, start=day_start, end=day_end)
+    if existing is not None:
+        if claim is not None:
+            await idempotency_service.complete(
+                session, claim.record, result_resource_id=existing.id
+            )
+        return existing
+
     last = await _last_close(session, warehouse_id)
-    last_id = last.id if last is not None else None
-    if last_id != observed_last_id:
-        raise ConflictError("This Z period was closed by another request.")
 
     pending = await open_sales(session, warehouse_id)
     if pending:
         numbers = ", ".join(f"#{sale.id}" for sale in pending)
         raise ConflictError(
             f"Hay {len(pending)} venta(s) sin cobrar en esta caja ({numbers}). Cóbralas "
-            "o cancélalas antes de cerrar: si no, se cobrarían después del corte y no "
-            "cuadraría ni esta Z ni la siguiente."
+            "o cancélalas antes de cerrar: si no, se cobrarían después del cierre diario y "
+            "no cuadrarían la Z."
         )
 
-    closed_at = await accounting.database_clock(session)
     totals = await _totals(
         session,
         warehouse_id,
-        since=last.closed_at if last else None,
+        since=day_start,
         until=closed_at,
     )
 

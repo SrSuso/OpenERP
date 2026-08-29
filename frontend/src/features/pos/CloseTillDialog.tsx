@@ -46,11 +46,13 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
   const [isPrintActive, setPrintActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const closeAttemptRef = useRef<string | null>(null);
+  const existing = preview.data?.existing_report ?? null;
+  const report = closed ?? existing;
   const closedTicketText =
-    closed !== null && printProfile.data !== undefined
+    report !== null && printProfile.data !== undefined
       ? renderZReportTicket(
-          closed,
-          formatBusinessDateTime(closed.closed_at, businessTimezone),
+          report,
+          formatBusinessDateTime(report.closed_at, businessTimezone),
           printProfile.data,
         )
       : null;
@@ -67,7 +69,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
       setError(err instanceof ApiError ? err.message : 'No se ha podido cerrar la caja.'),
   });
 
-  const totals = closed ?? preview.data;
+  const totals = report ?? preview.data;
   const openSales = preview.data?.open_sales ?? [];
 
   return (
@@ -80,15 +82,19 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
       >
         <div className="w-full max-w-md rounded-lg bg-slate-800 p-6 shadow-xl">
           <h2 className="text-xl font-semibold text-slate-50">
-            {closed ? `Cierre Z nº ${closed.number}` : 'Cierre de caja (Z)'}
+            {report ? `Cierre Z nº ${report.number}` : 'Cierre de caja (Z)'}
           </h2>
           <p className="mt-1 text-sm text-slate-400">
             {closed
               ? 'Guardado. Puedes volver a imprimirlo desde el panel.'
-              : 'Estos son los totales del turno desde el último cierre.'}
+              : existing
+                ? 'La Z diaria ya está cerrada. Puedes volver a imprimirla.'
+                : 'Estos son los totales de la jornada comercial de hoy.'}
           </p>
 
-          {preview.isPending && !closed && <p className="mt-4 text-slate-400">Calculando…</p>}
+          {preview.isPending && report === null && (
+            <p className="mt-4 text-slate-400">Calculando…</p>
+          )}
 
           {totals && (
             <div className="mt-4 border-t border-slate-700 pt-3 text-sm">
@@ -109,7 +115,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
             </div>
           )}
 
-          {!closed && openSales.length > 0 && (
+          {report === null && openSales.length > 0 && (
             <div className="mt-4 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm text-amber-200">
               <p>
                 {openSales.length === 1
@@ -130,7 +136,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
           )}
 
           {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
-          {closed !== null && printProfile.isError && (
+          {report !== null && printProfile.isError && (
             <p role="alert" className="mt-4 text-sm text-red-300">
               No se ha podido cargar el perfil de impresión del ticket. Vuelve a intentarlo antes de
               imprimir la Z.
@@ -138,7 +144,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
           )}
 
           <div className="mt-6 flex gap-2 print:hidden">
-            {closed ? (
+            {report ? (
               <>
                 <button
                   type="button"
@@ -157,7 +163,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
                   }}
                   className="pos-button-secondary rounded-lg px-4 py-3 text-base font-medium disabled:opacity-50"
                 >
-                  Imprimir otra vez
+                  Reimprimir Z
                 </button>
               </>
             ) : (

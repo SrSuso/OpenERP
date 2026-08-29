@@ -169,10 +169,10 @@ async def test_checkout_wins_and_is_included_once_with_its_payment(
     assert payment_count == 1
 
 
-async def test_z_wins_and_checkout_is_eligible_exactly_for_the_next_z(
+async def test_z_wins_and_a_later_checkout_does_not_open_a_second_daily_z(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Z2: the main A6 regression, including the old empty-cart window."""
+    """La Z diaria queda congelada aunque se intente cerrarla otra vez."""
     ready = await _ready_z(committing_sessionmaker, tag="Z-FIRST", with_line=False)
     line_added = asyncio.Event()
 
@@ -214,17 +214,17 @@ async def test_z_wins_and_checkout_is_eligible_exactly_for_the_next_z(
     second = await _close(committing_sessionmaker, ready, "z-after-checkout")
     assert first.sales_count == 0
     assert completed.completed_at is not None and completed.completed_at > first.closed_at
-    assert second.covers_from == first.closed_at
-    assert second.sales_count == 1
-    assert second.cash_total == Decimal("5")
+    assert second.id == first.id
+    assert second.sales_count == 0
+    assert second.cash_total == Decimal(0)
 
 
-async def test_return_wins_and_is_included_in_the_current_z(
+async def test_return_after_a_daily_z_does_not_open_another_z(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Z3: an economic return committed before the cut is included."""
+    """Una devolución posterior no convierte la reimpresión en otro cierre."""
     ready = await _ready_z(committing_sessionmaker, tag="RETURN-FIRST", completed=True)
-    await _close(committing_sessionmaker, ready, "z-before-return")
+    first = await _close(committing_sessionmaker, ready, "z-before-return")
     close_started = asyncio.Event()
 
     async def waiting_close() -> ZReport:
@@ -246,12 +246,13 @@ async def test_return_wins_and_is_included_in_the_current_z(
 
     report = await asyncio.wait_for(close_task, timeout=10)
     assert returned.refund is not None
-    assert returned.refund.completed_at <= report.closed_at
-    assert report.returns_count == 1
-    assert report.returns_total == Decimal("5")
+    assert returned.refund.completed_at > first.closed_at
+    assert report.id == first.id
+    assert report.returns_count == 0
+    assert report.returns_total == Decimal(0)
 
 
-async def test_z_wins_and_waiting_return_uses_the_next_period_timestamp(
+async def test_z_wins_and_waiting_return_does_not_create_a_second_daily_z(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
     """Z4: transaction-start time cannot date a waiting return backwards."""
@@ -286,19 +287,20 @@ async def test_z_wins_and_waiting_return_uses_the_next_period_timestamp(
         await close_session.commit()
 
     returned = await asyncio.wait_for(return_task, timeout=10)
-    following = await _close(committing_sessionmaker, ready, "z-after-waiting-return")
+    repeated = await _close(committing_sessionmaker, ready, "z-after-waiting-return")
     assert current.returns_count == 0
     assert returned.refund is not None
     assert returned.refund.completed_at > current.closed_at
-    assert following.returns_count == 1
-    assert following.returns_total == Decimal("5")
+    assert repeated.id == current.id
+    assert repeated.returns_count == 0
+    assert repeated.returns_total == Decimal(0)
 
 
-async def test_two_different_close_keys_for_the_same_observed_period_conflict(
+async def test_two_different_close_keys_return_the_same_daily_z(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Z5: both requests observe one period, but only one may close it."""
+    """Dos pulsaciones no pueden crear dos Z aunque usen claves distintas."""
     ready = await _ready_z(committing_sessionmaker, tag="DIFFERENT-CLOSE-KEYS", completed=True)
     original_lock = accounting.lock_warehouse_cut
     both_observed = asyncio.Event()
@@ -324,7 +326,8 @@ async def test_two_different_close_keys_for_the_same_observed_period_conflict(
     outcomes = await asyncio.wait_for(
         asyncio.gather(attempt("z-different-a"), attempt("z-different-b")), timeout=10
     )
-    assert sorted(outcome for outcome, _report_id in outcomes) == ["conflict", "success"]
+    assert [outcome for outcome, _report_id in outcomes] == ["success", "success"]
+    assert outcomes[0][1] == outcomes[1][1]
     async with committing_sessionmaker() as session:
         report_count = await session.scalar(
             select(func.count())
@@ -429,10 +432,10 @@ async def test_a_warehouse_cut_does_not_block_another_warehouse(
     assert other_report.warehouse_id == second.warehouse_id
 
 
-async def test_operations_around_two_cuts_appear_once_without_gaps_or_overlap(
+async def test_operations_after_the_daily_z_do_not_create_a_second_cut(
     committing_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Z10: sales and returns partition cleanly across consecutive cuts."""
+    """La reimpresión mantiene intactos los totales de la única Z diaria."""
     ready = await _ready_z(committing_sessionmaker, tag="TWO-CUTS", completed=True, quantity="2")
     async with committing_sessionmaker() as session:
         first_return = await returns_service.create_return(
@@ -458,7 +461,6 @@ async def test_operations_around_two_cuts_appear_once_without_gaps_or_overlap(
 
     second = await _close(committing_sessionmaker, ready, "second-partition-cut")
     assert first.sales_count == 1
-    assert second.sales_count == 0
+    assert second.id == first.id
     assert first.returns_count == second.returns_count == 1
-    assert first_return.created_at <= first.closed_at < second_return.created_at <= second.closed_at
-    assert second.covers_from == first.closed_at
+    assert first_return.created_at <= first.closed_at < second_return.created_at

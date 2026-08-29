@@ -51,6 +51,14 @@ const PREVIEW = {
   returns_total: '0.000000',
   open_sales: [],
 };
+const DAILY_Z = {
+  ...PREVIEW,
+  id: 9,
+  warehouse_id: 1,
+  number: 7,
+  closed_at: '2026-08-11T20:00:00Z',
+  closed_by_user_id: 1,
+};
 
 const PRINT_PROFILE = {
   printable_width_mm: 64,
@@ -70,6 +78,7 @@ function stubBackend(
     failFirstClose?: boolean;
     failTerminals?: boolean;
     terminals?: (typeof TERMINAL)[];
+    existingDailyZ?: boolean;
   } = {},
 ) {
   const closeCalls: string[] = [];
@@ -132,7 +141,13 @@ function stubBackend(
         );
       }
       if (url.includes('/z-reports/preview')) {
-        return Promise.resolve(jsonResponse({ ...PREVIEW, open_sales: options.openSales ?? [] }));
+        return Promise.resolve(
+          jsonResponse({
+            ...PREVIEW,
+            open_sales: options.openSales ?? [],
+            existing_report: options.existingDailyZ ? DAILY_Z : null,
+          }),
+        );
       }
       if (method === 'POST' && url.includes('/z-reports')) {
         closeCalls.push(url);
@@ -140,19 +155,7 @@ function stubBackend(
         if (options.failFirstClose && closeCalls.length === 1) {
           return Promise.reject(new TypeError('Connection lost after sending request'));
         }
-        return Promise.resolve(
-          jsonResponse(
-            {
-              ...PREVIEW,
-              id: 9,
-              warehouse_id: 1,
-              number: 7,
-              closed_at: '2026-08-11T20:00:00Z',
-              closed_by_user_id: 1,
-            },
-            { status: 201 },
-          ),
-        );
+        return Promise.resolve(jsonResponse(DAILY_Z, { status: 201 }));
       }
       return Promise.reject(new Error(`Unexpected fetch to ${method} ${url} in test`));
     }),
@@ -313,6 +316,23 @@ describe('PosLayout', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(backend.logoutCalls).toEqual([]);
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
+  });
+
+  it('shows and reprints the only daily Z without creating another one', async () => {
+    const backend = stubBackend({ existingDailyZ: true });
+    renderLayout();
+    await screen.findByText('Ana');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
+
+    expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
+    expect(
+      screen.getByText('La Z diaria ya está cerrada. Puedes volver a imprimirla.'),
+    ).toBeInTheDocument();
+    expect(backend.closeCalls).toEqual([]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reimprimir Z' }));
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
   });
 
   it('says which sales are in the way, not just how many', async () => {

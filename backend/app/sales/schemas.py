@@ -165,6 +165,9 @@ class ZReportPreview(BaseModel):
     other_total: Decimal
     returns_count: int
     returns_total: Decimal
+    #: La Z diaria que ya existe, si el almacén ya se cerró hoy. Se entrega
+    #: para mostrarla y reimprimirla en vez de crear una segunda.
+    existing_report: ZReportRead | None = None
     #: Las ventas sin cobrar que impiden cerrar. Van enteras y no contadas:
     #: "hay una sin cobrar" sin decir cuál deja sin salida a quien está en
     #: el mostrador.

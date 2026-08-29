@@ -470,10 +470,13 @@ export const zReportPreviewSchema = zReportSchema
     // Cuáles son, no cuántas: "hay una sin cobrar" sin decir cuál deja sin
     // salida a quien está en el mostrador.
     open_sales: z.array(z.object({ id: z.number(), lines_count: z.number(), total: z.string() })),
+    // Si la jornada ya se cerró, el TPV recibe el documento congelado para
+    // mostrarlo y reimprimirlo, en vez de intentar abrir una segunda Z.
+    existing_report: zReportSchema.nullable().default(null),
   });
 export type ZReportPreview = z.infer<typeof zReportPreviewSchema>;
 
-/** Lo que saldría en la Z si se cerrase ahora, sin guardar nada. */
+/** La Z comercial de hoy, o lo que saldría si aún no se hubiese cerrado. */
 export function zReportPreviewQuery(warehouseId: number | null) {
   return queryOptions({
     queryKey: ['pos', 'z-report', 'preview', warehouseId] as const,
@@ -483,12 +486,12 @@ export function zReportPreviewQuery(warehouseId: number | null) {
         signal,
       }),
     enabled: warehouseId !== null,
-    // El turno sigue vivo mientras se mira: no vale un total de hace un rato.
+    // El día sigue vivo mientras se mira: no vale un total de hace un rato.
     staleTime: 0,
   });
 }
 
-/** Cierra el turno y congela sus totales. */
+/** Cierra la jornada y congela su única Z diaria. */
 export async function closeZReport(warehouseId: number, idempotencyKey: string): Promise<ZReport> {
   return apiFetch(`${API_V1}/z-reports?warehouse_id=${warehouseId}`, {
     method: 'POST',
