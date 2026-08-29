@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router';
 
 import { usePosAuth } from '@/features/auth/usePosAuth';
+import { Keypad } from '@/features/pos/Keypad';
 import { saleByNumberQuery } from '@/features/pos/api';
 import { CreateReturnForm } from '@/features/returns/CreateReturnForm';
 import { createReturn, saleQuery, type ReturnInput } from '@/features/returns/api';
@@ -17,6 +18,7 @@ import { formatMoney } from '@/lib/format';
 export function PosReturnsPage() {
   const { user, hasPermission } = usePosAuth();
   const [saleNumberInput, setSaleNumberInput] = useState('');
+  const [isSaleNumberKeypadOpen, setSaleNumberKeypadOpen] = useState(false);
   const [saleNumber, setSaleNumber] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -85,6 +87,7 @@ export function PosReturnsPage() {
               autoFocus
               value={saleNumberInput}
               onChange={(event) => setSaleNumberInput(event.target.value)}
+              onClick={() => setSaleNumberKeypadOpen(true)}
               onKeyDown={(event) => event.key === 'Enter' && search()}
               className="mt-1 block w-36 rounded border border-slate-500 bg-slate-800 px-3 py-2 text-base text-white"
             />
@@ -97,6 +100,51 @@ export function PosReturnsPage() {
             Buscar venta
           </button>
         </div>
+
+        {isSaleNumberKeypadOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Introducir número de venta"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
+          >
+            <div className="w-full max-w-sm rounded-lg bg-slate-800 p-5 shadow-xl">
+              <h2 className="text-lg font-semibold text-slate-50">Número de venta</h2>
+              <p className="mt-1 text-sm text-slate-300">
+                Introduce el número que aparece en el ticket que quieres devolver.
+              </p>
+              <output
+                aria-live="polite"
+                className="mt-4 block rounded border border-slate-600 bg-slate-900 px-4 py-3 text-right text-3xl font-semibold text-slate-50"
+              >
+                {saleNumberInput || '—'}
+              </output>
+              <div className="mt-4" aria-label="Teclado numérico para número de venta">
+                <Keypad
+                  value={saleNumberInput}
+                  onChange={setSaleNumberInput}
+                  maxLength={9}
+                  action={{
+                    label: 'Buscar venta',
+                    onPress: () => {
+                      search();
+                      setSaleNumberKeypadOpen(false);
+                    },
+                    disabled:
+                      !Number.isInteger(Number(saleNumberInput)) || Number(saleNumberInput) <= 0,
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setSaleNumberKeypadOpen(false)}
+                className="mt-2 w-full rounded px-4 py-3 text-base font-medium text-slate-300 hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
 
         {saleNumber !== null && (found.isPending || sale.isPending) && (
           <p className="mt-5 text-sm text-slate-300">Buscando…</p>

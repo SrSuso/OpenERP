@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -154,11 +154,29 @@ function renderPage() {
 }
 
 describe('PosReturnsPage', () => {
+  it('opens a touch keypad to enter the ticket number for a return', async () => {
+    stubBackend(['pos.access', 'sale.read', 'return.manage']);
+    renderPage();
+
+    await userEvent.click(await screen.findByLabelText('Nº de venta'));
+    const dialog = await screen.findByRole('dialog', { name: 'Introducir número de venta' });
+    const keypad = within(dialog).getByLabelText('Teclado numérico para número de venta');
+    await userEvent.click(within(keypad).getByRole('button', { name: '7' }));
+    await userEvent.click(within(keypad).getByRole('button', { name: 'Buscar venta' }));
+
+    expect(await screen.findByText(/Venta #7/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: 'Introducir número de venta' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('lets an authorized POS supervisor return a completed sale using the POS session', async () => {
     const backend = stubBackend(['pos.access', 'sale.read', 'return.manage']);
     renderPage();
 
-    await userEvent.type(await screen.findByLabelText('Nº de venta'), '7');
+    // La entrada física sigue disponible: el teclado táctil sólo se abre
+    // al tocar el recuadro, no cuando el lector/teclado ya escribe en él.
+    fireEvent.change(await screen.findByLabelText('Nº de venta'), { target: { value: '7' } });
     await userEvent.click(screen.getByRole('button', { name: 'Buscar venta' }));
     await screen.findByText(/Venta #7/);
 
