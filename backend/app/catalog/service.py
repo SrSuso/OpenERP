@@ -961,10 +961,10 @@ async def delete_product(session: AsyncSession, product_id: int) -> None:
 
     Las ventas, compras y devoluciones son documentos históricos y conservan
     una FK al producto y a su formato. No se pueden borrar sin falsear esos
-    documentos. Sí se puede deshacer el stock inicial que se registró en el
-    mismo alta: con un único ajuste positivo y sin ninguna operación
-    posterior, sigue siendo configuración de un producto equivocado, no
-    actividad comercial.
+    documentos. Sí se puede deshacer la configuración manual de existencias
+    y lotes de un producto equivocado: los ajustes sin referencia de negocio
+    no son actividad comercial por sí solos. Las mermas, transferencias y
+    movimientos documentados siguen protegidos.
     """
     product = await get_product(session, product_id)
 
@@ -1003,23 +1003,18 @@ async def delete_product(session: AsyncSession, product_id: int) -> None:
     )
     lots = list((await session.execute(select(Lot).where(Lot.product_id == product_id))).scalars())
 
-    # El alta desde el formulario puede crear exactamente un ADJUSTMENT
-    # positivo de stock inicial. Si no hubo ninguna operación posterior,
-    # borrar ese producto equivocado puede retirar también esa configuración
-    # inicial. Más de un movimiento, una salida o cualquier referencia de
-    # negocio ya es histórico y debe conservarse.
-    has_only_initial_stock = (
-        len(movements) <= 1
-        and all(
-            movement.movement_type == MovementType.ADJUSTMENT
-            and movement.quantity > 0
-            and movement.reference_type is None
-            and movement.reference_id is None
-            for movement in movements
-        )
-        and (bool(movements) or not balances)
+    # Al dar de alta un producto se pueden hacer varios recuentos para
+    # cuadrar su stock o crear lotes antes de usarlo. Son ADJUSTMENT sin una
+    # referencia de negocio y se pueden retirar junto al producto si fue un
+    # alta equivocada. Una merma, transferencia o movimiento documentado ya
+    # es operación real y debe conservarse.
+    has_only_catalog_stock_setup = all(
+        movement.movement_type == MovementType.ADJUSTMENT
+        and movement.reference_type is None
+        and movement.reference_id is None
+        for movement in movements
     )
-    if not has_only_initial_stock:
+    if not has_only_catalog_stock_setup:
         if movements:
             used_by.append("movimientos de stock")
         if balances:
@@ -1035,10 +1030,10 @@ async def delete_product(session: AsyncSession, product_id: int) -> None:
     before = _snapshot(product)
     # Estas relaciones no son histórico comercial: se eliminan con el alta
     # equivocada. Los formatos y sus códigos son delete-orphan del modelo.
-    # El único saldo/movimiento permitido arriba era el stock inicial de la
-    # misma alta; primero se retiran sus proyecciones y lotes para respetar
-    # las FKs antes de borrar el producto.
-    if has_only_initial_stock:
+    # Los saldos, ajustes manuales y lotes permitidos arriba sólo pertenecen
+    # a la configuración del producto equivocado. Se retiran antes de borrar
+    # el producto para respetar las FKs.
+    if has_only_catalog_stock_setup:
         await session.execute(delete(StockBalance).where(StockBalance.product_id == product_id))
         await session.execute(delete(StockMovement).where(StockMovement.product_id == product_id))
         await session.execute(delete(Lot).where(Lot.product_id == product_id))

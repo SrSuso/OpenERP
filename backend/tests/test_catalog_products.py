@@ -428,10 +428,10 @@ async def test_admin_can_delete_a_new_product_with_only_its_initial_stock(
     ).json() == []
 
 
-async def test_admin_cannot_delete_a_product_after_another_stock_adjustment(
+async def test_admin_can_delete_a_product_after_manual_stock_adjustments(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Sólo la carga inicial se puede deshacer; el resto conserva el ledger."""
+    """Los recuentos de un alta equivocada tampoco crean historia comercial."""
     await login(role_name="ADMIN")
     warehouse = next(
         item
@@ -473,6 +473,84 @@ async def test_admin_cannot_delete_a_product_after_another_stock_adjustment(
         },
     )
     assert adjusted.status_code == 201
+
+    deleted = await client.delete(f"/api/v1/products/{product['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/api/v1/products/{product['id']}")).status_code == 404
+
+
+async def test_admin_can_delete_a_product_with_unused_configuration_lots(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Los lotes creados durante una alta equivocada no deben bloquearla."""
+    await login(role_name="ADMIN")
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json=_product_payload(sku="PRODUCT-WITH-UNUSED-LOTS", base_barcode="777777"),
+        )
+    ).json()
+    for lot_number, expiration_date in (("LOTE-A", "2028-08-31"), ("LOTE-B", "2029-06-30")):
+        created = await client.post(
+            "/api/v1/lots",
+            json={
+                "product_id": product["id"],
+                "lot_number": lot_number,
+                "expiration_date": expiration_date,
+            },
+        )
+        assert created.status_code == 201
+
+    deleted = await client.delete(f"/api/v1/products/{product['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/api/v1/products/{product['id']}")).status_code == 404
+
+
+async def test_admin_cannot_delete_a_product_after_a_stock_waste(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Una merma es operación de tienda, incluso si el producto no se vendió."""
+    await login(role_name="ADMIN")
+    warehouse = next(
+        item
+        for item in (await client.get("/api/v1/warehouses")).json()
+        if item["name"] == "Tienda principal"
+    )
+    location = next(
+        item
+        for item in (await client.get(f"/api/v1/warehouses/{warehouse['id']}/locations")).json()
+        if item["name"] == "Almacén"
+    )
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json=_product_payload(
+                sku="PRODUCT-WITH-WASTE",
+                base_barcode="666666",
+                track_lots=False,
+                track_expiration=False,
+                initial_stock={
+                    "warehouse_id": warehouse["id"],
+                    "location_id": location["id"],
+                    "quantity": "3",
+                },
+            ),
+        )
+    ).json()
+
+    wasted = await client.post(
+        "/api/v1/stock-movements/adjustments",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse["id"],
+            "location_id": location["id"],
+            "movement_type": "WASTE",
+            "quantity": "1",
+            "unit_cost": "0.60",
+            "reason": "Rotura",
+        },
+    )
+    assert wasted.status_code == 201
 
     blocked = await client.delete(f"/api/v1/products/{product['id']}")
     assert blocked.status_code == 409
