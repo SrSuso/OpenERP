@@ -250,13 +250,14 @@ describe('LotsPage', () => {
 
     await screen.findAllByText('L-ORIGINAL');
     await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
-    const lotNumber = within(screen.getAllByRole('table')[0]).getByLabelText('Nº de lote');
+    const [lotsTable] = screen.getAllByRole('table');
+    if (!lotsTable) throw new Error('No se ha renderizado la tabla de lotes.');
+    const lotNumber = within(lotsTable).getByLabelText('Nº de lote');
     await userEvent.clear(lotNumber);
     await userEvent.type(lotNumber, 'L-CORREGIDO');
     await userEvent.type(screen.getByLabelText('Caducidad'), '2026-12-31');
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
-    const lotsTable = screen.getAllByRole('table')[0];
     expect(await within(lotsTable).findByText('L-CORREGIDO')).toBeInTheDocument();
     expect(within(lotsTable).getByText('2026-12-31')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
