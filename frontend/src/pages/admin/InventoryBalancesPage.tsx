@@ -90,29 +90,61 @@ export function InventoryBalancesPage() {
         <div className="flex flex-wrap items-end gap-3">
           {/* Buscar por código de barras es lo natural aquí: se tiene el
             producto en la mano y se quiere saber cuánto queda. */}
-          <div className="text-sm text-slate-600">
+          <div className="relative text-sm text-slate-600">
             <label htmlFor={productFieldId}>Producto</label>
             <input
+              id={productFieldId}
               type="text"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                // Escribir sólo busca: no debe conservar el filtro de un
+                // producto elegido anteriormente ni escoger uno por sí solo.
+                setProductId('');
+              }}
               placeholder="Nombre o código de barras…"
               aria-label="Buscar producto"
-              className="mt-1 block w-56 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              autoComplete="off"
+              className="mt-1 block w-72 rounded border border-slate-300 px-3 py-1.5 text-sm"
             />
-            <select
-              id={productFieldId}
-              value={productId}
-              onChange={(event) => setProductId(event.target.value)}
-              className="mt-1 block w-56 rounded border border-slate-300 px-3 py-1.5 text-sm"
-            >
-              <option value="">Todos</option>
-              {matches.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
+            {productId === '' && query.trim() !== '' && (
+              <div
+                role="listbox"
+                aria-label="Resultados de producto"
+                className="absolute z-20 mt-1 max-h-72 w-80 overflow-y-auto rounded border border-slate-300 bg-white py-1 shadow-lg"
+              >
+                {matches.slice(0, 8).map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    role="option"
+                    aria-label={`Seleccionar ${product.name}`}
+                    onClick={() => {
+                      setProductId(String(product.id));
+                      setQuery(product.name);
+                    }}
+                    className="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-brand-50"
+                  >
+                    {product.name}
+                  </button>
+                ))}
+                {matches.length === 0 && (
+                  <p className="px-3 py-2 text-sm text-slate-500">No hay productos coincidentes.</p>
+                )}
+              </div>
+            )}
+            {productId !== '' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setProductId('');
+                  setQuery('');
+                }}
+                className="mt-1 text-xs font-medium text-brand-700 hover:text-brand-900"
+              >
+                Mostrar todos los productos
+              </button>
+            )}
           </div>
 
           <label className="text-sm text-slate-600">

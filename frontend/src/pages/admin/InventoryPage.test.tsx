@@ -207,9 +207,10 @@ describe('InventoryBalancesPage', () => {
     // barras, con el producto en la mano.
     const filters = screen.getByLabelText('Buscar producto');
     await userEvent.type(filters, '8412345678901');
-    const productFilter = screen.getByLabelText('Producto');
-    expect(productFilter).toHaveValue('');
-    await userEvent.selectOptions(productFilter, '10');
+    const productResults = screen.getByRole('listbox', { name: 'Resultados de producto' });
+    await userEvent.click(
+      within(productResults).getByRole('option', { name: 'Seleccionar Agua 1.5L' }),
+    );
 
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
