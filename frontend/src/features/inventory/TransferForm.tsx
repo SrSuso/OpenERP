@@ -101,28 +101,60 @@ export function TransferForm({ products, onSubmit, isPending, submitError }: Tra
       <h3 className="mb-3 text-sm font-semibold text-slate-700">Registrar transferencia</h3>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="text-sm text-slate-600">
+        <div className="relative text-sm text-slate-600">
           <label htmlFor={productFieldId}>Producto</label>
           <input
+            id={productFieldId}
             type="text"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setValue('product_id', '', { shouldValidate: true });
+            }}
             placeholder="Nombre o código de barras…"
             aria-label="Buscar producto"
+            autoComplete="off"
             className="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
           />
-          <select
-            id={productFieldId}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            {...register('product_id')}
-          >
-            <option value="">Elige un producto…</option>
-            {matches.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </select>
+          <input type="hidden" {...register('product_id')} />
+          {productId === '' && query.trim() !== '' && (
+            <div
+              role="listbox"
+              aria-label="Resultados de producto"
+              className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded border border-slate-300 bg-white py-1 shadow-lg"
+            >
+              {matches.slice(0, 8).map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  role="option"
+                  aria-label={`Seleccionar ${product.name}`}
+                  onClick={() => {
+                    setValue('product_id', String(product.id), { shouldValidate: true });
+                    setQuery(product.name);
+                  }}
+                  className="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-brand-50"
+                >
+                  {product.name}
+                </button>
+              ))}
+              {matches.length === 0 && (
+                <p className="px-3 py-2 text-sm text-slate-500">No hay productos coincidentes.</p>
+              )}
+            </div>
+          )}
+          {productId !== '' && (
+            <button
+              type="button"
+              onClick={() => {
+                setValue('product_id', '', { shouldValidate: true });
+                setQuery('');
+              }}
+              className="mt-1 text-xs font-medium text-brand-700 hover:text-brand-900"
+            >
+              Elegir otro producto
+            </button>
+          )}
           {errors.product_id && (
             <p className="mt-1 text-sm text-red-600">{errors.product_id.message}</p>
           )}

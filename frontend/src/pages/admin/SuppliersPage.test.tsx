@@ -209,7 +209,8 @@ describe('SuppliersPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Productos' }));
     await screen.findByText('Este proveedor no tiene productos vinculados.');
 
-    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    await userEvent.type(screen.getByLabelText('Buscar producto'), 'Agua 1.5L');
+    await userEvent.click(await screen.findByRole('option', { name: 'Seleccionar Agua 1.5L' }));
     const costInput = screen.getByLabelText('Coste');
     await userEvent.clear(costInput);
     await userEvent.type(costInput, '0.45');

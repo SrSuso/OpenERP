@@ -215,11 +215,9 @@ describe('InventoryBalancesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
     // Buscar por código sólo filtra: aun con una coincidencia hay que
-    // confirmarla desde el desplegable, igual que en el resto de buscadores.
+    // confirmarla desde los resultados vivos, igual que en el resto de buscadores.
     await userEvent.type(within(form).getByLabelText('Buscar producto'), '8412345678901');
-    const productSelect = within(form).getByLabelText('Producto');
-    expect(productSelect).toHaveValue('');
-    await userEvent.selectOptions(productSelect, '10');
+    await userEvent.click(within(form).getByRole('option', { name: 'Seleccionar Agua 1.5L' }));
     // Almacén y ubicación vienen ya con la primera opción puesta: con un solo
     // almacén no hay nada que elegir, y desplegarlos era un paso de más. El
     // coste se rellena con el que tiene ahora el producto (0,50), sin dejar
@@ -270,7 +268,8 @@ describe('InventoryBalancesPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo ajuste' }));
     const form = screen.getByRole('heading', { name: 'Registrar ajuste' }).closest('form')!;
-    await userEvent.selectOptions(within(form).getByLabelText('Producto'), '10');
+    await userEvent.type(within(form).getByLabelText('Buscar producto'), 'Agua 1.5L');
+    await userEvent.click(within(form).getByRole('option', { name: 'Seleccionar Agua 1.5L' }));
     await waitFor(() => expect(within(form).getByLabelText('Almacén')).toHaveValue('1'));
     await userEvent.type(within(form).getByLabelText('Cantidad (con signo)'), '12');
     await userEvent.type(within(form).getByLabelText('Número de lote'), 'RECUENTO-01');
