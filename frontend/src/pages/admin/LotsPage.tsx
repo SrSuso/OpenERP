@@ -76,30 +76,62 @@ export function LotsPage() {
     <section>
       <h1 className="mb-4 text-2xl font-semibold">Lotes y caducidad</h1>
 
-      <div className="mb-4 text-sm text-slate-600">
+      <div className="relative mb-4 text-sm text-slate-600">
         <label htmlFor={productFieldId}>Producto</label>
         <input
+          id={productFieldId}
           type="text"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            // Escribir sirve para buscar: nunca conserva una elección previa
+            // ni convierte una única coincidencia en una selección automática.
+            setProductId('');
+          }}
           placeholder="Nombre o código de barras…"
           aria-label="Buscar producto"
-          className="mt-1 block w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
+          autoComplete="off"
+          className="mt-1 block w-72 rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
-        <select
-          id={productFieldId}
-          value={productId}
-          onChange={(event) => setProductId(event.target.value)}
-          className="mt-1 block w-64 rounded border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">Elige un producto…</option>
-          {matches.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.name}
-              {product.track_lots ? '' : ' (no controla lotes)'}
-            </option>
-          ))}
-        </select>
+        {productId === '' && query.trim() !== '' && (
+          <div
+            role="listbox"
+            aria-label="Resultados de producto"
+            className="absolute z-20 mt-1 max-h-72 w-80 overflow-y-auto rounded border border-slate-300 bg-white py-1 shadow-lg"
+          >
+            {matches.slice(0, 8).map((product) => (
+              <button
+                key={product.id}
+                type="button"
+                role="option"
+                aria-label={`Seleccionar ${product.name}`}
+                onClick={() => {
+                  setProductId(String(product.id));
+                  setQuery(product.name);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-brand-50"
+              >
+                {product.name}
+                {!product.track_lots && ' (no controla lotes)'}
+              </button>
+            ))}
+            {matches.length === 0 && (
+              <p className="px-3 py-2 text-sm text-slate-500">No hay productos coincidentes.</p>
+            )}
+          </div>
+        )}
+        {productId !== '' && (
+          <button
+            type="button"
+            onClick={() => {
+              setProductId('');
+              setQuery('');
+            }}
+            className="mt-1 text-xs font-medium text-brand-700 hover:text-brand-900"
+          >
+            Elegir otro producto
+          </button>
+        )}
       </div>
 
       {productId === '' && (

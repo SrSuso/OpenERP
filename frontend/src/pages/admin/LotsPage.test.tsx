@@ -187,13 +187,17 @@ function renderPage() {
   );
 }
 
+async function selectProduct() {
+  await userEvent.type(await screen.findByLabelText('Buscar producto'), 'Yogur natural');
+  await userEvent.click(await screen.findByRole('option', { name: 'Seleccionar Yogur natural' }));
+}
+
 describe('LotsPage', () => {
   it('creates a lot with an expiration date and shows the FEFO plan for it', async () => {
     const { consumeKeys, lotCreateCalls } = stubBackend({ failFirstConsume: true });
     renderPage();
 
-    await screen.findByText('Yogur natural');
-    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    await selectProduct();
     await screen.findByText('Este producto todavía no tiene lotes.');
 
     const form = screen.getByRole('button', { name: 'Crear lote' }).closest('form')!;
@@ -242,8 +246,7 @@ describe('LotsPage', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
 
-    await screen.findByText('Yogur natural');
-    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    await selectProduct();
     const form = screen.getByRole('button', { name: 'Crear lote' }).closest('form')!;
     await userEvent.type(within(form).getByLabelText('Nº de lote'), 'L-ORIGINAL');
     await userEvent.click(within(form).getByRole('button', { name: 'Crear lote' }));
@@ -268,8 +271,7 @@ describe('LotsPage', () => {
     const { lotStockSetCalls } = stubBackend();
     renderPage();
 
-    await screen.findByText('Yogur natural');
-    await userEvent.selectOptions(screen.getByLabelText('Producto'), '10');
+    await selectProduct();
     const form = screen.getByRole('button', { name: 'Crear lote' }).closest('form')!;
     await userEvent.type(within(form).getByLabelText('Nº de lote'), 'L-RECUENTO');
     await userEvent.click(within(form).getByRole('button', { name: 'Crear lote' }));
