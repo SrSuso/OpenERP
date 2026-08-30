@@ -959,18 +959,18 @@ async def deactivate_product(session: AsyncSession, product_id: int) -> Product:
 async def delete_product(session: AsyncSession, product_id: int) -> None:
     """Borra un alta equivocada que todavía no tiene historia operativa.
 
-    Las ventas, compras, devoluciones, lotes y movimientos de stock son
-    documentos/ledger históricos y conservan una FK al producto y a su
-    formato. No se pueden borrar sin falsear esos documentos. En cambio, un
-    producto creado por error y aún sin uso se elimina completo, incluyendo
-    sus formatos, códigos, foto, precios provisionales y enlaces a
-    proveedores.
+    Las ventas, compras y devoluciones son documentos históricos y conservan
+    una FK al producto y a su formato. No se pueden borrar sin falsear esos
+    documentos. Sí se puede deshacer el stock inicial que se registró en el
+    mismo alta: con un único ajuste positivo y sin ninguna operación
+    posterior, sigue siendo configuración de un producto equivocado, no
+    actividad comercial.
     """
     product = await get_product(session, product_id)
 
     # Imports locales: los dominios que forman el historial dependen de
     # catálogo y no queremos invertir esa dependencia al cargar la app.
-    from app.inventory.models import StockBalance, StockMovement
+    from app.inventory.models import MovementType, StockBalance, StockMovement
     from app.lots.models import Lot
     from app.pricing.models import ProductPriceHistory
     from app.purchasing.models import PurchaseOrderLine
@@ -982,18 +982,50 @@ async def delete_product(session: AsyncSession, product_id: int) -> None:
         ("ventas", select(SaleLine.id).where(SaleLine.product_id == product_id)),
         ("compras", select(PurchaseOrderLine.id).where(PurchaseOrderLine.product_id == product_id)),
         ("devoluciones", select(ReturnLine.id).where(ReturnLine.product_id == product_id)),
-        (
-            "movimientos de stock",
-            select(StockMovement.id).where(StockMovement.product_id == product_id),
-        ),
-        ("stock existente", select(StockBalance.id).where(StockBalance.product_id == product_id)),
-        ("lotes", select(Lot.id).where(Lot.product_id == product_id)),
     )
     used_by = [
         label
         for label, statement in history_checks
         if (await session.execute(statement.limit(1))).scalar_one_or_none() is not None
     ]
+
+    movements = list(
+        (
+            await session.execute(
+                select(StockMovement).where(StockMovement.product_id == product_id)
+            )
+        ).scalars()
+    )
+    balances = list(
+        (
+            await session.execute(select(StockBalance).where(StockBalance.product_id == product_id))
+        ).scalars()
+    )
+    lots = list((await session.execute(select(Lot).where(Lot.product_id == product_id))).scalars())
+
+    # El alta desde el formulario puede crear exactamente un ADJUSTMENT
+    # positivo de stock inicial. Si no hubo ninguna operación posterior,
+    # borrar ese producto equivocado puede retirar también esa configuración
+    # inicial. Más de un movimiento, una salida o cualquier referencia de
+    # negocio ya es histórico y debe conservarse.
+    has_only_initial_stock = (
+        len(movements) <= 1
+        and all(
+            movement.movement_type == MovementType.ADJUSTMENT
+            and movement.quantity > 0
+            and movement.reference_type is None
+            and movement.reference_id is None
+            for movement in movements
+        )
+        and (bool(movements) or not balances)
+    )
+    if not has_only_initial_stock:
+        if movements:
+            used_by.append("movimientos de stock")
+        if balances:
+            used_by.append("stock existente")
+        if lots:
+            used_by.append("lotes")
     if used_by:
         raise ConflictError(
             f"No se puede eliminar «{product.name}» porque tiene {', '.join(used_by)}. "
@@ -1003,6 +1035,13 @@ async def delete_product(session: AsyncSession, product_id: int) -> None:
     before = _snapshot(product)
     # Estas relaciones no son histórico comercial: se eliminan con el alta
     # equivocada. Los formatos y sus códigos son delete-orphan del modelo.
+    # El único saldo/movimiento permitido arriba era el stock inicial de la
+    # misma alta; primero se retiran sus proyecciones y lotes para respetar
+    # las FKs antes de borrar el producto.
+    if has_only_initial_stock:
+        await session.execute(delete(StockBalance).where(StockBalance.product_id == product_id))
+        await session.execute(delete(StockMovement).where(StockMovement.product_id == product_id))
+        await session.execute(delete(Lot).where(Lot.product_id == product_id))
     await session.execute(
         delete(ProductPriceHistory).where(ProductPriceHistory.product_id == product_id)
     )

@@ -388,6 +388,97 @@ async def test_admin_can_delete_an_unused_product_with_explicit_taxes(
     assert (await client.get(f"/api/v1/products/{product['id']}")).status_code == 404
 
 
+async def test_admin_can_delete_a_new_product_with_only_its_initial_stock(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Un alta equivocada puede deshacerse aunque se cargara su stock inicial."""
+    await login(role_name="ADMIN")
+    warehouse = next(
+        item
+        for item in (await client.get("/api/v1/warehouses")).json()
+        if item["name"] == "Tienda principal"
+    )
+    location = next(
+        item
+        for item in (await client.get(f"/api/v1/warehouses/{warehouse['id']}/locations")).json()
+        if item["name"] == "Almacén"
+    )
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json=_product_payload(
+                sku="PRODUCT-WITH-INITIAL-STOCK",
+                base_barcode="444444",
+                track_lots=False,
+                track_expiration=False,
+                initial_stock={
+                    "warehouse_id": warehouse["id"],
+                    "location_id": location["id"],
+                    "quantity": "3",
+                },
+            ),
+        )
+    ).json()
+
+    deleted = await client.delete(f"/api/v1/products/{product['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/api/v1/products/{product['id']}")).status_code == 404
+    assert (
+        await client.get("/api/v1/stock-balance", params={"product_id": product["id"]})
+    ).json() == []
+
+
+async def test_admin_cannot_delete_a_product_after_another_stock_adjustment(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """Sólo la carga inicial se puede deshacer; el resto conserva el ledger."""
+    await login(role_name="ADMIN")
+    warehouse = next(
+        item
+        for item in (await client.get("/api/v1/warehouses")).json()
+        if item["name"] == "Tienda principal"
+    )
+    location = next(
+        item
+        for item in (await client.get(f"/api/v1/warehouses/{warehouse['id']}/locations")).json()
+        if item["name"] == "Almacén"
+    )
+    product = (
+        await client.post(
+            "/api/v1/products",
+            json=_product_payload(
+                sku="PRODUCT-WITH-SECOND-ADJUSTMENT",
+                base_barcode="555555",
+                track_lots=False,
+                track_expiration=False,
+                initial_stock={
+                    "warehouse_id": warehouse["id"],
+                    "location_id": location["id"],
+                    "quantity": "3",
+                },
+            ),
+        )
+    ).json()
+
+    adjusted = await client.post(
+        "/api/v1/stock-movements/adjustments",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse["id"],
+            "location_id": location["id"],
+            "movement_type": "ADJUSTMENT",
+            "quantity": "1",
+            "unit_cost": "0.60",
+            "reason": "Segundo recuento",
+        },
+    )
+    assert adjusted.status_code == 201
+
+    blocked = await client.delete(f"/api/v1/products/{product['id']}")
+    assert blocked.status_code == 409
+    assert "movimientos de stock" in blocked.json()["error"]["message"]
+
+
 async def test_cashier_can_read_but_not_manage_products(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

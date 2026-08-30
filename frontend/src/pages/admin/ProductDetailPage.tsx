@@ -353,7 +353,7 @@ export function ProductDetailPage() {
             onClick={() => {
               if (
                 window.confirm(
-                  `¿Eliminar definitivamente «${data.name}»? Sólo es posible si aún no tiene ventas, compras, stock, devoluciones ni lotes.`,
+                  `¿Eliminar definitivamente «${data.name}»? También se retirará su stock inicial si aún no tiene ninguna operación posterior. No es posible después de ventas, compras, devoluciones o ajustes posteriores.`,
                 )
               ) {
                 setDeleteError(null);

@@ -704,7 +704,7 @@ describe('ProductDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
 
     expect(confirmSpy).toHaveBeenCalledWith(
-      '¿Eliminar definitivamente «Agua 1L»? Sólo es posible si aún no tiene ventas, compras, stock, devoluciones ni lotes.',
+      '¿Eliminar definitivamente «Agua 1L»? También se retirará su stock inicial si aún no tiene ninguna operación posterior. No es posible después de ventas, compras, devoluciones o ajustes posteriores.',
     );
     await waitFor(() => expect(backend.deleteProductCalls).toEqual([1]));
   });
