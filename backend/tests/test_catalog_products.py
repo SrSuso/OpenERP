@@ -365,6 +365,29 @@ async def test_admin_can_delete_an_unused_product_but_not_one_in_a_sale(
     assert (await client.get(f"/api/v1/products/{used['id']}")).status_code == 200
 
 
+async def test_admin_can_delete_an_unused_product_with_explicit_taxes(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    """El alta del panel puede crear este vínculo en un PATCH de precios.
+
+    Aunque `product_taxes` sea una tabla secundaria, SQLAlchemy ya se encarga
+    de retirarla al borrar el producto. Limpiarla aparte y después borrar el
+    ORM object hacía que ambas rutas compitieran por la misma fila.
+    """
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+    tax = (await client.post("/api/v1/taxes", json={"name": "IVA 21 %", "rate": "21"})).json()
+
+    configured = await client.patch(
+        f"/api/v1/products/{product['id']}/pricing", json={"tax_ids": [tax["id"]]}
+    )
+    assert configured.status_code == 200
+
+    deleted = await client.delete(f"/api/v1/products/{product['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/api/v1/products/{product['id']}")).status_code == 404
+
+
 async def test_cashier_can_read_but_not_manage_products(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

@@ -972,7 +972,7 @@ async def delete_product(session: AsyncSession, product_id: int) -> None:
     # catálogo y no queremos invertir esa dependencia al cargar la app.
     from app.inventory.models import StockBalance, StockMovement
     from app.lots.models import Lot
-    from app.pricing.models import ProductPriceHistory, product_taxes
+    from app.pricing.models import ProductPriceHistory
     from app.purchasing.models import PurchaseOrderLine
     from app.returns.models import ReturnLine
     from app.sales.models import SaleLine
@@ -1007,7 +1007,6 @@ async def delete_product(session: AsyncSession, product_id: int) -> None:
         delete(ProductPriceHistory).where(ProductPriceHistory.product_id == product_id)
     )
     await session.execute(delete(ProductSupplier).where(ProductSupplier.product_id == product_id))
-    await session.execute(delete(product_taxes).where(product_taxes.c.product_id == product_id))
     await session.execute(
         delete(EntityImage).where(
             EntityImage.entity_type == "product", EntityImage.entity_id == product_id
