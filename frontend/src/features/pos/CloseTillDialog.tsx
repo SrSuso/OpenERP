@@ -235,6 +235,7 @@ export function CloseTillDialog({ warehouseId, onCancel, onClosed }: CloseTillDi
         <TicketPrintSurface
           text={closedTicketText}
           profile={printProfile.data}
+          openCashDrawerAfterPrint
           onDismiss={() => setPrintActive(false)}
         />
       )}

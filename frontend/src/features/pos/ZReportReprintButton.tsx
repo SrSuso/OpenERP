@@ -44,7 +44,12 @@ export function ZReportReprintButton({
         </p>
       )}
       {isPrintActive && text !== null && profile !== undefined && (
-        <TicketPrintSurface text={text} profile={profile} onDismiss={() => setPrintActive(false)} />
+        <TicketPrintSurface
+          text={text}
+          profile={profile}
+          openCashDrawerAfterPrint
+          onDismiss={() => setPrintActive(false)}
+        />
       )}
     </>
   );

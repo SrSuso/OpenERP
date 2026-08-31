@@ -9,9 +9,15 @@ import { POS_TERMINAL_STORAGE_KEY } from '@/features/pos/PosTerminalProvider';
 
 import { PosLayout } from './PosLayout';
 
-const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+const printMocks = vi.hoisted(() => ({
+  thermal: vi.fn(() => Promise.resolve()),
+  drawer: vi.fn(() => Promise.resolve()),
+}));
 
-vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
+vi.mock('@/features/tickets/qzPrinter', () => ({
+  printThermalTicket: printMocks.thermal,
+  openCashDrawer: printMocks.drawer,
+}));
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -182,6 +188,7 @@ describe('PosLayout', () => {
   beforeEach(() => {
     window.localStorage.clear();
     printMocks.thermal.mockClear();
+    printMocks.drawer.mockClear();
   });
 
   it('requires an explicit terminal selection and persists it for later logins', async () => {
@@ -306,6 +313,7 @@ describe('PosLayout', () => {
     expect(backend.closeCalls).toHaveLength(1);
     expect(backend.logoutCalls).toEqual([]);
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(printMocks.drawer).toHaveBeenCalledTimes(1));
     expect(printMocks.thermal).toHaveBeenCalledWith(
       expect.stringContaining('CIERRE Z'),
       PRINT_PROFILE,

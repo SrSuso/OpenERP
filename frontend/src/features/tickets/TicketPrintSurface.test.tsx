@@ -5,9 +5,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 const printMocks = vi.hoisted(() => ({
   thermal: vi.fn<() => Promise<void>>(() => Promise.reject(new Error('QZ no disponible'))),
+  drawer: vi.fn<() => Promise<void>>(() => Promise.resolve()),
 }));
 
-vi.mock('./qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
+vi.mock('./qzPrinter', () => ({
+  printThermalTicket: printMocks.thermal,
+  openCashDrawer: printMocks.drawer,
+}));
 
 import { TicketPrintSurface } from './TicketPrintSurface';
 
@@ -61,5 +65,42 @@ describe('TicketPrintSurface', () => {
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
     expect(browserPrint).not.toHaveBeenCalled();
+  });
+
+  it('opens the configured cash drawer after a Z has been sent without duplicating it', async () => {
+    const onPrinted = vi.fn();
+    printMocks.thermal.mockReset().mockResolvedValue(undefined);
+    printMocks.drawer.mockReset().mockRejectedValueOnce(new Error('Cajón sin respuesta'));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(['settings', 'values'], {
+      'pos.qz_host': '192.168.1.50',
+      'pos.qz_secure_port': '8181',
+      'pos.qz_printer_name': 'POSPrinter POS-80',
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TicketPrintSurface
+          text="CIERRE Z"
+          profile={PROFILE}
+          onDismiss={vi.fn()}
+          onPrinted={onPrinted}
+          openCashDrawerAfterPrint
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cajón sin respuesta');
+    expect(printMocks.thermal).toHaveBeenCalledTimes(1);
+    expect(printMocks.drawer).toHaveBeenCalledWith({
+      host: '192.168.1.50',
+      securePort: 8181,
+      printerName: 'POSPrinter POS-80',
+    });
+
+    printMocks.drawer.mockResolvedValueOnce(undefined);
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar abrir el cajón' }));
+    await waitFor(() => expect(onPrinted).toHaveBeenCalledTimes(1));
+    expect(printMocks.thermal).toHaveBeenCalledTimes(1);
+    expect(printMocks.drawer).toHaveBeenCalledTimes(2);
   });
 });

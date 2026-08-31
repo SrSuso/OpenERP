@@ -3,9 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-const printMocks = vi.hoisted(() => ({ thermal: vi.fn(() => Promise.resolve()) }));
+const printMocks = vi.hoisted(() => ({
+  thermal: vi.fn(() => Promise.resolve()),
+  drawer: vi.fn(() => Promise.resolve()),
+}));
 
-vi.mock('@/features/tickets/qzPrinter', () => ({ printThermalTicket: printMocks.thermal }));
+vi.mock('@/features/tickets/qzPrinter', () => ({
+  printThermalTicket: printMocks.thermal,
+  openCashDrawer: printMocks.drawer,
+}));
 
 import { ZReportReprintButton } from './ZReportReprintButton';
 
@@ -69,5 +75,6 @@ describe('ZReportReprintButton', () => {
       expect.objectContaining({ printable_width_mm: 72 }),
       expect.any(Object),
     );
+    await waitFor(() => expect(printMocks.drawer).toHaveBeenCalledTimes(1));
   });
 });
