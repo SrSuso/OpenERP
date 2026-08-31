@@ -242,9 +242,13 @@ export function PosHomePage() {
 
   function pickProduct(product: Product) {
     const surcharge = selectedSurcharge;
+    const quantity = pendingQuantity === '' ? '1' : pendingQuantity;
+    // La cantidad es una única instrucción para el siguiente artículo. Se
+    // consume incluso si el artículo abre el diálogo de peso o precio libre:
+    // al volver al catálogo el siguiente toque siempre debe ser una unidad.
+    setPendingQuantity('');
     if (product.is_open_price) {
       setOpenPrice({ product, surcharge });
-      setPendingQuantity('');
       setSelectedSurcharge(null);
       return;
     }
@@ -256,10 +260,9 @@ export function PosHomePage() {
     }
     addLineMutation.mutate({
       product,
-      quantity: pendingQuantity === '' ? '1' : pendingQuantity,
+      quantity,
       surcharge,
     });
-    setPendingQuantity('');
     setSelectedSurcharge(null);
   }
 
@@ -303,6 +306,10 @@ export function PosHomePage() {
       setLineError(null);
       setBarcode('');
       const surcharge = selectedSurcharge;
+      const quantity = pendingQuantity === '' ? '1' : pendingQuantity;
+      // Igual que al tocar un botón del catálogo, un escaneo consume el
+      // multiplicador para que no se aplique por accidente al siguiente.
+      setPendingQuantity('');
       if (product.is_sold_by_weight) {
         setWeighing({ product, barcode: code, surcharge });
         setSelectedSurcharge(null);
@@ -310,10 +317,9 @@ export function PosHomePage() {
       }
       addBarcodeLineMutation.mutate({
         code,
-        quantity: pendingQuantity === '' ? '1' : pendingQuantity,
+        quantity,
         surcharge,
       });
-      setPendingQuantity('');
       setSelectedSurcharge(null);
     },
     // Con el lector, el error que sale casi siempre es que ese código no
@@ -469,7 +475,9 @@ export function PosHomePage() {
       {!sessionLoading && !sessionErrored && warehouseId !== null && locationId !== null && (
         <>
           {receipt !== null ? (
-            <Receipt sale={receipt} onDismiss={() => setReceipt(null)} />
+            <div className="flex min-h-0 flex-1 justify-end">
+              <Receipt sale={receipt} onDismiss={() => setReceipt(null)} />
+            </div>
           ) : (
             <>
               {failedToOpenSale && sale === null && (
@@ -486,13 +494,15 @@ export function PosHomePage() {
               )}
 
               {sale !== null && view === 'checkout' ? (
-                <Checkout
-                  sale={sale}
-                  isPending={checkoutMutation.isPending}
-                  error={checkoutError}
-                  onConfirm={confirmCheckout}
-                  onBack={leaveCheckout}
-                />
+                <div className="flex min-h-0 flex-1 justify-end">
+                  <Checkout
+                    sale={sale}
+                    isPending={checkoutMutation.isPending}
+                    error={checkoutError}
+                    onConfirm={confirmCheckout}
+                    onBack={leaveCheckout}
+                  />
+                </div>
               ) : (
                 (sale !== null || (!failedToOpenSale && isOpeningSale)) && (
                   <div className="flex min-h-0 flex-1 flex-col">

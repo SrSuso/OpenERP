@@ -392,17 +392,11 @@ function stubBackend(
         const targetId = Number(/\/sales\/(\d+)\/lines$/.exec(url)![1]);
         const regularSale = saleWithMilkLine(targetId);
         const surchargeCode = body['pos_surcharge'];
-        const coldDrinkSurcharge =
-          surchargeCode === 'COLD_DRINK'
-            ? '0.200000'
-            : '0.000000';
+        const coldDrinkSurcharge = surchargeCode === 'COLD_DRINK' ? '0.200000' : '0.000000';
         const line = {
           ...regularSale.lines[0]!,
           cold_drink_surcharge: coldDrinkSurcharge,
-          pos_surcharge_label:
-            surchargeCode === 'COLD_DRINK'
-              ? 'Bebida fría'
-              : null,
+          pos_surcharge_label: surchargeCode === 'COLD_DRINK' ? 'Bebida fría' : null,
           total: (Number(regularSale.lines[0]!.total) + Number(coldDrinkSurcharge)).toFixed(6),
         };
         sale = { ...regularSale, lines: [line], total: line.total };
@@ -685,8 +679,11 @@ describe('PosHomePage', () => {
     const backend = stubBackend();
     renderPage();
 
-    await userEvent.click(await screen.findByRole('button', { name: /tomate/i }));
+    await screen.findByRole('button', { name: /tomate/i });
+    await userEvent.click(screen.getByRole('button', { name: '×3' }));
+    await userEvent.click(screen.getByRole('button', { name: /tomate/i }));
     const dialog = await screen.findByRole('dialog', { name: /cantidad de tomate/i });
+    expect(screen.getByLabelText('Cantidad para el siguiente producto')).toHaveTextContent('×1');
 
     for (const digit of ['2', '5', '0']) {
       await userEvent.click(within(dialog).getByRole('button', { name: digit }));
@@ -1059,6 +1056,18 @@ describe('PosHomePage', () => {
     await waitFor(() => expect(backend.checkoutKeys).toHaveLength(1));
     expect(backend.checkoutKeys[0]).not.toBe('');
     expect(within(cashPrompt).getByRole('button', { name: /cobrando/i })).toBeDisabled();
+  });
+
+  it('keeps the checkout panel on the right, in the cart column', async () => {
+    stubBackend({ existingDraft: saleWithMilkLine(42) });
+    renderPage();
+    await screen.findAllByText('Leche entera 1L');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cobrar$/i }));
+
+    const paymentPanel = screen.getByRole('heading', { name: 'Cobrar' }).closest('div.max-w-sm');
+    expect(paymentPanel).not.toBeNull();
+    expect(paymentPanel?.parentElement).toHaveClass('justify-end');
   });
 
   it('"Volver" from checkout returns to the cart without charging', async () => {

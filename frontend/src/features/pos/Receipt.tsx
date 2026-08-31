@@ -89,7 +89,7 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
+    <aside className="flex h-full w-full max-w-sm flex-col items-center justify-center gap-6 border-l border-slate-700 bg-slate-800/50 p-8 text-center">
       <div>
         <p className="text-lg font-medium text-emerald-400">Venta cobrada</p>
         <p className="mt-2 text-4xl font-bold text-slate-50">{formatMoney(sale.total)}</p>
@@ -150,6 +150,6 @@ export function Receipt({ sale, onDismiss }: ReceiptProps) {
           Nueva venta
         </button>
       </div>
-    </div>
+    </aside>
   );
 }
