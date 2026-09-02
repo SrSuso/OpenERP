@@ -29,6 +29,10 @@ export function Cart({
   isCheckingStock,
 }: CartProps) {
   const lines = sale?.lines ?? [];
+  // El backend conserva las líneas en orden de alta para el histórico y el
+  // ticket. En caja se necesita lo contrario: cada artículo recién añadido
+  // queda inmediatamente visible arriba, sin alterar esa información fiscal.
+  const newestLinesFirst = [...lines].reverse();
 
   return (
     <aside className="flex h-full w-full max-w-sm flex-col border-l border-slate-700 bg-slate-800/50">
@@ -50,8 +54,8 @@ export function Cart({
             El carrito está vacío. Toca un producto para añadirlo.
           </p>
         ) : (
-          <ul className="divide-y divide-slate-700">
-            {lines.map((line) => (
+          <ul aria-label="Productos del carrito" className="divide-y divide-slate-700">
+            {newestLinesFirst.map((line) => (
               <li key={line.id} className="flex items-start justify-between gap-2 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-50">{line.product_name}</p>

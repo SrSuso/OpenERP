@@ -75,6 +75,23 @@ describe('Cart', () => {
     expect(screen.getAllByText('2,64 €').length).toBeGreaterThan(0);
   });
 
+  it('shows the most recently added line first in the cart', () => {
+    const newestLine: SaleLine = {
+      ...MILK_LINE,
+      id: 101,
+      product_id: 2,
+      product_name: 'Pan integral',
+      package_id: 11,
+      package_name: 'Unidad',
+    };
+    renderCart({ sale: { ...SALE, lines: [MILK_LINE, newestLine] } });
+
+    const names = Array.from(
+      screen.getByLabelText('Productos del carrito').querySelectorAll('li p:first-child'),
+    ).map((element) => element.textContent);
+    expect(names).toEqual(['Pan integral', 'Leche entera 1L']);
+  });
+
   it('shows a non-base package conversion and its commercial price', () => {
     const boxLine: SaleLine = {
       ...MILK_LINE,
