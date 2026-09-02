@@ -135,6 +135,15 @@ def _return_amount(
     prices_include_tax: bool,
 ) -> Decimal:
     """Value a cumulative economic quantity with the exact sales formula."""
+    if sale_line.package_price_override is not None:
+        return compute_amounts(
+            quantity_base / sale_line.package_factor,
+            sale_line.package_price_override,
+            sale_line.discount_rate,
+            sale_line.tax_rate,
+            cold_drink_surcharge=sale_line.cold_drink_surcharge * sale_line.package_factor,
+            prices_include_tax=prices_include_tax,
+        )[3]
     return compute_amounts(
         quantity_base,
         sale_line.unit_price,

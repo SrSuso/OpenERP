@@ -144,6 +144,12 @@ class PackageCreate(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     factor: Decimal = Field(gt=0)
     barcode: str | None = Field(default=None, min_length=1, max_length=64)
+    price_override: Decimal | None = Field(default=None, ge=0)
+
+
+class PackagePriceUpdate(BaseModel):
+    #: ``None`` restores the normal PVP Final x factor calculation.
+    price_override: Decimal | None = Field(default=None, ge=0)
 
 
 class BarcodeRead(BaseModel):
@@ -155,6 +161,7 @@ class PackageRead(BaseModel):
     id: int
     name: str
     factor: Decimal
+    price_override: Decimal | None
     is_base: bool
     barcodes: list[BarcodeRead]
 

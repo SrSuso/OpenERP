@@ -232,6 +232,8 @@ export const packageSchema = z.object({
   id: z.number(),
   name: z.string(),
   factor: z.string(),
+  // null means this presentation inherits PVP Final × factor.
+  price_override: z.string().nullable().optional(),
   is_base: z.boolean(),
   barcodes: z.array(barcodeSchema),
 });
@@ -425,12 +427,26 @@ export async function activateProduct(id: number): Promise<Product> {
 
 export async function addPackage(
   productId: number,
-  payload: { name: string; factor: string; barcode: string | null },
+  payload: { name: string; factor: string; barcode: string | null; price_override: string | null },
 ): Promise<Product> {
   return apiFetch(`${API_V1}/products/${productId}/packages`, {
     method: 'POST',
     schema: productSchema,
     body: payload,
+  });
+}
+
+/** Sets the optional PVP of one complete presentation. Passing null returns
+ * it to the normal PVP Final × factor calculation. */
+export async function updatePackagePrice(
+  productId: number,
+  packageId: number,
+  priceOverride: string | null,
+): Promise<Product> {
+  return apiFetch(`${API_V1}/products/${productId}/packages/${packageId}`, {
+    method: 'PATCH',
+    schema: productSchema,
+    body: { price_override: priceOverride },
   });
 }
 

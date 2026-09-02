@@ -171,6 +171,11 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: the moment the line was added, never recomputed from it afterwards
     #: (rule 7).
     unit_price: Mapped[Money]
+    #: When a presentation has its own PVP, preserve that complete-package
+    #: amount too. It prevents a recurring decimal (for example €5.50 / 6)
+    #: from changing the amount charged or shown on a historical ticket.
+    #: ``NULL`` keeps the original base-unit-price x factor behaviour.
+    package_price_override: Mapped[Money | None] = mapped_column(numeric(), nullable=True)
     #: Optional per-base-unit amount selected by the cashier for a cold
     #: drink. It is a sale snapshot, never a change to the catalogue PVP.
     cold_drink_surcharge: Mapped[Money] = mapped_column(default=Decimal(0), server_default="0")

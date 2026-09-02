@@ -1091,7 +1091,11 @@ async def add_package(session: AsyncSession, product_id: int, payload: PackageCr
         await _assert_barcode_free(session, payload.barcode)
 
     package = ProductPackage(
-        product_id=product_id, name=payload.name, factor=payload.factor, is_base=False
+        product_id=product_id,
+        name=payload.name,
+        factor=payload.factor,
+        price_override=payload.price_override,
+        is_base=False,
     )
     session.add(package)
     await session.flush()
@@ -1105,9 +1109,44 @@ async def add_package(session: AsyncSession, product_id: int, payload: PackageCr
         action="package_added",
         entity_type="product",
         entity_id=product_id,
-        after={"package": payload.name, "factor": str(payload.factor)},
+        after={
+            "package": payload.name,
+            "factor": str(payload.factor),
+            "price_override": (
+                str(payload.price_override) if payload.price_override is not None else None
+            ),
+        },
     )
     return updated
+
+
+async def update_package_price(
+    session: AsyncSession, product_id: int, package_id: int, price_override: Decimal | None
+) -> Product:
+    package = await session.get(ProductPackage, package_id)
+    if package is None or package.product_id != product_id:
+        raise NotFoundError(f"Package {package_id} not found on product {product_id}.")
+    if package.is_base:
+        raise ValidationError("The base package always uses the product final price.")
+
+    before = package.price_override
+    package.price_override = price_override
+    await session.flush()
+    await audit.record(
+        session,
+        action="package_price_updated",
+        entity_type="product",
+        entity_id=product_id,
+        before={
+            "package_id": package_id,
+            "price_override": str(before) if before is not None else None,
+        },
+        after={
+            "package_id": package_id,
+            "price_override": str(price_override) if price_override is not None else None,
+        },
+    )
+    return await get_product(session, product_id)
 
 
 async def add_barcode(

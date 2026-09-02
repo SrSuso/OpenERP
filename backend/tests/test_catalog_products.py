@@ -108,7 +108,12 @@ async def test_adding_a_box_package_with_factor_6(
 
     response = await client.post(
         f"/api/v1/products/{product_id}/packages",
-        json={"name": "CAJA 6", "factor": "6", "barcode": "666666"},
+        json={
+            "name": "CAJA 6",
+            "factor": "6",
+            "barcode": "666666",
+            "price_override": "5.50",
+        },
     )
 
     assert response.status_code == 200
@@ -116,8 +121,44 @@ async def test_adding_a_box_package_with_factor_6(
     packages = {p["name"]: p for p in body["packages"]}
     assert set(packages) == {"BRIK", "CAJA 6"}
     assert packages["CAJA 6"]["factor"] == "6.000000"
+    assert packages["CAJA 6"]["price_override"] == "5.500000"
     assert packages["CAJA 6"]["is_base"] is False
     assert [b["barcode"] for b in packages["CAJA 6"]["barcodes"]] == ["666666"]
+
+
+async def test_package_own_price_can_be_changed_or_restored_to_automatic(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = (await client.post("/api/v1/products", json=_product_payload())).json()
+    base = next(package for package in product["packages"] if package["is_base"])
+    added = await client.post(
+        f"/api/v1/products/{product['id']}/packages",
+        json={"name": "CAJA 6", "factor": "6"},
+    )
+    package = next(package for package in added.json()["packages"] if not package["is_base"])
+
+    own_price = await client.patch(
+        f"/api/v1/products/{product['id']}/packages/{package['id']}",
+        json={"price_override": "5.50"},
+    )
+    assert own_price.status_code == 200
+    changed = {item["id"]: item for item in own_price.json()["packages"]}
+    assert changed[package["id"]]["price_override"] == "5.500000"
+
+    automatic = await client.patch(
+        f"/api/v1/products/{product['id']}/packages/{package['id']}",
+        json={"price_override": None},
+    )
+    assert automatic.status_code == 200
+    restored = {item["id"]: item for item in automatic.json()["packages"]}
+    assert restored[package["id"]]["price_override"] is None
+
+    base_price = await client.patch(
+        f"/api/v1/products/{product['id']}/packages/{base['id']}",
+        json={"price_override": "1.00"},
+    )
+    assert base_price.status_code == 422
 
 
 async def test_duplicate_sku_is_a_conflict(

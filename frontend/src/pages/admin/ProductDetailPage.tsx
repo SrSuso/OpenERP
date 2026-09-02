@@ -15,6 +15,7 @@ import {
   productQuery,
   unitsQuery,
   updateBarcode,
+  updatePackagePrice,
   updateProduct,
   type ProductUpdateInput,
 } from '@/features/catalog/api';
@@ -101,6 +102,7 @@ export function ProductDetailPage() {
   const [createLotError, setCreateLotError] = useState<string | null>(null);
   const [lotActionError, setLotActionError] = useState<string | null>(null);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const [packagePriceError, setPackagePriceError] = useState<string | null>(null);
 
   const product = useQuery(productQuery(productId));
   const categories = useQuery(productCategoriesQuery);
@@ -210,12 +212,33 @@ export function ProductDetailPage() {
       name,
       factor,
       barcode,
+      priceOverride,
     }: {
       name: string;
       factor: string;
       barcode: string | null;
-    }) => addPackage(productId, { name, factor, barcode }),
-    onSuccess: invalidateProduct,
+      priceOverride: string | null;
+    }) => addPackage(productId, { name, factor, barcode, price_override: priceOverride }),
+    onSuccess: () => {
+      invalidateProduct();
+      setPackagePriceError(null);
+    },
+    onError: () => setPackagePriceError('No se ha podido guardar el formato.'),
+  });
+
+  const updatePackagePriceMutation = useMutation({
+    mutationFn: ({
+      packageId,
+      priceOverride,
+    }: {
+      packageId: number;
+      priceOverride: string | null;
+    }) => updatePackagePrice(productId, packageId, priceOverride),
+    onSuccess: () => {
+      invalidateProduct();
+      setPackagePriceError(null);
+    },
+    onError: () => setPackagePriceError('El PVP del formato no es válido.'),
   });
 
   const barcodeConflictMessage = (err: unknown) =>
@@ -486,9 +509,14 @@ export function ProductDetailPage() {
             isAddingPackage={addPackageMutation.isPending}
             isAddingBarcode={addBarcodeMutation.isPending}
             isSavingBarcode={updateBarcodeMutation.isPending || deleteBarcodeMutation.isPending}
+            isSavingPackagePrice={updatePackagePriceMutation.isPending}
             barcodeError={barcodeError}
-            onAddPackage={(name, factor, barcode) =>
-              addPackageMutation.mutate({ name, factor, barcode })
+            packagePriceError={packagePriceError}
+            onAddPackage={(name, factor, barcode, priceOverride) =>
+              addPackageMutation.mutate({ name, factor, barcode, priceOverride })
+            }
+            onSetPackagePrice={(packageId, priceOverride) =>
+              updatePackagePriceMutation.mutate({ packageId, priceOverride })
             }
             onAddBarcode={(packageId, barcode) => addBarcodeMutation.mutate({ packageId, barcode })}
             onEditBarcode={(packageId, barcodeId, barcode) =>

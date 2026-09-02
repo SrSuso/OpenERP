@@ -181,6 +181,7 @@ function stubBackend(
   const updateCalls: Record<string, unknown>[] = [];
   const pricingCalls: Record<string, unknown>[] = [];
   const addPackageCalls: Record<string, unknown>[] = [];
+  const packagePriceCalls: { packageId: number; body: Record<string, unknown> }[] = [];
   const formulaCalls: Record<string, unknown>[] = [];
   const previewCalls: Record<string, unknown>[] = [];
   const clearFormulaCalls: true[] = [];
@@ -296,9 +297,19 @@ function stubBackend(
           id: 2,
           name: b['name'] as string,
           factor: b['factor'] as string,
+          price_override: b['price_override'] as string | null,
           is_base: false,
           barcodes: [],
         });
+        return Promise.resolve(jsonResponse(product));
+      }
+      const packagePriceMatch = /\/products\/1\/packages\/(\d+)$/.exec(url);
+      if (method === 'PATCH' && packagePriceMatch) {
+        const b = body();
+        const packageId = Number(packagePriceMatch[1]);
+        packagePriceCalls.push({ packageId, body: b });
+        const pkg = product.packages.find((p) => p.id === packageId)!;
+        pkg.price_override = b['price_override'] as string | null;
         return Promise.resolve(jsonResponse(product));
       }
       const editBarcodeMatch = /\/products\/1\/packages\/(\d+)\/barcodes\/(\d+)$/.exec(url);
@@ -341,6 +352,7 @@ function stubBackend(
     updateCalls,
     pricingCalls,
     addPackageCalls,
+    packagePriceCalls,
     formulaCalls,
     previewCalls,
     clearFormulaCalls,
@@ -432,7 +444,16 @@ describe('ProductDetailPage', () => {
     await userEvent.type(screen.getByLabelText('Factor'), '6');
     await userEvent.click(screen.getByRole('button', { name: 'Añadir formato' }));
     await screen.findByText('PACK 6');
-    expect(backend.addPackageCalls).toEqual([{ name: 'PACK 6', factor: '6', barcode: null }]);
+    expect(backend.addPackageCalls).toEqual([
+      { name: 'PACK 6', factor: '6', barcode: null, price_override: null },
+    ]);
+    await userEvent.type(screen.getByLabelText('PVP del formato PACK 6'), '5.50');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar PVP' }));
+    await waitFor(() =>
+      expect(backend.packagePriceCalls).toEqual([
+        { packageId: 2, body: { price_override: '5.50' } },
+      ]),
+    );
 
     // Compras — resumen por proveedor + historial completo, ambos
     // mencionan el mismo proveedor, así que se comprueba con findAllByText.

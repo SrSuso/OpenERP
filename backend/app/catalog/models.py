@@ -254,6 +254,9 @@ class ProductPackage(IntPrimaryKeyMixin, TimestampMixin, Base):
     product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id"), index=True)
     name: Mapped[str] = mapped_column(String(50))
     factor: Mapped[Quantity]
+    #: Optional PVP for this exact presentation.  ``None`` deliberately
+    #: inherits the product's final base-unit PVP multiplied by ``factor``.
+    price_override: Mapped[Money | None] = mapped_column(numeric(), nullable=True)
     is_base: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     product: Mapped[Product] = relationship(back_populates="packages")

@@ -35,6 +35,7 @@ def package_to_read(package: ProductPackage) -> PackageRead:
         id=package.id,
         name=package.name,
         factor=package.factor,
+        price_override=package.price_override,
         is_base=package.is_base,
         barcodes=[BarcodeRead(id=b.id, barcode=b.barcode) for b in package.barcodes],
     )

@@ -154,6 +154,23 @@ def compute_amounts(
 def compute_line_totals(line: SaleLine, *, prices_include_tax: bool) -> LineTotals:
     """Deterministic from the line's own snapshots — never stored, so there
     is nothing that could drift out of sync with them."""
+    if line.package_price_override is not None:
+        subtotal, discount_amount, tax_amount, total = compute_amounts(
+            line.quantity_packages,
+            line.package_price_override,
+            line.discount_rate,
+            line.tax_rate,
+            # POS supplements are configured per base unit, while this
+            # branch prices a whole presentation.
+            cold_drink_surcharge=line.cold_drink_surcharge * line.package_factor,
+            prices_include_tax=prices_include_tax,
+        )
+        return LineTotals(
+            subtotal=subtotal,
+            discount_amount=discount_amount,
+            tax_amount=tax_amount,
+            total=total,
+        )
     subtotal, discount_amount, tax_amount, total = compute_amounts(
         line.quantity_base,
         line.unit_price,
@@ -170,12 +187,26 @@ def compute_line_totals(line: SaleLine, *, prices_include_tax: bool) -> LineTota
 def package_price(line: SaleLine) -> Decimal:
     """Catalogue price of one snapshotted package, before line discounts.
 
-    The current catalogue has one price per base unit rather than a price
-    override on each package.  Keeping this calculation here makes the API,
-    not the browser, authoritative for converting that price to the package
-    selected by the barcode.
+    The override is snapshotted on the line, so a later catalog change cannot
+    rewrite a ticket. Without it, the established base-unit price x factor
+    calculation remains authoritative on the server.
     """
+    if line.package_price_override is not None:
+        return line.package_price_override
     return _q(line.unit_price * line.package_factor)
+
+
+def _package_unit_price(product: Product, package: ProductPackage) -> Decimal:
+    """Resolve the PVP of one base unit for a selected presentation.
+
+    A package override is its full presentation PVP, so it is converted here
+    only to keep the established sale-line and tax calculations canonical.
+    Without one, the product final PVP is multiplied by the package factor
+    later exactly as before.
+    """
+    if package.price_override is None:
+        return product.final_price
+    return package.price_override / package.factor
 
 
 def _sale_snapshot(sale: Sale) -> dict[str, Any]:
@@ -437,6 +468,7 @@ def _new_line(
         # its rounded result there and a manual price replaces it. Freeze it
         # on the line so later pricing changes never rewrite this sale.
         unit_price=product.final_price if unit_price is None else unit_price,
+        package_price_override=package.price_override,
         cold_drink_surcharge=cold_drink_surcharge,
         pos_surcharge_label=pos_surcharge_label,
         unit_cost=product.cost,
@@ -565,6 +597,8 @@ async def add_line(
         )
     elif payload.open_price_total is not None:
         raise ValidationError("Only an open-price POS button accepts an entered price.")
+    else:
+        unit_price = _package_unit_price(product, package)
     cold_drink_surcharge, pos_surcharge_label = await _pos_surcharge(
         session, code=payload.pos_surcharge, cold_drink=payload.cold_drink, tax_rate=tax_rate
     )
@@ -622,6 +656,7 @@ async def add_line_by_barcode(
     if not product.is_active:
         raise ValidationError(f"Product {product.id} is deactivated and cannot be sold.")
     tax_rate = await pricing_service.effective_tax_rate_for(session, product.id)
+    unit_price = _package_unit_price(product, package)
     cold_drink_surcharge, pos_surcharge_label = await _pos_surcharge(
         session, code=payload.pos_surcharge, cold_drink=payload.cold_drink, tax_rate=tax_rate
     )
@@ -635,6 +670,7 @@ async def add_line_by_barcode(
             quantity_packages=payload.quantity_packages,
             discount_rate=payload.discount_rate,
             tax_rate=tax_rate,
+            unit_price=unit_price,
             cold_drink_surcharge=cold_drink_surcharge,
             pos_surcharge_label=pos_surcharge_label,
         ),

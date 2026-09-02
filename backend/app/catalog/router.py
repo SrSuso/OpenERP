@@ -22,6 +22,7 @@ from app.catalog.schemas import (
     ImageRead,
     ImageUpload,
     PackageCreate,
+    PackagePriceUpdate,
     PosCategoryCreate,
     PosCategoryRead,
     PosCategoryUpdate,
@@ -382,6 +383,19 @@ async def activate_product(product_id: int, session: SessionDep) -> ProductRead:
 )
 async def add_package(product_id: int, payload: PackageCreate, session: SessionDep) -> ProductRead:
     return _to_read(await service.add_package(session, product_id, payload))
+
+
+@router.patch(
+    "/products/{product_id}/packages/{package_id}",
+    response_model=ProductRead,
+    dependencies=[_require_manage],
+)
+async def update_package_price(
+    product_id: int, package_id: int, payload: PackagePriceUpdate, session: SessionDep
+) -> ProductRead:
+    return _to_read(
+        await service.update_package_price(session, product_id, package_id, payload.price_override)
+    )
 
 
 @router.post(

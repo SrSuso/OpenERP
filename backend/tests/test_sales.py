@@ -393,6 +393,56 @@ async def test_scanning_a_box_barcode_twice_keeps_its_package_and_factor(
     assert line["total"] == "14.400000"
 
 
+async def test_package_own_price_is_used_by_touch_and_barcode(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    product = await _create_product(
+        client,
+        sku="SALE-TEST-PACKAGE-OWN-PRICE",
+        base_barcode="8412345000095",
+        list_price="1.20",
+        tax_rate="0",
+    )
+    package_response = await client.post(
+        f"/api/v1/products/{product['id']}/packages",
+        json={
+            "name": "CAJA 6",
+            "factor": "6",
+            "barcode": "8412345000096",
+            "price_override": "5.50",
+        },
+    )
+    box = next(package for package in package_response.json()["packages"] if not package["is_base"])
+
+    await login(role_name="CASHIER")
+    touch_sale = await _open_sale(client)
+    touch = await client.post(
+        f"/api/v1/sales/{touch_sale['id']}/lines",
+        json={
+            "product_id": product["id"],
+            "package_id": box["id"],
+            "quantity_packages": "1",
+        },
+    )
+    assert touch.status_code == 201
+    touch_line = touch.json()["lines"][0]
+    assert touch_line["unit_price"] == "0.916667"
+    assert touch_line["package_price"] == "5.500000"
+    assert touch_line["total"] == "5.500000"
+
+    barcode_sale = await _open_sale(client)
+    scanned = await client.post(
+        f"/api/v1/sales/{barcode_sale['id']}/lines/by-barcode",
+        json={"barcode": "8412345000096"},
+    )
+    assert scanned.status_code == 201
+    barcode_line = scanned.json()["lines"][0]
+    assert barcode_line["unit_price"] == "0.916667"
+    assert barcode_line["package_price"] == "5.500000"
+    assert barcode_line["total"] == "5.500000"
+
+
 async def test_scanning_unit_and_box_barcodes_keeps_two_presentations(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:

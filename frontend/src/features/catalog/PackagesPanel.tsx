@@ -1,18 +1,78 @@
 import { useState, type FormEvent } from 'react';
 
 import { type Product } from '@/features/catalog/api';
-import { formatQuantity } from '@/lib/format';
+import { formatMoney, formatQuantity } from '@/lib/format';
 
 interface PackagesPanelProps {
   product: Product;
-  onAddPackage: (name: string, factor: string, barcode: string | null) => void;
+  onAddPackage: (
+    name: string,
+    factor: string,
+    barcode: string | null,
+    priceOverride: string | null,
+  ) => void;
+  onSetPackagePrice: (packageId: number, priceOverride: string | null) => void;
   onAddBarcode: (packageId: number, barcode: string) => void;
   onEditBarcode: (packageId: number, barcodeId: number, barcode: string) => void;
   onDeleteBarcode: (packageId: number, barcodeId: number) => void;
   isAddingPackage: boolean;
   isAddingBarcode: boolean;
   isSavingBarcode: boolean;
+  isSavingPackagePrice: boolean;
   barcodeError: string | null;
+  packagePriceError: string | null;
+}
+
+function automaticPackagePrice(product: Product, factor: string): string {
+  const finalPrice = Number(product.final_price ?? product.list_price);
+  return (finalPrice * Number(factor)).toFixed(6);
+}
+
+function PackagePriceInput({
+  packageId,
+  packageName,
+  initialValue,
+  automaticPrice,
+  disabled,
+  onSave,
+}: {
+  packageId: number;
+  packageName: string;
+  initialValue: string | null | undefined;
+  automaticPrice: string;
+  disabled: boolean;
+  onSave: (packageId: number, priceOverride: string | null) => void;
+}) {
+  const [value, setValue] = useState(initialValue ?? '');
+  const isAutomatic = value.trim() === '';
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <label className="sr-only" htmlFor={`package-price-${packageId}`}>
+        PVP del formato {packageName}
+      </label>
+      <input
+        id={`package-price-${packageId}`}
+        type="text"
+        inputMode="decimal"
+        placeholder={formatMoney(automaticPrice)}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className="w-24 rounded border border-slate-300 px-2 py-1 text-xs"
+      />
+      <button
+        type="button"
+        disabled={disabled || (initialValue ?? '') === value.trim()}
+        onClick={() => onSave(packageId, isAutomatic ? null : value.trim())}
+        className="rounded px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-40"
+      >
+        Guardar PVP
+      </button>
+      <span className="text-xs text-slate-500">
+        {initialValue == null ? `Automático: ${formatMoney(automaticPrice)}` : 'PVP propio'}
+      </span>
+    </div>
+  );
 }
 
 /** Un código de barras editable en el sitio — clic en "Editar" lo convierte
@@ -105,25 +165,35 @@ function BarcodeRow({
 export function PackagesPanel({
   product,
   onAddPackage,
+  onSetPackagePrice,
   onAddBarcode,
   onEditBarcode,
   onDeleteBarcode,
   isAddingPackage,
   isAddingBarcode,
   isSavingBarcode,
+  isSavingPackagePrice,
   barcodeError,
+  packagePriceError,
 }: PackagesPanelProps) {
   const [name, setName] = useState('');
   const [factor, setFactor] = useState('');
   const [barcode, setBarcode] = useState('');
+  const [priceOverride, setPriceOverride] = useState('');
   const [barcodeTargets, setBarcodeTargets] = useState<Record<number, string>>({});
 
   function submitPackage(event: FormEvent) {
     event.preventDefault();
-    onAddPackage(name, factor, barcode === '' ? null : barcode);
+    onAddPackage(
+      name,
+      factor,
+      barcode === '' ? null : barcode,
+      priceOverride === '' ? null : priceOverride,
+    );
     setName('');
     setFactor('');
     setBarcode('');
+    setPriceOverride('');
   }
 
   function submitBarcode(packageId: number) {
@@ -136,11 +206,13 @@ export function PackagesPanel({
   return (
     <div className="border-t border-slate-100 bg-slate-50 px-4 py-3">
       {barcodeError && <p className="mb-2 text-xs text-red-600">{barcodeError}</p>}
+      {packagePriceError && <p className="mb-2 text-xs text-red-600">{packagePriceError}</p>}
       <table className="w-full text-left text-sm">
         <thead className="text-xs uppercase text-slate-400">
           <tr>
             <th className="py-1 font-medium">Formato</th>
             <th className="py-1 font-medium">Factor ({product.base_unit_name})</th>
+            <th className="py-1 font-medium">PVP del formato</th>
             <th className="py-1 font-medium">Códigos de barras</th>
             <th className="py-1 font-medium" />
           </tr>
@@ -153,6 +225,21 @@ export function PackagesPanel({
                 {pkg.is_base && <span className="ml-1 text-xs text-slate-400">(base)</span>}
               </td>
               <td className="py-1.5 align-top">{formatQuantity(pkg.factor)}</td>
+              <td className="py-1.5 align-top">
+                {pkg.is_base ? (
+                  <span className="text-xs text-slate-500">PVP Final del producto</span>
+                ) : (
+                  <PackagePriceInput
+                    key={pkg.price_override ?? 'automatic'}
+                    packageId={pkg.id}
+                    packageName={pkg.name}
+                    initialValue={pkg.price_override}
+                    automaticPrice={automaticPackagePrice(product, pkg.factor)}
+                    disabled={isSavingPackagePrice}
+                    onSave={onSetPackagePrice}
+                  />
+                )}
+              </td>
               <td className="py-1.5 align-top">
                 {pkg.barcodes.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -222,6 +309,17 @@ export function PackagesPanel({
             value={factor}
             onChange={(event) => setFactor(event.target.value)}
             className="mt-1 block w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="text-xs text-slate-600">
+          PVP del formato (opcional)
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="automático"
+            value={priceOverride}
+            onChange={(event) => setPriceOverride(event.target.value)}
+            className="mt-1 block w-32 rounded border border-slate-300 px-2 py-1 text-sm"
           />
         </label>
         <label className="text-xs text-slate-600">
