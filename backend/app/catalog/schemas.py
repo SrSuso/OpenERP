@@ -273,6 +273,9 @@ class ProductRead(BaseModel):
     base_unit_name: str
     cost: Decimal
     list_price: Decimal
+    #: PVP vigente: el redondeado automático o el precio manual, según cuál
+    #: sea aplicable. Es la referencia que usa el POS para nuevas ventas.
+    final_price: Decimal
     tax_rate: Decimal
     surcharge_rate: Decimal
     #: El tipo que de verdad se le aplica, resuelto ya (impuestos propios,

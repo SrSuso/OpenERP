@@ -576,7 +576,7 @@ describe('ProductsPage', () => {
     // Se puede seguir mirando la ficha, que es de sólo lectura sin permisos.
     expect(screen.getByRole('link', { name: 'Agua 1L' })).toBeInTheDocument();
     // Sin pricing.manage el precio se ve, pero no se teclea.
-    expect(screen.queryByLabelText('PVP de venta de Agua 1L')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('PVP Final de Agua 1L')).not.toBeInTheDocument();
     // Y el coste no se ve siquiera: lo que cuesta el género es cosa de
     // quien pone los precios, no de quien sólo mira el catálogo.
     expect(screen.queryByText('Coste (por unidad base)')).not.toBeInTheDocument();
@@ -601,10 +601,10 @@ describe('ProductsPage', () => {
     await screen.findByText('Tomate');
 
     // "Agua 1L" se vende por unidades: su precio se ve, no se teclea.
-    expect(screen.queryByLabelText('PVP de venta de Agua 1L')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('PVP Final de Agua 1L')).not.toBeInTheDocument();
     expect(screen.getByText('0,60 €')).toBeInTheDocument();
 
-    const price = screen.getByLabelText('PVP de venta de Tomate');
+    const price = screen.getByLabelText('PVP Final de Tomate');
     await userEvent.clear(price);
     await userEvent.type(price, '1,68{Enter}');
 
@@ -708,7 +708,7 @@ describe('ProductsPage', () => {
     renderPage();
     await screen.findByText('Tomate');
 
-    const price = screen.getByLabelText('PVP de venta de Tomate');
+    const price = screen.getByLabelText('PVP Final de Tomate');
     await userEvent.clear(price);
     // "0,60" es lo mismo que el "0.600000" guardado: no hay nada que guardar,
     // y una entrada de más en el histórico de precios sería ruido.

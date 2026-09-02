@@ -401,9 +401,12 @@ describe('ProductDetailPage', () => {
     // Precios
     await userEvent.click(screen.getByRole('button', { name: 'Precios' }));
     expect(await screen.findByText('PVP calculado (sin redondear)')).toBeInTheDocument();
-    expect(screen.getByText('PVP de venta (redondeado)')).toBeInTheDocument();
+    expect(screen.getByText('PVP redondeado')).toBeInTheDocument();
+    expect(screen.getByText('PVP Final')).toBeInTheDocument();
     expect(screen.getByText('0,58 €')).toBeInTheDocument();
-    expect(screen.getByText('0,60 €')).toBeInTheDocument();
+    // Sin precio manual, el PVP Final coincide de forma explícita con el
+    // PVP redondeado y ambos importes deben mostrarse.
+    expect(screen.getAllByText('0,60 €')).toHaveLength(2);
     const marginInput = screen.getByPlaceholderText('heredado: 30%');
     await userEvent.type(marginInput, '15');
     await userEvent.click(screen.getByRole('button', { name: /IVA general/ }));
@@ -741,7 +744,7 @@ describe('ProductDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Quitar fórmula propia' })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Quitar precio manual' }));
-    await screen.findByText('0,60 €');
+    await screen.findAllByText('0,60 €');
     expect(backend.clearManualPriceCalls).toEqual([true]);
     expect(screen.queryByRole('button', { name: 'Quitar precio manual' })).not.toBeInTheDocument();
 

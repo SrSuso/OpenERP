@@ -56,6 +56,7 @@ def product_to_read(product: Product) -> ProductRead:
         base_unit_name=product.base_unit_name,
         cost=product.cost,
         list_price=product.list_price,
+        final_price=product.final_price,
         tax_rate=product.tax_rate,
         surcharge_rate=product.surcharge_rate,
         effective_tax_rate=taxes.effective_tax_rate(product),

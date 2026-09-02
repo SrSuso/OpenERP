@@ -14,6 +14,7 @@ const MILK: Product = {
   pos_category_name: 'Bebidas',
   base_unit_name: 'UNIT',
   list_price: '1.200000',
+  final_price: '1.250000',
   tax_rate: '10.000000',
   is_active: true,
   packages: [
@@ -63,7 +64,7 @@ describe('ProductGrid', () => {
 
     const button = screen.getByRole('button', { name: /leche entera 1l/i });
     expect(button).toBeInTheDocument();
-    expect(button).toHaveTextContent('1,20 €');
+    expect(button).toHaveTextContent('1,25 €');
   });
 
   it('calls onPick with the product when tapped', async () => {

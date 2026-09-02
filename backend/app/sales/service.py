@@ -433,7 +433,10 @@ def _new_line(
         # with the `Tax` entities, so a product priced from the admin
         # panel carries 0 there and its line would land on the receipt
         # with no tax to report at all.
-        unit_price=product.list_price if unit_price is None else unit_price,
+        # `final_price` is the PVP the POS exposes: automatic pricing puts
+        # its rounded result there and a manual price replaces it. Freeze it
+        # on the line so later pricing changes never rewrite this sale.
+        unit_price=product.final_price if unit_price is None else unit_price,
         cold_drink_surcharge=cold_drink_surcharge,
         pos_surcharge_label=pos_surcharge_label,
         unit_cost=product.cost,

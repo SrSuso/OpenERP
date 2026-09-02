@@ -82,6 +82,7 @@ async def test_setting_a_formula_recomputes_the_list_price(
     body = response.json()
     assert body["price_formula"] == SPEC_FORMULA
     assert body["list_price"] == "15.150000"
+    assert body["final_price"] == "15.150000"
 
 
 async def test_changing_cost_recomputes_price_from_the_existing_formula(
@@ -127,6 +128,7 @@ async def test_automatic_prices_are_rounded_up_to_five_cent_steps(
     )
     assert manual.status_code == 200
     assert Decimal(manual.json()["list_price"]) == Decimal("2.16")
+    assert Decimal(manual.json()["final_price"]) == Decimal("2.16")
 
 
 async def test_product_price_calculation_exposes_raw_and_rounded_prices(
@@ -182,6 +184,7 @@ async def test_manual_price_clears_the_formula(
     assert response.status_code == 200
     body = response.json()
     assert body["list_price"] == "9.990000"
+    assert body["final_price"] == "9.990000"
     assert body["price_formula"] is None
 
     # Cambiar el coste después sí recalcula, pero ya no con la fórmula

@@ -129,11 +129,19 @@ export const productSchema = z.object({
   is_sold_by_weight: z.boolean().optional(),
   base_unit_name: z.string(),
   list_price: z.string(),
+  // Compatible con un API anterior durante un despliegue escalonado; el
+  // servidor nuevo siempre expone el PVP Final explícitamente.
+  final_price: z.string().optional(),
   tax_rate: z.string(),
   is_active: z.boolean(),
   packages: z.array(packageSchema),
 });
 export type Product = z.infer<typeof productSchema>;
+
+/** El PVP Final es el único precio de referencia para mostrar y vender en POS. */
+export function finalProductPrice(product: Pick<Product, 'list_price' | 'final_price'>): string {
+  return product.final_price ?? product.list_price;
+}
 
 /** The base (`factor == 1`) package every product always has — what a plain
  * tap on its button sells. */

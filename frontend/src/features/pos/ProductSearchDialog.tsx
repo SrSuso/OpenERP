@@ -1,6 +1,6 @@
 import { type KeyboardEvent } from 'react';
 
-import { type Product } from '@/features/pos/api';
+import { finalProductPrice, type Product } from '@/features/pos/api';
 import { formatMoney } from '@/lib/format';
 
 const KEY_ROWS = [
@@ -103,7 +103,9 @@ export function ProductSearchDialog({
                 >
                   <span className="block text-lg font-semibold">{product.name}</span>
                   <span className="mt-1 block text-sm text-emerald-400">
-                    {product.is_open_price ? 'Precio libre' : formatMoney(product.list_price)}
+                    {product.is_open_price
+                      ? 'Precio libre'
+                      : formatMoney(finalProductPrice(product))}
                   </span>
                 </button>
               ))}

@@ -255,6 +255,10 @@ export const productSchema = z.object({
   base_unit_name: z.string(),
   cost: z.string(),
   list_price: z.string(),
+  // El backend actual lo envía siempre. Mantenerlo opcional permite que un
+  // frontend nuevo siga mostrando el PVP correcto mientras convive unos
+  // minutos con un despliegue anterior.
+  final_price: z.string().optional(),
   tax_rate: z.string(),
   surcharge_rate: z.string(),
   // El tipo que de verdad se le aplica, ya resuelto por el backend
@@ -280,6 +284,11 @@ export const productSchema = z.object({
   packages: z.array(packageSchema),
 });
 export type Product = z.infer<typeof productSchema>;
+
+/** Precio que se vende ahora: manual si se fijó, o el cálculo redondeado. */
+export function finalProductPrice(product: Pick<Product, 'list_price' | 'final_price'>): string {
+  return product.final_price ?? product.list_price;
+}
 
 export interface ProductFilters {
   categoryId?: number;

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { imageUrl, imageVersionsQuery } from '@/features/images/api';
-import { type Product } from '@/features/pos/api';
+import { finalProductPrice, type Product } from '@/features/pos/api';
 import { formatMoney } from '@/lib/format';
 
 interface ProductGridProps {
@@ -84,7 +84,7 @@ function ProductButton({
           {product.name}
         </span>
         <span className="shrink-0 whitespace-nowrap text-sm font-semibold text-emerald-400">
-          {product.is_open_price ? 'Precio libre' : formatMoney(product.list_price)}
+          {product.is_open_price ? 'Precio libre' : formatMoney(finalProductPrice(product))}
         </span>
       </div>
     </button>

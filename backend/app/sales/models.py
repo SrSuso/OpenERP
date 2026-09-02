@@ -167,7 +167,7 @@ class SaleLine(IntPrimaryKeyMixin, TimestampMixin, Base):
         default=Decimal(0), server_default="0"
     )
 
-    #: Price snapshot, per base unit — copied from ``Product.list_price`` at
+    #: Price snapshot, per base unit — copied from ``Product.final_price`` at
     #: the moment the line was added, never recomputed from it afterwards
     #: (rule 7).
     unit_price: Mapped[Money]

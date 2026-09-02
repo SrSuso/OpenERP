@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
-import { type Product, type ProductCategory } from '@/features/catalog/api';
+import { finalProductPrice, type Product, type ProductCategory } from '@/features/catalog/api';
 import {
   productPriceHistoryQuery,
   productPriceCalculationQuery,
@@ -79,9 +79,10 @@ export function ProductPricingPanel({
   );
   const [manualPriceInput, setManualPriceInput] = useState('');
   const [manualPriceError, setManualPriceError] = useState<string | null>(null);
+  const finalPrice = finalProductPrice(product);
 
   const hasManualPrice =
-    calculation.data !== undefined && calculation.data.rounded_price !== product.list_price;
+    calculation.data !== undefined && calculation.data.rounded_price !== finalPrice;
 
   const manualPriceMutation = useMutation({
     mutationFn: (price: string) => setManualPrice(product.id, price),
@@ -229,14 +230,24 @@ export function ProductPricingPanel({
         </div>
 
         <div className="text-xs text-slate-600">
-          <span className="block">PVP de venta (redondeado)</span>
-          <p className="mt-1 rounded border border-brand-200 bg-brand-50 px-2 py-1 text-sm font-medium text-slate-800">
-            {formatMoney(product.list_price)}
+          <span className="block">PVP redondeado</span>
+          <p className="mt-1 rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800">
+            {calculation.data ? formatMoney(calculation.data.rounded_price) : '—'}
+          </p>
+          <span className="mt-1 block text-xs text-slate-400">
+            Resultado automático, redondeado al alza a cinco céntimos.
+          </span>
+        </div>
+
+        <div className="text-xs text-slate-600">
+          <span className="block">PVP Final</span>
+          <p className="mt-1 rounded border border-brand-300 bg-brand-50 px-2 py-1 text-sm font-semibold text-slate-900">
+            {formatMoney(finalPrice)}
           </p>
           <span className="mt-1 block text-xs text-slate-400">
             {hasManualPrice
-              ? 'Precio manual: se respeta tal cual.'
-              : 'Redondeado al alza a cinco céntimos.'}
+              ? 'Precio manual vigente. El POS vende a este importe.'
+              : 'Coincide con el PVP redondeado. El POS vende a este importe.'}
           </span>
 
           <div className="mt-3 border-t border-slate-200 pt-3">
@@ -250,7 +261,7 @@ export function ProductPricingPanel({
                 inputMode="decimal"
                 value={manualPriceInput}
                 onChange={(event) => setManualPriceInput(event.target.value)}
-                placeholder={product.list_price}
+                placeholder={finalPrice}
                 className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
               />
               <button

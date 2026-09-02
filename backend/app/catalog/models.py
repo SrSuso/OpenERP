@@ -154,7 +154,22 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: which is what keeps ``product_price_history`` complete — there is no
     #: second, unaudited way to change a price.
     cost: Mapped[Money]
+    #: The persisted, authoritative price the customer pays. Automatic
+    #: pricing writes the commercially rounded amount here; a manual price
+    #: deliberately replaces it. ``final_price`` below gives that business
+    #: meaning a stable name without duplicating a database value.
     list_price: Mapped[Money]
+
+    @property
+    def final_price(self) -> Decimal:
+        """The current final PVP used by every new sale line.
+
+        A product has one effective retail price, not a second mutable
+        "final" column: keeping this alias over ``list_price`` guarantees
+        that manual and automatic pricing cannot drift apart.
+        """
+        return self.list_price
+
     #: Legacy single-rate field, kept for backward compatibility with every
     #: module that already reads it (history, tickets, dashboards...) and
     #: with the formula engine's ``tax_rate`` variable. No longer written by

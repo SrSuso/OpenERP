@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { Keypad } from '@/features/pos/Keypad';
-import { type Product } from '@/features/pos/api';
+import { finalProductPrice, type Product } from '@/features/pos/api';
 import { formatMoney } from '@/lib/format';
 
 interface WeightPromptProps {
@@ -28,7 +28,8 @@ export function WeightPrompt({ product, onCancel, onConfirm, isPending }: Weight
 
   const parsed = Number(grams.replace(',', '.'));
   const isValid = grams.trim() !== '' && Number.isFinite(parsed) && parsed > 0;
-  const amount = isValid ? (parsed / 1000) * Number(product.list_price) : 0;
+  const finalPrice = finalProductPrice(product);
+  const amount = isValid ? (parsed / 1000) * Number(finalPrice) : 0;
 
   function confirm() {
     if (!isValid || isPending) return;
@@ -45,7 +46,7 @@ export function WeightPrompt({ product, onCancel, onConfirm, isPending }: Weight
       <div className="w-full max-w-sm rounded-lg bg-slate-800 p-5 shadow-xl">
         <h2 className="text-lg font-semibold text-slate-50">{product.name}</h2>
         <p className="mt-1 text-sm text-slate-400">
-          {formatMoney(product.list_price)} / {product.base_unit_name}
+          {formatMoney(finalPrice)} / {product.base_unit_name}
         </p>
 
         {/* Se teclea con el teclado de abajo, pero sigue siendo un campo

@@ -261,6 +261,16 @@ async def test_line_price_is_a_snapshot_and_ignores_later_price_changes(
         f"/api/v1/products/{product['id']}/pricing/manual-price", json={"list_price": "999.00"}
     )
 
+    # El PVP Final es el que queda congelado para las líneas nuevas; la
+    # línea anterior mantiene su snapshot de 10 €, como debe ser.
+    new_sale = await _open_sale(client)
+    new_line = await client.post(
+        f"/api/v1/sales/{new_sale['id']}/lines",
+        json={"product_id": product["id"], "package_id": base_id, "quantity_packages": "1"},
+    )
+    assert new_line.status_code == 201
+    assert new_line.json()["lines"][0]["unit_price"] == "999.000000"
+
     refreshed = (await client.get(f"/api/v1/sales/{sale['id']}")).json()
     assert refreshed["lines"][0]["unit_price"] == "10.000000"
 

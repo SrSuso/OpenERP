@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 
-import { type Product } from '@/features/catalog/api';
+import { finalProductPrice, type Product } from '@/features/catalog/api';
 import { decimalInputValue, decimalString } from '@/lib/decimal';
 import { formatMoney, formatQuantity } from '@/lib/format';
 
@@ -59,7 +59,7 @@ export function ProductsTable({
                 el rol de caja tiene `product.read` y llegaría a ver esta
                 lista, pero no tiene por qué saber el margen de la tienda. */}
             {canManagePricing && <th className="px-4 py-2 font-medium">Coste (por unidad base)</th>}
-            <th className="px-4 py-2 font-medium">PVP de venta (por unidad base)</th>
+            <th className="px-4 py-2 font-medium">PVP Final (por unidad base)</th>
             <th className="px-4 py-2 font-medium">Estado</th>
           </tr>
         </thead>
@@ -120,17 +120,17 @@ export function ProductsTable({
                   <MoneyCell
                     // Se remonta cuando el servidor devuelve otro precio, así
                     // el recuadro parte siempre de lo que hay guardado.
-                    key={product.list_price}
+                    key={finalProductPrice(product)}
                     product={product}
-                    label={`PVP de venta de ${product.name}`}
-                    value={product.list_price}
+                    label={`PVP Final de ${product.name}`}
+                    value={finalProductPrice(product)}
                     onSave={onSetPrice}
                     isSaving={savingPriceId === product.id}
                     isSaved={savedPriceId === product.id}
                   />
                 ) : (
                   <>
-                    {formatMoney(product.list_price)}
+                    {formatMoney(finalProductPrice(product))}
                     <span className="ml-1 text-xs text-slate-400">/{product.base_unit_name}</span>
                   </>
                 )}
