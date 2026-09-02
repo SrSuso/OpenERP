@@ -557,7 +557,10 @@ describe('PosHomePage', () => {
       await screen.findByPlaceholderText('Escanear o introducir código de barras'),
     );
     const dialog = await screen.findByRole('dialog', { name: 'Buscar productos' });
-    await userEvent.type(within(dialog).getByLabelText('Nombre, referencia o código'), 'Leche');
+    await userEvent.type(
+      within(dialog).getByLabelText('Nombre, descripción, referencia o código'),
+      'Leche',
+    );
     await userEvent.click(await within(dialog).findByRole('button', { name: /Leche entera 1L/ }));
 
     await waitFor(() => {

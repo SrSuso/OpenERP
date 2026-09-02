@@ -66,7 +66,7 @@ export function ProductSearchDialog({
         </div>
 
         <label className="mt-3 block text-sm text-slate-300">
-          Nombre, referencia o código
+          Nombre, descripción, referencia o código
           <input
             type="search"
             autoFocus

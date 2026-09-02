@@ -694,7 +694,12 @@ async def test_products_can_be_searched_by_barcode(
     )
     await client.post(
         "/api/v1/products",
-        json=_product_payload(sku="WATER-1L", name="Agua 1L", base_barcode="777777"),
+        json=_product_payload(
+            sku="WATER-1L",
+            name="Agua 1L",
+            description="Agua natural de manantial",
+            base_barcode="777777",
+        ),
     )
 
     # El de un formato que no es el base cuenta igual: es el mismo producto.
@@ -704,10 +709,16 @@ async def test_products_can_be_searched_by_barcode(
     by_base = await client.get("/api/v1/products?search=111111")
     assert [p["id"] for p in by_base.json()] == [product["id"]]
 
-    # Y el nombre y el SKU siguen buscándose como antes.
+    # Nombre, descripción y SKU se buscan por fragmento, no por coincidencia
+    # exacta. Así ambas barras (administración y POS) obtienen el mismo
+    # resultado desde el endpoint común.
     assert [p["id"] for p in (await client.get("/api/v1/products?search=leche")).json()] == [
         product["id"]
     ]
+    by_description = await client.get("/api/v1/products?search=entera")
+    assert [p["id"] for p in by_description.json()] == [product["id"]]
+    by_partial_name = await client.get("/api/v1/products?search=che")
+    assert [p["id"] for p in by_partial_name.json()] == [product["id"]]
     assert (await client.get("/api/v1/products?search=000000")).json() == []
 
 

@@ -60,7 +60,7 @@ describe('ProductSearchDialog', () => {
       />,
     );
 
-    await userEvent.click(screen.getByLabelText('Nombre, referencia o código'));
+    await userEvent.click(screen.getByLabelText('Nombre, descripción, referencia o código'));
     await userEvent.keyboard('{Enter}');
     expect(screen.getByRole('button', { name: /Leche entera 1L/ })).toBeInTheDocument();
     expect(onPick).not.toHaveBeenCalled();

@@ -652,11 +652,12 @@ async def list_products(
         stmt = stmt.order_by(None).order_by(zero_last, Product.pos_display_order, Product.name)
     if search:
         pattern = f"%{search.lower()}%"
-        # También por código de barras: es lo que está impreso en el
-        # producto y lo que teclea (o escanea) quien lo tiene en la mano,
-        # mientras que el SKU es una referencia interna. Como EXISTS y no
-        # como join, para que un producto con varios códigos que encajen
-        # siga saliendo una sola vez.
+        # Nombre y descripción se buscan por fragmento, no sólo por palabra
+        # completa: ``ta`` encuentra ``Plátano``. También por código de
+        # barras: es lo que está impreso en el producto y lo que teclea (o
+        # escanea) quien lo tiene en la mano, mientras que el SKU es una
+        # referencia interna. Como EXISTS y no como join, un producto con
+        # varios códigos que encajen sigue saliendo una sola vez.
         by_barcode = (
             select(ProductBarcode.id)
             .join(ProductPackage, ProductPackage.id == ProductBarcode.package_id)
@@ -669,6 +670,7 @@ async def list_products(
         stmt = stmt.where(
             or_(
                 func.lower(Product.name).like(pattern),
+                func.lower(Product.description).like(pattern),
                 func.lower(Product.sku).like(pattern),
                 by_barcode,
             )

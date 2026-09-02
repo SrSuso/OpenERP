@@ -173,7 +173,7 @@ export function ProductsPage() {
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Nombre o código de barras…"
+              placeholder="Nombre, descripción o código de barras…"
               className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
             />
           </label>
