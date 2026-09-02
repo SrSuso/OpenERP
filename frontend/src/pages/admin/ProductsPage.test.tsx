@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import {
@@ -14,6 +14,27 @@ import {
 import { type Tax } from '@/features/pricing/api';
 
 import { ProductsPage } from './ProductsPage';
+
+beforeEach(() => {
+  // React Router's data router creates browser-realm AbortSignals in jsdom,
+  // while Node's native Request accepts only its own realm. Filter changes
+  // intentionally update the URL, so make that navigation testable.
+  const NativeRequest = globalThis.Request;
+  vi.stubGlobal(
+    'Request',
+    class extends NativeRequest {
+      constructor(input: RequestInfo | URL, init?: RequestInit) {
+        if (init?.signal === undefined) {
+          super(input, init);
+          return;
+        }
+        const withoutSignal: RequestInit = { ...init };
+        delete withoutSignal.signal;
+        super(input, withoutSignal);
+      }
+    },
+  );
+});
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -226,7 +247,7 @@ function stubBackend(options: { products?: Product[] } = {}) {
   };
 }
 
-function renderPage() {
+function renderPage(initialEntry = '/admin/inventory/products') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
@@ -234,7 +255,7 @@ function renderPage() {
       { path: '/admin/another-page', element: <p>Otra página</p> },
       { path: '/admin/inventory/products/:productId', element: <p>Ficha de producto</p> },
     ],
-    { initialEntries: ['/admin/inventory/products'] },
+    { initialEntries: [initialEntry] },
   );
   return {
     router,
@@ -532,8 +553,8 @@ describe('ProductsPage', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Categoría POS'), 'none');
 
-    expect(screen.getByText('Agua 1L')).toBeInTheDocument();
-    expect(screen.queryByText('Tomate')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Agua 1L')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Tomate')).not.toBeInTheDocument());
   });
 
   it('opens the product detail from its own name', async () => {
@@ -544,6 +565,24 @@ describe('ProductsPage', () => {
     expect(screen.getByRole('link', { name: 'Agua 1L' })).toHaveAttribute(
       'href',
       '/admin/inventory/products/1',
+    );
+  });
+
+  it('keeps every active filter in the product detail link', async () => {
+    stubBackend();
+    renderPage(
+      '/admin/inventory/products?search=Agua&category=1&unit=UNIT&pos_category=none&inactive=1',
+    );
+    await screen.findByText('Agua 1L');
+
+    expect(screen.getByLabelText('Buscar')).toHaveValue('Agua');
+    expect(screen.getByLabelText('Categoría')).toHaveValue('1');
+    expect(screen.getByLabelText('Unidad')).toHaveValue('UNIT');
+    expect(screen.getByLabelText('Categoría POS')).toHaveValue('none');
+    expect(screen.getByLabelText('Incluir inactivos')).toBeChecked();
+    expect(screen.getByRole('link', { name: 'Agua 1L' })).toHaveAttribute(
+      'href',
+      '/admin/inventory/products/1?search=Agua&category=1&unit=UNIT&pos_category=none&inactive=1',
     );
   });
 
@@ -694,7 +733,7 @@ describe('ProductsPage', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Unidad'), 'KG');
 
-    expect(screen.queryByText('Agua 1L')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Agua 1L')).not.toBeInTheDocument());
     // Coste y PVP, los dos tecleables en la fila para un producto al peso.
     expect(screen.getAllByText('€/KG')).toHaveLength(2);
   });

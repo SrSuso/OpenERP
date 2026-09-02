@@ -23,6 +23,9 @@ interface ProductsTableProps {
   onSetCost: (product: Product, cost: string) => void;
   savingCostId: number | null;
   savedCostId: number | null;
+  /** Filtros actuales de la lista, para devolver a exactamente el mismo
+   * contexto después de revisar una ficha. */
+  listSearch: string;
 }
 
 /** El nombre de cada producto es el enlace a su ficha
@@ -45,6 +48,7 @@ export function ProductsTable({
   onSetCost,
   savingCostId,
   savedCostId,
+  listSearch,
 }: ProductsTableProps) {
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -68,7 +72,7 @@ export function ProductsTable({
             <tr key={product.id} className="border-b border-slate-100 last:border-0">
               <td className="px-4 py-2">
                 <Link
-                  to={`/admin/inventory/products/${product.id}`}
+                  to={{ pathname: `/admin/inventory/products/${product.id}`, search: listSearch }}
                   className="font-medium text-brand-700 hover:underline"
                 >
                   {product.name}

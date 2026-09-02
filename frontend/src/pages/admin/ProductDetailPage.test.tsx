@@ -354,14 +354,14 @@ function stubBackend(
   };
 }
 
-function renderPage() {
+function renderPage(initialEntry = '/admin/inventory/products/1') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
       { path: '/admin/inventory/products/:productId', element: <ProductDetailPage /> },
       { path: '/admin/inventory/products', element: <p>Listado de productos</p> },
     ],
-    { initialEntries: ['/admin/inventory/products/1'] },
+    { initialEntries: [initialEntry] },
   );
   return {
     router,
@@ -376,6 +376,16 @@ function renderPage() {
 }
 
 describe('ProductDetailPage', () => {
+  it('returns to the same filtered product list', async () => {
+    stubBackend();
+    renderPage('/admin/inventory/products/1?search=Agua&category=1&unit=UNIT');
+
+    expect(await screen.findByRole('link', { name: /Volver a productos/ })).toHaveAttribute(
+      'href',
+      '/admin/inventory/products?search=Agua&category=1&unit=UNIT',
+    );
+  });
+
   it('edits general fields, price/taxes and formatos, and shows current stock', async () => {
     const backend = stubBackend();
     renderPage();

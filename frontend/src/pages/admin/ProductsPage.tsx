@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 
 import { useAuth } from '@/features/auth/useAuth';
 import {
@@ -28,21 +29,38 @@ export function ProductsPage() {
   const canManagePricing = hasPermission('pricing.manage');
   const canManageStock = hasPermission('inventory.manage');
 
-  const [search, setSearch] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  // Los filtros viven en la URL para que abrir una ficha, volver, usar Atrás
+  // o recargar no haga perder el contexto del listado.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get('search') ?? '';
+  const categoryId = searchParams.get('category') ?? '';
   // Para repasar de un vistazo lo que se vende por peso ("KG") y teclear los
   // precios del día. Se filtra aquí y no en el servidor porque la lista ya
   // viene entera (`list_products` no pagina) y `base_unit_name` viene en cada
   // producto: un filtro más en la API no aportaría nada.
-  const [unitName, setUnitName] = useState('');
+  const unitName = searchParams.get('unit') ?? '';
   //: '' = todas; 'none' = las que no están en ningún botón del TPV, que es
   //: justo lo que se repasa al montar la caja.
-  const [posCategoryFilter, setPosCategoryFilter] = useState('');
-  const [showInactive, setShowInactive] = useState(false);
+  const posCategoryFilter = searchParams.get('pos_category') ?? '';
+  const showInactive = searchParams.get('inactive') === '1';
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createDirty, setCreateDirty] = useState(false);
   useUnsavedNavigationWarning(showCreateForm && createDirty);
+
+  function setFilter(key: string, value: string) {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value === '') next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  const listSearch = searchParams.size > 0 ? `?${searchParams.toString()}` : '';
 
   const categories = useQuery(productCategoriesQuery);
   const posCategories = useQuery(posCategoriesQuery);
@@ -172,7 +190,7 @@ export function ProductsPage() {
             <input
               type="text"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => setFilter('search', event.target.value)}
               placeholder="Nombre, descripción o código de barras…"
               className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
             />
@@ -181,7 +199,7 @@ export function ProductsPage() {
             Categoría
             <select
               value={categoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
+              onChange={(event) => setFilter('category', event.target.value)}
               className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
             >
               <option value="">Todas</option>
@@ -196,7 +214,7 @@ export function ProductsPage() {
             Unidad
             <select
               value={unitName}
-              onChange={(event) => setUnitName(event.target.value)}
+              onChange={(event) => setFilter('unit', event.target.value)}
               className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
             >
               <option value="">Todas</option>
@@ -211,7 +229,7 @@ export function ProductsPage() {
             Categoría POS
             <select
               value={posCategoryFilter}
-              onChange={(event) => setPosCategoryFilter(event.target.value)}
+              onChange={(event) => setFilter('pos_category', event.target.value)}
               className="mt-1 block rounded border border-slate-300 px-3 py-1.5 text-sm"
             >
               <option value="">Todas</option>
@@ -227,7 +245,7 @@ export function ProductsPage() {
             <input
               type="checkbox"
               checked={showInactive}
-              onChange={(event) => setShowInactive(event.target.checked)}
+              onChange={(event) => setFilter('inactive', event.target.checked ? '1' : '')}
             />
             Incluir inactivos
           </label>
@@ -317,6 +335,7 @@ export function ProductsPage() {
           onSetCost={(product, cost) => setProposedCost({ product, cost })}
           savingCostId={costMutation.isPending ? costMutation.variables.id : null}
           savedCostId={savedCostId}
+          listSearch={listSearch}
         />
       )}
     </div>

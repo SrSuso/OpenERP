@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
 import { useAuth } from '@/features/auth/useAuth';
 import {
@@ -71,12 +71,14 @@ const tabClassName = (active: boolean) =>
 export function ProductDetailPage() {
   const { productId: productIdParam } = useParams<{ productId: string }>();
   const productId = Number(productIdParam);
+  const location = useLocation();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
   const canManageProduct = hasPermission('product.manage');
   const canManagePricing = hasPermission('pricing.manage');
   const canManageLots = hasPermission('lot.manage');
+  const productsListPath = `/admin/inventory/products${location.search}`;
 
   const [tab, setTab] = useState<Tab>('general');
   // General y precios se teclean y no se guardan solos: cambiar de pestaña
@@ -167,7 +169,7 @@ export function ProductDetailPage() {
       // El borrado ya tiene su confirmación específica; no pedir además
       // descartar la ficha que precisamente acaba de desaparecer.
       bypassNavigationRef.current = true;
-      void navigate('/admin/inventory/products');
+      void navigate(productsListPath);
     },
     onError: (err: unknown) =>
       setDeleteError(
@@ -300,7 +302,7 @@ export function ProductDetailPage() {
   return (
     <section>
       <Link
-        to="/admin/inventory/products"
+        to={productsListPath}
         className="mb-2 inline-block text-sm text-brand-700 hover:underline"
       >
         ← Volver a productos
