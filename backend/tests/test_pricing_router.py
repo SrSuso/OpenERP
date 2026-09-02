@@ -187,15 +187,27 @@ async def test_manual_price_clears_the_formula(
     assert body["final_price"] == "9.990000"
     assert body["price_formula"] is None
 
-    # Cambiar el coste después sí recalcula, pero ya no con la fórmula
-    # propia (se la llevó el precio manual): con la de la tienda y el
-    # margen del producto. Si el coste sube, el PVP sube — decisión
-    # explícita del tendero, ver SetPricingInputsRequest.
+    # El coste sí se actualiza y el cálculo se puede consultar, pero no puede
+    # sustituir el precio manual ni el PVP Final que verá el POS.
     after_cost_change = await client.patch(
         f"/api/v1/products/{product_id}/pricing", json={"cost": "50"}
     )
-    # 50 + 10% de IVA, sin margen: 55. Ya no son los 9,99 de antes.
-    assert after_cost_change.json()["list_price"] == "55.000000"
+    assert after_cost_change.status_code == 200
+    assert after_cost_change.json()["cost"] == "50.000000"
+    assert after_cost_change.json()["list_price"] == "9.990000"
+    assert after_cost_change.json()["final_price"] == "9.990000"
+    assert after_cost_change.json()["manual_price_is_set"] is True
+
+    # Ni siquiera guardar una fórmula nueva puede machacar el importe
+    # manual: queda preparada como cálculo de referencia para cuando el
+    # dueño decida quitarlo explícitamente.
+    after_formula_change = await client.put(
+        f"/api/v1/products/{product_id}/pricing/formula", json={"price_formula": "cost * 2"}
+    )
+    assert after_formula_change.status_code == 200
+    assert after_formula_change.json()["price_formula"] == "cost * 2"
+    assert after_formula_change.json()["final_price"] == "9.990000"
+    assert after_formula_change.json()["manual_price_is_set"] is True
 
 
 async def test_clearing_a_manual_price_restores_the_automatic_calculation(
@@ -214,6 +226,7 @@ async def test_clearing_a_manual_price_restores_the_automatic_calculation(
     assert restored.status_code == 200
     # Vuelve a la fórmula de tienda (coste + IVA) y se redondea al alza.
     assert Decimal(restored.json()["list_price"]) == Decimal("2.40")
+    assert restored.json()["manual_price_is_set"] is False
 
 
 async def test_clearing_the_formula_keeps_the_last_computed_price(

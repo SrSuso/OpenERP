@@ -132,6 +132,7 @@ export const productSchema = z.object({
   // Compatible con un API anterior durante un despliegue escalonado; el
   // servidor nuevo siempre expone el PVP Final explícitamente.
   final_price: z.string().optional(),
+  manual_price_is_set: z.boolean().optional(),
   tax_rate: z.string(),
   is_active: z.boolean(),
   packages: z.array(packageSchema),

@@ -259,6 +259,9 @@ export const productSchema = z.object({
   // frontend nuevo siga mostrando el PVP correcto mientras convive unos
   // minutos con un despliegue anterior.
   final_price: z.string().optional(),
+  // En un despliegue escalonado puede no llegar todavía; la ficha conserva
+  // entonces su indicación anterior hasta que el API se actualice.
+  manual_price_is_set: z.boolean().optional(),
   tax_rate: z.string(),
   surcharge_rate: z.string(),
   // El tipo que de verdad se le aplica, ya resuelto por el backend

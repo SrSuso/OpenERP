@@ -82,7 +82,8 @@ export function ProductPricingPanel({
   const finalPrice = finalProductPrice(product);
 
   const hasManualPrice =
-    calculation.data !== undefined && calculation.data.rounded_price !== finalPrice;
+    product.manual_price_is_set ??
+    (calculation.data !== undefined && calculation.data.rounded_price !== finalPrice);
 
   const manualPriceMutation = useMutation({
     mutationFn: (price: string) => setManualPrice(product.id, price),

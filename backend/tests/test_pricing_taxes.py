@@ -698,13 +698,10 @@ async def test_an_unsafe_category_formula_is_rejected_when_saved(
     assert response.status_code == 422
 
 
-async def test_changing_the_cost_always_recomputes_the_price_from_the_margin(
+async def test_changing_the_cost_preserves_an_explicit_manual_price(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Repasar los costes del día: se teclea lo que ha costado y el PVP
-    sale solo con el margen que tenga puesto, sea suyo o de su categoría.
-    Vale incluso si el precio se había puesto a mano — si el género sube y
-    el precio se queda, se vende barato sin enterarse."""
+    """Repasar los costes del día actualiza el coste, no un PVP fijado."""
     await login(role_name="ADMIN")
     category_id = await _create_category(client, "Fruta")
     await client.patch(
@@ -720,12 +717,16 @@ async def test_changing_the_cost_always_recomputes_the_price_from_the_margin(
         f"/api/v1/products/{product_id}/pricing/manual-price", json={"list_price": "9"}
     )
 
-    # 20 * 1,5 = 30, con el margen heredado de la categoría. Los 9 € que
-    # se habían fijado a mano se quedan atrás: el coste manda.
+    # 20 * 1,5 = 30 sería el cálculo automático, pero los 9 € se han fijado
+    # expresamente y siguen siendo el PVP Final hasta que se quite el precio
+    # manual.
     response = await client.patch(f"/api/v1/products/{product_id}/pricing", json={"cost": "20"})
 
     assert response.status_code == 200
-    assert Decimal(response.json()["list_price"]) == Decimal("30.000000")
+    assert Decimal(response.json()["cost"]) == Decimal("20.000000")
+    assert Decimal(response.json()["list_price"]) == Decimal("9.000000")
+    assert Decimal(response.json()["final_price"]) == Decimal("9.000000")
+    assert response.json()["manual_price_is_set"] is True
 
     # Y si se quiere otro PVP, se pone a mano después, a sabiendas.
     manual = await client.put(

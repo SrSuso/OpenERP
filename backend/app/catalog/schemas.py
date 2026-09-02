@@ -276,6 +276,9 @@ class ProductRead(BaseModel):
     #: PVP vigente: el redondeado automático o el precio manual, según cuál
     #: sea aplicable. Es la referencia que usa el POS para nuevas ventas.
     final_price: Decimal
+    #: Si es ``True``, los cambios de coste, impuestos o márgenes actualizan
+    #: el cálculo mostrado, pero nunca sustituyen el PVP Final fijado.
+    manual_price_is_set: bool
     tax_rate: Decimal
     surcharge_rate: Decimal
     #: El tipo que de verdad se le aplica, resuelto ya (impuestos propios,

@@ -159,6 +159,12 @@ class Product(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: deliberately replaces it. ``final_price`` below gives that business
     #: meaning a stable name without duplicating a database value.
     list_price: Mapped[Money]
+    #: A manual PVP intentionally wins over every automatic calculation.
+    #: Keeping the mode separately from the amount matters even when the
+    #: manual value happens to equal the calculated one.
+    manual_price_is_set: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     @property
     def final_price(self) -> Decimal:

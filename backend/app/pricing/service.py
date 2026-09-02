@@ -116,6 +116,7 @@ def _snapshot(product: Product) -> dict[str, Any]:
     return {
         "cost": str(product.cost),
         "list_price": str(product.list_price),
+        "manual_price_is_set": product.manual_price_is_set,
         "tax_rate": str(product.tax_rate),
         "surcharge_rate": str(product.surcharge_rate),
         "margin_rate": str(product.margin_rate) if product.margin_rate is not None else None,
@@ -290,7 +291,7 @@ async def _taxes_by_id(session: AsyncSession, tax_ids: list[int]) -> list[Tax]:
     return taxes
 
 
-def _recompute_with(product: Product, settings: PricingSettings) -> None:
+def _recompute_with(product: Product, settings: PricingSettings) -> bool:
     """Evaluates the product's own formula, or the one it inherits (its
     category's, or the store's), against its *effective* inputs — the
     actual "PVP calculado automáticamente" the margin/tax panels trigger.
@@ -300,20 +301,26 @@ def _recompute_with(product: Product, settings: PricingSettings) -> None:
     era una variable más, poner 25 céntimos en una categoría no hacía nada
     salvo que la fórmula los mencionara — ver `app.pricing.formula`.
 
-    Result is always rounded up to the next 5 cents — see `_quantize_price`."""
+    Result is always rounded up to the next 5 cents — see `_quantize_price`.
+
+    Returns whether a price was actually recalculated.  The ingredients can
+    still change while a manual PVP is active, but they must never overwrite
+    the amount the owner explicitly fixed.
+    """
+    if product.manual_price_is_set:
+        return False
     product.list_price = _quantize_price(_calculate_automatic_price(product, settings))
+    return True
 
 
 async def set_pricing_inputs(
     session: AsyncSession, product_id: int, payload: SetPricingInputsRequest
 ) -> Product:
-    """Update cost/tax/surcharge/margin/taxes — y recalcular el PVP.
+    """Update cost/tax/surcharge/margin/taxes and refresh the automatic PVP.
 
-    Cualquiera de esos campos es un ingrediente del precio, así que tocar
-    cualquiera lo recalcula, con la fórmula del producto o con la que
-    hereda (la de su categoría, o la de la tienda). Antes un producto con
-    precio puesto a mano lo conservaba aunque le cambiara el coste; ver
-    `SetPricingInputsRequest` para por qué ya no.
+    Cualquiera de esos campos actualiza el cálculo mostrado, con la fórmula
+    del producto o con la que hereda. Si hay un precio manual activo, el
+    cálculo se conserva como referencia pero el PVP Final no cambia.
     """
     product = await _product_or_404(session, product_id)
     before = _snapshot(product)
@@ -422,9 +429,12 @@ async def set_price_formula(session: AsyncSession, product_id: int, formula_text
 
 
 async def clear_price_formula(session: AsyncSession, product_id: int) -> Product:
-    """Reverts to manual pricing. ``list_price`` is left exactly as the
-    formula last computed it — clearing the formula is not itself a price
-    change, so it earns no new history row."""
+    """Remove only the product formula, never the chosen price mode.
+
+    ``list_price`` is left exactly as it was: an automatic product will use
+    its inherited formula on the next recalculation, while a manual one
+    remains manual until the owner explicitly clears that price.
+    """
     product = await _product_or_404(session, product_id)
     product.price_formula = None
     await session.flush()
@@ -445,6 +455,7 @@ async def set_manual_price(session: AsyncSession, product_id: int, list_price: D
     before = _snapshot(product)
     product.price_formula = None
     product.list_price = list_price
+    product.manual_price_is_set = True
 
     await session.flush()
     await _record_history(session, product)
@@ -469,6 +480,7 @@ async def clear_manual_price(session: AsyncSession, product_id: int) -> Product:
     """
     product = await _product_or_404(session, product_id)
     before = _snapshot(product)
+    product.manual_price_is_set = False
     _recompute_with(product, await get_settings(session))
     await session.flush()
     await _record_history(session, product)
@@ -523,8 +535,8 @@ async def _recompute_every_product(session: AsyncSession) -> None:
     settings = await get_settings(session)
     stmt = select(Product).options(*_PRODUCT_PRICING_OPTIONS)
     for product in list((await session.execute(stmt)).scalars()):
-        _recompute_with(product, settings)
-        await _record_history(session, product)
+        if _recompute_with(product, settings):
+            await _record_history(session, product)
     await session.flush()
 
 
@@ -631,8 +643,8 @@ async def _recompute_category_products(
     )
     products = list((await session.execute(stmt)).scalars())
     for product in products:
-        _recompute_with(product, settings)
-        await _record_history(session, product)
+        if _recompute_with(product, settings):
+            await _record_history(session, product)
     await session.flush()
 
 
@@ -748,11 +760,15 @@ async def update_settings(session: AsyncSession, payload: PricingSettingsUpdate)
 
     # Every product that relies on the store default (no formula of its
     # own) gets its price recomputed against the new one.
-    stmt = select(Product).where(Product.price_formula.is_(None)).options(*_PRODUCT_PRICING_OPTIONS)
+    stmt = (
+        select(Product)
+        .where(Product.price_formula.is_(None), Product.manual_price_is_set.is_(False))
+        .options(*_PRODUCT_PRICING_OPTIONS)
+    )
     products = list((await session.execute(stmt)).scalars())
     for product in products:
-        _recompute_with(product, settings)
-        await _record_history(session, product)
+        if _recompute_with(product, settings):
+            await _record_history(session, product)
     await session.flush()
 
     return settings
