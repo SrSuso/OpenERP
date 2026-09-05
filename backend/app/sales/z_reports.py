@@ -420,9 +420,9 @@ async def close(
                 f"La Z nº {existing.number} de esta jornada ya es definitiva y no se puede "
                 "modificar."
             )
-        # A pre-existing report comes from the historical, mutable-Z
-        # implementation. It becomes one final snapshot at the first close
-        # after this migration; later calls are rejected like every new Z.
+        # La migración conserva sólo el último resumen mutable de cada día.
+        # Al cerrar por primera vez con este modelo se consolida como la Z
+        # definitiva de esa jornada; sus revisiones intermedias ya no existen.
         existing.closed_at = closed_at
         existing.closed_by_user_id = closing_user_id
         existing.business_date = current_business_day

@@ -113,6 +113,53 @@ def test_downgrade_and_upgrade_round_trip(fresh_database: Callable[[], str]) -> 
     assert "(head)" in run_alembic(url, "current")
 
 
+def test_final_z_migration_keeps_only_the_last_legacy_summary_per_day(
+    fresh_database: Callable[[], str],
+) -> None:
+    """A mutable historical Z was overwritten during the day, not a final document.
+
+    The final-Z migration must retain its last state before enforcing one
+    report per warehouse and business date.
+    """
+    url = fresh_database()
+    run_alembic(url, "upgrade", "e7f1a2b3c4d5")
+    engine = _sync_engine(url)
+    with engine.begin() as connection:
+        warehouse_id = connection.scalar(text("SELECT id FROM warehouses ORDER BY id LIMIT 1"))
+        assert warehouse_id is not None
+        connection.execute(
+            text(
+                "INSERT INTO z_reports ("
+                "warehouse_id, number, closed_at, sales_count, gross_total, tax_total, "
+                "discount_total, cash_total, card_total, other_total, returns_count, "
+                "returns_total, created_at, updated_at"
+                ") VALUES "
+                "(:warehouse_id, 900001, '2026-08-29 10:00:00+00', "
+                "1, 10, 0, 0, 10, 0, 0, 0, 0, now(), now()), "
+                "(:warehouse_id, 900002, '2026-08-29 12:00:00+00', "
+                "2, 20, 0, 0, 20, 0, 0, 0, 0, now(), now())"
+            ),
+            {"warehouse_id": warehouse_id},
+        )
+
+    run_alembic(url, "upgrade", "head")
+    with engine.begin() as connection:
+        summaries = connection.execute(
+            text(
+                "SELECT number, business_date, is_final FROM z_reports "
+                "WHERE warehouse_id = :warehouse_id "
+                "AND business_date = DATE '2026-08-29' ORDER BY number"
+            ),
+            {"warehouse_id": warehouse_id},
+        ).all()
+    engine.dispose()
+
+    assert len(summaries) == 1
+    assert summaries[0].number == 900002
+    assert summaries[0].business_date.isoformat() == "2026-08-29"
+    assert summaries[0].is_final is False
+
+
 def test_checkout_idempotency_migration_is_reversible(
     fresh_database: Callable[[], str],
 ) -> None:

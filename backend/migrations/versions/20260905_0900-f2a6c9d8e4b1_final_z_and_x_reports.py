@@ -81,6 +81,20 @@ def upgrade() -> None:
         "WHERE business_date IS NULL"
     )
     op.alter_column("z_reports", "business_date", nullable=False)
+    # La versión anterior volvía a guardar el mismo resumen mutable durante
+    # el día. Se conserva sólo su última versión (por hora de cierre y, si
+    # empatan, por id); las anteriores eran estados intermedios redundantes,
+    # no cierres Z definitivos.
+    op.execute(
+        "DELETE FROM z_reports WHERE id IN ("
+        "SELECT id FROM ("
+        "SELECT id, row_number() OVER ("
+        "PARTITION BY warehouse_id, business_date "
+        "ORDER BY closed_at DESC, id DESC"
+        ") AS row_number FROM z_reports"
+        ") AS ranked WHERE row_number > 1"
+        ")"
+    )
     op.create_unique_constraint(
         "uq_z_reports_warehouse_business_date", "z_reports", ["warehouse_id", "business_date"]
     )
