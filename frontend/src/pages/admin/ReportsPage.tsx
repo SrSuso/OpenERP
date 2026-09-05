@@ -13,6 +13,7 @@ import {
   runReport,
   runReportDefinition,
   type ReportFilters,
+  type ReportRunRequest,
   type ReportRunResult,
   type ReportSubject,
 } from '@/features/reports/api';
@@ -27,6 +28,79 @@ const MOVEMENT_TYPES: Record<string, string> = {
   TRANSFER_IN: 'Transferencia (entrada)',
   RETURN: 'Devolución',
 };
+
+interface QuickReport {
+  id: string;
+  title: string;
+  description: string;
+  subject: ReportSubject;
+  dimensions: string[];
+  metrics: string[];
+  filters: ReportFilters;
+}
+
+function madridDate(): string {
+  const madrid = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    madrid.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function quickReports(): QuickReport[] {
+  const today = madridDate();
+  return [
+    {
+      id: 'sales-today',
+      title: 'Ventas de hoy',
+      description: 'Facturación, tickets y unidades vendidas durante la jornada actual.',
+      subject: 'SALES',
+      dimensions: [],
+      metrics: ['revenue', 'tickets', 'quantity'],
+      filters: { date_from: today, date_to: today },
+    },
+    {
+      id: 'products-today',
+      title: 'Productos vendidos hoy',
+      description: 'Unidades e ingresos por artículo de la jornada actual.',
+      subject: 'SALES',
+      dimensions: ['product'],
+      metrics: ['quantity', 'revenue'],
+      filters: { date_from: today, date_to: today },
+    },
+    {
+      id: 'categories-today',
+      title: 'Ventas por categoría',
+      description: 'Qué categorías han generado las ventas de hoy.',
+      subject: 'SALES',
+      dimensions: ['category'],
+      metrics: ['revenue', 'quantity', 'tickets'],
+      filters: { date_from: today, date_to: today },
+    },
+    {
+      id: 'purchases-month',
+      title: 'Compras del mes',
+      description: 'Coste y unidades compradas, agrupados por proveedor.',
+      subject: 'PURCHASES',
+      dimensions: ['supplier'],
+      metrics: ['cost', 'quantity', 'orders'],
+      filters: { date_from: `${today.slice(0, 8)}01`, date_to: today },
+    },
+    {
+      id: 'inventory-today',
+      title: 'Movimientos de hoy',
+      description: 'Entradas, ventas, devoluciones y ajustes de inventario.',
+      subject: 'INVENTORY_MOVEMENTS',
+      dimensions: ['movement_type'],
+      metrics: ['quantity', 'movements'],
+      filters: { date_from: today, date_to: today },
+    },
+  ];
+}
 
 function toggleInSet(set: Set<string>, key: string): Set<string> {
   const next = new Set(set);
@@ -49,6 +123,7 @@ export function ReportsPage() {
   const [metrics, setMetrics] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<ReportFilters>({});
   const [result, setResult] = useState<ReportRunResult | null>(null);
+  const [resultTitle, setResultTitle] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -69,17 +144,12 @@ export function ReportsPage() {
     setMetrics(new Set());
     setFilters({});
     setResult(null);
+    setResultTitle(null);
     setRunError(null);
   }
 
   const runMutation = useMutation({
-    mutationFn: () =>
-      runReport({
-        subject: subject as ReportSubject,
-        dimensions: [...dimensions],
-        metrics: [...metrics],
-        filters,
-      }),
+    mutationFn: (payload: ReportRunRequest) => runReport(payload),
     onSuccess: (data) => {
       setResult(data);
       setRunError(null);
@@ -108,10 +178,35 @@ export function ReportsPage() {
     mutationFn: (id: number) => runReportDefinition(id),
     onSuccess: (data) => {
       setResult(data);
+      setResultTitle('Informe guardado');
       setRunError(null);
     },
     onError: () => setRunError('No se ha podido ejecutar el informe guardado.'),
   });
+
+  function currentRequest(): ReportRunRequest {
+    return {
+      subject: subject as ReportSubject,
+      dimensions: [...dimensions],
+      metrics: [...metrics],
+      filters,
+    };
+  }
+
+  function runQuickReport(report: QuickReport) {
+    setSubject(report.subject);
+    setDimensions(new Set(report.dimensions));
+    setMetrics(new Set(report.metrics));
+    setFilters(report.filters);
+    setResultTitle(report.title);
+    setRunError(null);
+    runMutation.mutate({
+      subject: report.subject,
+      dimensions: report.dimensions,
+      metrics: report.metrics,
+      filters: report.filters,
+    });
+  }
 
   const deleteDefinitionMutation = useMutation({
     mutationFn: (id: number) => deleteReportDefinition(id),
@@ -121,11 +216,48 @@ export function ReportsPage() {
 
   return (
     <section>
-      <h1 className="mb-4 text-2xl font-semibold">Informes</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold">Informes</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Consulta lo importante de la tienda sin tener que construir el informe desde cero.
+        </p>
+      </div>
+
+      <section className="mb-6 rounded-lg border border-brand-100 bg-brand-50/40 p-4">
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold text-slate-900">Informes rápidos</h2>
+          <p className="text-sm text-slate-600">
+            Usan la jornada comercial actual en horario de la tienda. Puedes ajustar sus filtros
+            abajo.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {quickReports().map((report) => (
+            <button
+              key={report.id}
+              type="button"
+              onClick={() => runQuickReport(report)}
+              disabled={runMutation.isPending}
+              className="rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-brand-400 hover:bg-brand-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              <span className="block font-semibold text-brand-800">{report.title}</span>
+              <span className="mt-1 block text-sm leading-5 text-slate-600">
+                {report.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">Informe a medida</h2>
+          <p className="text-sm text-slate-600">
+            Elige qué analizar, cómo agruparlo y el período que quieres consultar.
+          </p>
+        </div>
         <label className="block text-sm text-slate-600">
-          Sujeto
+          Qué quieres consultar
           <select
             value={subject}
             onChange={(event) => selectSubject(event.target.value)}
@@ -333,7 +465,10 @@ export function ReportsPage() {
             <div className="mt-4 flex flex-wrap items-end gap-2">
               <button
                 type="button"
-                onClick={() => runMutation.mutate()}
+                onClick={() => {
+                  setResultTitle('Informe a medida');
+                  runMutation.mutate(currentRequest());
+                }}
                 disabled={runMutation.isPending || metrics.size === 0}
                 className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
@@ -372,7 +507,12 @@ export function ReportsPage() {
 
       {result && (
         <div className="mb-6">
-          <h2 className="mb-2 text-lg font-semibold text-slate-800">Resultado</h2>
+          <h2 className="mb-1 text-lg font-semibold text-slate-800">
+            {resultTitle ?? 'Resultado'}
+          </h2>
+          <p className="mb-2 text-sm text-slate-600">
+            {result.rows.length === 1 ? '1 resultado' : `${result.rows.length} resultados`}
+          </p>
           <ReportResultTable result={result} />
         </div>
       )}

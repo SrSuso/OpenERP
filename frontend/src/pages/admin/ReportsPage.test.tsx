@@ -138,7 +138,7 @@ describe('ReportsPage', () => {
 
     await screen.findByText('Todavía no has guardado ningún informe.');
 
-    await userEvent.selectOptions(screen.getByLabelText('Sujeto'), 'SALES');
+    await userEvent.selectOptions(screen.getByLabelText('Qué quieres consultar'), 'SALES');
     await userEvent.click(screen.getByRole('button', { name: 'Producto' }));
     await userEvent.click(screen.getByRole('button', { name: 'Cantidad' }));
 
@@ -165,10 +165,40 @@ describe('ReportsPage', () => {
     ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Ejecutar' }));
-    await screen.findByText('12.000000');
+    await screen.findByText('12');
 
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
     await screen.findByText('Todavía no has guardado ningún informe.');
     expect(backend.deleteCalls).toEqual([1]);
+  });
+
+  it('runs a useful daily sales report in one click', async () => {
+    const backend = stubBackend();
+    renderPage();
+
+    await screen.findByText('Informes rápidos');
+    await userEvent.click(screen.getByRole('button', { name: /Ventas de hoy/ }));
+
+    expect(await screen.findByText('Agua 1.5L')).toBeInTheDocument();
+    expect(backend.runCalls).toHaveLength(1);
+    const quickRun = backend.runCalls[0];
+    if (!quickRun) throw new Error('Expected a quick report request');
+    expect(quickRun).toMatchObject({
+      subject: 'SALES',
+      dimensions: [],
+      metrics: ['revenue', 'tickets', 'quantity'],
+    });
+    const quickFilters = quickRun['filters'];
+    if (typeof quickFilters !== 'object' || quickFilters === null) {
+      throw new Error('Expected date filters');
+    }
+    const filterValues = quickFilters as Record<string, unknown>;
+    const dateFrom = filterValues['date_from'];
+    const dateTo = filterValues['date_to'];
+    if (typeof dateFrom !== 'string' || typeof dateTo !== 'string') {
+      throw new Error('Expected ISO date filters');
+    }
+    expect(dateFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(dateTo).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
