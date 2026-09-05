@@ -285,6 +285,22 @@ describe('ProductsPage', () => {
     expect(screen.queryByLabelText(/^IVA/)).not.toBeInTheDocument();
   });
 
+  it('keeps a complete fast barcode scan before updating the URL filter', async () => {
+    stubBackend();
+    const { router } = renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('Agua 1L');
+
+    const search = screen.getByLabelText('Buscar');
+    await user.type(search, '8412345678901');
+
+    // El campo conserva la ráfaga completa del lector. La navegación y la
+    // consulta se hacen una sola vez cuando termina de llegar texto.
+    expect(search).toHaveValue('8412345678901');
+    expect(router.state.location.search).toBe('');
+    await waitFor(() => expect(router.state.location.search).toBe('?search=8412345678901'));
+  });
+
   it('creates a product picking the unit from the dropdown', async () => {
     const backend = stubBackend();
     renderPage();

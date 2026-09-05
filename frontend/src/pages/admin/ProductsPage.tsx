@@ -33,6 +33,11 @@ export function ProductsPage() {
   // o recargar no haga perder el contexto del listado.
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
+  // El filtro de URL se conserva al volver desde una ficha, pero navegar en
+  // cada pulsación compite con los lectores de códigos de barras, que envían
+  // toda la etiqueta en una ráfaga. El input conserva primero la cadena local
+  // completa y sincroniza la URL cuando el lector termina.
+  const [searchInput, setSearchInput] = useState(search);
   const categoryId = searchParams.get('category') ?? '';
   // Para repasar de un vistazo lo que se vende por peso ("KG") y teclear los
   // precios del día. Se filtra aquí y no en el servidor porque la lista ya
@@ -59,6 +64,28 @@ export function ProductsPage() {
       { replace: true },
     );
   }
+
+  useEffect(() => {
+    // Atrás/Adelante, recargar o volver de una ficha siguen restaurando el
+    // filtro que vive en la URL.
+    setSearchInput(search);
+  }, [search]);
+
+  useEffect(() => {
+    if (searchInput === search) return;
+    const timer = window.setTimeout(() => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (searchInput === '') next.delete('search');
+          else next.set('search', searchInput);
+          return next;
+        },
+        { replace: true },
+      );
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [search, searchInput, setSearchParams]);
 
   const listSearch = searchParams.size > 0 ? `?${searchParams.toString()}` : '';
 
@@ -189,8 +216,8 @@ export function ProductsPage() {
             Buscar
             <input
               type="text"
-              value={search}
-              onChange={(event) => setFilter('search', event.target.value)}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.currentTarget.value)}
               placeholder="Nombre, descripción o código de barras…"
               className="mt-1 block w-48 rounded border border-slate-300 px-3 py-1.5 text-sm"
             />
