@@ -30,9 +30,17 @@ const PRINT_PROFILE = {
 const REPORT = {
   id: 10,
   warehouse_id: 2,
+  warehouse_name: 'Tienda principal',
   number: 7,
+  business_date: '2026-08-28',
   covers_from: null,
   closed_at: '2026-08-28T18:00:00Z',
+  is_final: true,
+  finalized_at: '2026-08-28T18:00:00Z',
+  store_name: 'Comercial Barbosa',
+  store_tax_id: 'B12345678',
+  store_address: 'Calle Mayor 1',
+  closed_by_name: 'Ana',
   sales_count: 3,
   gross_total: '41.800000',
   tax_total: '3.800000',
@@ -42,6 +50,37 @@ const REPORT = {
   other_total: '0.000000',
   returns_count: 1,
   returns_total: '2.000000',
+  first_sale_number: 31,
+  last_sale_number: 33,
+  tax_breakdown: [
+    { rate: '10.000000', taxable_base: '38.000000', tax_amount: '3.800000', total: '41.800000' },
+  ],
+  payment_breakdown: [
+    {
+      method: 'CASH',
+      collected_total: '25.000000',
+      refunded_total: '2.000000',
+      net_total: '23.000000',
+    },
+    {
+      method: 'CARD',
+      collected_total: '16.800000',
+      refunded_total: '0.000000',
+      net_total: '16.800000',
+    },
+    {
+      method: 'OTHER',
+      collected_total: '0.000000',
+      refunded_total: '0.000000',
+      net_total: '0.000000',
+    },
+  ],
+  terminal_breakdown: [
+    { terminal_id: 7, terminal_name: 'Caja 1', sales_count: 3, gross_total: '41.800000' },
+  ],
+  cashier_breakdown: [
+    { cashier_user_id: 1, cashier_name: 'Ana', sales_count: 3, gross_total: '41.800000' },
+  ],
   closed_by_user_id: 1,
 };
 
@@ -71,7 +110,7 @@ describe('ZReportReprintButton', () => {
 
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
     expect(printMocks.thermal).toHaveBeenCalledWith(
-      expect.stringMatching(/CIERRE Z Nº 7[\s\S]*TOTAL COBRADO/),
+      expect.stringMatching(/CIERRE Z DEFINITIVO Nº 7[\s\S]*VENTAS BRUTAS/),
       expect.objectContaining({ printable_width_mm: 72 }),
       expect.any(Object),
     );

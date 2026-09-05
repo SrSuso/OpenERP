@@ -30,8 +30,8 @@ const ME = {
   id: 1,
   email: 'cajera@example.com',
   full_name: 'Ana',
-  role: 'CASHIER',
-  permissions: ['pos.access', 'sale.read', 'sale.manage'],
+  role: 'MANAGER',
+  permissions: ['pos.access', 'sale.read', 'sale.manage', 'sale.close_z'],
 };
 
 const TERMINAL = {
@@ -45,6 +45,10 @@ const TERMINAL = {
 const TERMINAL_2 = { ...TERMINAL, id: 8, name: 'Caja 2' };
 
 const PREVIEW = {
+  warehouse_id: 1,
+  warehouse_name: 'Tienda',
+  business_date: '2026-08-11',
+  generated_at: '2026-08-11T18:00:00Z',
   covers_from: null,
   sales_count: 3,
   gross_total: '41.800000',
@@ -55,14 +59,68 @@ const PREVIEW = {
   other_total: '0.000000',
   returns_count: 0,
   returns_total: '0.000000',
+  first_sale_number: 4,
+  last_sale_number: 6,
+  tax_breakdown: [
+    { rate: '10.000000', taxable_base: '38.000000', tax_amount: '3.800000', total: '41.800000' },
+  ],
+  payment_breakdown: [
+    {
+      method: 'CASH',
+      collected_total: '25.000000',
+      refunded_total: '0.000000',
+      net_total: '25.000000',
+    },
+    {
+      method: 'CARD',
+      collected_total: '16.800000',
+      refunded_total: '0.000000',
+      net_total: '16.800000',
+    },
+    {
+      method: 'OTHER',
+      collected_total: '0.000000',
+      refunded_total: '0.000000',
+      net_total: '0.000000',
+    },
+  ],
+  terminal_breakdown: [
+    { terminal_id: 7, terminal_name: 'Caja 1', sales_count: 3, gross_total: '41.800000' },
+  ],
+  cashier_breakdown: [
+    { cashier_user_id: 1, cashier_name: 'Ana', sales_count: 3, gross_total: '41.800000' },
+  ],
   open_sales: [],
 };
 const DAILY_Z = {
-  ...PREVIEW,
   id: 9,
   warehouse_id: 1,
+  warehouse_name: 'Tienda',
   number: 7,
+  business_date: '2026-08-11',
+  covers_from: null,
   closed_at: '2026-08-11T20:00:00Z',
+  is_final: true,
+  finalized_at: '2026-08-11T20:00:00Z',
+  store_name: 'Tienda',
+  store_tax_id: 'B12345678',
+  store_address: 'Calle Mayor 1',
+  closed_by_name: 'Ana',
+  sales_count: PREVIEW.sales_count,
+  gross_total: PREVIEW.gross_total,
+  tax_total: PREVIEW.tax_total,
+  discount_total: PREVIEW.discount_total,
+  cash_total: PREVIEW.cash_total,
+  card_total: PREVIEW.card_total,
+  other_total: PREVIEW.other_total,
+  returns_count: PREVIEW.returns_count,
+  returns_total: PREVIEW.returns_total,
+  first_sale_number: PREVIEW.first_sale_number,
+  last_sale_number: PREVIEW.last_sale_number,
+  tax_breakdown: PREVIEW.tax_breakdown,
+  payment_breakdown: PREVIEW.payment_breakdown,
+  terminal_breakdown: PREVIEW.terminal_breakdown,
+  cashier_breakdown: PREVIEW.cashier_breakdown,
   closed_by_user_id: 1,
 };
 
@@ -146,12 +204,12 @@ function stubBackend(
           }),
         );
       }
-      if (url.includes('/z-reports/preview')) {
+      if (url.includes('/x-reports/preview')) {
         return Promise.resolve(
           jsonResponse({
             ...PREVIEW,
             open_sales: options.openSales ?? [],
-            existing_report: options.existingDailyZ ? DAILY_Z : null,
+            final_report: options.existingDailyZ ? DAILY_Z : null,
           }),
         );
       }
@@ -281,6 +339,25 @@ describe('PosLayout', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('prints a live non-fiscal X summary without closing the day or opening the drawer', async () => {
+    const backend = stubBackend();
+    renderLayout();
+    await screen.findByText('Ana');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Resumen X' }));
+    expect(await screen.findByRole('dialog', { name: 'Resumen X de caja' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Imprimir resumen X' }));
+
+    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    expect(printMocks.thermal).toHaveBeenCalledWith(
+      expect.stringContaining('RESUMEN X — NO FISCAL'),
+      PRINT_PROFILE,
+      expect.any(Object),
+    );
+    expect(printMocks.drawer).not.toHaveBeenCalled();
+    expect(backend.closeCalls).toEqual([]);
+  });
+
   it('signs out the cashier without closing the till or discarding its terminal', async () => {
     const backend = stubBackend();
     renderLayout();
@@ -289,7 +366,7 @@ describe('PosLayout', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
 
     await waitFor(() => expect(backend.logoutCalls).toHaveLength(1));
-    expect(screen.queryByRole('dialog', { name: 'Cierre de caja' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /cierre/i })).not.toBeInTheDocument();
     expect(backend.closeCalls).toEqual([]);
     // El terminal es de este navegador, no de Ana: el próximo cajero retoma
     // la misma caja y su periodo Z todavía abierto.
@@ -302,14 +379,16 @@ describe('PosLayout', () => {
     await screen.findByText('Ana');
 
     await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
-    await screen.findByRole('dialog', { name: 'Cierre de caja' });
+    await screen.findByRole('dialog', { name: 'Cerrar jornada (Z definitiva)' });
     expect(await screen.findByText('41,80 €')).toBeInTheDocument();
     expect(screen.getByText('25,00 €')).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Cerrar caja e imprimir Z' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Emitir Z definitiva e imprimir' }),
+    );
 
     // La Z queda guardada y con su número, pero el cajero sigue en el TPV.
-    expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
+    expect(await screen.findByText('Cierre Z definitivo nº 7')).toBeInTheDocument();
     expect(backend.closeCalls).toHaveLength(1);
     expect(backend.logoutCalls).toEqual([]);
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
@@ -326,36 +405,29 @@ describe('PosLayout', () => {
     expect(window.localStorage.getItem(POS_TERMINAL_STORAGE_KEY)).toBe('7');
   });
 
-  it('reprints an existing daily Z without creating another one', async () => {
+  it('reprints an existing final Z without creating another one', async () => {
     const backend = stubBackend({ existingDailyZ: true });
     renderLayout();
     await screen.findByText('Ana');
 
     await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
 
-    expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'La Z diaria ya existe. Actualízala para incorporar los cobros y devoluciones posteriores.',
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Cierre Z definitivo nº 7')).toBeInTheDocument();
+    expect(screen.getByText(/esta z es definitiva e inalterable/i)).toBeInTheDocument();
     expect(backend.closeCalls).toEqual([]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Reimprimir Z' }));
     await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
   });
 
-  it('updates the existing daily Z instead of creating another one', async () => {
+  it('does not offer an update for an existing final Z', async () => {
     const backend = stubBackend({ existingDailyZ: true });
     renderLayout();
     await screen.findByText('Ana');
 
     await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Actualizar Z e imprimir' }));
-
-    expect(await screen.findByText('Cierre Z nº 7')).toBeInTheDocument();
-    expect(backend.closeCalls).toHaveLength(1);
-    await waitFor(() => expect(printMocks.thermal).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('button', { name: /actualizar z/i })).not.toBeInTheDocument();
+    expect(backend.closeCalls).toEqual([]);
   });
 
   it('says which sales are in the way, not just how many', async () => {
@@ -375,7 +447,7 @@ describe('PosLayout', () => {
     expect(await screen.findByText(/2 ventas sin cobrar/)).toBeInTheDocument();
     expect(screen.getByText(/Venta #12 — 3 líneas · 8,40 €/)).toBeInTheDocument();
     expect(screen.getByText(/Venta #15 — 1 línea · 1,20 €/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cerrar caja e imprimir Z' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Emitir Z definitiva e imprimir' })).toBeDisabled();
   });
 
   it('reuses the Z idempotency key after an uncertain transport error', async () => {
@@ -384,12 +456,14 @@ describe('PosLayout', () => {
     await screen.findByText('Ana');
 
     await userEvent.click(screen.getByRole('button', { name: 'Cierre Z' }));
-    const closeButton = await screen.findByRole('button', { name: 'Cerrar caja e imprimir Z' });
+    const closeButton = await screen.findByRole('button', {
+      name: 'Emitir Z definitiva e imprimir',
+    });
     await userEvent.click(closeButton);
-    await screen.findByText('No se ha podido cerrar la caja.');
+    await screen.findByText('No se ha podido emitir la Z definitiva.');
     await userEvent.click(closeButton);
 
-    await screen.findByText('Cierre Z nº 7');
+    await screen.findByText('Cierre Z definitivo nº 7');
     await waitFor(() => expect(backend.closeKeys).toHaveLength(2));
     expect(backend.closeKeys[0]).not.toBe('');
     expect(backend.closeKeys[1]).toBe(backend.closeKeys[0]);

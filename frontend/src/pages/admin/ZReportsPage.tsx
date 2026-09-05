@@ -15,10 +15,8 @@ const zReportsQuery = queryOptions({
     apiFetch(`${API_V1}/z-reports`, { schema: z.array(zReportSchema), signal }),
 });
 
-/** Los cierres Z diarios guardados.
- *
- * Hay una Z por almacén y jornada. Volver a emitirla actualiza ese mismo
- * documento con lo cobrado y devuelto hasta ese momento. */
+/** Las Z definitivas guardadas. Una vez emitidas se reimprime el snapshot,
+ * nunca se recalcula ni se actualiza con operaciones posteriores. */
 export function ZReportsPage() {
   const businessTimezone = useBusinessTimezone();
   const reports = useQuery(zReportsQuery);
@@ -28,8 +26,8 @@ export function ZReportsPage() {
     <section>
       <h1 className="mb-1 text-2xl font-semibold">Cierres de caja (Z)</h1>
       <p className="mb-4 text-sm text-slate-500">
-        Una Z por día comercial y almacén. Al volver a emitirla, se actualiza con los cobros y
-        devoluciones completados de la jornada.
+        Una Z definitiva por día comercial y almacén. Conserva los datos del establecimiento,
+        impuestos, cobros, devoluciones, terminales y cajeros que había al emitirla.
       </p>
 
       {reports.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
@@ -38,7 +36,7 @@ export function ZReportsPage() {
       )}
       {reports.data && rows.length === 0 && (
         <p className="text-sm text-slate-500">
-          Todavía no hay ninguno. Se guarda uno al cerrar la jornada desde el TPV.
+          Todavía no hay ninguno. Se emite uno al cerrar la jornada desde el TPV.
         </p>
       )}
 
@@ -48,7 +46,9 @@ export function ZReportsPage() {
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Z nº</th>
+                <th className="px-4 py-2 font-medium">Jornada</th>
                 <th className="px-4 py-2 font-medium">Cerrado</th>
+                <th className="px-4 py-2 font-medium">Cerrado por</th>
                 <th className="px-4 py-2 font-medium">Inicio de jornada</th>
                 <th className="px-4 py-2 font-medium">Ventas</th>
                 <th className="px-4 py-2 font-medium">Efectivo</th>
@@ -64,8 +64,12 @@ export function ZReportsPage() {
                 <tr key={report.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-2 font-medium text-slate-800">{report.number}</td>
                   <td className="px-4 py-2 whitespace-nowrap text-slate-600">
+                    {report.business_date}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-slate-600">
                     {formatBusinessDateTime(report.closed_at, businessTimezone)}
                   </td>
+                  <td className="px-4 py-2 text-slate-600">{report.closed_by_name ?? '—'}</td>
                   <td className="px-4 py-2 whitespace-nowrap text-slate-500">
                     {/* Las Z antiguas, creadas antes del cierre diario,
                         pueden no conservar el inicio de jornada. */}

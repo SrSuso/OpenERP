@@ -23,7 +23,10 @@ export function ZReportReprintButton({
   const printProfile = useQuery(activeTicketPrintProfileQuery);
   const [isPrintActive, setPrintActive] = useState(false);
   const profile = printProfile.data;
-  const text = profile === undefined ? null : renderZReportTicket(report, closedAtLabel, profile);
+  const text =
+    profile === undefined
+      ? null
+      : renderZReportTicket(report, closedAtLabel, profile, { reprint: true });
 
   return (
     <>

@@ -19,9 +19,10 @@ that is a new row of its own, not a mutation of this one.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -33,7 +34,9 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.catalog.models import Product, ProductPackage
@@ -213,7 +216,7 @@ class Payment(IntPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
-    """El cierre Z diario: los totales congelados de la jornada comercial.
+    """El cierre Z definitivo e inalterable de la jornada comercial.
 
     Se guarda calculado, no como una consulta que se rehaga al mirarla: una
     Z es el papel con el que se cuadra el cajón esa noche, y tiene que decir
@@ -221,8 +224,10 @@ class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
     se haya devuelto media compra o cambiado un precio. Mismo criterio que
     el texto del ticket (`app.tickets`).
 
-    Cada almacén admite una sola Z por día comercial. `covers_from` es el
-    inicio de esa jornada en UTC, con la zona horaria configurada para tienda.
+    Cada almacén admite una sola Z por día comercial. El resumen X es la
+    consulta viva de esa misma jornada y no se guarda como Z. ``is_final``
+    permite identificar de forma explícita los documentos heredados de la
+    versión anterior, que podían actualizarse.
 
     `number` es correlativo por almacén, que es lo que se espera de una Z y
     lo que hace que se note si falta una.
@@ -231,13 +236,28 @@ class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "z_reports"
     __table_args__ = (
         UniqueConstraint("warehouse_id", "number", name="uq_z_reports_warehouse_number"),
+        UniqueConstraint(
+            "warehouse_id", "business_date", name="uq_z_reports_warehouse_business_date"
+        ),
     )
 
     warehouse_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("warehouses.id"), index=True)
     number: Mapped[int] = mapped_column(Integer)
+    business_date: Mapped[date] = mapped_column()
     #: Inicio de la jornada comercial. Las Z históricas pueden conservarlo nulo.
     covers_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    is_final: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Identity is copied from the ticket template and warehouse when the Z
+    # is finalized. A later template edit or warehouse rename cannot alter a
+    # reprint of the financial document.
+    warehouse_name: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    store_name: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    store_tax_id: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    store_address: Mapped[str] = mapped_column(String(1000), default="", server_default="")
+    closed_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     sales_count: Mapped[int] = mapped_column(Integer, default=0)
     gross_total: Mapped[Money]
@@ -251,6 +271,25 @@ class ZReport(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: venta entra en él.
     returns_count: Mapped[int] = mapped_column(Integer, default=0)
     returns_total: Mapped[Money]
+
+    #: Consecutive customer ticket numbers included in this Z. ``None`` is
+    #: meaningful for an empty business day.
+    first_sale_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_sale_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Explicit, frozen detail used by the paper Z and the administration
+    #: view. Values are JSON primitives (money is stored as decimal strings).
+    tax_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    payment_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    terminal_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    cashier_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
 
     #: Nulo si quien la cerró se da de baja después (regla 14).
     closed_by_user_id: Mapped[int | None] = mapped_column(

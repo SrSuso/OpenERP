@@ -20,6 +20,15 @@ Las instrucciones concretas están agrupadas en la
 [guía de usuario](../USER_GUIDE.md): inventario y catálogo, compras,
 dashboards e informes, y terminales, tickets y avisos.
 
+## Resumen X y cierre Z
+
+El encargado inicial recibe `sale.close_z`. En el TPV puede imprimir un
+**Resumen X** de control durante la jornada o emitir el **Cierre Z** final una
+sola vez. La Z no es un resumen que se actualice: después de emitirla bloquea
+los cobros y devoluciones económicas del almacén hasta el siguiente día
+comercial. Consulta el procedimiento y sus límites en la
+[guía de usuario](../USER_GUIDE.md#26-cerrar-caja-y-sesión).
+
 ## Devoluciones desde el TPV
 
 El rol inicial `MANAGER` tiene `return.manage`, por lo que puede procesar una

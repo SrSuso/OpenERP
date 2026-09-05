@@ -1,16 +1,16 @@
-"""El cierre Z diario, actualizado explícitamente durante la jornada.
+"""Resumen X vivo y cierre Z final de una jornada comercial.
 
-Cada almacén tiene una sola Z por día comercial. Al emitirla de nuevo se
-recalculan, en ese mismo documento y número, todos los cobros y devoluciones
-completados desde medianoche de la zona horaria de la tienda. Así una venta
-posterior sigue perteneciendo a la Z del día, sin abrir un segundo cierre.
+El X nunca se guarda: es una consulta/imprimible de cómo va la caja. La Z se
+emite una vez al acabar la jornada, guarda todos sus desgloses como snapshot y
+bloquea nuevos cobros y devoluciones económicas de ese almacén hasta el día
+siguiente. No se usa una Z actualizable como sustituto de ese documento final.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -23,13 +23,18 @@ from app.core.context import get_user_id
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.types import NUMERIC_EPSILON
 from app.idempotency import service as idempotency_service
+from app.inventory.models import Warehouse
+from app.pos.models import PosTerminal
 from app.returns.models import Refund, RefundStatus, Return
 from app.sales import accounting
 from app.sales.models import Payment, PaymentMethod, Sale, SaleLine, SaleStatus, ZReport
 from app.sales.service import compute_line_totals, payable
 from app.settings.business_time import get_business_timezone
+from app.tickets.models import TicketTemplate
+from app.users.models import User
 
 _CLOSE_OPERATION = "z_report.close"
+_PAYMENT_METHODS = (PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.OTHER)
 
 
 def _q(value: Decimal) -> Decimal:
@@ -55,17 +60,15 @@ async def _business_day_window(
 
 
 async def _report_for_business_day(
-    session: AsyncSession, warehouse_id: int, *, start: datetime, end: datetime
+    session: AsyncSession, warehouse_id: int, *, business_day: date
 ) -> ZReport | None:
     return (
         await session.execute(
             select(ZReport)
             .where(
                 ZReport.warehouse_id == warehouse_id,
-                ZReport.closed_at >= start,
-                ZReport.closed_at < end,
+                ZReport.business_date == business_day,
             )
-            .order_by(ZReport.closed_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -92,11 +95,34 @@ async def open_sales(session: AsyncSession, warehouse_id: int) -> list[Sale]:
 async def preview(
     session: AsyncSession, warehouse_id: int
 ) -> tuple[dict[str, object], ZReport | None]:
-    """Los totales vivos de hoy y, si existe, su único documento Z."""
+    """El X vivo de hoy y, si ya existe, su Z final inalterable."""
     now = await accounting.database_clock(session)
-    start, end = await _business_day_window(session, now)
-    existing = await _report_for_business_day(session, warehouse_id, start=start, end=end)
-    return await _totals(session, warehouse_id, since=start, until=now), existing
+    start, _end = await _business_day_window(session, now)
+    timezone = await get_business_timezone(session)
+    business_day = business_date(now, timezone)
+    existing = await _report_for_business_day(session, warehouse_id, business_day=business_day)
+    totals = await _totals(session, warehouse_id, since=start, until=now)
+    totals.update(
+        {
+            "warehouse_id": warehouse_id,
+            "warehouse_name": await _warehouse_name(session, warehouse_id),
+            "business_date": business_day,
+            "generated_at": now,
+        }
+    )
+    return totals, existing if existing is not None and existing.is_final else None
+
+
+async def _warehouse_name(session: AsyncSession, warehouse_id: int) -> str:
+    warehouse = await session.get(Warehouse, warehouse_id)
+    if warehouse is None:
+        raise NotFoundError(f"Warehouse {warehouse_id} not found.")
+    return warehouse.name
+
+
+def _amount(value: Decimal) -> str:
+    """A JSON snapshot must never receive a Decimal or a float."""
+    return format(_q(value), "f")
 
 
 async def _totals(
@@ -119,9 +145,11 @@ async def _totals(
 
     gross = tax = discount = Decimal(0)
     by_method = {method: Decimal(0) for method in PaymentMethod}
+    tax_by_rate: dict[Decimal, dict[str, Decimal]] = {}
+    totals_by_sale: dict[int, Decimal] = {}
 
     if sale_ids:
-        totals_by_sale: dict[int, Decimal] = dict.fromkeys(sale_ids, Decimal(0))
+        totals_by_sale = dict.fromkeys(sale_ids, Decimal(0))
         lines = (
             await session.execute(select(SaleLine).where(SaleLine.sale_id.in_(sale_ids)))
         ).scalars()
@@ -132,6 +160,13 @@ async def _totals(
             tax += amounts.tax_amount
             discount += amounts.discount_amount
             totals_by_sale[line.sale_id] += amounts.total
+            rate_totals = tax_by_rate.setdefault(
+                line.tax_rate,
+                {"taxable_base": Decimal(0), "tax_amount": Decimal(0), "total": Decimal(0)},
+            )
+            rate_totals["taxable_base"] += amounts.total - amounts.tax_amount
+            rate_totals["tax_amount"] += amounts.tax_amount
+            rate_totals["total"] += amounts.total
 
         # Redondeado por venta, no al final: es lo que se cobró en cada una
         # (ver `payable`), y lo que tiene que cuadrar con el cajón.
@@ -177,6 +212,91 @@ async def _totals(
         refunds_stmt = refunds_stmt.where(Refund.completed_at <= until)
     refunds = list((await session.execute(refunds_stmt)).scalars())
     returns_total = sum((refund.amount for refund in refunds), Decimal(0))
+    refunded_by_method: dict[str, Decimal] = {
+        method.value: Decimal(0) for method in _PAYMENT_METHODS
+    }
+    refunded_by_method["UNKNOWN"] = Decimal(0)
+    for refund in refunds:
+        method_key: str = refund.method if refund.method in refunded_by_method else "UNKNOWN"
+        refunded_by_method[method_key] += refund.amount
+
+    terminal_names: dict[int, str] = {}
+    terminal_ids = {sale.terminal_id for sale in sales if sale.terminal_id is not None}
+    if terminal_ids:
+        terminal_rows = (
+            await session.execute(
+                select(PosTerminal.id, PosTerminal.name).where(PosTerminal.id.in_(terminal_ids))
+            )
+        ).all()
+        terminal_names = {row[0]: row[1] for row in terminal_rows}
+    by_terminal: dict[tuple[int | None, str], dict[str, Decimal | int]] = {}
+    by_cashier: dict[tuple[int | None, str], dict[str, Decimal | int]] = {}
+    for sale in sales:
+        sale_total = totals_by_sale[sale.id]
+        terminal_key = (
+            sale.terminal_id,
+            terminal_names.get(sale.terminal_id or -1, "Sin terminal"),
+        )
+        terminal = by_terminal.setdefault(
+            terminal_key, {"sales_count": 0, "gross_total": Decimal(0)}
+        )
+        terminal["sales_count"] = int(terminal["sales_count"]) + 1
+        terminal["gross_total"] = Decimal(terminal["gross_total"]) + sale_total
+        cashier_key = (sale.cashier_user_id, sale.cashier_name or "Sin cajero")
+        cashier = by_cashier.setdefault(cashier_key, {"sales_count": 0, "gross_total": Decimal(0)})
+        cashier["sales_count"] = int(cashier["sales_count"]) + 1
+        cashier["gross_total"] = Decimal(cashier["gross_total"]) + sale_total
+
+    tax_breakdown = [
+        {
+            "rate": _amount(rate),
+            "taxable_base": _amount(values["taxable_base"]),
+            "tax_amount": _amount(values["tax_amount"]),
+            "total": _amount(values["total"]),
+        }
+        for rate, values in sorted(tax_by_rate.items())
+    ]
+    payment_breakdown = [
+        {
+            "method": method.value,
+            "collected_total": _amount(by_method[method]),
+            "refunded_total": _amount(refunded_by_method[method.value]),
+            "net_total": _amount(by_method[method] - refunded_by_method[method.value]),
+        }
+        for method in _PAYMENT_METHODS
+    ]
+    if refunded_by_method["UNKNOWN"]:
+        payment_breakdown.append(
+            {
+                "method": "UNKNOWN",
+                "collected_total": _amount(Decimal(0)),
+                "refunded_total": _amount(refunded_by_method["UNKNOWN"]),
+                "net_total": _amount(-refunded_by_method["UNKNOWN"]),
+            }
+        )
+    terminal_breakdown = [
+        {
+            "terminal_id": terminal_id,
+            "terminal_name": name,
+            "sales_count": int(values["sales_count"]),
+            "gross_total": _amount(Decimal(values["gross_total"])),
+        }
+        for (terminal_id, name), values in sorted(
+            by_terminal.items(), key=lambda item: (item[0][1], item[0][0] or 0)
+        )
+    ]
+    cashier_breakdown = [
+        {
+            "cashier_user_id": cashier_id,
+            "cashier_name": name,
+            "sales_count": int(values["sales_count"]),
+            "gross_total": _amount(Decimal(values["gross_total"])),
+        }
+        for (cashier_id, name), values in sorted(
+            by_cashier.items(), key=lambda item: (item[0][1], item[0][0] or 0)
+        )
+    ]
+    ticket_numbers = [sale.number for sale in sales if sale.number is not None]
 
     return {
         "covers_from": since,
@@ -189,7 +309,28 @@ async def _totals(
         "other_total": _q(by_method[PaymentMethod.OTHER]),
         "returns_count": len(refunds),
         "returns_total": _q(returns_total),
+        "first_sale_number": min(ticket_numbers) if ticket_numbers else None,
+        "last_sale_number": max(ticket_numbers) if ticket_numbers else None,
+        "tax_breakdown": tax_breakdown,
+        "payment_breakdown": payment_breakdown,
+        "terminal_breakdown": terminal_breakdown,
+        "cashier_breakdown": cashier_breakdown,
     }
+
+
+async def assert_business_day_open(
+    session: AsyncSession, warehouse_id: int, occurred_at: datetime
+) -> None:
+    """Reject an economic operation after its final Z, under the same cut lock."""
+    timezone = await get_business_timezone(session)
+    report = await _report_for_business_day(
+        session, warehouse_id, business_day=business_date(occurred_at, timezone)
+    )
+    if report is not None and report.is_final:
+        raise ConflictError(
+            "La jornada ya tiene una Z definitiva. No se pueden cobrar ventas ni registrar "
+            "devoluciones económicas hasta la siguiente jornada comercial."
+        )
 
 
 def close_request_fingerprint(warehouse_id: int) -> str:
@@ -204,6 +345,26 @@ async def get_report(session: AsyncSession, report_id: int) -> ZReport:
     return report
 
 
+async def _identity_snapshot(
+    session: AsyncSession, warehouse_id: int, closing_user_id: int | None
+) -> dict[str, object]:
+    """Freeze the issuer, place and closer alongside the financial totals."""
+    warehouse = await session.get(Warehouse, warehouse_id)
+    if warehouse is None:
+        raise NotFoundError(f"Warehouse {warehouse_id} not found.")
+    template = await session.scalar(
+        select(TicketTemplate).where(TicketTemplate.is_active.is_(True))
+    )
+    user = await session.get(User, closing_user_id) if closing_user_id is not None else None
+    return {
+        "warehouse_name": warehouse.name,
+        "store_name": template.store_name if template is not None else "",
+        "store_tax_id": template.store_tax_id if template is not None else "",
+        "store_address": template.store_address if template is not None else "",
+        "closed_by_name": user.full_name if user is not None else None,
+    }
+
+
 async def close(
     session: AsyncSession,
     warehouse_id: int,
@@ -211,7 +372,7 @@ async def close(
     idempotency_key: str | None = None,
     actor_user_id: int | None = None,
 ) -> ZReport:
-    """Crea o actualiza la única Z diaria con todos los efectos de hoy."""
+    """Finalize the one immutable Z for this warehouse and business day."""
     claim = None
     closing_user_id = actor_user_id if actor_user_id is not None else get_user_id()
     if idempotency_key is not None:
@@ -232,14 +393,15 @@ async def close(
 
     await accounting.lock_warehouse_cut(session, warehouse_id)
     closed_at = await accounting.database_clock(session)
-    day_start, day_end = await _business_day_window(session, closed_at)
+    day_start, _day_end = await _business_day_window(session, closed_at)
+    timezone = await get_business_timezone(session)
+    current_business_day = business_date(closed_at, timezone)
     pending = await open_sales(session, warehouse_id)
     if pending:
         numbers = ", ".join(f"#{sale.id}" for sale in pending)
         raise ConflictError(
             f"Hay {len(pending)} venta(s) sin cobrar en esta caja ({numbers}). Cóbralas "
-            "o cancélalas antes de cerrar: si no, se cobrarían después del cierre diario y "
-            "no cuadrarían la Z."
+            "o cancélalas antes de emitir la Z definitiva."
         )
 
     totals = await _totals(
@@ -249,16 +411,32 @@ async def close(
         until=closed_at,
     )
 
-    existing = await _report_for_business_day(session, warehouse_id, start=day_start, end=day_end)
+    existing = await _report_for_business_day(
+        session, warehouse_id, business_day=current_business_day
+    )
     if existing is not None:
+        if existing.is_final:
+            raise ConflictError(
+                f"La Z nº {existing.number} de esta jornada ya es definitiva y no se puede "
+                "modificar."
+            )
+        # A pre-existing report comes from the historical, mutable-Z
+        # implementation. It becomes one final snapshot at the first close
+        # after this migration; later calls are rejected like every new Z.
         existing.closed_at = closed_at
         existing.closed_by_user_id = closing_user_id
+        existing.business_date = current_business_day
+        existing.is_final = True
+        existing.finalized_at = closed_at
         for field, value in totals.items():
+            setattr(existing, field, value)
+        identity = await _identity_snapshot(session, warehouse_id, closing_user_id)
+        for field, value in identity.items():
             setattr(existing, field, value)
         await session.flush()
         await audit.record(
             session,
-            action="updated",
+            action="finalized_legacy",
             entity_type="z_report",
             entity_id=existing.id,
             after={
@@ -279,15 +457,19 @@ async def close(
     report = ZReport(
         warehouse_id=warehouse_id,
         number=(last.number + 1) if last else 1,
+        business_date=current_business_day,
         closed_at=closed_at,
+        is_final=True,
+        finalized_at=closed_at,
         closed_by_user_id=closing_user_id,
         **totals,
+        **(await _identity_snapshot(session, warehouse_id, closing_user_id)),
     )
     session.add(report)
     await session.flush()
     await audit.record(
         session,
-        action="closed",
+        action="finalized",
         entity_type="z_report",
         entity_id=report.id,
         after={
@@ -305,7 +487,15 @@ async def close(
 async def list_reports(
     session: AsyncSession, *, warehouse_id: int | None = None, limit: int = 100
 ) -> list[ZReport]:
-    stmt = select(ZReport).order_by(ZReport.closed_at.desc()).limit(limit)
+    # Los documentos antiguos eran resúmenes mutables. No se presentan como
+    # cierres Z definitivos; quedan conservados en base de datos para auditoría
+    # y sólo el primer cierre posterior puede consolidarlos.
+    stmt = (
+        select(ZReport)
+        .where(ZReport.is_final.is_(True))
+        .order_by(ZReport.closed_at.desc())
+        .limit(limit)
+    )
     if warehouse_id is not None:
         stmt = stmt.where(ZReport.warehouse_id == warehouse_id)
     return list((await session.execute(stmt)).scalars())

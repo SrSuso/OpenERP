@@ -150,12 +150,6 @@ async def test_completed_sale_keeps_its_fiscal_interpretation_after_settings_cha
     assert report.status_code == 200
     assert Decimal(report.json()["rows"][0]["revenue"]) == Decimal(sale["total"])
 
-    closed = await client.post(
-        "/api/v1/z-reports", params={"warehouse_id": context["warehouse_id"]}
-    )
-    assert closed.status_code == 201
-    assert Decimal(closed.json()["gross_total"]) == Decimal(sale["total"])
-
     returned = await client.post(
         f"/api/v1/sales/{sale['id']}/returns",
         json={
@@ -171,6 +165,13 @@ async def test_completed_sale_keeps_its_fiscal_interpretation_after_settings_cha
     )
     assert returned.status_code == 201
     assert Decimal(returned.json()["total_refund"]) == Decimal(sale["total"])
+
+    closed = await client.post(
+        "/api/v1/z-reports", params={"warehouse_id": context["warehouse_id"]}
+    )
+    assert closed.status_code == 201
+    assert Decimal(closed.json()["gross_total"]) == Decimal(sale["total"])
+    assert Decimal(closed.json()["returns_total"]) == Decimal(sale["total"])
 
 
 async def test_completed_sale_keeps_product_category_cost_and_cashier_snapshots(

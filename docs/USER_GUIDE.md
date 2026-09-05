@@ -149,14 +149,24 @@ venta nueva.
 
 ### 2.6. Cerrar caja y sesión
 
-En el TPV, **Cerrar sesión** abre primero el cierre Z del almacén. La vista
-previa muestra ventas abiertas y totales pendientes. No se puede cerrar
-mientras haya borradores abiertos: hay que cobrarlos o cancelarlos.
+**Cerrar sesión** sólo cierra la sesión del usuario: no emite una Z ni altera
+la caja o sus borradores. En el TPV hay dos acciones separadas:
 
-Al confirmar se guarda el corte y después se cierra la sesión. El cierre
-incluye todas las terminales del almacén, no sólo el navegador actual, y no
-puede perder ventas o devoluciones confirmadas durante el cierre. Un reintento
-incierto recupera el mismo cierre.
+- **Resumen X**: consulta e imprime los totales vivos de la jornada. No es un
+  documento fiscal, no cierra la jornada y se puede usar tantas veces como haga
+  falta.
+- **Cierre Z**: sólo aparece con el permiso `sale.close_z`. Emite una única Z
+  definitiva por almacén y día comercial. No se puede emitir mientras haya
+  ventas con líneas sin cobrar. La Z recoge todas las terminales del almacén,
+  no sólo el navegador actual.
+
+Al emitir la Z se guarda su snapshot (identidad del establecimiento, usuario
+que cierra, rango de tickets, IVA, cobros, devoluciones, terminales y cajeros).
+Un reintento con la misma clave recupera esa misma Z; una segunda emisión no la
+actualiza. Para que ninguna operación quede fuera del documento, desde ese
+momento la aplicación rechaza nuevos cobros y devoluciones económicas en ese
+almacén hasta la siguiente jornada comercial. Las devoluciones exclusivamente
+físicas no afectan a caja y siguen siendo posibles.
 
 ---
 
@@ -167,9 +177,10 @@ consultar terminal, número, total y número de líneas. Las ventas cobradas
 ofrecen **Reimprimir**; el texto es exactamente el que quedó guardado al
 generarse originalmente.
 
-**Cierres de caja** muestra los cierres Z ya guardados: periodo cubierto,
-ventas, efectivo, tarjeta, otros medios, devoluciones y total neto. Son
-instantáneas históricas y no cambian si después se registra otra operación.
+**Cierres de caja** muestra las Z definitivas: jornada, emisor, ventas,
+efectivo, tarjeta, otros medios, devoluciones y total. Cada reimpresión usa el
+snapshot histórico: no se recalcula ni cambia si después se edita una plantilla,
+un usuario o un producto.
 
 ---
 

@@ -39,7 +39,7 @@ function PosLayoutContent() {
   // Lo que se cambie en el panel se ve aquí sin recargar la caja.
   useLiveCatalog();
   const shopName = useShopSetting('app.display_name', 'OpenERP');
-  const [closingTill, setClosingTill] = useState(false);
+  const [reportMode, setReportMode] = useState<'X' | 'Z' | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(() => document.fullscreenElement !== null);
   const { selectedTerminal, selectionOpen, requestTerminalChange } = usePosTerminal();
   const { newSaleAction } = usePosHeaderActions();
@@ -123,7 +123,16 @@ function PosLayoutContent() {
           {hasPermission('sale.manage') && (
             <button
               type="button"
-              onClick={() => setClosingTill(true)}
+              onClick={() => setReportMode('X')}
+              className="pos-button-secondary min-h-14 rounded px-5 py-3 font-medium"
+            >
+              Resumen X
+            </button>
+          )}
+          {hasPermission('sale.close_z') && (
+            <button
+              type="button"
+              onClick={() => setReportMode('Z')}
               className="pos-button-secondary min-h-14 rounded px-5 py-3 font-medium"
             >
               Cierre Z
@@ -142,11 +151,12 @@ function PosLayoutContent() {
         <Outlet />
       </main>
 
-      {closingTill && (
+      {reportMode !== null && (
         <CloseTillDialog
           warehouseId={warehouseId}
-          onCancel={() => setClosingTill(false)}
-          onClosed={() => setClosingTill(false)}
+          mode={reportMode}
+          onCancel={() => setReportMode(null)}
+          onClosed={() => setReportMode(null)}
         />
       )}
     </div>

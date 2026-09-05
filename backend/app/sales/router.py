@@ -16,7 +16,7 @@ from app.core.business_time import business_day_utc_range, require_aware
 from app.core.errors import ValidationError
 from app.pricing.dependencies import PricingSettingsDep
 from app.rbac.dependencies import require_permission
-from app.rbac.permissions import SALE_MANAGE, SALE_READ
+from app.rbac.permissions import SALE_CLOSE_Z, SALE_MANAGE, SALE_READ
 from app.sales import service, z_reports
 from app.sales.models import Sale, ZReport
 from app.sales.presenters import sale_to_read as _sale_to_read
@@ -27,7 +27,7 @@ from app.sales.schemas import (
     SaleLineByBarcodeCreate,
     SaleLineCreate,
     SaleRead,
-    ZReportPreview,
+    XReportPreview,
     ZReportRead,
 )
 from app.settings.business_time import get_business_timezone
@@ -215,9 +215,17 @@ def _z_to_read(report: ZReport) -> ZReportRead:
     return ZReportRead(
         id=report.id,
         warehouse_id=report.warehouse_id,
+        warehouse_name=report.warehouse_name,
         number=report.number,
+        business_date=report.business_date,
         covers_from=report.covers_from,
         closed_at=report.closed_at,
+        is_final=report.is_final,
+        finalized_at=report.finalized_at,
+        store_name=report.store_name,
+        store_tax_id=report.store_tax_id,
+        store_address=report.store_address,
+        closed_by_name=report.closed_by_name,
         sales_count=report.sales_count,
         gross_total=report.gross_total,
         tax_total=report.tax_total,
@@ -227,6 +235,12 @@ def _z_to_read(report: ZReport) -> ZReportRead:
         other_total=report.other_total,
         returns_count=report.returns_count,
         returns_total=report.returns_total,
+        first_sale_number=report.first_sale_number,
+        last_sale_number=report.last_sale_number,
+        tax_breakdown=report.tax_breakdown,
+        payment_breakdown=report.payment_breakdown,
+        terminal_breakdown=report.terminal_breakdown,
+        cashier_breakdown=report.cashier_breakdown,
         closed_by_user_id=report.closed_by_user_id,
     )
 
@@ -241,18 +255,24 @@ async def list_z_reports(
     return [_z_to_read(r) for r in reports]
 
 
-@router.get("/z-reports/preview", response_model=ZReportPreview, dependencies=[_require_manage])
-async def preview_z_report(
+@router.get("/x-reports/preview", response_model=XReportPreview, dependencies=[_require_manage])
+@router.get(
+    "/z-reports/preview",
+    response_model=XReportPreview,
+    dependencies=[_require_manage],
+    deprecated=True,
+)
+async def preview_x_report(
     session: SessionDep,
     pricing: PricingSettingsDep,
     warehouse_id: Annotated[int, Query()],
-) -> ZReportPreview:
-    """Los totales actuales de la Z diaria y su documento, si ya existe."""
+) -> XReportPreview:
+    """El resumen X actual. Nunca crea ni actualiza una Z."""
     totals, existing = await z_reports.preview(session, warehouse_id)
     pending = await z_reports.open_sales(session, warehouse_id)
-    return ZReportPreview(
+    return XReportPreview(
         **totals,
-        existing_report=_z_to_read(existing) if existing is not None else None,
+        final_report=_z_to_read(existing) if existing is not None else None,
         open_sales=[
             PendingSaleRead(
                 id=sale.id,
@@ -273,7 +293,10 @@ async def preview_z_report(
 
 
 @router.post(
-    "/z-reports", response_model=ZReportRead, status_code=201, dependencies=[_require_manage]
+    "/z-reports",
+    response_model=ZReportRead,
+    status_code=201,
+    dependencies=[Depends(require_permission(SALE_CLOSE_Z))],
 )
 async def close_z_report(
     session: SessionDep,

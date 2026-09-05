@@ -832,6 +832,12 @@ async def checkout(
     if warehouse_id is None:
         raise NotFoundError(f"Sale {sale_id} not found.")
     await accounting.lock_warehouse_cut(session, warehouse_id)
+    # Kept as a local import to avoid the z_reports -> sales.service module
+    # cycle. Both operations already hold the same warehouse accounting cut.
+    from app.sales import z_reports
+
+    completed_at = await accounting.database_clock(session)
+    await z_reports.assert_business_day_open(session, warehouse_id, completed_at)
 
     sale = await _get_sale_for_update(session, sale_id)
     await _assert_pos_terminal(session, sale, terminal_id)
@@ -954,7 +960,7 @@ async def checkout(
 
     before = _sale_snapshot(sale)
     sale.status = SaleStatus.COMPLETED
-    sale.completed_at = await accounting.database_clock(session)
+    sale.completed_at = completed_at
     sale.prices_include_tax = prices_include_tax
     if effective_cashier is not None:
         sale.cashier_user_id = effective_cashier.id

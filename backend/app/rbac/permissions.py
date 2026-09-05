@@ -362,6 +362,23 @@ PHASE_27_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "ADMIN": (POS_COLD_DRINK_SURCHARGE_MANAGE,),
 }
 
+# --- phase 28: cierre Z definitivo ------------------------------------------
+#
+# El resumen X se puede consultar e imprimir durante la jornada con los
+# permisos normales de venta. Emitir el documento Z final bloquea nuevas
+# operaciones económicas para ese almacén y día, así que es una función de
+# responsabilidad de gerente, no de la persona que cobra.
+SALE_CLOSE_Z = "sale.close_z"
+
+PHASE_28_PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(SALE_CLOSE_Z, "Finalize the immutable daily Z cash report."),
+)
+
+PHASE_28_ROLE_GRANTS: dict[str, tuple[str, ...]] = {
+    "ADMIN": (SALE_CLOSE_Z,),
+    "MANAGER": (SALE_CLOSE_Z,),
+}
+
 #: Every permission key known to the backend so far — for runtime use
 #: (e.g. validating a key exists) only. Never import this from a migration;
 #: see the module docstring.
@@ -386,4 +403,5 @@ ALL_PERMISSIONS: tuple[PermissionDef, ...] = (
     + PHASE_21_PERMISSIONS
     + PHASE_26_PERMISSIONS
     + PHASE_27_PERMISSIONS
+    + PHASE_28_PERMISSIONS
 )

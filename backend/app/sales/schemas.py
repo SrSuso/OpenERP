@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -122,15 +122,51 @@ class SaleRead(BaseModel):
     change_due: Decimal
 
 
+class ZTaxBreakdownRead(BaseModel):
+    rate: Decimal
+    taxable_base: Decimal
+    tax_amount: Decimal
+    total: Decimal
+
+
+class ZPaymentBreakdownRead(BaseModel):
+    method: str
+    collected_total: Decimal
+    refunded_total: Decimal
+    net_total: Decimal
+
+
+class ZTerminalBreakdownRead(BaseModel):
+    terminal_id: int | None
+    terminal_name: str
+    sales_count: int
+    gross_total: Decimal
+
+
+class ZCashierBreakdownRead(BaseModel):
+    cashier_user_id: int | None
+    cashier_name: str
+    sales_count: int
+    gross_total: Decimal
+
+
 class ZReportRead(BaseModel):
-    """El cierre de caja, tal y como se guardó — ver `app.sales.z_reports`."""
+    """La Z final guardada, incluida su identificación y sus desgloses."""
 
     id: int
     warehouse_id: int
+    warehouse_name: str
     number: int
+    business_date: date
     #: Nulo en la primera Z de esa caja: antes no había corte.
     covers_from: datetime | None
     closed_at: datetime
+    is_final: bool
+    finalized_at: datetime | None
+    store_name: str
+    store_tax_id: str
+    store_address: str
+    closed_by_name: str | None
     sales_count: int
     gross_total: Decimal
     tax_total: Decimal
@@ -140,6 +176,12 @@ class ZReportRead(BaseModel):
     other_total: Decimal
     returns_count: int
     returns_total: Decimal
+    first_sale_number: int | None
+    last_sale_number: int | None
+    tax_breakdown: list[ZTaxBreakdownRead]
+    payment_breakdown: list[ZPaymentBreakdownRead]
+    terminal_breakdown: list[ZTerminalBreakdownRead]
+    cashier_breakdown: list[ZCashierBreakdownRead]
     closed_by_user_id: int | None
 
 
@@ -151,10 +193,13 @@ class PendingSaleRead(BaseModel):
     total: Decimal
 
 
-class ZReportPreview(BaseModel):
-    """Lo mismo, pero sin guardar ni numerar: lo que se enseña antes de
-    confirmar el cierre."""
+class XReportPreview(BaseModel):
+    """Resumen X vivo: no es un cierre fiscal ni se guarda como una Z."""
 
+    warehouse_id: int
+    business_date: date
+    generated_at: datetime
+    warehouse_name: str
     covers_from: datetime | None
     sales_count: int
     gross_total: Decimal
@@ -165,9 +210,14 @@ class ZReportPreview(BaseModel):
     other_total: Decimal
     returns_count: int
     returns_total: Decimal
-    #: La Z diaria que ya existe, si el almacén ya se cerró hoy. Se entrega
-    #: para mostrarla y reimprimirla en vez de crear una segunda.
-    existing_report: ZReportRead | None = None
+    first_sale_number: int | None
+    last_sale_number: int | None
+    tax_breakdown: list[ZTaxBreakdownRead]
+    payment_breakdown: list[ZPaymentBreakdownRead]
+    terminal_breakdown: list[ZTerminalBreakdownRead]
+    cashier_breakdown: list[ZCashierBreakdownRead]
+    #: Si existe, la jornada ya no admite cobros ni devoluciones económicas.
+    final_report: ZReportRead | None = None
     #: Las ventas sin cobrar que impiden cerrar. Van enteras y no contadas:
     #: "hay una sin cobrar" sin decir cuál deja sin salida a quien está en
     #: el mostrador.

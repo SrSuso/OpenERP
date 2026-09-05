@@ -1,4 +1,4 @@
-"""El cierre Z diario, único y actualizable durante la jornada."""
+"""Resumen X vivo y cierre Z final de jornada."""
 
 from __future__ import annotations
 
@@ -11,15 +11,6 @@ _till_counter = 0
 
 
 async def _default_location(client: AsyncClient) -> tuple[int, int]:
-    """Una caja recién estrenada para cada prueba.
-
-    Una Z cuenta *todo* lo que haya en su almacén desde el cierre anterior,
-    así que usar la tienda de siempre hacía que estas pruebas dependieran
-    de lo que hubieran dejado otras — y alguna deja cosas a propósito, con
-    su propia conexión (ver `committing_sessionmaker` en conftest). Con un
-    almacén propio cada una cuenta sólo lo suyo, salga en el orden que
-    salga.
-    """
     global _till_counter
     _till_counter += 1
     warehouse = (
@@ -43,11 +34,6 @@ async def _sell(
     method: str = "CASH",
     tendered: str | None = None,
 ) -> int:
-    """Una venta cobrada entera, de un producto que se crea al vuelo.
-
-    `tendered` es lo que entrega el cliente: si es más que el precio, la
-    diferencia vuelve como cambio y **no** se queda en el cajón.
-    """
     product = (
         await client.post(
             "/api/v1/products",
@@ -89,125 +75,122 @@ async def _sell(
         json={"payments": [{"method": method, "amount": tendered or price}]},
     )
     assert checkout.status_code == 200, checkout.text
-    sale_id: int = sale["id"]
-    return sale_id
+    return int(sale["id"])
 
 
-async def test_a_close_adds_up_what_was_taken(
+async def test_x_is_live_and_never_creates_a_z(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
     await login(role_name="ADMIN")
     warehouse_id, location_id = await _default_location(client)
-    await _sell(client, warehouse_id, location_id, sku="Z-1", price="10.00", method="CASH")
-    await _sell(client, warehouse_id, location_id, sku="Z-2", price="5.00", method="CARD")
+    await _sell(client, warehouse_id, location_id, sku="Z-X-1", price="10.00", method="CASH")
 
-    closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+    preview = await client.get("/api/v1/x-reports/preview", params={"warehouse_id": warehouse_id})
 
-    assert closed.status_code == 201
-    report = closed.json()
-    assert report["number"] == 1
+    assert preview.status_code == 200
+    x = preview.json()
+    assert x["business_date"]
+    assert x["generated_at"]
+    assert x["sales_count"] == 1
+    assert x["cash_total"] == "10.000000"
+    assert x["first_sale_number"] == x["last_sale_number"]
+    assert x["final_report"] is None
+    assert x["tax_breakdown"] == [
+        {
+            "rate": "0.000000",
+            "taxable_base": "10.000000",
+            "tax_amount": "0.000000",
+            "total": "10.000000",
+        }
+    ]
+    assert (await client.get("/api/v1/z-reports")).json() == []
+
+
+async def test_final_z_freezes_identity_and_accounting_breakdowns(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    user = await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+    await _sell(client, warehouse_id, location_id, sku="Z-FINAL-CASH", price="10.00", method="CASH")
+    await _sell(client, warehouse_id, location_id, sku="Z-FINAL-CARD", price="5.00", method="CARD")
+
+    response = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+
+    assert response.status_code == 201, response.text
+    report = response.json()
+    assert report["is_final"] is True
+    assert report["finalized_at"] == report["closed_at"]
+    assert report["business_date"]
+    assert report["warehouse_name"] == f"Caja Z {_till_counter}"
+    assert report["closed_by_user_id"] == user["id"]
+    assert report["closed_by_name"] == user["full_name"]
     assert report["sales_count"] == 2
+    assert report["gross_total"] == "15.000000"
     assert report["cash_total"] == "10.000000"
     assert report["card_total"] == "5.000000"
-    assert report["other_total"] == "0.000000"
-    # Una Z diaria siempre empieza a medianoche comercial.
-    assert report["covers_from"] is not None
-
-
-async def test_reissuing_the_daily_z_updates_the_same_document(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """Una venta posterior entra en la Z de hoy, sin crear otro documento."""
-    await login(role_name="ADMIN")
-    warehouse_id, location_id = await _default_location(client)
-    await _sell(client, warehouse_id, location_id, sku="Z-3", price="10.00")
-    first = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
-
-    await _sell(client, warehouse_id, location_id, sku="Z-4", price="7.00")
-    second = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
-
-    assert second["id"] == first["id"]
-    assert second["number"] == 1
-    assert second["sales_count"] == 2
-    assert second["cash_total"] == "17.000000"
-
-    preview = (
-        await client.get("/api/v1/z-reports/preview", params={"warehouse_id": warehouse_id})
-    ).json()
-    assert preview["existing_report"]["id"] == first["id"]
-    assert preview["sales_count"] == 2
-    assert preview["cash_total"] == "17.000000"
-
-
-async def test_reissuing_the_daily_z_includes_later_economic_returns(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """La devolución del día actualiza la misma Z al volver a emitirla."""
-    await login(role_name="ADMIN")
-    warehouse_id, location_id = await _default_location(client)
-    sale_id = await _sell(client, warehouse_id, location_id, sku="Z-5", price="10.00")
-    closed = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
-
-    sale = (await client.get(f"/api/v1/sales/{sale_id}")).json()
-    line = sale["lines"][0]
-    await client.post(
-        f"/api/v1/sales/{sale_id}/returns",
-        json={
-            "lines": [
-                {
-                    "sale_line_id": line["id"],
-                    "refund_quantity_packages": "1",
-                    "stock_return_quantity_packages": "0",
-                }
-            ],
-            "refund_method": "CASH",
+    assert report["first_sale_number"] is not None
+    assert report["last_sale_number"] is not None
+    assert report["first_sale_number"] < report["last_sale_number"]
+    assert report["payment_breakdown"] == [
+        {
+            "method": "CASH",
+            "collected_total": "10.000000",
+            "refunded_total": "0.000000",
+            "net_total": "10.000000",
         },
-    )
-
-    listed = (await client.get("/api/v1/z-reports")).json()
-    assert next(z for z in listed if z["id"] == closed["id"]) == closed
-
-    physical_only = await client.post(
-        f"/api/v1/sales/{sale_id}/returns",
-        json={
-            "lines": [
-                {
-                    "sale_line_id": line["id"],
-                    "refund_quantity_packages": "0",
-                    "stock_return_quantity_packages": "1",
-                }
-            ]
+        {
+            "method": "CARD",
+            "collected_total": "5.000000",
+            "refunded_total": "0.000000",
+            "net_total": "5.000000",
         },
-    )
-    assert physical_only.status_code == 201
-    assert physical_only.json()["refund"] is None
+        {
+            "method": "OTHER",
+            "collected_total": "0.000000",
+            "refunded_total": "0.000000",
+            "net_total": "0.000000",
+        },
+    ]
+    assert report["terminal_breakdown"] == [
+        {
+            "terminal_id": None,
+            "terminal_name": "Sin terminal",
+            "sales_count": 2,
+            "gross_total": "15.000000",
+        }
+    ]
+    assert report["cashier_breakdown"] == [
+        {
+            "cashier_user_id": user["id"],
+            "cashier_name": user["full_name"],
+            "sales_count": 2,
+            "gross_total": "15.000000",
+        }
+    ]
 
-    repeated_close = (
-        await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
-    ).json()
-    assert repeated_close["id"] == closed["id"]
-    assert repeated_close["returns_count"] == 1
-    assert repeated_close["returns_total"] == "10.000000"
 
-
-async def test_the_till_cannot_be_closed_with_a_sale_in_progress(
+async def test_final_z_rejects_another_close_and_new_checkout(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """Un carrito con algo dentro se cobraría después del corte: quedaría
-    fuera de esta Z y dentro de la siguiente, cuadrando mal las dos. Y el
-    aviso dice cuál es: "hay una sin cobrar" a secas deja sin salida a
-    quien está en el mostrador."""
     await login(role_name="ADMIN")
     warehouse_id, location_id = await _default_location(client)
+    await _sell(client, warehouse_id, location_id, sku="Z-LOCK-1", price="10.00")
+    first = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+    assert first.status_code == 201
+
+    repeated = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+    assert repeated.status_code == 409
+    assert "definitiva" in repeated.json()["error"]["message"]
+
     product = (
         await client.post(
             "/api/v1/products",
             json={
-                "sku": "Z-PENDING",
-                "name": "Pan",
+                "sku": "Z-LOCK-2",
+                "name": "Producto posterior",
                 "base_unit_name": "UNIDAD",
-                "cost": "0.50",
-                "list_price": "1.00",
+                "cost": "1.00",
+                "list_price": "2.00",
             },
         )
     ).json()
@@ -224,101 +207,77 @@ async def test_the_till_cannot_be_closed_with_a_sale_in_progress(
             "quantity_packages": "1",
         },
     )
+    checkout = await client.post(
+        f"/api/v1/sales/{sale['id']}/checkout",
+        json={"payments": [{"method": "CASH", "amount": "2.00"}]},
+    )
+    assert checkout.status_code == 409
+    assert "Z definitiva" in checkout.json()["error"]["message"]
 
-    refused = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
 
-    assert refused.status_code == 409
-    assert f"#{sale['id']}" in refused.json()["error"]["message"]
-
-
-async def test_an_empty_cart_does_not_block_the_close(
+async def test_final_z_blocks_economic_return_but_not_physical_return(
     client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
 ) -> None:
-    """La caja abre un carrito vacío sola en cuanto se queda sin ninguno,
-    así que contándolos no habría forma humana de cerrar el turno: se
-    cancela el vacío y aparece otro. Y no hay nada que cuadrar en un
-    carrito sin líneas."""
+    await login(role_name="ADMIN")
+    warehouse_id, location_id = await _default_location(client)
+    sale_id = await _sell(client, warehouse_id, location_id, sku="Z-RETURN", price="10.00")
+    assert (
+        await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+    ).status_code == 201
+    sale = (await client.get(f"/api/v1/sales/{sale_id}")).json()
+    line_id = sale["lines"][0]["id"]
+
+    economic = await client.post(
+        f"/api/v1/sales/{sale_id}/returns",
+        json={
+            "lines": [
+                {
+                    "sale_line_id": line_id,
+                    "refund_quantity_packages": "1",
+                    "stock_return_quantity_packages": "0",
+                }
+            ],
+            "refund_method": "CASH",
+        },
+    )
+    assert economic.status_code == 409
+    physical = await client.post(
+        f"/api/v1/sales/{sale_id}/returns",
+        json={
+            "lines": [
+                {
+                    "sale_line_id": line_id,
+                    "refund_quantity_packages": "0",
+                    "stock_return_quantity_packages": "1",
+                }
+            ]
+        },
+    )
+    assert physical.status_code == 201
+    assert physical.json()["refund"] is None
+
+
+async def test_z_requires_the_final_close_permission(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
+    await login(role_name="ADMIN")
+    warehouse_id, _location_id = await _default_location(client)
+    await login(role_name="CASHIER")
+
+    response = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+
+    assert response.status_code == 403
+
+
+async def test_empty_cart_does_not_block_the_final_z(
+    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
     await login(role_name="ADMIN")
     warehouse_id, location_id = await _default_location(client)
     await client.post(
         "/api/v1/sales", json={"warehouse_id": warehouse_id, "location_id": location_id}
     )
 
-    closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+    response = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
 
-    assert closed.status_code == 201
-
-
-async def test_the_preview_says_what_would_be_closed(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    await login(role_name="ADMIN")
-    warehouse_id, location_id = await _default_location(client)
-    await _sell(client, warehouse_id, location_id, sku="Z-6", price="4.00")
-
-    preview = (
-        await client.get("/api/v1/z-reports/preview", params={"warehouse_id": warehouse_id})
-    ).json()
-
-    assert preview["sales_count"] == 1
-    assert preview["cash_total"] == "4.000000"
-    assert preview["open_sales"] == []
-    # Y no ha guardado nada: sigue sin haber ninguna Z.
-    assert (await client.get("/api/v1/z-reports")).json() == []
-
-
-async def test_a_cashier_can_close_their_own_till(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """Cerrar la caja es parte de vender: si pidiera permisos de
-    administración, nadie podría irse a su hora."""
-    await login(role_name="ADMIN")
-    warehouse_id, _location_id = await _default_location(client)
-
-    await login(role_name="CASHIER")
-    closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
-
-    assert closed.status_code == 201
-
-
-async def test_a_z_period_survives_a_cashier_change(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """Cerrar la sesión de un cajero no es un cierre de caja.
-
-    La Z se delimita por almacén y por el corte anterior, no por quién tenga
-    la cookie del TPV. Por eso una venta de Ana sigue en el mismo periodo
-    cuando María entra después y decide hacer la Z.
-    """
-    await login(role_name="ADMIN")
-    warehouse_id, location_id = await _default_location(client)
-    await _sell(client, warehouse_id, location_id, sku="Z-CASHIER-CHANGE", price="9.00")
-
-    signed_out = await client.post("/api/v1/auth/logout")
-    assert signed_out.status_code == 204
-    second_cashier = await login(role_name="CASHIER")
-
-    closed = await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
-
-    assert closed.status_code == 201
-    report = closed.json()
-    assert report["sales_count"] == 1
-    assert report["gross_total"] == "9.000000"
-    assert report["closed_by_user_id"] == second_cashier["id"]
-
-
-async def test_the_change_given_back_is_not_counted_as_cash(
-    client: AsyncClient, login: Callable[..., Awaitable[dict[str, Any]]]
-) -> None:
-    """Un billete de 20 por una compra de 12,40 deja 12,40 en el cajón, no
-    20. Contar lo entregado descuadraría la Z justo por el importe del
-    cambio, en el papel que sirve para contar el cajón."""
-    await login(role_name="ADMIN")
-    warehouse_id, location_id = await _default_location(client)
-    await _sell(client, warehouse_id, location_id, sku="Z-CHANGE", price="12.40", tendered="20.00")
-
-    report = (await client.post("/api/v1/z-reports", params={"warehouse_id": warehouse_id})).json()
-
-    assert report["cash_total"] == "12.400000"
-    # Y lo cobrado cuadra con el desglose por forma de pago.
-    assert report["gross_total"] == "12.400000"
+    assert response.status_code == 201

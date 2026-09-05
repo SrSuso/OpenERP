@@ -208,6 +208,14 @@ async def create_return(
     # A completed economic refund affects exactly one Z period. Physical-only
     # returns keep the same lock order for a single deterministic code path.
     await accounting.lock_warehouse_cut(session, warehouse_id)
+    # z_reports imports this service for its historical calculation, so this
+    # must stay local. The accounting lock above makes the final-Z boundary
+    # and this check atomic with the refund.
+    from app.sales import z_reports
+
+    occurred_at = await accounting.database_clock(session)
+    if any(line.refund_quantity_packages > 0 for line in payload.lines):
+        await z_reports.assert_business_day_open(session, warehouse_id, occurred_at)
     sale = await _get_sale_for_return(session, sale_id)
     if sale.status != SaleStatus.COMPLETED:
         raise ValidationError("Sólo se puede registrar una devolución sobre una venta completada.")
@@ -324,7 +332,6 @@ async def create_return(
             location_id=sale.location_id,
         )
 
-    occurred_at = await accounting.database_clock(session)
     ret = Return(
         sale_id=sale_id,
         notes=payload.notes,

@@ -17,10 +17,12 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -109,6 +111,14 @@ class PosCategory(IntPrimaryKeyMixin, TimestampMixin, Base):
     default row itself."""
 
     __tablename__ = "pos_categories"
+    __table_args__ = (
+        Index(
+            "uq_pos_categories_single_default",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
+    )
 
     name: Mapped[str] = mapped_column(String(100), unique=True)
     color: Mapped[str] = mapped_column(String(7), default="#64748b", server_default="'#64748b'")

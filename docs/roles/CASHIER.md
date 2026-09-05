@@ -28,8 +28,8 @@ avisa al administrador y no aceptes avisos indefinidamente.
   corresponda.
 - Cobrar con los medios configurados, indicar efectivo recibido en céntimos e
   imprimir/reimprimir el ticket de una venta.
-- Cerrar sesión mediante el cierre Z, siempre que no existan borradores
-  pendientes en el almacén del terminal.
+- Cerrar únicamente su sesión POS, sin emitir un cierre de caja.
+- Consultar e imprimir el **Resumen X** cuando su rol tenga `sale.manage`.
 - Consultar el catálogo y la información de stock/lotes que necesita el TPV.
 
 El procedimiento de cada pantalla está en [Punto de venta](../USER_GUIDE.md#2-punto-de-venta-tpv).
@@ -42,6 +42,9 @@ El procedimiento de cada pantalla está en [Punto de venta](../USER_GUIDE.md#2-p
   supervisión y el rol inicial no las recibe.
 - Gestionar usuarios, roles, plantillas, informes, avisos, correo, auditoría o
   configuración de la tienda.
+- Emitir una Z definitiva salvo que un administrador conceda expresamente
+  `sale.close_z`. Ese permiso se reserva normalmente a encargado o
+  administración, porque cierra la jornada comercial del almacén.
 
 Si la tienda decide conceder más permisos a un rol personalizado, el menú y el
 backend habilitarán únicamente esas capacidades adicionales. Un cajero no debe

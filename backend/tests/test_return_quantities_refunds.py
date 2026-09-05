@@ -400,12 +400,12 @@ async def test_refund_amount_is_the_sum_of_each_historical_sale_line(
     assert body["refund"]["amount"] == body["total_refund"] == "8.000000"
 
 
-async def test_completed_refund_uses_business_day_without_changing_its_z_cut(
+async def test_completed_refund_outside_the_final_z_business_day_is_not_included(
     client: AsyncClient,
     login: Callable[..., Awaitable[dict[str, Any]]],
     db_session: AsyncSession,
 ) -> None:
-    """A13/T7: calendar grouping is local; Z ownership remains absolute."""
+    """A13/T7: an immutable Z only includes completed effects from its own day."""
     await login(role_name="ADMIN")
     assert (
         await client.put(
@@ -431,5 +431,5 @@ async def test_completed_refund_uses_business_day_without_changing_its_z_cut(
 
     assert grouped_day == date(2026, 8, 13)
     assert z.status_code == 201
-    assert z.json()["returns_count"] == 1
-    assert z.json()["returns_total"] == "2.000000"
+    assert z.json()["returns_count"] == 0
+    assert z.json()["returns_total"] == "0.000000"

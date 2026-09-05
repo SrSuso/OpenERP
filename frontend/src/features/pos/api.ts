@@ -452,14 +452,50 @@ export async function generateTicket(saleId: number): Promise<Ticket> {
   });
 }
 
-// --- cierre de caja (la Z de totales) ---------------------------------------
+// --- resumen X y cierre Z definitivo -----------------------------------------
+
+const zTaxBreakdownSchema = z.object({
+  rate: z.string(),
+  taxable_base: z.string(),
+  tax_amount: z.string(),
+  total: z.string(),
+});
+
+const zPaymentBreakdownSchema = z.object({
+  method: z.string(),
+  collected_total: z.string(),
+  refunded_total: z.string(),
+  net_total: z.string(),
+});
+
+const zTerminalBreakdownSchema = z.object({
+  terminal_id: z.number().nullable(),
+  terminal_name: z.string(),
+  sales_count: z.number(),
+  gross_total: z.string(),
+});
+
+const zCashierBreakdownSchema = z.object({
+  cashier_user_id: z.number().nullable(),
+  cashier_name: z.string(),
+  sales_count: z.number(),
+  gross_total: z.string(),
+});
 
 export const zReportSchema = z.object({
   id: z.number(),
   warehouse_id: z.number(),
+  warehouse_name: z.string(),
   number: z.number(),
+  business_date: z.string(),
   covers_from: z.string().nullable(),
   closed_at: z.string(),
+  is_final: z.boolean(),
+  finalized_at: z.string().nullable(),
+  store_name: z.string(),
+  store_tax_id: z.string(),
+  store_address: z.string(),
+  closed_by_name: z.string().nullable(),
   sales_count: z.number(),
   gross_total: z.string(),
   tax_total: z.string(),
@@ -469,29 +505,53 @@ export const zReportSchema = z.object({
   other_total: z.string(),
   returns_count: z.number(),
   returns_total: z.string(),
+  first_sale_number: z.number().nullable(),
+  last_sale_number: z.number().nullable(),
+  tax_breakdown: z.array(zTaxBreakdownSchema),
+  payment_breakdown: z.array(zPaymentBreakdownSchema),
+  terminal_breakdown: z.array(zTerminalBreakdownSchema),
+  cashier_breakdown: z.array(zCashierBreakdownSchema),
   closed_by_user_id: z.number().nullable(),
 });
 export type ZReport = z.infer<typeof zReportSchema>;
 
-export const zReportPreviewSchema = zReportSchema
-  .omit({ id: true, warehouse_id: true, number: true, closed_at: true, closed_by_user_id: true })
-  .extend({
-    // Cuáles son, no cuántas: "hay una sin cobrar" sin decir cuál deja sin
-    // salida a quien está en el mostrador.
-    open_sales: z.array(z.object({ id: z.number(), lines_count: z.number(), total: z.string() })),
-    // Si la jornada ya se cerró, el TPV recibe el documento congelado para
-    // mostrarlo y reimprimirlo, en vez de intentar abrir una segunda Z.
-    existing_report: zReportSchema.nullable().default(null),
-  });
-export type ZReportPreview = z.infer<typeof zReportPreviewSchema>;
+export const xReportPreviewSchema = z.object({
+  warehouse_id: z.number(),
+  warehouse_name: z.string(),
+  business_date: z.string(),
+  generated_at: z.string(),
+  covers_from: z.string().nullable(),
+  sales_count: z.number(),
+  gross_total: z.string(),
+  tax_total: z.string(),
+  discount_total: z.string(),
+  cash_total: z.string(),
+  card_total: z.string(),
+  other_total: z.string(),
+  returns_count: z.number(),
+  returns_total: z.string(),
+  first_sale_number: z.number().nullable(),
+  last_sale_number: z.number().nullable(),
+  tax_breakdown: z.array(zTaxBreakdownSchema),
+  payment_breakdown: z.array(zPaymentBreakdownSchema),
+  terminal_breakdown: z.array(zTerminalBreakdownSchema),
+  cashier_breakdown: z.array(zCashierBreakdownSchema),
+  // Cuáles son, no cuántas: "hay una sin cobrar" sin decir cuál deja sin
+  // salida a quien está en el mostrador.
+  open_sales: z.array(z.object({ id: z.number(), lines_count: z.number(), total: z.string() })),
+  // La jornada puede tener una Z final, pero el X sigue siendo una consulta
+  // viva que no la modifica ni la sustituye.
+  final_report: zReportSchema.nullable().default(null),
+});
+export type XReportPreview = z.infer<typeof xReportPreviewSchema>;
 
-/** La Z comercial de hoy, o lo que saldría si aún no se hubiese cerrado. */
-export function zReportPreviewQuery(warehouseId: number | null) {
+/** El resumen X vivo de la jornada. Nunca crea ni modifica una Z. */
+export function xReportPreviewQuery(warehouseId: number | null) {
   return queryOptions({
-    queryKey: ['pos', 'z-report', 'preview', warehouseId] as const,
+    queryKey: ['pos', 'x-report', 'preview', warehouseId] as const,
     queryFn: ({ signal }) =>
-      apiFetch(`${API_V1}/z-reports/preview?warehouse_id=${warehouseId}`, {
-        schema: zReportPreviewSchema,
+      apiFetch(`${API_V1}/x-reports/preview?warehouse_id=${warehouseId}`, {
+        schema: xReportPreviewSchema,
         signal,
       }),
     enabled: warehouseId !== null,
@@ -500,7 +560,7 @@ export function zReportPreviewQuery(warehouseId: number | null) {
   });
 }
 
-/** Cierra la jornada y congela su única Z diaria. */
+/** Emite y congela la única Z definitiva de la jornada. */
 export async function closeZReport(warehouseId: number, idempotencyKey: string): Promise<ZReport> {
   return apiFetch(`${API_V1}/z-reports?warehouse_id=${warehouseId}`, {
     method: 'POST',
