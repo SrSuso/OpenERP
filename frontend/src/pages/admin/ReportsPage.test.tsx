@@ -50,6 +50,7 @@ function stubBackend() {
   let definitions: ReportDefinition[] = [];
   const runCalls: Record<string, unknown>[] = [];
   const createCalls: Record<string, unknown>[] = [];
+  const updateCalls: Record<string, unknown>[] = [];
   const deleteCalls: number[] = [];
 
   vi.stubGlobal(
@@ -69,12 +70,55 @@ function stubBackend() {
         return Promise.resolve(jsonResponse([]));
       if (method === 'GET' && url.includes('/products?')) return Promise.resolve(jsonResponse([]));
       if (method === 'GET' && url.includes('/suppliers?')) return Promise.resolve(jsonResponse([]));
+      if (method === 'GET' && url.includes('/users')) {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              id: 2,
+              email: 'caja@example.com',
+              full_name: 'Cajera Uno',
+              is_active: true,
+              must_change_password: false,
+              role_id: 2,
+              role_name: 'Cajera',
+              pos_username: 'cajera',
+              pos_pin_configured: true,
+              pos_access_enabled: true,
+            },
+          ]),
+        );
+      }
       if (method === 'GET' && url.includes('/report-definitions')) {
         return Promise.resolve(jsonResponse(definitions));
       }
       if (method === 'POST' && url.includes('/reports/run')) {
         const b = body();
         runCalls.push(b);
+        return Promise.resolve(
+          jsonResponse({
+            columns: ['product_name', 'quantity'],
+            rows: [{ product_name: 'Agua 1.5L', quantity: '12.000000' }],
+          }),
+        );
+      }
+      const updateMatch = /\/report-definitions\/(\d+)$/.exec(url);
+      if (method === 'PUT' && updateMatch) {
+        const b = body();
+        updateCalls.push(b);
+        const updated: ReportDefinition = {
+          id: Number(updateMatch[1]),
+          name: b['name'] as string,
+          subject: b['subject'] as ReportDefinition['subject'],
+          dimensions: b['dimensions'] as string[],
+          metrics: b['metrics'] as string[],
+          filters: b['filters'] as Record<string, unknown>,
+          created_at: definitions[0]?.created_at ?? new Date().toISOString(),
+        };
+        definitions = [updated];
+        return Promise.resolve(jsonResponse(updated));
+      }
+      const runDefMatch = /\/report-definitions\/(\d+)\/run$/.exec(url);
+      if (method === 'POST' && runDefMatch) {
         return Promise.resolve(
           jsonResponse({
             columns: ['product_name', 'quantity'],
@@ -97,15 +141,6 @@ function stubBackend() {
         definitions = [created];
         return Promise.resolve(jsonResponse(created, { status: 201 }));
       }
-      const runDefMatch = /\/report-definitions\/(\d+)\/run$/.exec(url);
-      if (method === 'POST' && runDefMatch) {
-        return Promise.resolve(
-          jsonResponse({
-            columns: ['product_name', 'quantity'],
-            rows: [{ product_name: 'Agua 1.5L', quantity: '12.000000' }],
-          }),
-        );
-      }
       const deleteMatch = /\/report-definitions\/(\d+)$/.exec(url);
       if (method === 'DELETE' && deleteMatch) {
         deleteCalls.push(Number(deleteMatch[1]));
@@ -117,7 +152,7 @@ function stubBackend() {
     }),
   );
 
-  return { runCalls, createCalls, deleteCalls };
+  return { runCalls, createCalls, updateCalls, deleteCalls };
 }
 
 function renderPage() {
@@ -141,13 +176,19 @@ describe('ReportsPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Qué quieres consultar'), 'SALES');
     await userEvent.click(screen.getByRole('button', { name: 'Producto' }));
     await userEvent.click(screen.getByRole('button', { name: 'Cantidad' }));
+    await userEvent.selectOptions(screen.getByLabelText('Cajero'), '2');
 
     await userEvent.click(screen.getByRole('button', { name: 'Ejecutar informe' }));
 
     expect(await screen.findByText('Agua 1.5L')).toBeInTheDocument();
     expect(screen.queryByText('P000010')).not.toBeInTheDocument();
     expect(backend.runCalls).toEqual([
-      { subject: 'SALES', dimensions: ['product'], metrics: ['quantity'], filters: {} },
+      {
+        subject: 'SALES',
+        dimensions: ['product'],
+        metrics: ['quantity'],
+        filters: { cashier_user_id: 2 },
+      },
     ]);
 
     await userEvent.type(screen.getByLabelText('Guardar como'), 'Ventas por producto');
@@ -160,45 +201,29 @@ describe('ReportsPage', () => {
         subject: 'SALES',
         dimensions: ['product'],
         metrics: ['quantity'],
-        filters: {},
+        filters: { cashier_user_id: 2 },
       },
     ]);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Ejecutar' }));
-    await screen.findByText('12');
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    expect(screen.getByLabelText('Qué quieres consultar')).toHaveValue('SALES');
+    expect(screen.getByLabelText('Guardar como')).toHaveValue('Ventas por producto');
+    await userEvent.clear(screen.getByLabelText('Guardar como'));
+    await userEvent.type(screen.getByLabelText('Guardar como'), 'Ventas de caja');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(await screen.findByText('Ventas de caja')).toBeInTheDocument();
+    expect(backend.updateCalls).toMatchObject([
+      {
+        name: 'Ventas de caja',
+        subject: 'SALES',
+        dimensions: ['product'],
+        metrics: ['quantity'],
+        filters: { cashier_user_id: 2 },
+      },
+    ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
     await screen.findByText('Todavía no has guardado ningún informe.');
     expect(backend.deleteCalls).toEqual([1]);
-  });
-
-  it('runs a useful daily sales report in one click', async () => {
-    const backend = stubBackend();
-    renderPage();
-
-    await screen.findByText('Informes rápidos');
-    await userEvent.click(screen.getByRole('button', { name: /Ventas de hoy/ }));
-
-    expect(await screen.findByText('Agua 1.5L')).toBeInTheDocument();
-    expect(backend.runCalls).toHaveLength(1);
-    const quickRun = backend.runCalls[0];
-    if (!quickRun) throw new Error('Expected a quick report request');
-    expect(quickRun).toMatchObject({
-      subject: 'SALES',
-      dimensions: [],
-      metrics: ['revenue', 'tickets', 'quantity'],
-    });
-    const quickFilters = quickRun['filters'];
-    if (typeof quickFilters !== 'object' || quickFilters === null) {
-      throw new Error('Expected date filters');
-    }
-    const filterValues = quickFilters as Record<string, unknown>;
-    const dateFrom = filterValues['date_from'];
-    const dateTo = filterValues['date_to'];
-    if (typeof dateFrom !== 'string' || typeof dateTo !== 'string') {
-      throw new Error('Expected ISO date filters');
-    }
-    expect(dateFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(dateTo).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

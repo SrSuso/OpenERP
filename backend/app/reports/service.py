@@ -92,6 +92,32 @@ async def create_definition(
     return definition
 
 
+async def update_definition(
+    session: AsyncSession, definition_id: int, payload: ReportDefinitionCreate
+) -> ReportDefinition:
+    """Replace a saved report's safe configuration, never arbitrary SQL."""
+    definition = await get_definition(session, definition_id)
+    await rules.run_report(
+        session, payload.subject, payload.dimensions, payload.metrics, payload.filters
+    )
+    before = {"name": definition.name, "subject": definition.subject}
+    definition.name = payload.name
+    definition.subject = payload.subject
+    definition.dimensions = payload.dimensions
+    definition.metrics = payload.metrics
+    definition.filters = payload.filters.model_dump(mode="json")
+    await session.flush()
+    await audit.record(
+        session,
+        action="updated",
+        entity_type="report_definition",
+        entity_id=definition.id,
+        before=before,
+        after={"name": definition.name, "subject": definition.subject},
+    )
+    return definition
+
+
 async def run_definition(session: AsyncSession, definition_id: int) -> ReportRunResult:
     definition = await get_definition(session, definition_id)
     filters = ReportFilters.model_validate(definition.filters)

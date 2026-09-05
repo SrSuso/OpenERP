@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/features/auth/useAuth';
 import { productCategoriesQuery, productsQuery } from '@/features/catalog/api';
 import { warehousesQuery } from '@/features/inventory/api';
+import { columnLabel } from '@/features/reports/columnLabels';
 import { ReportResultTable } from '@/features/reports/ReportResultTable';
 import {
   createReportDefinition,
@@ -12,12 +13,15 @@ import {
   reportSubjectsQuery,
   runReport,
   runReportDefinition,
+  updateReportDefinition,
+  type ReportDefinition,
   type ReportFilters,
   type ReportRunRequest,
   type ReportRunResult,
   type ReportSubject,
 } from '@/features/reports/api';
 import { suppliersQuery } from '@/features/suppliers/api';
+import { usersQuery } from '@/features/users/api';
 
 const MOVEMENT_TYPES: Record<string, string> = {
   PURCHASE_RECEIPT: 'Recepción de compra',
@@ -29,84 +33,54 @@ const MOVEMENT_TYPES: Record<string, string> = {
   RETURN: 'Devolución',
 };
 
-interface QuickReport {
-  id: string;
-  title: string;
-  description: string;
-  subject: ReportSubject;
-  dimensions: string[];
-  metrics: string[];
-  filters: ReportFilters;
-}
-
-function madridDate(): string {
-  const madrid = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Madrid',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    madrid.find((item) => item.type === type)?.value ?? '';
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
-
-function quickReports(): QuickReport[] {
-  const today = madridDate();
-  return [
-    {
-      id: 'sales-today',
-      title: 'Ventas de hoy',
-      description: 'Facturación, tickets y unidades vendidas durante la jornada actual.',
-      subject: 'SALES',
-      dimensions: [],
-      metrics: ['revenue', 'tickets', 'quantity'],
-      filters: { date_from: today, date_to: today },
-    },
-    {
-      id: 'products-today',
-      title: 'Productos vendidos hoy',
-      description: 'Unidades e ingresos por artículo de la jornada actual.',
-      subject: 'SALES',
-      dimensions: ['product'],
-      metrics: ['quantity', 'revenue'],
-      filters: { date_from: today, date_to: today },
-    },
-    {
-      id: 'categories-today',
-      title: 'Ventas por categoría',
-      description: 'Qué categorías han generado las ventas de hoy.',
-      subject: 'SALES',
-      dimensions: ['category'],
-      metrics: ['revenue', 'quantity', 'tickets'],
-      filters: { date_from: today, date_to: today },
-    },
-    {
-      id: 'purchases-month',
-      title: 'Compras del mes',
-      description: 'Coste y unidades compradas, agrupados por proveedor.',
-      subject: 'PURCHASES',
-      dimensions: ['supplier'],
-      metrics: ['cost', 'quantity', 'orders'],
-      filters: { date_from: `${today.slice(0, 8)}01`, date_to: today },
-    },
-    {
-      id: 'inventory-today',
-      title: 'Movimientos de hoy',
-      description: 'Entradas, ventas, devoluciones y ajustes de inventario.',
-      subject: 'INVENTORY_MOVEMENTS',
-      dimensions: ['movement_type'],
-      metrics: ['quantity', 'movements'],
-      filters: { date_from: today, date_to: today },
-    },
-  ];
-}
-
 function toggleInSet(set: Set<string>, key: string): Set<string> {
   const next = new Set(set);
   if (next.has(key)) next.delete(key);
   else next.add(key);
   return next;
+}
+
+function csvCell(value: string | number | null | undefined): string {
+  const text = value === null || value === undefined ? '' : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function downloadCsv(result: ReportRunResult, title: string | null): void {
+  const rows = [
+    result.columns.map(columnLabel),
+    ...result.rows.map((row) => result.columns.map((column) => row[column])),
+  ];
+  const csv = `\ufeff${rows.map((row) => row.map(csvCell).join(';')).join('\r\n')}`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${(title ?? 'informe').toLowerCase().replaceAll(/[^a-z0-9áéíóúüñ]+/gi, '-')}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function filtersFromDefinition(filters: Record<string, unknown>): ReportFilters {
+  const value = (key: keyof ReportFilters) => filters[key];
+  const dateFrom = value('date_from');
+  const dateTo = value('date_to');
+  const movementType = value('movement_type');
+  const numberValue = (
+    key: 'warehouse_id' | 'category_id' | 'product_id' | 'supplier_id' | 'cashier_user_id',
+  ) => {
+    const candidate = value(key);
+    return typeof candidate === 'number' ? candidate : null;
+  };
+  return {
+    date_from: typeof dateFrom === 'string' ? dateFrom : null,
+    date_to: typeof dateTo === 'string' ? dateTo : null,
+    warehouse_id: numberValue('warehouse_id'),
+    category_id: numberValue('category_id'),
+    product_id: numberValue('product_id'),
+    supplier_id: numberValue('supplier_id'),
+    cashier_user_id: numberValue('cashier_user_id'),
+    movement_type: typeof movementType === 'string' ? movementType : null,
+  };
 }
 
 /** `/admin/reports` — gated por `report.read`; guardar/eliminar informes
@@ -126,6 +100,7 @@ export function ReportsPage() {
   const [resultTitle, setResultTitle] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [name, setName] = useState('');
+  const [editingDefinitionId, setEditingDefinitionId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const subjects = useQuery(reportSubjectsQuery);
@@ -133,6 +108,7 @@ export function ReportsPage() {
   const categories = useQuery(productCategoriesQuery);
   const products = useQuery(productsQuery({ activeOnly: true }));
   const suppliers = useQuery(suppliersQuery(true));
+  const users = useQuery(usersQuery);
   const definitions = useQuery(reportDefinitionsQuery);
   const queryClient = useQueryClient();
 
@@ -146,6 +122,8 @@ export function ReportsPage() {
     setResult(null);
     setResultTitle(null);
     setRunError(null);
+    setEditingDefinitionId(null);
+    setName('');
   }
 
   const runMutation = useMutation({
@@ -158,17 +136,16 @@ export function ReportsPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      createReportDefinition({
-        name,
-        subject: subject as ReportSubject,
-        dimensions: [...dimensions],
-        metrics: [...metrics],
-        filters,
-      }),
-    onSuccess: () => {
+    mutationFn: (payload: ReportRunRequest & { name: string; definitionId: number | null }) => {
+      const { definitionId, ...definition } = payload;
+      return definitionId === null
+        ? createReportDefinition(definition)
+        : updateReportDefinition(definitionId, definition);
+    },
+    onSuccess: (definition) => {
       void queryClient.invalidateQueries({ queryKey: reportDefinitionsQuery.queryKey });
-      setName('');
+      setEditingDefinitionId(definition.id);
+      setName(definition.name);
       setSaveError(null);
     },
     onError: () => setSaveError('No se ha podido guardar el informe.'),
@@ -193,19 +170,17 @@ export function ReportsPage() {
     };
   }
 
-  function runQuickReport(report: QuickReport) {
-    setSubject(report.subject);
-    setDimensions(new Set(report.dimensions));
-    setMetrics(new Set(report.metrics));
-    setFilters(report.filters);
-    setResultTitle(report.title);
+  function editDefinition(definition: ReportDefinition) {
+    setSubject(definition.subject);
+    setDimensions(new Set(definition.dimensions));
+    setMetrics(new Set(definition.metrics));
+    setFilters(filtersFromDefinition(definition.filters));
+    setName(definition.name);
+    setEditingDefinitionId(definition.id);
+    setResult(null);
+    setResultTitle(null);
     setRunError(null);
-    runMutation.mutate({
-      subject: report.subject,
-      dimensions: report.dimensions,
-      metrics: report.metrics,
-      filters: report.filters,
-    });
+    setSaveError(null);
   }
 
   const deleteDefinitionMutation = useMutation({
@@ -223,32 +198,6 @@ export function ReportsPage() {
         </p>
       </div>
 
-      <section className="mb-6 rounded-lg border border-brand-100 bg-brand-50/40 p-4">
-        <div className="mb-3">
-          <h2 className="text-lg font-semibold text-slate-900">Informes rápidos</h2>
-          <p className="text-sm text-slate-600">
-            Usan la jornada comercial actual en horario de la tienda. Puedes ajustar sus filtros
-            abajo.
-          </p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {quickReports().map((report) => (
-            <button
-              key={report.id}
-              type="button"
-              onClick={() => runQuickReport(report)}
-              disabled={runMutation.isPending}
-              className="rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-brand-400 hover:bg-brand-50 disabled:cursor-wait disabled:opacity-60"
-            >
-              <span className="block font-semibold text-brand-800">{report.title}</span>
-              <span className="mt-1 block text-sm leading-5 text-slate-600">
-                {report.description}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
       <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-slate-900">Informe a medida</h2>
@@ -256,21 +205,32 @@ export function ReportsPage() {
             Elige qué analizar, cómo agruparlo y el período que quieres consultar.
           </p>
         </div>
-        <label className="block text-sm text-slate-600">
-          Qué quieres consultar
-          <select
-            value={subject}
-            onChange={(event) => selectSubject(event.target.value)}
-            className="mt-1 block w-64 rounded border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="">Elige qué informar…</option>
-            {subjects.data?.map((s) => (
-              <option key={s.subject} value={s.subject}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block text-sm text-slate-600">
+            Qué quieres consultar
+            <select
+              value={subject}
+              onChange={(event) => selectSubject(event.target.value)}
+              className="mt-1 block w-64 rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Elige qué informar…</option>
+              {subjects.data?.map((s) => (
+                <option key={s.subject} value={s.subject}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {subject && (
+            <button
+              type="button"
+              onClick={() => selectSubject('')}
+              className="rounded border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Limpiar informe
+            </button>
+          )}
+        </div>
 
         {subjectInfo && (
           <>
@@ -363,6 +323,29 @@ export function ReportsPage() {
                     {(warehouses.data ?? []).map((w) => (
                       <option key={w.id} value={w.id}>
                         {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {subjectInfo.filter_keys.includes('cashier_user_id') && (
+                <label className="text-sm text-slate-600">
+                  Cajero
+                  <select
+                    value={filters.cashier_user_id ?? ''}
+                    onChange={(event) =>
+                      setFilters((current) => ({
+                        ...current,
+                        cashier_user_id: event.target.value ? Number(event.target.value) : null,
+                      }))
+                    }
+                    className="mt-1 block w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
+                  >
+                    <option value="">Todos</option>
+                    {(users.data ?? []).map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name}
                       </option>
                     ))}
                   </select>
@@ -489,11 +472,21 @@ export function ReportsPage() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => saveMutation.mutate()}
+                    onClick={() =>
+                      saveMutation.mutate({
+                        ...currentRequest(),
+                        name,
+                        definitionId: editingDefinitionId,
+                      })
+                    }
                     disabled={saveMutation.isPending || metrics.size === 0 || !name.trim()}
                     className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
                   >
-                    {saveMutation.isPending ? 'Guardando…' : 'Guardar informe'}
+                    {saveMutation.isPending
+                      ? 'Guardando…'
+                      : editingDefinitionId === null
+                        ? 'Guardar informe'
+                        : 'Guardar cambios'}
                   </button>
                 </>
               )}
@@ -507,12 +500,23 @@ export function ReportsPage() {
 
       {result && (
         <div className="mb-6">
-          <h2 className="mb-1 text-lg font-semibold text-slate-800">
-            {resultTitle ?? 'Resultado'}
-          </h2>
-          <p className="mb-2 text-sm text-slate-600">
-            {result.rows.length === 1 ? '1 resultado' : `${result.rows.length} resultados`}
-          </p>
+          <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">{resultTitle ?? 'Resultado'}</h2>
+              <p className="text-sm text-slate-600">
+                {result.rows.length === 1 ? '1 resultado' : `${result.rows.length} resultados`}
+              </p>
+            </div>
+            {result.rows.length > 0 && (
+              <button
+                type="button"
+                onClick={() => downloadCsv(result, resultTitle)}
+                className="rounded border border-brand-700 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
+              >
+                Descargar CSV
+              </button>
+            )}
+          </div>
           <ReportResultTable result={result} />
         </div>
       )}
@@ -538,6 +542,15 @@ export function ReportsPage() {
                 </span>
               </span>
               <span className="flex gap-3">
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => editDefinition(definition)}
+                    className="text-sm font-medium text-slate-700 hover:underline"
+                  >
+                    Editar
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => runDefinitionMutation.mutate(definition.id)}

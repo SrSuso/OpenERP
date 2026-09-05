@@ -297,12 +297,26 @@ async def test_save_list_run_and_delete_a_report_definition(
     assert created.status_code == 201
     definition_id = created.json()["id"]
 
+    updated = await client.put(
+        f"/api/v1/report-definitions/{definition_id}",
+        json={
+            "name": "Ingresos por producto",
+            "subject": "SALES",
+            "dimensions": ["product"],
+            "metrics": ["revenue"],
+            "filters": {"product_id": product["id"]},
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Ingresos por producto"
+    assert updated.json()["metrics"] == ["revenue"]
+
     listed = await client.get("/api/v1/report-definitions")
     assert definition_id in {d["id"] for d in listed.json()}
 
     run = await client.post(f"/api/v1/report-definitions/{definition_id}/run")
     assert run.status_code == 200
-    assert run.json()["rows"][0]["quantity"] == "1.000000"
+    assert run.json()["rows"][0]["revenue"] == "10.000000"
 
     deleted = await client.delete(f"/api/v1/report-definitions/{definition_id}")
     assert deleted.status_code == 204

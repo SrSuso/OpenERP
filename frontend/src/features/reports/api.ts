@@ -93,6 +93,17 @@ export async function createReportDefinition(
   });
 }
 
+export async function updateReportDefinition(
+  id: number,
+  payload: ReportRunRequest & { name: string },
+): Promise<ReportDefinition> {
+  return apiFetch(`${API_V1}/report-definitions/${id}`, {
+    method: 'PUT',
+    schema: reportDefinitionSchema,
+    body: payload,
+  });
+}
+
 export async function runReportDefinition(id: number): Promise<ReportRunResult> {
   return apiFetch(`${API_V1}/report-definitions/${id}/run`, {
     method: 'POST',

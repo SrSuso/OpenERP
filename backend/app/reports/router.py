@@ -71,6 +71,17 @@ async def create_definition(
     return _definition_to_read(await service.create_definition(session, payload))
 
 
+@router.put(
+    "/report-definitions/{definition_id}",
+    response_model=ReportDefinitionRead,
+    dependencies=[_require_manage],
+)
+async def update_definition(
+    definition_id: int, payload: ReportDefinitionCreate, session: SessionDep
+) -> ReportDefinitionRead:
+    return _definition_to_read(await service.update_definition(session, definition_id, payload))
+
+
 @router.post(
     "/report-definitions/{definition_id}/run",
     response_model=ReportRunResult,
