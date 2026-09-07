@@ -15,8 +15,9 @@ const zReportsQuery = queryOptions({
     apiFetch(`${API_V1}/z-reports`, { schema: z.array(zReportSchema), signal }),
 });
 
-/** Las Z definitivas guardadas. Una vez emitidas se reimprime el snapshot,
- * nunca se recalcula ni se actualiza con operaciones posteriores. */
+/** Incluye Z definitivas y el último resumen que se conservó de cada jornada
+ * anterior al modelo final. La etiqueta evita presentar ese histórico mutable
+ * como un documento fiscal definitivo. */
 export function ZReportsPage() {
   const businessTimezone = useBusinessTimezone();
   const reports = useQuery(zReportsQuery);
@@ -26,8 +27,8 @@ export function ZReportsPage() {
     <section>
       <h1 className="mb-1 text-2xl font-semibold">Cierres de caja (Z)</h1>
       <p className="mb-4 text-sm text-slate-500">
-        Una Z definitiva por día comercial y almacén. Conserva los datos del establecimiento,
-        impuestos, cobros, devoluciones, terminales y cajeros que había al emitirla.
+        Una Z definitiva por día comercial y almacén. Los registros anteriores al cambio de modelo
+        se mantienen visibles como histórico y no se confunden con una Z definitiva.
       </p>
 
       {reports.isPending && <p className="text-sm text-slate-500">Cargando…</p>}
@@ -46,6 +47,7 @@ export function ZReportsPage() {
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Z nº</th>
+                <th className="px-4 py-2 font-medium">Tipo</th>
                 <th className="px-4 py-2 font-medium">Jornada</th>
                 <th className="px-4 py-2 font-medium">Cerrado</th>
                 <th className="px-4 py-2 font-medium">Cerrado por</th>
@@ -63,6 +65,17 @@ export function ZReportsPage() {
               {rows.map((report) => (
                 <tr key={report.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-2 font-medium text-slate-800">{report.number}</td>
+                  <td className="px-4 py-2">
+                    {report.is_final ? (
+                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
+                        Z definitiva
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
+                        Histórico anterior
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 whitespace-nowrap text-slate-600">
                     {report.business_date}
                   </td>

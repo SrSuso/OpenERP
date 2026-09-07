@@ -487,15 +487,11 @@ async def close(
 async def list_reports(
     session: AsyncSession, *, warehouse_id: int | None = None, limit: int = 100
 ) -> list[ZReport]:
-    # Los documentos antiguos eran resúmenes mutables. No se presentan como
-    # cierres Z definitivos; quedan conservados en base de datos para auditoría
-    # y sólo el primer cierre posterior puede consolidarlos.
-    stmt = (
-        select(ZReport)
-        .where(ZReport.is_final.is_(True))
-        .order_by(ZReport.closed_at.desc())
-        .limit(limit)
-    )
+    # Los documentos anteriores al cambio de modelo eran resúmenes mutables.
+    # Se muestran para que el histórico no desaparezca de Administración,
+    # aunque ``is_final`` permite etiquetarlos sin confundirlos con una Z
+    # definitiva del modelo actual.
+    stmt = select(ZReport).order_by(ZReport.closed_at.desc()).limit(limit)
     if warehouse_id is not None:
         stmt = stmt.where(ZReport.warehouse_id == warehouse_id)
     return list((await session.execute(stmt)).scalars())

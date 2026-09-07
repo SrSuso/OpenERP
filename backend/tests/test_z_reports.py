@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.sales.models import ZReport
 
 _till_counter = 0
 
@@ -104,6 +109,39 @@ async def test_x_is_live_and_never_creates_a_z(
         }
     ]
     assert (await client.get("/api/v1/z-reports")).json() == []
+
+
+async def test_z_listing_keeps_legacy_summaries_visible(
+    client: AsyncClient,
+    login: Callable[..., Awaitable[dict[str, Any]]],
+    db_session: AsyncSession,
+) -> None:
+    await login(role_name="ADMIN")
+    warehouse_id, _location_id = await _default_location(client)
+    legacy = ZReport(
+        warehouse_id=warehouse_id,
+        number=999,
+        business_date=date(2026, 8, 29),
+        closed_at=datetime(2026, 8, 29, 20, tzinfo=UTC),
+        is_final=False,
+        sales_count=3,
+        gross_total=Decimal("12.00"),
+        tax_total=Decimal("0"),
+        discount_total=Decimal("0"),
+        cash_total=Decimal("12.00"),
+        card_total=Decimal("0"),
+        other_total=Decimal("0"),
+        returns_count=0,
+        returns_total=Decimal("0"),
+    )
+    db_session.add(legacy)
+    await db_session.flush()
+
+    response = await client.get("/api/v1/z-reports", params={"warehouse_id": warehouse_id})
+
+    assert response.status_code == 200
+    assert response.json()[0]["id"] == legacy.id
+    assert response.json()[0]["is_final"] is False
 
 
 async def test_final_z_freezes_identity_and_accounting_breakdowns(
